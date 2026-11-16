@@ -986,3 +986,28 @@ fn a_sandbox_made_when_no_descriptor_is_left_to_listen_on_it_is_let_go_and_said_
         "and the program that made it is not"
     );
 }
+
+#[test]
+fn a_program_in_a_sandbox_that_makes_one_is_let_go_and_said_to_be() {
+    let mut held = Held::new();
+    let compositor = held.compositor();
+    let (program, _connection, _) = held.connect(&compositor);
+    let directory = TempDir::new().unwrap();
+    let path = directory.path().join("sandbox");
+    let listening = UnixListener::bind(&path).unwrap();
+    let (_open, closing) = UnixStream::pair().unwrap();
+    make_sandbox(&program, &listening, &closing);
+    held.step();
+    let inside = UnixStream::connect(&path).unwrap();
+    let handed = held.handed(&compositor);
+    assert!(matches!(handed.hand, Some(Hand::Sandboxed(_))));
+
+    let another = UnixListener::bind(directory.path().join("another")).unwrap();
+    make_sandbox(&inside, &another, &closing);
+    held.until(|held| held.relay.programs() == 1);
+    let said = String::from_utf8_lossy(&held.said);
+    assert!(
+        said.contains("was let go, for a sandbox made from inside one"),
+        "{said}"
+    );
+}

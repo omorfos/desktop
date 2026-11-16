@@ -43,6 +43,7 @@ use wayland_backend::protocol::MessageDesc;
 
 use crate::AGAIN;
 use crate::objects::Read;
+use crate::wire::{self, Broken};
 
 /// How many programs that came in through one sandbox wait for the relay
 /// to take them; past that, they wait to be taken from the socket.
@@ -188,14 +189,19 @@ impl Sandboxes {
     /// Takes in `read`, the program's request `described` to `object`,
     /// with `fds`, if it is one of making a sandbox. Returns whether it
     /// was: one is the relay's to answer, and not passed on.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if a program `inside` a sandbox makes one.
     pub fn request(
         &mut self,
-        object: u32,
+        (object, inside): (u32, bool),
         read: &Read,
         described: &MessageDesc,
         fds: &[Rc<OwnedFd>],
-    ) -> bool {
-        match (read.interface.name, described.name) {
+    ) -> Result<bool, Broken> {
+        Ok(match (read.interface.name, described.name) {
+            (MANAGER, "create_listener") if inside => return Err(wire::MADE_INSIDE),
             (MANAGER, "create_listener") => {
                 let made = read.made.map(|(made, ..)| made);
                 let given = fds.first().zip(fds.get(1));
@@ -222,7 +228,7 @@ impl Sandboxes {
                 true
             }
             _ => false,
-        }
+        })
     }
 
     /// The sandboxes made since they were last taken.

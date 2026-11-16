@@ -512,10 +512,8 @@ impl Link {
             }
             let described = &read.interface.requests[usize::from(read.opcode)];
             self.up.read.drain(..header.size);
-            if self
-                .sandboxes
-                .request(header.object, &read, described, &fds)
-            {
+            let inside = (header.object, self.sandboxed);
+            if self.sandboxes.request(inside, &read, described, &fds)? {
                 // The sandbox no compositor knows of is made there as one of
                 // the relay's syncs, so that its number is taken, and is the
                 // relay's to free.
@@ -824,6 +822,24 @@ mod tests {
         body.extend(text("wl_shm"));
         body.extend(words(&[1, 3]));
         message(2, 0, &body)
+    }
+
+    #[test]
+    fn a_program_in_a_sandbox_that_makes_one_ends_its_link() {
+        let (link, program, _compositor) = linked();
+        let mut link = link.in_sandbox();
+        let (listening, closing) = UnixStream::pair().unwrap();
+        let mut sent = get_registry();
+        let mut bind = words(&[1]);
+        bind.extend(text("wp_security_context_manager_v1"));
+        bind.extend(words(&[1, 3]));
+        sent.extend(message(2, 0, &bind));
+        send(&program, &sent, &[]);
+        link.read(Way::Up).unwrap();
+        let made = message(3, 1, &words(&[4]));
+        send(&program, &made, &[listening.as_fd(), closing.as_fd()]);
+        assert_eq!(link.read(Way::Up), Err(Ended::Broken(wire::MADE_INSIDE)));
+        assert!(link.sandboxes().is_empty());
     }
 
     #[test]

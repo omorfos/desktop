@@ -56,6 +56,9 @@ pub const NOT_OFFERED: Broken = Broken("an interface the compositor does not off
 pub const VERSION_NOT_OFFERED: Broken = Broken("a version the compositor does not offer");
 /// A global bound that is no longer offered.
 pub const GLOBAL_GONE: Broken = Broken("a global that is no longer offered");
+/// A sandbox made by a program inside one, which is never offered the way
+/// to make one.
+pub const MADE_INSIDE: Broken = Broken("a sandbox made from inside one");
 /// More descriptors sent than are kept.
 pub const TOO_MANY_DESCRIPTORS: Broken = Broken("more descriptors than are kept");
 /// More descriptors handed over and held than any program holds.
@@ -68,8 +71,9 @@ pub const ADDED_TOO_MUCH: Broken = Broken("more added to one object than any pro
 const MORE_THAN_KEPT: [Broken; 3] = [TOO_MANY_DESCRIPTORS, HOLDING_TOO_MANY, ADDED_TOO_MUCH];
 
 /// What a program breaks by naming an object that is not there, or one
-/// that cannot be made.
-const NO_SUCH_OBJECT: [Broken; 8] = [
+/// that cannot be made: as a sandbox, by one inside one, whose compositor
+/// would have refused it the global it was made by.
+const NO_SUCH_OBJECT: [Broken; 9] = [
     NO_OBJECT,
     NUMBER_TAKEN,
     NO_NUMBER,
@@ -78,6 +82,7 @@ const NO_SUCH_OBJECT: [Broken; 8] = [
     NOT_OFFERED,
     VERSION_NOT_OFFERED,
     GLOBAL_GONE,
+    MADE_INSIDE,
 ];
 
 impl Broken {
@@ -350,6 +355,7 @@ pub(crate) mod tests {
     fn what_is_broken_is_told_as_the_error_a_compositor_would_tell() {
         assert_eq!(NO_OBJECT.code(), 0, "an object that is not");
         assert_eq!(GLOBAL_GONE.code(), 0, "or cannot be made");
+        assert_eq!(MADE_INSIDE.code(), 0, "or is not to be had");
         assert_eq!(TOO_MANY_DESCRIPTORS.code(), 2, "more than is kept");
         assert_eq!(
             HOLDING_TOO_MANY.code(),

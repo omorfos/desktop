@@ -2025,7 +2025,7 @@ Security:
       each sandbox is listened on by a thread of its own. Smithay's
       listener, which a compositor without the relay still uses, is in
       `UPSTREAM.md`.
-- [ ] A program inside a sandbox that makes another is ended, as the
+- [x] A program inside a sandbox that makes another is ended, as the
       compositor would: the relay answers for every link, and the
       compositor cannot refuse a bind it does not see in time.
 - [ ] High: every other program stops for half a second whenever the
