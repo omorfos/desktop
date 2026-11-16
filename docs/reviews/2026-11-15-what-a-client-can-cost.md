@@ -507,6 +507,9 @@ and `omorfos-session` are what it is for.
   has no more, gathering every line, within one turn. A peer is the
   user's own program, so this is no wall broken (ADR 37); read a most
   number of lines a turn from each, and leave the rest for the next.
+  **Fixed the same day**: at most 64 lines are read from a peer in a
+  turn, and one with more waiting is gone back to on the deadline of
+  peers not yet sent everything.
 - **A notification names a file to be read as its picture.** Any program
   on the user's bus gives a path (`image-path`, or `app_icon`), which
   `omorfos-notifications` reads and decodes. To be shown: whether an SVG

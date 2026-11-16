@@ -948,3 +948,42 @@ fn a_peer_that_connects_when_no_descriptor_is_left_is_served_once_one_is() {
     let reply = session.ask(&mut peer, &Request::State);
     assert!(matches!(reply, Reply::State(_)), "{reply:?}");
 }
+
+#[test]
+fn a_peer_that_says_much_at_once_is_answered_over_the_turns_after_and_whole() {
+    let mut session = Session::new();
+    let socket = session.listen();
+    let mut peer = UnixStream::connect(&socket).unwrap();
+    session.step();
+    // A thousand requests at once, as a peer that never stops would send.
+    let asked = omorfos_ipc::encode(&Request::Version);
+    let all: String = std::iter::repeat_n(asked.as_str(), 1000).collect();
+    peer.write_all(all.as_bytes()).unwrap();
+    // Not all of it in one turn, which a peer that never stops would hold
+    // up for as long as it wrote.
+    session.step();
+    peer.set_nonblocking(true).unwrap();
+    let mut said = Vec::new();
+    let mut chunk = vec![0; 65536];
+    let mut read = |said: &mut Vec<u8>| {
+        while let Ok(length) = peer.read(&mut chunk) {
+            said.extend_from_slice(&chunk[..length]);
+        }
+        // Each answer is a line.
+        said.split(|byte| *byte == b'\n').count() - 1
+    };
+    let answered = read(&mut said);
+    assert!(
+        answered > 0 && answered < 1000,
+        "{answered} answered in a turn"
+    );
+    // And all of it in the turns after, without anything else to wake for.
+    let deadline = Instant::now() + Duration::from_secs(10);
+    let mut answered = answered;
+    while answered < 1000 && Instant::now() < deadline {
+        session.advance(Duration::from_millis(30));
+        std::thread::sleep(Duration::from_millis(1));
+        answered = read(&mut said);
+    }
+    assert_eq!(answered, 1000);
+}

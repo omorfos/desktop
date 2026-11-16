@@ -35,6 +35,12 @@ const MAX_PEERS: usize = 32;
 /// further behind than this is not reading, and is dropped.
 const MAX_BACKLOG: usize = 1024 * 1024;
 
+/// The most requests read from one peer in a turn: more than a peer that
+/// is served sends between two, and few enough that one that never stops
+/// writing does not keep the turn from ending. The rest are read in the
+/// turns after.
+const MOST_LINES: usize = 64;
+
 /// How long to wait before trying again to send a peer what its socket
 /// would not take.
 const RETRY: Duration = Duration::from_millis(20);
@@ -187,14 +193,17 @@ impl Peer {
         }
     }
 
-    /// Reads whatever has arrived and returns the complete lines.
+    /// Reads what has arrived and returns the complete lines, no more than
+    /// [`MOST_LINES`]; what is left is read in the turns after.
     ///
     /// Lines are taken out as they arrive, so that no more than one message
     /// and one read is ever held, however fast the peer writes.
     fn read_lines(&mut self) -> Vec<Vec<u8>> {
         let mut chunk = [0; 4096];
         let mut lines = Vec::new();
-        while self.alive {
+        // What was read and not taken a turn before comes first.
+        self.take_lines(&mut lines);
+        while self.alive && lines.len() < MOST_LINES {
             match self.stream.read(&mut chunk) {
                 Ok(length) if length > 0 => {
                     self.inbox.extend_from_slice(&chunk[..length]);
@@ -208,10 +217,19 @@ impl Peer {
         lines
     }
 
+    /// Whether it has said more than was read of it in the turn: a whole
+    /// line, still to be answered. What is still in its socket wakes the
+    /// loop by itself.
+    fn more(&self) -> bool {
+        self.inbox.contains(&b'\n')
+    }
+
     /// Moves the complete lines out of the inbox. A line longer than a
     /// message may be ends the connection, whether or not it is finished.
     fn take_lines(&mut self, lines: &mut Vec<Vec<u8>>) {
-        while let Some(end) = self.inbox.iter().position(|byte| *byte == b'\n') {
+        while lines.len() < MOST_LINES
+            && let Some(end) = self.inbox.iter().position(|byte| *byte == b'\n')
+        {
             let line: Vec<u8> = self.inbox.drain(..=end).collect();
             self.alive &= line.len() <= MAX_MESSAGE;
             lines.extend(self.alive.then_some(line));
@@ -374,7 +392,12 @@ impl Compositor {
         // What a peer that has gone said of the radios goes with it.
         let said = server.peers.iter().find_map(|peer| peer.radios.clone());
         self.radios = said.unwrap_or_default();
-        let behind = server.peers.iter().any(|peer| !peer.outbox.is_empty());
+        // A peer that has said more than was read, or has not been sent
+        // everything, is gone back to soon.
+        let behind = server
+            .peers
+            .iter()
+            .any(|peer| !peer.outbox.is_empty() || peer.more());
         server.retry = (behind || server.paused).then(|| now + RETRY);
         self.ipc = Some(server);
     }
