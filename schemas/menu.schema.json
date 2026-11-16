@@ -295,7 +295,7 @@
         },
         {
           "const": "restart_compositor",
-          "description": "Start the compositor again, keeping the login, as `omorfos-hold`\ndoes when it ends: the newest version installed, with the windows\nclosed.",
+          "description": "Start the compositor again, keeping the login, as `omorfos-hold`\ndoes when it ends: the newest version installed. Programs stay open\nthrough it, their windows where they were, but for programs written\nfor X11, which close with their X server.",
           "type": "string"
         },
         {

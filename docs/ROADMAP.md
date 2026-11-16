@@ -2083,7 +2083,7 @@ Security:
 - [ ] Medium: the screenshot's help and a program that cannot start said
       in English only
       ([finding 13](reviews/2026-11-16-the-whole-tree.md#13-two-things-the-user-is-told-come-only-in-english)).
-- [ ] Medium: the manual pages say restarting closes the windows
+- [x] Medium: the manual pages say restarting closes the windows
       ([finding 14](reviews/2026-11-16-the-whole-tree.md#14-the-manual-pages-and-the-schemas-say-that-starting-the-compositor-again-closes-the-windows)).
 - [ ] Medium: the test of the most windows reaches only those waiting
       ([finding 15](reviews/2026-11-16-the-whole-tree.md#15-a-program-can-map-any-number-of-windows-if-the-count-of-those-shown-were-lost-and-no-test-would-know)).

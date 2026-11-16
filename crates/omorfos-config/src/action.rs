@@ -186,8 +186,9 @@ pub enum Action {
     /// Re-read the configuration now.
     ReloadConfig,
     /// Start the compositor again, keeping the login, as `omorfos-hold`
-    /// does when it ends: the newest version installed, with the windows
-    /// closed.
+    /// does when it ends: the newest version installed. Programs stay open
+    /// through it, their windows where they were, but for programs written
+    /// for X11, which close with their X server.
     RestartCompositor,
     /// End the session.
     Quit,
