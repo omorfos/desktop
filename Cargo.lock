@@ -2197,6 +2197,7 @@ version = "0.1.0"
 dependencies = [
  "jiff",
  "omorfos-config",
+ "omorfos-i18n",
  "omorfos-ipc",
  "omorfos-picker",
  "omorfos-shell",

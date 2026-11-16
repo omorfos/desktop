@@ -59,9 +59,10 @@ pub const ABOUT: About = About {
     version: env!("CARGO_PKG_VERSION"),
 };
 
-/// What the picker says to do at the top of each screen.
-const HINT: &str = "Drag over an area, or click a window or a screen. Tab reaches a window behind, \
-                    Enter takes every screen, Esc cancels.";
+/// What the picker says to do at the foot of each screen, in `words`.
+fn hint(words: &omorfos_i18n::Words) -> String {
+    words.say("hint", &[])
+}
 
 /// How the program is used, said when it is used otherwise.
 const USAGE: &str = "usage: omorfos-screenshot [--window | --pick] [--to file|clipboard|both]";
@@ -265,10 +266,11 @@ pub fn pick(
     theme: &omorfos_config::Theme,
 ) -> Result<Option<Vec<Shot>>, Failure> {
     let stills = stills(connection, &shots, placed);
+    let hint = hint(&omorfos_i18n::Words::of(&omorfos_i18n::SCREENSHOT));
     let picked = omorfos_picker::pick(
         connection,
         stills,
-        (omorfos_picker::Pickable::Anything, HINT),
+        (omorfos_picker::Pickable::Anything, &hint),
         theme,
     )?;
     let kept = picked.map(|picked| kept(shots, placed, picked));
@@ -445,6 +447,21 @@ fn kept(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn what_to_do_while_picking_is_said_in_the_users_language() {
+        let said = |languages: &[&str]| {
+            let languages: Vec<String> = languages.iter().map(|&code| code.to_owned()).collect();
+            hint(&omorfos_i18n::Words::in_languages(
+                &omorfos_i18n::SCREENSHOT,
+                &languages,
+            ))
+        };
+        let english = said(&[]);
+        assert!(english.starts_with("Drag over an area"), "{english}");
+        let polish = said(&["pl"]);
+        assert!(polish.starts_with("Przeciągnij"), "{polish}");
+    }
 
     fn word(text: &str) -> OsString {
         OsString::from(text)

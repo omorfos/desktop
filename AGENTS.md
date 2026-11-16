@@ -151,8 +151,9 @@ make.
   other language until it is translated; the tests hold each language to
   the English. The panel, the lock screen, the boxes that ask for
   passwords, `omorfos-session`'s notices, the launcher, the welcome card,
-  and the compositor's menus, tiling pictures, screens' question,
-  notices and About are translated so far.
+  the screenshot picker's line of help, and the compositor's menus,
+  tiling pictures, screens' question, notices and About are translated
+  so far.
 - **The manual pages in `man/` are made, not written** (ADR 77): from each
   program's `About`, which its `--help` is made from too, and from the
   schemas. After changing either, make them again:

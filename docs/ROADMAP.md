@@ -2080,9 +2080,14 @@ Security:
       ([finding 9](reviews/2026-11-16-the-whole-tree.md#9-in-the-light-scheme-which-row-of-a-menu-the-keyboard-is-on-cannot-be-seen)):
       the row the keyboard is on is `menu-item:focus`, the accent with
       `--on-accent`; `:hover` is the pointer's.
-- [ ] Medium: the screenshot's help and a program that cannot start said
+- [x] Medium: the screenshot's help and a program that cannot start said
       in English only
-      ([finding 13](reviews/2026-11-16-the-whole-tree.md#13-two-things-the-user-is-told-come-only-in-english)).
+      ([finding 13](reviews/2026-11-16-the-whole-tree.md#13-two-things-the-user-is-told-come-only-in-english)):
+      both are messages, and a program that is not installed is said to
+      be, with what to do.
+- [ ] The names of the screenshots' folder and files, and the portal's
+      prompts and lines of help, in the user's language: still English,
+      as the rest of finding 13 found.
 - [x] Medium: the manual pages say restarting closes the windows
       ([finding 14](reviews/2026-11-16-the-whole-tree.md#14-the-manual-pages-and-the-schemas-say-that-starting-the-compositor-again-closes-the-windows)).
 - [x] Medium: the test of the most windows reaches only those waiting

@@ -74,9 +74,19 @@ pub const WELCOME: Program = Program {
     translated: &[("pl", include_str!("../../../i18n/pl/welcome.ftl"))],
 };
 
+/// The words of `omorfos-screenshot`, whose picker the portal's
+/// pictures are picked with too.
+pub const SCREENSHOT: Program = Program {
+    name: "screenshot",
+    english: include_str!("../../../i18n/en/screenshot.ftl"),
+    translated: &[("pl", include_str!("../../../i18n/pl/screenshot.ftl"))],
+};
+
 /// Every program whose words are here, which the tests hold every
 /// language's files to.
-pub const PROGRAMS: &[Program] = &[PANEL, LOCK, ASK, SESSION, COMPOSITOR, LAUNCHER, WELCOME];
+pub const PROGRAMS: &[Program] = &[
+    PANEL, LOCK, ASK, SESSION, COMPOSITOR, LAUNCHER, WELCOME, SCREENSHOT,
+];
 
 /// What a message is given to say: words, or a number, by which a
 /// message may choose among forms that differ with how many there are.
