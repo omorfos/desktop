@@ -1937,9 +1937,10 @@ Security:
         in `omorfos-ipc`, for both
         ([finding 1](reviews/2026-11-15-what-a-client-can-cost.md#1-the-compositor-waits-for-ever-on-a-pipe-a-program-hands-it));
       - where a surface is, which its program says as it says how large,
-        is added to in whole numbers that wrap in a release build and
-        panic in the tests': to be read through, in the compositor and
-        in what it asks of Smithay;
+        was thought to be added to in whole numbers that wrap: read
+        through, it is not, as Smithay's points saturate and the
+        compositor takes a program's positions only through them;
+        tested at the ends of the numbers;
       - every window costs a titlebar painted as wide as its frame, and
         nothing held a program to a number of windows: now a program
         has at most 256 at once, one past them never configured (ADR 91).

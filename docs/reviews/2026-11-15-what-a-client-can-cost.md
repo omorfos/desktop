@@ -238,7 +238,17 @@ What else is sized by a window was looked for, as this finding asked:
 - **Where a surface is** is its program's to say as well, and is added
   to in whole numbers of 32 bits, in Smithay and in the compositor. A
   release build wraps where they run out, and the tests' build panics.
-  Not looked at beyond that nothing found allocates by one.
+  Not looked at beyond that nothing found allocates by one. **Read and
+  tested the next day, and found sound**: Smithay's points and
+  rectangles add and take away saturating, at the ends of the numbers,
+  and the compositor takes a program's positions only through them; the
+  sums it makes in whole numbers of its own are of its own numbers (the
+  desktop's, the screens', its own drawing). The test
+  `windows::a_program_that_places_its_parts_at_the_ends_of_the_numbers_stops_nothing`
+  places parts of a window, one on another, a pop-up and where the
+  window proper begins at the ends of the numbers, and points at it,
+  clicks it and shows it in the overview and the switcher; with one of
+  those subtractions made in plain whole numbers, it panics.
 - **Every window costs a titlebar** painted as wide as its frame, up to
   16384 units now: many wide windows cost memory in proportion, and
   nothing held a program to a number of windows. **Fixed the next
@@ -581,8 +591,7 @@ So that it is not looked at again for the same thing:
   with the software renderer.
 - The numbers a program gives for where something is, as apart from how
   large: the offset of a part of a window, a pop-up's place, where a
-  window says it begins in what it shows. They are added to in whole
-  numbers of 32 bits, in Smithay and in the compositor, which a release
-  build wraps and the tests' build panics on.
+  window says it begins in what it shows. (Looked at the next day, and
+  found to saturate: see finding 2.)
 - The helpers that check a secret (`omorfos-lock`'s, `omorfos-ask`'s), and
   the session's own services.

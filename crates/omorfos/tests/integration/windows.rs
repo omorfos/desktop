@@ -4,6 +4,8 @@ use std::time::Duration;
 
 use wayland_protocols::xdg::shell::client::xdg_toplevel::State;
 
+use omorfos_config::Action;
+
 use crate::common::{Event, HEIGHT, Session, WIDTH};
 
 pub(crate) const RED: u32 = 0xffff_0000;
@@ -657,4 +659,59 @@ fn a_program_is_given_no_more_than_the_most_windows_at_once() {
     again.surface.commit();
     session.roundtrip(&mut client);
     assert_eq!(configured(client.take_events()), 1);
+}
+
+#[test]
+fn a_program_that_places_its_parts_at_the_ends_of_the_numbers_stops_nothing() {
+    let mut session = Session::new();
+    let mut client = session.connect();
+    let window = session.open_decorated(&mut client, "app", (200, 100), RED);
+    // Parts as far off as the numbers go, either way, one on another.
+    let far = i32::MAX / 2 + 10;
+    let one = client.subsurface(&window.surface, (far, far), (10, 10), BLUE);
+    let _two = client.subsurface(&one, (far, far), (10, 10), BLUE);
+    let _back = client.subsurface(&window.surface, (i32::MIN, i32::MIN), (10, 10), BLUE);
+    let (popup, _, _) = client.popup(&window, (i32::MAX - 5, i32::MAX - 5), (10, 10));
+    session.roundtrip(&mut client);
+    client.fill(&popup, (10, 10), BLUE);
+    // And where it says the window proper begins in what it shows.
+    window
+        .xdg_surface
+        .set_window_geometry(i32::MAX - 5, i32::MIN + 5, 200, 100);
+    window.surface.commit();
+    session.roundtrip(&mut client);
+    session.roundtrip(&mut client);
+    drop(session.draw());
+
+    // Pointed at, clicked, and shown in the overview and the switcher.
+    for (x, y) in [(10.0, 10.0), (100.0, 50.0), (0.0, 0.0)] {
+        let compositor = session.compositor_mut();
+        compositor.input(omorfos::Input::Motion { x, y }, 0);
+        compositor.input(
+            omorfos::Input::Button {
+                button: 0x110,
+                pressed: true,
+            },
+            0,
+        );
+        compositor.input(
+            omorfos::Input::Button {
+                button: 0x110,
+                pressed: false,
+            },
+            0,
+        );
+        session.step();
+    }
+    for action in [Action::Overview, Action::Overview, Action::SwitchWindows] {
+        session.compositor_mut().perform(&action);
+        session.advance(Duration::from_millis(500));
+        drop(session.draw());
+    }
+
+    // The session goes on as before for the next program.
+    drop((popup, one, window, client));
+    let mut next = session.connect();
+    session.open(&mut next, "next", (200, 100), GREEN);
+    session.eventually(|session| session.draw().at(10, 10) == GREEN);
 }
