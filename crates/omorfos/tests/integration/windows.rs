@@ -577,3 +577,40 @@ fn with_motion_reduced_a_window_is_where_it_was_sent_at_once() {
     session.roundtrip(&mut client);
     assert_eq!(session.draw().at(600, 400), RED);
 }
+
+#[test]
+fn a_windows_title_and_its_programs_name_are_kept_no_longer_than_any_is_shown() {
+    let mut session = Session::new();
+    let mut client = session.connect();
+    // As long as fits in a message of the protocol, and in letters of more
+    // than one byte, so that what is kept is cut between letters.
+    let (name, title) = ("n".repeat(1000), "ż".repeat(1100));
+    session.open(&mut client, &name, (200, 100), RED);
+    let window = session
+        .compositor()
+        .desktop()
+        .windows()
+        .next()
+        .unwrap()
+        .window
+        .clone();
+    assert_eq!(window.app_id.chars().count(), 255);
+    let toplevel = client.toplevel("short", &title);
+    session.roundtrip(&mut client);
+    client.fill(&toplevel.surface, (200, 100), RED);
+    session.roundtrip(&mut client);
+    session.roundtrip(&mut client);
+    assert_eq!(title_of(&session, "short"), "ż".repeat(1024));
+    // And as it changes.
+    toplevel.role.set_title("ź".repeat(2000));
+    session.roundtrip(&mut client);
+    assert_eq!(title_of(&session, "short"), "ź".repeat(1024));
+}
+
+/// The title the desktop keeps for the window of the program `app_id`.
+fn title_of(session: &Session, app_id: &str) -> String {
+    let desktop = session.compositor().desktop();
+    let mut windows = desktop.windows();
+    let kept = windows.find(|listed| listed.window.app_id == app_id);
+    kept.map_or_else(String::new, |kept| kept.window.title.clone())
+}

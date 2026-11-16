@@ -51,7 +51,7 @@ use x11rb::rust_connection::RustConnection;
 use x11rb::wrapper::ConnectionExt as _;
 
 use crate::compositor::{Compositor, Mapped, logical_size, set};
-use crate::handlers::Offer;
+use crate::handlers::{self, Offer};
 use crate::input::Wanted;
 use crate::restarts::Restarts;
 use crate::tiles;
@@ -851,7 +851,10 @@ impl Compositor {
         window.on_commit();
         let size = x11.geometry().size;
         let size = omorfos_core::geometry::Size::new(size.w.unsigned_abs(), size.h.unsigned_abs());
-        let (app_id, title) = (x11.class(), x11.title());
+        let (app_id, title) = (
+            handlers::held_id(x11.class()),
+            handlers::held_title(x11.title()),
+        );
         let listed = self.foreign_toplevels.new_toplevel::<Self>(&title, &app_id);
         crate::kept::listed(self.autostarted.parts.relay.as_ref(), &listed, None);
         // A window that does not draw its own titlebar is given ours.
@@ -978,7 +981,8 @@ impl XwmHandler for Compositor {
     }
 
     fn property_notify(&mut self, _: XwmId, window: X11Surface, property: WmWindowProperty) {
-        let title = (property == WmWindowProperty::Title).then(|| window.title());
+        let title =
+            (property == WmWindowProperty::Title).then(|| handlers::held_title(window.title()));
         if let Some((mapped, title)) = self.managed(&window).zip(title) {
             mapped.listed.send_title(&title);
             mapped.listed.send_done();

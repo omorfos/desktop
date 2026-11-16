@@ -280,7 +280,38 @@ fn domain_size(size: Size<i32, Logical>) -> DomainSize {
     DomainSize::new(size.w.unsigned_abs(), size.h.unsigned_abs())
 }
 
-/// A toplevel's application identifier and title, empty where unset.
+/// The longest a window's title is kept, in characters: more than any
+/// titlebar, list or switcher shows, and short enough to be told whole to
+/// a panel in one message of the protocol.
+const LONGEST_TITLE: usize = 1024;
+
+/// The longest an application's identifier is kept, in characters, as a
+/// desktop entry's name may be.
+const LONGEST_ID: usize = 255;
+
+/// A program's own words for its window, as they are kept: no longer than
+/// [`LONGEST_TITLE`]. They are the program's to choose, and are copied and
+/// shaped each time they are shown and told to panels.
+pub(crate) fn held_title(title: String) -> String {
+    held(title, LONGEST_TITLE)
+}
+
+/// A program's own word for itself, as it is kept: no longer than
+/// [`LONGEST_ID`].
+pub(crate) fn held_id(id: String) -> String {
+    held(id, LONGEST_ID)
+}
+
+/// `name`, no longer than `most` characters.
+fn held(name: String, most: usize) -> String {
+    match name.char_indices().nth(most) {
+        Some((at, _)) => name[..at].to_owned(),
+        None => name,
+    }
+}
+
+/// A toplevel's application identifier and title, empty where unset, as
+/// they are kept.
 fn names(surface: &WlSurface) -> (String, String) {
     with_states(surface, |states| {
         states
@@ -289,8 +320,8 @@ fn names(surface: &WlSurface) -> (String, String) {
             .and_then(|data| data.lock().ok())
             .map(|attributes| {
                 (
-                    attributes.app_id.clone().unwrap_or_default(),
-                    attributes.title.clone().unwrap_or_default(),
+                    held_id(attributes.app_id.clone().unwrap_or_default()),
+                    held_title(attributes.title.clone().unwrap_or_default()),
                 )
             })
             .unwrap_or_default()

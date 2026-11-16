@@ -656,6 +656,20 @@ fn a_program_written_for_x11_can_ask_for_its_window_to_be_moved_or_resized() {
 }
 
 #[test]
+fn the_title_and_name_of_a_program_written_for_x11_are_kept_no_longer_than_any_is_shown() {
+    let (mut session, program) = session();
+    // Longer than any is kept, and the title as long as the X server
+    // tells a property: eight thousand characters.
+    let name = "x".repeat(300);
+    let window = open(&mut session, &program, &name, (200, 100), 0x00ff_0000);
+    let title = "t".repeat(8000);
+    entitle(&mut session, &program, window, &title);
+    session.eventually(|session| windows(session)[0].1.starts_with('t'));
+    let (id, title) = windows(&session).remove(0);
+    assert_eq!((id.chars().count(), title.chars().count()), (255, 1024));
+}
+
+#[test]
 fn a_window_goes_by_the_title_its_program_gives_it_as_that_changes() {
     let (mut session, program) = session();
     let window = open(&mut session, &program, "xapp", (200, 100), 0x00ff_0000);

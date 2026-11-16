@@ -495,6 +495,10 @@ and `omorfos-session` are what it is for.
   test: a panel built on libwayland is expected to be sent away by it.
   Hold a title to 1024 characters and an identifier to 255 where they
   enter: `names` in `handlers.rs`, and `title` and `class` in `x11.rs`.
+  **Fixed the same day**, as said (`held_title` and `held_id` in
+  `handlers.rs`), and tested for programs written for Wayland and X11. The
+  test showed a title of more than a message holds cannot be sent by a
+  program at all, so a panel is never told one longer than it was.
 - **A peer of the IPC socket that never stops is read from for ever.**
   `Peer::read_lines` in `crates/omorfos/src/ipc.rs` reads until the socket
   has no more, gathering every line, within one turn. A peer is the
