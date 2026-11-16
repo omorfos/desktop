@@ -94,6 +94,11 @@ impl Roles {
     }
 }
 
+/// The most things told that are remembered, so as not to be told again:
+/// more than a session meets, and few enough that a program that changes
+/// what it is called and asks again, which is told each time, costs little.
+const MOST_TOLD: usize = 64;
+
 /// What has been refused, so that the user is told of each thing once.
 #[derive(Debug)]
 pub(crate) struct Refused {
@@ -125,6 +130,10 @@ impl Refused {
     /// Notes something to tell the user, once however often it happens.
     pub(crate) fn say(&mut self, said: &str) {
         if !self.told.iter().any(|told| told == said) {
+            // Past the most, the longest ago is forgotten.
+            if self.told.len() == MOST_TOLD {
+                self.told.remove(0);
+            }
             self.told.push(said.to_owned());
             self.pending.push(said.to_owned());
         }
@@ -189,7 +198,8 @@ impl Compositor {
         let called =
             process.and_then(|process| fs::read_to_string(format!("/proc/{process}/comm")).ok());
         let unnamed = self.words.say("a-program", &[]);
-        let name = called_by(called.as_deref()).unwrap_or(&unnamed);
+        let name = called_by(called.as_deref());
+        let name = name.as_deref().unwrap_or(&unnamed);
         let given = [
             ("program", Value::Words(name)),
             ("asked", Value::Words(asked)),
@@ -218,13 +228,38 @@ delegate_security_context!(Compositor);
 
 /// What to call a program, given what it calls itself if that could be
 /// found out.
-fn called_by(itself: Option<&str>) -> Option<&str> {
-    itself.map(str::trim).filter(|name| !name.is_empty())
+fn called_by(itself: Option<&str>) -> Option<String> {
+    // What a program calls itself is its own to set, control characters
+    // and all, which would be put before the user as they are.
+    let shown = |name: &str| name.chars().filter(|letter| !letter.is_control()).collect();
+    itself
+        .map(str::trim)
+        .map(shown)
+        .filter(|name: &String| !name.is_empty())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn what_was_said_is_said_once_and_no_more_is_remembered_than_the_most() {
+        let mut refused = Refused::default();
+        refused.say("asked");
+        refused.say("asked");
+        assert_eq!(refused.take(), ["asked"], "said once");
+        // A program that asks under a new name each time.
+        for name in 0..1000 {
+            refused.say(&format!("program {name} asked"));
+        }
+        assert_eq!(refused.take().len(), 1000, "each said");
+        assert_eq!(refused.told.len(), MOST_TOLD, "the most remembered");
+        // What is remembered is said no more; what was forgotten would be.
+        refused.say("program 999 asked");
+        assert_eq!(refused.take(), Vec::<String>::new());
+        refused.say("asked");
+        assert_eq!(refused.take(), ["asked"]);
+    }
 
     #[test]
     fn the_roles_a_configuration_names_are_those_there_is_something_to_give_for() {
@@ -247,8 +282,13 @@ mod tests {
 
     #[test]
     fn a_program_is_called_what_it_calls_itself_if_that_is_known() {
-        assert_eq!(called_by(Some("waybar\n")), Some("waybar"));
+        assert_eq!(called_by(Some("waybar\n")).as_deref(), Some("waybar"));
         assert_eq!(called_by(Some("  \n")), None, "said to be a program");
         assert_eq!(called_by(None), None);
+        // What a program calls itself, without what would not be shown as
+        // written: here, what would move the cursor and colour the rest.
+        let odd = "sh\u{1b}[2Jell\u{7}";
+        assert_eq!(called_by(Some(odd)).as_deref(), Some("sh[2Jell"));
+        assert_eq!(called_by(Some("\u{1b}\u{7}")), None);
     }
 }

@@ -425,7 +425,17 @@ waits on the X server.
 
 ### 7. What was refused is remembered without end, by a name the program chose
 
-**Low to medium. Shown by reading.**
+**Low to medium. Shown by reading; fixed in part the same day.**
+
+`Refused::say` now remembers at most 64 things told, the longest ago
+forgotten first, and a program's name is shown without control
+characters (`called_by`); both are tested in `roles.rs`. A program that
+asks again under each new name is still told of each time, up to 64
+remembered: telling the user once for each connection, rather than for
+each name, is left on the roadmap, as no test could rename the process
+the tests run in without changing what every other test sees.
+
+As it was first written:
 
 A program refused something it has no role for is told of to the user,
 once for each thing said: `Refused::say` in `crates/omorfos/src/roles.rs`
