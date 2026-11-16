@@ -620,6 +620,8 @@ fn title_of(session: &Session, app_id: &str) -> String {
 fn a_program_is_given_no_more_than_the_most_windows_at_once() {
     // The most, `MOST_WINDOWS` in the compositor's handlers.
     const MOST: usize = 256;
+    // How many of them are shown; the rest wait to be.
+    const SHOWN: usize = 4;
     let mut session = Session::new();
     let mut client = session.connect();
     let configured = |events: Vec<Event>| {
@@ -628,14 +630,19 @@ fn a_program_is_given_no_more_than_the_most_windows_at_once() {
             .filter(|event| matches!(event, Event::Configure { .. }))
             .count()
     };
+    // Some shown, and the rest to the most waiting to be: both count.
+    for _ in 0..SHOWN {
+        session.open(&mut client, "app", (50, 50), RED);
+    }
+    client.take_events();
     let mut windows = Vec::new();
-    for _ in 0..MOST {
+    for _ in SHOWN..MOST {
         let window = client.toplevel_uncommitted("app", "app");
         window.surface.commit();
         windows.push(window);
     }
     session.roundtrip(&mut client);
-    assert_eq!(configured(client.take_events()), MOST);
+    assert_eq!(configured(client.take_events()), MOST - SHOWN);
 
     // One more is never configured, and so never shown.
     let past = client.toplevel_uncommitted("app", "past");
