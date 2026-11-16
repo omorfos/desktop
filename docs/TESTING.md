@@ -450,6 +450,17 @@ tool that retries.
   Coverage that falls short only sometimes is a test reaching something by
   luck. Where nothing can be waited for, shape the code so that the path
   does not depend on the order.
+- **Covered by one build, not only by all together.** A crate is built
+  once for its own unit tests and once again for its tests in `tests/`
+  and for the crates that depend on it, and the coverage gate counts a
+  function as covered as far as its best-covered build covers it, not as
+  far as the builds do together. So a path reached only by an
+  integration test, in a function whose other paths are reached only by
+  unit tests, is a shortfall the report of lines does not show: every
+  line has run, yet the file is short of 100%. Reach it from the unit
+  tests too. `cargo llvm-cov report --json` lists each build's copy of a
+  function (`.data[0].functions[]`, by its name's crate hash) with the
+  regions that copy never ran.
 - **Ready is when it answers.** A program a test starts, as PipeWire, is
   ready once it takes a connection, not once its socket is there: the
   file is made a moment before it is listened on, and a connection in

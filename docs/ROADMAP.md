@@ -1996,6 +1996,14 @@ Security:
 - [x] Every notification of idleness set again at every key and every move
       ([finding 8](reviews/2026-11-15-what-a-client-can-cost.md#8-every-notification-of-idleness-is-set-again-at-every-key-and-every-move)),
       low to medium: a program is held to 16 at once.
+- [ ] Coverage that falls short on a host run at full parallelism, seen
+      on 16 November 2026 in `omorfos-pipewire` and the portal, a line
+      each, in runs with all 32 threads and not with 8; and in the relay's
+      `link.rs`, which was a shortfall of another kind (one build's copy of
+      a function not covering what another's did, `docs/TESTING.md`,
+      "Covered by one build") and is fixed. The two that come with load
+      are to be found: each a path reached only when threads run in a
+      certain order.
 - [ ] Whether a program in a sandbox is told when the user is away at all
       (finding 8): the lock screen and `omorfos-session` are what it is
       for, and a sandboxed program learns from it when nobody is looking.
