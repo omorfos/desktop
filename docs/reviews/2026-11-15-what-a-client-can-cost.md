@@ -443,8 +443,13 @@ forgotten first, and a program's name is shown without control
 characters (`called_by`); both are tested in `roles.rs`. A program that
 asks again under each new name is still told of each time, up to 64
 remembered: telling the user once for each connection, rather than for
-each name, is left on the roadmap, as no test could rename the process
-the tests run in without changing what every other test sees.
+each name, was left on the roadmap, as no test could rename the process
+the tests run in without changing what every other test sees. **Fixed
+the next day**: each connection notes what it was refused, and the user
+hears of each thing once for it, whatever the program calls itself. The
+test, `relayed::a_program_that_renames_itself_as_it_asks_again_is_told_of_once`,
+has the relay say the program is a shell of its own that renames itself
+between asks, and fails without the fix.
 
 As it was first written:
 

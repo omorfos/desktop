@@ -60,7 +60,7 @@ use smithay::{
 };
 
 use crate::compositor::{ClientState, Compositor, DragIcon, Mapped, logical_size, set};
-use crate::roles::Roles;
+use crate::roles::{Asked, Roles};
 use crate::surfaces;
 use crate::tiles;
 use smithay::wayland::seat::WaylandFocus;
@@ -531,7 +531,7 @@ impl WlrLayerShellHandler for Compositor {
         let client = surface.wl_surface().client();
         let roles = Self::roles(client.as_ref());
         if !roles.has(Roles::PANEL.with(Roles::OVERLAY).with(Roles::ASK)) {
-            self.refuse(client.as_ref(), "panel", "panel");
+            self.refuse(client.as_ref(), Asked::Panel);
             surface.send_close();
             return;
         }

@@ -13,6 +13,7 @@ use std::os::fd::{AsFd, OwnedFd};
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Stdio};
+use std::sync::atomic::AtomicU8;
 use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant, SystemTime};
@@ -253,6 +254,9 @@ pub struct ClientState {
     /// where it is said that it was disconnected for breaking the protocol.
     named: OnceLock<String>,
     told: Sender<String>,
+    /// What it has been refused, each as `Asked::bit` says, so that the
+    /// user is told of each once whatever the program calls itself.
+    pub(crate) refused: AtomicU8,
 }
 
 impl wayland_server::backend::ClientData for ClientState {
@@ -763,6 +767,7 @@ impl Compositor {
             sandboxed,
             relayed,
             named: OnceLock::new(),
+            refused: AtomicU8::new(0),
             told: self.refused.disconnected.0.clone(),
         });
         let given: Arc<dyn wayland_server::backend::ClientData> = Arc::<ClientState>::clone(&state);

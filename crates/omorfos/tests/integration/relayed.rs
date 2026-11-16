@@ -126,6 +126,48 @@ fn a_program_is_known_by_the_process_the_relay_says_it_is() {
 }
 
 #[test]
+fn a_program_that_renames_itself_as_it_asks_again_is_told_of_once() {
+    let mut session = Session::new();
+    let (_holder, relays, _, _socket) = relayed(&mut session);
+    // A shell that calls itself what it reads, each time it reads a line.
+    let mut renaming = Command::new("bash")
+        .args([
+            "-c",
+            "while read -r name; do printf %s \"$name\" > /proc/self/comm; done",
+        ])
+        .stdin(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut names = renaming.stdin.take().unwrap();
+    let renaming = Sleeper(renaming);
+    let comm = format!("/proc/{}/comm", renaming.0.id());
+    let mut client = hand(&mut session, &relays, renaming.0.id());
+    let strip = LayerShape {
+        layer: Layer::Top,
+        anchor: Anchor::Top | Anchor::Left | Anchor::Right,
+        size: (0, 20),
+        exclusive_zone: 0,
+        keyboard: KeyboardInteractivity::None,
+    };
+    let mut held = Vec::new();
+    for name in ["first", "second", "third"] {
+        writeln!(names, "{name}").unwrap();
+        session.eventually(|_| {
+            std::fs::read_to_string(&comm)
+                .unwrap_or_default()
+                .trim_end()
+                == name
+        });
+        held.push(client.layer(&strip));
+        session.roundtrip(&mut client);
+        session.roundtrip(&mut client);
+    }
+    let said: Vec<&str> = session.compositor().events().collect();
+    assert_eq!(said.len(), 1, "{said:?}");
+    assert!(said[0].starts_with("`first` asked"), "{said:?}");
+}
+
+#[test]
 fn what_the_relay_hands_that_is_not_a_program_and_its_connection_is_passed_over() {
     let mut session = Session::new();
     let (_holder, relays, _, _socket) = relayed(&mut session);

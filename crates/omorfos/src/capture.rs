@@ -63,7 +63,7 @@ use crate::outputs::Head;
 use crate::paint;
 use crate::paint::Signs;
 use crate::recording::{Recorded, Recording};
-use crate::roles::Roles;
+use crate::roles::{Asked, Roles};
 use crate::surfaces;
 
 /// How far beyond its frame what a window draws is in a picture of it by
@@ -1097,7 +1097,7 @@ impl Compositor {
     ) {
         let may = Self::roles(Some(client)).has(Roles::CAPTURE);
         if !may {
-            self.refuse(Some(client), "capture", "capture");
+            self.refuse(Some(client), Asked::Capture);
         }
         let subject = source.data::<Option<Subject>>().cloned().flatten();
         let subject = subject.filter(|_| may);
@@ -1126,7 +1126,7 @@ impl Compositor {
     ) {
         let may = Self::roles(Some(client)).has(Roles::CAPTURE);
         if !may {
-            self.refuse(Some(client), "pointer", "capture");
+            self.refuse(Some(client), Asked::Pointer);
         }
         let subject = source.data::<Option<Subject>>().cloned().flatten();
         let subject = subject.filter(|_| may);

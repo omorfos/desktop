@@ -59,7 +59,7 @@ use smithay::{delegate_idle_inhibit, delegate_session_lock};
 use crate::Input;
 use crate::compositor::Compositor;
 use crate::input::{Placed, virtual_terminal};
-use crate::roles::Roles;
+use crate::roles::{Asked, Roles};
 
 /// A lock on the session. While the compositor holds one, the session is
 /// locked.
@@ -495,7 +495,7 @@ impl SessionLockHandler for Compositor {
         // lock the user out, or show what only looks like a lock.
         let client = confirmation.ext_session_lock().client();
         if !Self::roles(client.as_ref()).has(Roles::LOCK) {
-            self.refuse(client.as_ref(), "lock", "lock");
+            self.refuse(client.as_ref(), Asked::Lock);
             return;
         }
         let held = |lock: &Lock| lock.by.as_ref().is_some_and(Resource::is_alive);

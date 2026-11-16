@@ -7,6 +7,7 @@
 
 use omorfos_i18n::Value;
 use std::fs;
+use std::sync::atomic::Ordering;
 use std::sync::mpsc::{self, Receiver, Sender};
 
 use omorfos_config::Role;
@@ -99,6 +100,35 @@ impl Roles {
 /// what it is called and asks again, which is told each time, costs little.
 const MOST_TOLD: usize = 64;
 
+/// What a program can be refused for want of a role. The user is told of
+/// each once for each connection, whatever the program calls itself as it
+/// asks again.
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum Asked {
+    Lock,
+    Capture,
+    Pointer,
+    Panel,
+}
+
+impl Asked {
+    /// The key the message `refused` chooses its words by, and the role
+    /// that would let it.
+    fn said(self) -> (&'static str, &'static str) {
+        match self {
+            Self::Lock => ("lock", "lock"),
+            Self::Capture => ("capture", "capture"),
+            Self::Pointer => ("pointer", "capture"),
+            Self::Panel => ("panel", "panel"),
+        }
+    }
+
+    /// Its place among what a connection has been refused.
+    fn bit(self) -> u8 {
+        1 << self as u8
+    }
+}
+
 /// What has been refused, so that the user is told of each thing once.
 #[derive(Debug)]
 pub(crate) struct Refused {
@@ -189,9 +219,17 @@ impl Compositor {
 
     /// Notes that a client was refused something it has no role for, so
     /// that the user is told once what asked, for what, and how it could
-    /// be let: `asked` is what, by the key the message `refused` chooses
-    /// its words by, as `capture`.
-    pub(crate) fn refuse(&mut self, client: Option<&Client>, asked: &str, role: &str) {
+    /// be let: once for each connection, and once for each name among
+    /// connections.
+    pub(crate) fn refuse(&mut self, client: Option<&Client>, asked: Asked) {
+        let state = client.and_then(|client| client.get_data::<ClientState>());
+        let before = state.map_or(0, |state| {
+            state.refused.fetch_or(asked.bit(), Ordering::Relaxed)
+        });
+        if before & asked.bit() != 0 {
+            return;
+        }
+        let (asked, role) = asked.said();
         // What a program calls itself is only to tell the user which it
         // was. Nothing is decided by it.
         let process = client.and_then(|client| self.process(client));
