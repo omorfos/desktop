@@ -693,6 +693,10 @@ what only games and touchpads need last.
       where logind lets it be done without a password; all but sleep
       asked about first; who keeps the machine on said; `lock.power` to
       have none of them.
+- [ ] The lock screen's Sleep, Restart, Shut Down and Log Out each with the
+      sign the root menu gives it (a moon, a door, an arrow turning back,
+      a switch's), drawn through `omorfos-icons`, as the maintainer asked
+      on 15 November 2026.
 - [x] A quieter log, begun (as found in the log of a session on
       2026-10-23): a program disconnected for breaking the protocol is
       said, by name and process, and why; the components end quietly when
@@ -1495,7 +1499,9 @@ the first than on the last.
       that draws its own (the decoration protocols, the portal's settings
       of colours and buttons), and what it offers the toolkits' themes
       (GTK's and Qt's, from the design language). Comes before the bar
-      and the dock, which are to wear the same look.
+      and the dock, which are to wear the same look. With it, the welcome
+      card's close button, which sits oddly in its corner (as the
+      maintainer found on 15 November 2026), drawn as a window's is.
 - [ ] The defaults reviewed together, keys and settings, rather than one
       at a time as each feature came. What has gathered for it: `Super+l`
       to lock; a key for the overview; `Super+c`, `x`, `v` and `z` to copy, cut, paste and undo,
