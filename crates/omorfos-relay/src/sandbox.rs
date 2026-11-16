@@ -16,12 +16,13 @@
 //! is not kept: the compositor takes nothing from it, and a program inside
 //! is held to the same whatever it is.
 
+use std::cell::Cell;
 use std::collections::HashMap;
 use std::os::fd::{AsFd, BorrowedFd, OwnedFd};
 use std::os::unix::net::UnixStream;
 use std::rc::Rc;
 
-use rustix::io::ioctl_fionbio;
+use rustix::io::{Errno, ioctl_fionbio};
 use rustix::net::{SocketFlags, accept_with};
 use wayland_backend::protocol::MessageDesc;
 
@@ -53,13 +54,17 @@ impl Sandbox {
         self.closing.as_fd()
     }
 
-    /// Each program waiting to connect inside it, without waiting for one.
-    pub fn waiting(&self) -> impl Iterator<Item = UnixStream> + '_ {
+    /// Each program waiting to connect inside it, without waiting for one;
+    /// `failed` is set if one waiting could not be taken, as when no
+    /// descriptor is left.
+    pub fn waiting<'a>(&'a self, failed: &'a Cell<bool>) -> impl Iterator<Item = UnixStream> + 'a {
         let flags = SocketFlags::CLOEXEC | SocketFlags::NONBLOCK;
-        std::iter::from_fn(move || {
-            accept_with(&*self.listening, flags)
-                .ok()
-                .map(UnixStream::from)
+        std::iter::from_fn(move || match accept_with(&*self.listening, flags) {
+            Ok(program) => Some(UnixStream::from(program)),
+            Err(error) => {
+                failed.set(error != Errno::AGAIN);
+                None
+            }
         })
     }
 }

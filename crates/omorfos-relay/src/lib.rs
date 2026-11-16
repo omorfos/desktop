@@ -216,12 +216,13 @@ impl Relay {
                 .flat_map(|socket| waiting(socket, &failed));
             let waiting_inside = self.sandboxes.iter().zip(&through);
             let waiting_inside = waiting_inside.filter(|(_, (_, waiting))| *waiting);
-            let inside = waiting_inside.flat_map(|(sandbox, _)| sandbox.waiting());
+            let inside = waiting_inside.flat_map(|(sandbox, _)| sandbox.waiting(&failed));
             let _ = compositor.map(|compositor| {
                 admit(programs, false, compositor, links, next, log);
                 admit(inside, true, compositor, links, next, log);
             });
-            self.pause(socket_ready == Some(true), failed.get(), log);
+            let tried = socket_ready == Some(true) || through.iter().any(|(_, waiting)| *waiting);
+            self.pause(tried, failed.get(), log);
         }
         // A sandbox ended lets nothing more in; what came in stays.
         let mut ended = through.iter().map(|(ended, _)| *ended);
@@ -231,9 +232,10 @@ impl Relay {
         true
     }
 
-    /// Stops listening to the socket for a moment if, `tried`, a program
-    /// waiting at it could not be taken, `failed`; and says so once, until
-    /// the socket is tried and all waiting are taken.
+    /// Stops listening to the socket, and to the sandboxes', for a moment
+    /// if, `tried`, a program waiting at one could not be taken, `failed`,
+    /// as no descriptor is left for any; and says so once, until they are
+    /// tried and all waiting are taken.
     fn pause(&mut self, tried: bool, failed: bool, log: &mut dyn Write) {
         if !tried {
             return;
@@ -309,8 +311,10 @@ impl Relay {
         for sandbox in &self.sandboxes {
             polled.push(PollFd::from_borrowed_fd(sandbox.closing(), PollFlags::IN));
             if self.compositor.is_some() {
+                // Not listened to while the socket is not: what keeps a
+                // program from being taken is the relay's, not the socket's.
                 let listening = sandbox.listening();
-                polled.push(PollFd::from_borrowed_fd(listening, PollFlags::IN));
+                polled.push(PollFd::from_borrowed_fd(listening, socket));
             }
         }
         for link in &self.links {

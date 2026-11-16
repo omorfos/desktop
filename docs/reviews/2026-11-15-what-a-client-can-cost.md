@@ -316,8 +316,10 @@ in the compositor's, and three in `crates/omorfos-relay/tests/relay.rs`.
 - Text drawn for the first time with no descriptor left panics in
   cosmic-text (`no default font found`): no font can be opened. A session
   has drawn text long before, so the tests draw a titlebar first.
-- The sockets of sandboxes the relay listens on accept as before, and
-  would spin the same way.
+- The sockets of sandboxes the relay listens on accepted as before, and
+  spun the same way. **Fixed the next day**: a failed accept at any of
+  them pauses the relay's listening as one at the socket does, as no
+  descriptor is left for any.
 - The compositor holds no program to a most number of descriptors; a
   program connected without the relay, as in the nested backend, is
   bounded only by the limit.

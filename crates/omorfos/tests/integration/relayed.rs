@@ -1963,6 +1963,49 @@ fn a_program_in_a_sandbox_is_kept_and_stays_in_it() {
 }
 
 #[test]
+fn a_program_in_a_sandbox_that_connects_when_no_descriptor_is_left_is_let_in_once_one_is() {
+    let name = "relayed::a_program_in_a_sandbox_that_connects_when_no_descriptor_is_left_is_let_in_once_one_is";
+    if !crate::common::starved(name) {
+        return;
+    }
+    let relayed = Relayed::new();
+    let directory = tempfile::TempDir::new().unwrap();
+    let path = directory.path().join("sandbox");
+    let (mut first, _holder) = relayed.compositor();
+    let mut flatpak = first.adopt(UnixStream::connect(&relayed.path).unwrap());
+    let _open = flatpak.sandbox(&path);
+    first.roundtrip(&mut flatpak);
+    // A window in a frame of ours, so that text has been drawn and the
+    // fonts found, as in any session by the time descriptors run out.
+    let mut drawn = first.adopt(UnixStream::connect(&path).unwrap());
+    first.open_decorated(&mut drawn, "first", (200, 100), BLUE);
+    drop(first.draw());
+    let taken = crate::common::take_descriptors(1);
+    let waiting = UnixStream::connect(&path).unwrap();
+
+    // The relay waits rather than spins on the sandbox's socket: a few
+    // steps in a while for a relay that waits, thousands for one that
+    // spins.
+    let until = std::time::Instant::now() + Duration::from_millis(300);
+    let mut steps = 0;
+    while let Some(left) = until.checked_duration_since(std::time::Instant::now()) {
+        relayed
+            .relay
+            .borrow_mut()
+            .step(Some(left), &mut *relayed.said.borrow_mut());
+        steps += 1;
+    }
+    assert!(steps < 20, "it spun, {steps} steps");
+
+    // Once there are descriptors again, it is let in, in the sandbox.
+    drop(taken);
+    let mut app = first.adopt(waiting);
+    first.open(&mut app, "app", (200, 100), GREEN);
+    let windows = first.compositor().desktop().windows().count();
+    assert_eq!(windows, 2);
+}
+
+#[test]
 fn past_as_many_sandboxes_as_are_listened_on_one_made_is_let_go() {
     let relayed = Relayed::new();
     let directory = tempfile::TempDir::new().unwrap();

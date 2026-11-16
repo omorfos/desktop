@@ -880,9 +880,13 @@ mod tests {
         assert_eq!(sandboxes.len(), 1, "made once");
         assert!(link.sandboxes().is_empty(), "and taken once");
         let sandbox = sandboxes.remove(0);
-        assert_eq!(sandbox.waiting().count(), 0, "listened on without waiting");
+        assert_eq!(
+            sandbox.waiting(&std::cell::Cell::new(false)).count(),
+            0,
+            "listened on without waiting"
+        );
         let inside = UnixStream::connect_addr(&address).unwrap();
-        assert_eq!(sandbox.waiting().count(), 1);
+        assert_eq!(sandbox.waiting(&std::cell::Cell::new(false)).count(), 1);
         drop(inside);
         drop(open);
         let flags = PollFlags::IN;

@@ -1971,9 +1971,8 @@ Security:
       (ADR 93); and the relay holds a program to 4096 descriptors.
 - [ ] What fixing descriptors left open: text drawn for the first time
       with none left panics in cosmic-text, as no font can be opened (to
-      load the fonts as the compositor starts, or not to panic); the
-      sockets of sandboxes the relay listens on still spin when one
-      cannot be accepted; and the compositor holds no program that
+      load the fonts as the compositor starts, or not to panic); and the
+      compositor holds no program that
       connects without the relay to a most number of descriptors.
 - [x] What is added to an object kept without end
       ([finding 5](reviews/2026-11-15-what-a-client-can-cost.md#5-what-is-added-to-an-object-is-kept-without-end)),
