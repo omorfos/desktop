@@ -2064,8 +2064,10 @@ Security:
       changes of scale in quick succession can leave the older, and it
       waits on the X server without bound (the rest of
       [finding 6](reviews/2026-11-16-the-whole-tree.md#6-a-thread-that-cannot-be-started-ends-the-program-the-compositor-among-them)).
-- [ ] Medium: the lock not waited for at sleep after one failed hold
-      ([finding 8](reviews/2026-11-16-the-whole-tree.md#8-after-one-failed-hold-on-sleep-at-waking-the-lock-is-never-waited-for-again)).
+- [x] Medium: the lock not waited for at sleep after one failed hold
+      ([finding 8](reviews/2026-11-16-the-whole-tree.md#8-after-one-failed-hold-on-sleep-at-waking-the-lock-is-never-waited-for-again)):
+      a hold that fails at waking ends the watcher, as one at the start
+      does, and the compositor starts it again.
 - [ ] Medium: a configuration broken at a restart put aside for the
       defaults
       ([finding 7](reviews/2026-11-16-the-whole-tree.md#7-a-configuration-broken-when-the-compositor-starts-again-is-put-aside-for-the-defaults-not-the-last-that-loaded)).

@@ -178,7 +178,8 @@ pub fn watch(places: &Places) -> Result<(), Failure> {
     // between goes unheard while it is.
     let signals = signals(&bus);
     // logind not being there is the one failure that is not one: anything
-    // else, a logind too busy to answer in time, is tried again.
+    // else, a logind too busy to answer in time, ends this, and it is
+    // started again, here or once the machine has woken.
     let held = inhibit(&bus);
     if let Err(error) = &held
         && absent(error)
@@ -216,8 +217,11 @@ pub fn watch(places: &Places) -> Result<(), Failure> {
                     }
                     None
                 }
+                // As at the start: a logind too busy to hold sleep back
+                // ends this, to be started again and hold it then, rather
+                // than the next sleep coming before the lock.
                 Do::Hold => {
-                    held = inhibit(&bus).ok();
+                    held = Some(inhibit(&bus)?);
                     None
                 }
             };
@@ -514,6 +518,26 @@ mod tests {
         eventually(|| logind.holds() == [false, true]);
         compositor.end();
         assert_eq!(running.join().unwrap(), "ended", "with the compositor");
+    }
+
+    #[test]
+    fn sleep_that_cannot_be_held_back_again_at_waking_ends_the_watcher_to_be_started_again() {
+        let daemon = Daemon::start();
+        let logind = stand_in::logind_waiting(&daemon, Duration::from_secs(60));
+        let compositor = Compositor::start();
+        let running = watching(places(&daemon, &compositor), &logind, &compositor);
+        logind.sleeping(true);
+        eventually(|| *compositor.asked.lock().unwrap() == [LOCK]);
+        compositor.locked(true);
+        eventually(|| logind.holds() == [false]);
+
+        // Too busy at waking to hold the next sleep back: else the next
+        // would not wait for the lock.
+        logind.refuse_holds();
+        logind.sleeping(false);
+        eventually(|| running.is_finished());
+        let said = running.join().unwrap();
+        assert!(said.contains("too busy"), "{said}");
     }
 
     #[test]

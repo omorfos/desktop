@@ -94,6 +94,8 @@ pub(crate) type Inhibitor = (String, String, String, String, u32, u32);
 struct Manager {
     asked: Asked<String>,
     held: Asked<UnixStream>,
+    /// Whether it refuses to hold sleep back, as one too busy to answer.
+    refusing: Arc<AtomicBool>,
     /// What it answers when asked whether sleep, restart and shut down may
     /// be done, in that order.
     can: Arc<Mutex<[&'static str; 3]>>,
@@ -105,14 +107,17 @@ struct Manager {
 #[zbus::interface(name = "org.freedesktop.login1.Manager")]
 impl Manager {
     #[zbus(name = "Inhibit")]
-    fn inhibit(&self, what: &str, who: &str, why: &str, mode: &str) -> OwnedFd {
+    fn inhibit(&self, what: &str, who: &str, why: &str, mode: &str) -> zbus::fdo::Result<OwnedFd> {
         assert_eq!((what, mode), ("sleep", "delay"));
         // What `systemd-inhibit --list` shows the user.
         assert_eq!(who, "omorfos");
         assert_ne!(why, "");
+        if self.refusing.load(Ordering::Relaxed) {
+            return Err(zbus::fdo::Error::Failed("too busy".to_owned()));
+        }
         let (ours, theirs) = UnixStream::pair().unwrap();
         self.held.lock().unwrap().push(ours);
-        OwnedFd::from(std::os::fd::OwnedFd::from(theirs))
+        Ok(OwnedFd::from(std::os::fd::OwnedFd::from(theirs)))
     }
 
     #[zbus(name = "GetSession")]
@@ -191,9 +196,16 @@ pub(crate) struct Logind {
     pub(crate) can: Arc<Mutex<[&'static str; 3]>>,
     /// The programs it says keep the machine from something.
     pub(crate) inhibitors: Asked<Inhibitor>,
+    refusing: Arc<AtomicBool>,
 }
 
 impl Logind {
+    /// Has it refuse to hold sleep back from now on, as one too busy to
+    /// answer.
+    pub(crate) fn refuse_holds(&self) {
+        self.refusing.store(true, Ordering::Relaxed);
+    }
+
     /// Says that the machine is about to sleep, or has woken.
     pub(crate) fn sleeping(&self, sleeping: bool) {
         let manager = "org.freedesktop.login1.Manager";
@@ -244,9 +256,11 @@ pub(crate) fn logind_waiting(daemon: &Daemon, delay: Duration) -> Logind {
     let (asked, held) = (Asked::default(), Asked::default());
     let can = Arc::new(Mutex::new(["yes"; 3]));
     let inhibitors = Asked::default();
+    let refusing = Arc::new(AtomicBool::new(false));
     let manager = Manager {
         asked: Arc::clone(&asked),
         held: Arc::clone(&held),
+        refusing: Arc::clone(&refusing),
         can: Arc::clone(&can),
         inhibitors: Arc::clone(&inhibitors),
         delay: u64::try_from(delay.as_micros()).unwrap(),
@@ -268,6 +282,7 @@ pub(crate) fn logind_waiting(daemon: &Daemon, delay: Duration) -> Logind {
         held,
         can,
         inhibitors,
+        refusing,
     }
 }
 
