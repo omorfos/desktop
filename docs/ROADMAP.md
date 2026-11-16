@@ -1987,6 +1987,18 @@ Security:
       "Covered by one build") and is fixed. The two that come with load
       are to be found: each a path reached only when threads run in a
       certain order.
+- [x] Gates for a repository of many programs: a commit of documents, or
+      of a program nothing else uses, ran every test before it was made
+      and the coverage gate before it was pushed. Now `commit` runs the
+      tests of each crate a change can reach, from Cargo's graph, and
+      `commits` passes one that reaches none as the commit before it; the
+      coverage gate is not narrowed, as only a run of everything shows a
+      line of one crate left unreached by a change to another
+      ([ADR 94](adr/0094-the-commit-tier-tests-what-a-change-can-reach.md)).
+- [ ] The coverage gate narrowed soundly, once the compositor's tests are
+      no longer most of a run: each test binary's profile kept from run to
+      run, keyed by its build and the files it reads, and only those built
+      anew run again (ADR 94, "Alternatives").
 - [x] Whether a program in a sandbox is told when the user is away at all
       (finding 8): decided on 16 November 2026, it is, as chat programs
       set their users away, but no sooner than after a minute, so that it

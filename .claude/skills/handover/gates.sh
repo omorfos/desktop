@@ -3,7 +3,7 @@
 # docs/TESTING.md, "Tiers".
 #
 #   .claude/skills/handover/gates.sh area <filter>...  the tests of what is being changed
-#   .claude/skills/handover/gates.sh commit            what every commit needs: every test once, no coverage
+#   .claude/skills/handover/gates.sh commit            what every commit needs: the tests of what it reaches, no coverage
 #   .claude/skills/handover/gates.sh handover          what a build for trying by hand needs
 #   .claude/skills/handover/gates.sh rest              the rest, run while it is tried
 #   .claude/skills/handover/gates.sh all               handover, then rest
@@ -138,6 +138,26 @@ commits() {
         git worktree remove --force "$tree" 2>/dev/null || rm -rf "$tree"
         git worktree add -q --detach "$tree" "$commit"
         echo "=== $(git log -1 --format='%h %s' "$commit")" | tee -a "$log"
+        # One that changes nothing that is built or tested passes as the one
+        # before it did, which has passed: `base` was pushed, and the tier
+        # stops at the first that fails. Its spelling and links are checked.
+        local crates
+        crates=$(reached "$commit^" "$commit") || exit 1
+        if [ -z "$crates" ]; then
+            if ! (
+                cd "$tree" &&
+                    export CARGO_TARGET_DIR="$top/target/commits" &&
+                    step typos &&
+                    step cargo test -p omorfos-config --all-features --locked --test links
+            ); then
+                git worktree remove --force "$tree"
+                rmdir "${tree%/*}"
+                echo "FAILED at $(git log -1 --format='%h %s' "$commit"), the whole of it in $log"
+                exit 1
+            fi
+            passed commits "$(git rev-parse "$commit^{tree}")"
+            continue
+        fi
         # Each is built where the one before was, so only what changed is.
         if ! (
             cd "$tree" &&
@@ -201,14 +221,41 @@ area() {
         step tested cargo test -p omorfos --all-features --locked --test integration -- "${tests[@]}"
 }
 
-# What every commit needs, in a few minutes: the checks that are quick,
-# and every test once, without the coverage gate, which `push` runs.
+# The crates a change from `from` to `to`, two trees or commits, can
+# reach, as affected.sh says: names, nothing, or `everything`. It stops the
+# tier if that cannot be said, rather than take it for nothing.
+reached() {
+    local said
+    said=$(git diff --no-renames --name-only "$1" "$2" | "$top/.claude/skills/handover/affected.sh") || {
+        echo "FAILED: what the change reaches could not be said" | tee -a "$log"
+        exit 1
+    }
+    echo "$said"
+}
+
+# What every commit needs, in a minute or two: the checks that are quick,
+# and once each, without the coverage gate, which `push` runs, the tests of
+# every crate the change can reach (docs/adr/0094-the-commit-tier-tests-
+# what-a-change-can-reach.md). The links between documents are a test of
+# every file, and run whatever changed.
 commit() {
+    local crates
     step typos
     step .githooks/pre-commit --tree
     step cargo fmt --all --check
     step cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
-    step tested cargo test --workspace --all-features --locked
+    step .claude/skills/handover/affected.test.sh
+    step cargo test -p omorfos-config --all-features --locked --test links
+    crates=$(reached HEAD "$tree") || exit 1
+    case "$crates" in
+        everything) step tested cargo test --workspace --all-features --locked ;;
+        "") echo "=== nothing that is built or tested has changed: no more tests" | tee -a "$log" ;;
+        *)
+            # One word to a crate, as the names have no spaces.
+            # shellcheck disable=SC2046
+            step tested cargo test --all-features --locked $(printf -- '-p %s ' $crates)
+            ;;
+    esac
 }
 
 handover() {

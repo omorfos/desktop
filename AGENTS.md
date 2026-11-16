@@ -66,8 +66,8 @@ the same commands on what is pushed. `.claude/skills/handover/gates.sh
 push` runs them on the last commit and each before it that is not yet
 pushed, and writes down what passed; the push hook refuses a commit
 it has not written down. Before every commit, `gates.sh commit` runs
-what is quick: formatting, clippy and every test once, without the
-coverage gate. A commit the push finds wanting is put right before it
+what is quick: formatting, clippy, and once, without the coverage gate,
+the tests of every crate the change can reach (ADR 94). A commit the push finds wanting is put right before it
 goes, as nothing of it has left the machine. The tiers are in
 [docs/TESTING.md](docs/TESTING.md), under "Tiers". Once per clone,
 `git config core.hooksPath .githooks` sets up the hooks: the commit hook
