@@ -138,6 +138,31 @@ fn a_program_is_told_of_idleness_no_more_than_the_most_times_at_once() {
 }
 
 #[test]
+fn a_program_in_a_sandbox_is_told_of_idleness_no_sooner_than_after_a_minute() {
+    let (mut session, mut outside, _window) = opened();
+    let directory = tempfile::TempDir::new().unwrap();
+    let path = directory.path().join("sandbox");
+    let mut flatpak = session.connect_plain();
+    let _open = flatpak.sandbox(&path);
+    session.roundtrip(&mut flatpak);
+    let mut inside = session.adopt(std::os::unix::net::UnixStream::connect(&path).unwrap());
+    // Both ask to be told within a moment, of either kind, as a program
+    // would that means to know when each key is let go of.
+    session.roundtrip(&mut outside);
+    let _its = outside.watch_idle(AWAY);
+    let _asked = inside.watch_idle(AWAY);
+    let _also = inside.watch_input_idle(AWAY);
+    session.roundtrip(&mut inside);
+    inside.take_events();
+    // The one outside is told; the one in the sandbox is not, a moment
+    // later or a while after.
+    assert!(idles_within(&mut session, &mut outside, SOON));
+    std::thread::sleep(A_WHILE);
+    session.roundtrip(&mut inside);
+    assert!(!inside.take_events().contains(&Event::Idle));
+}
+
+#[test]
 fn a_window_on_screen_can_ask_for_the_session_not_to_go_idle() {
     let (mut session, mut client, window) = opened();
     let inhibitor = client.inhibit_idle(&window.surface);

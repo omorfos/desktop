@@ -578,6 +578,34 @@ impl IdleNotifierHandler for Compositor {
 /// move of the pointer set as many timers again as it likes.
 const MOST_IDLE: usize = 16;
 
+/// The least time a program in a sandbox is told of the user having been
+/// away after, in milliseconds. Told after less, it would be told the
+/// moment each key is let go of, in whatever window has the keyboard: when
+/// someone types, which is enough to guess at what. A minute is still soon
+/// enough for a program to say its user is away (ADR 37).
+const LEAST_IDLE_IN_A_SANDBOX: u32 = 60_000;
+
+/// `request`, asking to be told after no less than `least` milliseconds,
+/// if it asks to be told of idleness at all.
+fn no_sooner(request: ext_idle_notifier_v1::Request, least: u32) -> ext_idle_notifier_v1::Request {
+    use ext_idle_notifier_v1::Request;
+    match request {
+        Request::GetIdleNotification { id, timeout, seat } => Request::GetIdleNotification {
+            id,
+            timeout: timeout.max(least),
+            seat,
+        },
+        Request::GetInputIdleNotification { id, timeout, seat } => {
+            Request::GetInputIdleNotification {
+                id,
+                timeout: timeout.max(least),
+                seat,
+            }
+        }
+        request => request,
+    }
+}
+
 /// A notification of idleness asked for past the most: it is made, as the
 /// protocol has it, and never says anything.
 #[derive(Debug)]
@@ -610,6 +638,12 @@ impl Dispatch<ExtIdleNotifierV1, ()> for Compositor {
                 if !matches!(request, ext_idle_notifier_v1::Request::Destroy) {
                     *state.idle_asked.entry(client.id()).or_default() += 1;
                 }
+                let least = if Self::outside(client) {
+                    0
+                } else {
+                    LEAST_IDLE_IN_A_SANDBOX
+                };
+                let request = no_sooner(request, least);
                 <IdleNotifierState<Self> as Dispatch<ExtIdleNotifierV1, (), Self>>::request(
                     state, client, notifier, request, data, display, init,
                 );

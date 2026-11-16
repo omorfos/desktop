@@ -117,6 +117,14 @@ and no role alters them.
 - **Focus is not taken.** A program may ask to be activated, and is, if
   the user just did something in the program that asks. Otherwise its
   window is marked as wanting attention.
+- **When keys are typed is not told.** (Added 16 November 2026.) Any
+  program may be told when the user has been away for a while, as a
+  chat program sets its user away; but a program in a sandbox is told no
+  sooner than after a minute, whatever it asks. Told after a few
+  milliseconds, it would learn the moment each key is let go of in
+  whatever window has the keyboard, and how someone types is enough to
+  guess at what. A program outside a sandbox could learn as much in
+  other ways, and is not held to it.
 
 ### Asking the user
 

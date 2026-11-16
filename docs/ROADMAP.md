@@ -1990,10 +1990,10 @@ Security:
       "Covered by one build") and is fixed. The two that come with load
       are to be found: each a path reached only when threads run in a
       certain order.
-- [ ] Whether a program in a sandbox is told when the user is away at all
-      (finding 8): the lock screen and `omorfos-session` are what it is
-      for, and a sandboxed program learns from it when nobody is looking.
-      A decision for the maintainer.
+- [x] Whether a program in a sandbox is told when the user is away at all
+      (finding 8): decided on 16 November 2026, it is, as chat programs
+      set their users away, but no sooner than after a minute, so that it
+      cannot learn when each key is typed (ADR 37).
 - [x] Smaller things the review found
       ([finding 9](reviews/2026-11-15-what-a-client-can-cost.md#9-smaller-things)), low, all fixed: the icons of applications
       looked up never forgotten; titles and identifiers as long as they

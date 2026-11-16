@@ -471,7 +471,8 @@ answers the requests for them itself, in `lock.rs`, hands Smithay up to
 anything, as the protocol has no error for it. The test,
 `idle::a_program_is_told_of_idleness_no_more_than_the_most_times_at_once`,
 fails without the most. Whether a program in a sandbox is to be told at
-all is not decided, and is on the roadmap.
+all was decided the next day: it is, but no sooner than after a minute,
+as told after less it would learn when each key is let go of (ADR 37).
 
 As it was first written:
 
