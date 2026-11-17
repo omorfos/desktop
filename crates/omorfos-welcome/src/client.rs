@@ -496,7 +496,7 @@ impl Dispatch<wp_fractional_scale_v1::WpFractionalScaleV1, ()> for Shell {
     ) {
         // The scale comes in parts of 120 to one.
         if let wp_fractional_scale_v1::Event::PreferredScale { scale } = event
-            && let scale = Scale::new(f64::from(scale) / 120.0)
+            && let scale = Scale::from_numerator(scale)
             && shell.face.iter().any(|face| face.scale != scale)
         {
             shell.face.iter_mut().for_each(|face| face.scale = scale);

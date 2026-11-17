@@ -1306,7 +1306,7 @@ impl Dispatch<wp_fractional_scale_v1::WpFractionalScaleV1, u32> for Shell {
     ) {
         // As for its size: drawn at once while locked, and else once it is.
         if let wp_fractional_scale_v1::Event::PreferredScale { scale } = event
-            && shell.scaled(*global, Scale::new(f64::from(scale) / 120.0))
+            && shell.scaled(*global, Scale::from_numerator(scale))
             && shell.held == Held::Locked
         {
             shell.stale = true;

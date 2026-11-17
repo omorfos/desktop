@@ -958,7 +958,7 @@ impl Dispatch<wp_fractional_scale_v1::WpFractionalScaleV1, ()> for Shell {
         // has, there is nothing to draw again.
         let new = |face: &Face, scale: Scale| face.fraction == *fraction && face.scale != scale;
         if let wp_fractional_scale_v1::Event::PreferredScale { scale } = event
-            && let scale = Scale::new(f64::from(scale) / 120.0)
+            && let scale = Scale::from_numerator(scale)
             && shell.faces.iter().any(|face| new(face, scale))
         {
             let faces = shell.faces.iter_mut();

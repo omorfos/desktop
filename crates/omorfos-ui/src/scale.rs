@@ -46,6 +46,14 @@ impl Scale {
         self.0
     }
 
+    /// The scale nearest to `numerator` units of 1/120, as the fractional
+    /// scale protocol tells one, kept to quarters as [`Scale::new`] keeps
+    /// a factor.
+    #[must_use]
+    pub fn from_numerator(numerator: u32) -> Self {
+        Self::new(f64::from(numerator) / f64::from(Self::ONE.0))
+    }
+
     /// The scale as a factor, such as `1.5`.
     #[must_use]
     pub fn factor(self) -> f64 {
@@ -107,6 +115,18 @@ mod tests {
         assert_eq!(Scale::new(9.0), Scale::MAX, "never more than four");
         assert_eq!(Scale::new(f64::NAN), Scale::ONE, "not a number");
         assert_eq!(Scale::new(f64::INFINITY), Scale::MAX);
+    }
+
+    #[test]
+    fn a_scale_told_in_parts_of_120_is_the_scale_of_that_factor() {
+        assert_eq!(Scale::from_numerator(180), Scale::new(1.5));
+        assert_eq!(
+            Scale::from_numerator(140),
+            Scale::new(1.25),
+            "to the nearest quarter"
+        );
+        assert_eq!(Scale::from_numerator(0), Scale::ONE);
+        assert_eq!(Scale::from_numerator(u32::MAX), Scale::MAX);
     }
 
     #[test]

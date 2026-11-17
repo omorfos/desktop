@@ -637,7 +637,7 @@ impl Dispatch<wp_fractional_scale_v1::WpFractionalScaleV1, ()> for Shell {
         // The scale comes in parts of 120 to one. Told the one it already
         // has, a notification has nothing to do over.
         if let wp_fractional_scale_v1::Event::PreferredScale { scale } = event
-            && let scale = Scale::new(f64::from(scale) / 120.0)
+            && let scale = Scale::from_numerator(scale)
             && let Some(face) = shell
                 .faces
                 .iter_mut()

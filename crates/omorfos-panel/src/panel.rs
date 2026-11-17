@@ -897,7 +897,7 @@ impl Dispatch<wp_fractional_scale_v1::WpFractionalScaleV1, u32> for Shell {
         // The scale comes in parts of 120 to one. Told the one it already
         // has, a bar has nothing to do over.
         if let wp_fractional_scale_v1::Event::PreferredScale { scale } = event
-            && shell.scaled(*global, Scale::new(f64::from(scale) / 120.0))
+            && shell.scaled(*global, Scale::from_numerator(scale))
         {
             shell.stale = true;
         }
