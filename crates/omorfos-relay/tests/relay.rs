@@ -263,13 +263,12 @@ fn passed(held: &mut Held, from: &mut UnixStream, wanted: usize) -> u64 {
 }
 
 /// The most the relay allocates for a frame drawn, as the test below draws
-/// it: once for each of the two steps it takes, for what is polled; what
-/// it keeps to make the surface again for the next compositor, the attach,
-/// the damage and the frame callback, each its bytes and what it names,
-/// and the callback while it lasts; and a record of the commit, made to be
-/// let go of. It is to come down, and is lowered as each goes; never
-/// raised.
-const FRAME: u64 = 15;
+/// it: once for each of the two steps it takes, for what is polled; and
+/// what it keeps to make the surface again for the next compositor, the
+/// attach, the damage and the frame callback, each its bytes and what it
+/// names, and the callback while it lasts. It is to come down, and is
+/// lowered as each goes; never raised.
+const FRAME: u64 = 9;
 
 #[test]
 fn passing_on_a_frame_drawn_allocates_only_what_is_kept_of_it() {

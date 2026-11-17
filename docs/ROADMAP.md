@@ -2113,8 +2113,12 @@ Security:
       ([finding 10](reviews/2026-11-16-the-whole-tree.md#10-every-turn-builds-what-is-told-to-ipc-peers-and-copies-it-though-none-listens)).
 - [x] Medium: every window looked up again for the relay every turn
       ([finding 11](reviews/2026-11-16-the-whole-tree.md#11-under-the-relay-every-turn-looks-every-window-up-again-and-every-move-of-the-pointer-is-sent)).
-- [ ] Medium: the relay allocating for every message
-      ([finding 12](reviews/2026-11-16-the-whole-tree.md#12-the-relay-allocates-for-every-message-it-passes)).
+- [x] Medium: the relay allocating for every message
+      ([finding 12](reviews/2026-11-16-the-whole-tree.md#12-the-relay-allocates-for-every-message-it-passes)):
+      a frame costs 9 allocations where it cost 21, and a step with
+      nothing to pass one, what is polled. What is left is what is kept
+      of each frame, made anew each time; the message it replaces could
+      be written over instead.
 - [ ] Medium: putting a picture on a scaled surface written fifteen
       times
       ([finding 16](reviews/2026-11-16-the-whole-tree.md#16-putting-a-picture-on-a-scaled-surface-is-written-fifteen-times)).

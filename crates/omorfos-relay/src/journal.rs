@@ -494,6 +494,8 @@ impl Journal {
             self.theirs.remove(&object);
             let message = Message::kept(bytes, fds, described);
             self.ended(object, message);
+        } else if rule == Rule::Commit {
+            self.commit(object);
         } else if rule != Rule::Passing {
             let message = Message::kept(bytes, fds, described);
             return self.keep(object, rule, message);
@@ -546,37 +548,45 @@ impl Journal {
     /// program is to be let go, as one that has added more to an object
     /// than any program adds.
     fn keep(&mut self, object: u32, rule: Rule, message: Message) -> Result<(), Broken> {
-        let names = message.names.clone();
         // A request whose rule keeps something is to an object kept.
-        let kept = self.kept.get_mut(&object);
-        let full = kept
-            .as_ref()
+        let full = self
+            .kept
+            .get(&object)
             .is_some_and(|kept| kept.adding.len() >= MOST_ADDED);
         if rule == Rule::Adding && full {
             return Err(wire::ADDED_TOO_MUCH);
         }
-        let dropped: Vec<Message> = kept
-            .map(|kept| match rule {
-                Rule::Lasting => replace(&mut kept.lasting, message).into_iter().collect(),
-                Rule::Adding => {
-                    kept.adding.push(message);
-                    Vec::new()
-                }
-                Rule::Pending => replace(&mut kept.pending, message).into_iter().collect(),
-                Rule::Commit | Rule::Passing => {
-                    let mut dropped = vec![message];
-                    for pending in std::mem::take(&mut kept.pending) {
-                        dropped.extend(replace(&mut kept.committed, pending));
-                    }
-                    dropped
-                }
-            })
-            .unwrap_or_default();
-        self.name(object, &names);
-        for message in dropped {
+        self.name(object, &message.names);
+        let dropped = self.kept.get_mut(&object).and_then(|kept| match rule {
+            Rule::Lasting => replace(&mut kept.lasting, message),
+            Rule::Adding => {
+                kept.adding.push(message);
+                None
+            }
+            // What is pending is all that is left: a commit is taken in
+            // by `commit`, and what passes is not kept.
+            _ => replace(&mut kept.pending, message),
+        });
+        if let Some(message) = dropped {
             self.unname(object, &message.names);
         }
         Ok(())
+    }
+
+    /// Takes in that `object`, a surface, committed what was pending of it:
+    /// that is kept as committed, in place of what was. A commit names
+    /// nothing but its surface, so none is made of it to be kept, only to
+    /// be let go of at once, as it would be for every frame drawn.
+    fn commit(&mut self, object: u32) {
+        let kept = self.kept.get_mut(&object);
+        let pending = kept.map(|kept| std::mem::take(&mut kept.pending));
+        for pending in pending.into_iter().flatten() {
+            let kept = self.kept.get_mut(&object);
+            let dropped = kept.and_then(|kept| replace(&mut kept.committed, pending));
+            if let Some(message) = dropped {
+                self.unname(object, &message.names);
+            }
+        }
     }
 
     /// Takes in that `object` was destroyed by `message`: kept as gone if
