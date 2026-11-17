@@ -429,6 +429,12 @@ mod tests {
         let (mut oldest, filled) = stuck.remove(0);
         let mut read = vec![0; filled];
         oldest.read_exact(&mut read).unwrap();
+        // The end is waited for, a few seconds at most: a test beside
+        // this one that starts a program holds a copy of every descriptor
+        // for a moment, and the pipe ends only as the last copy closes.
+        let mut ended = [PollFd::new(&oldest, PollFlags::IN)];
+        let soon = Timespec::try_from(Duration::from_secs(5)).ok();
+        retry_on_intr(|| poll(&mut ended, soon.as_ref())).unwrap();
         fcntl_setfl(&oldest, OFlags::NONBLOCK).unwrap();
         assert_eq!(oldest.read(&mut [0; 16]).unwrap(), 0, "the end");
         // The rest go as their programs do.

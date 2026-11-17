@@ -235,12 +235,17 @@ mod tests {
         assert_eq!(heard(&mut steady, due).unwrap(), [Reply::Done]);
         assert_eq!(steady.until(due), None);
 
-        // What cannot be sent lets it go too.
+        // What cannot be sent lets it go too: tried for a few seconds, as
+        // a test beside this one that starts a program holds a copy of
+        // every descriptor for a moment, and the socket is only gone once
+        // the last copy closes.
         drop(compositor);
-        let failed = (0..100).any(|_| {
+        let patience = std::time::Instant::now() + Duration::from_secs(5);
+        let mut failed = false;
+        while !failed && std::time::Instant::now() < patience {
             let _ = steady.send(&Request::Version, due);
-            steady.waited().is_none()
-        });
+            failed = steady.waited().is_none();
+        }
         assert!(failed);
     }
 }
