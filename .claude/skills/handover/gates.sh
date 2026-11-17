@@ -194,10 +194,12 @@ push() {
 
 # What to ask the tests for besides what CI runs: the tests that need a
 # graphics card, which are ignored unless asked for, where this user may
-# use one. Where they may not, it is said, so that it is not taken for
-# their having passed.
+# use one: the node OMORFOS_TEST_CARD names, or the first render node.
+# Where they may not, it is said, so that it is not taken for their having
+# passed.
 card() {
-    if [ -r /dev/dri/renderD128 ] && [ -w /dev/dri/renderD128 ]; then
+    local node=${OMORFOS_TEST_CARD:-/dev/dri/renderD128}
+    if [ -r "$node" ] && [ -w "$node" ]; then
         echo --include-ignored
     else
         echo "No graphics card this user may use: the tests that need one are not run." >&2

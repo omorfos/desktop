@@ -241,6 +241,25 @@ it:
 cargo test -p omorfos --all-features --locked --test integration -- --include-ignored gpu:: sharing::
 ```
 
+Where there is no card, a virtual one does for all but the screens: the
+kernel's vgem, drawn on in software by Mesa's llvmpipe (`kms_swrast`). It
+makes the memory of a picture only on its primary node, so the tests are
+told to use that one by `OMORFOS_TEST_CARD`, which names the node to try
+and is `/dev/dri/renderD128` unless set; the user is to be in `video`,
+which owns `/dev/dri/card0`, and `render`. WSL2's kernel has vgem built in;
+elsewhere `modprobe vgem` makes one:
+
+```sh
+OMORFOS_TEST_CARD=/dev/dri/card0 \
+  cargo test -p omorfos --all-features --locked --test integration -- --include-ignored gpu:: sharing::
+```
+
+A card's driver may set each row of a picture further from the last than
+the picture is wide, as vgem does for one 200 pixels across: what reads
+the pictures in the tests reads each row as far apart as it is told.
+vgem has no screens, so nothing of the hardware backend is tried on it,
+and it waits for nothing, so neither is what waits on a card.
+
 The `handover` tier asks for them where this user may use a card, and
 says so where they may not. What a card reaches is then measured by the
 coverage gate here, and not in CI, so 100% here can hide what CI finds

@@ -39,16 +39,18 @@ impl std::fmt::Debug for Card {
 
 impl Card {
     /// The card whose device number is `number`, if there is one and this
-    /// program may use it.
+    /// program may use it: the node of `/dev/dri` with that number, which
+    /// is the one the compositor draws with. That is a render node on a
+    /// real card, and may be a primary one, as on vgem, whose render node
+    /// cannot make the memory of a picture; the compositor holds a primary
+    /// node already, and opening it gives this program no say over the
+    /// screens.
     pub(crate) fn open(number: Option<u64>) -> Self {
         let nodes = fs::read_dir("/dev/dri").into_iter().flatten().flatten();
         let mut nodes = nodes.map(|node| node.path());
         let node = nodes.find(|path| {
-            let rendering = path
-                .file_name()
-                .is_some_and(|name| name.to_string_lossy().starts_with("renderD"));
             let told = fs::metadata(path).ok().map(|told| told.rdev());
-            rendering && told.is_some() && told == number
+            told.is_some() && told == number
         });
         let file = node.and_then(|node| File::options().read(true).write(true).open(node).ok());
         Self {

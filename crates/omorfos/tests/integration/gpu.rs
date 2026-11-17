@@ -5,7 +5,7 @@
 //! What needs a graphics card is ignored unless asked for, as CI, which
 //! has none, does not ask. To try it, run the tests with
 //! `--include-ignored` on a machine whose user may use
-//! `/dev/dri/renderD128`.
+//! `/dev/dri/renderD128`, or the node `OMORFOS_TEST_CARD` names.
 
 use std::fs::File;
 use std::os::fd::AsFd;

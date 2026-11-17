@@ -9,7 +9,7 @@ use std::io::Write;
 use std::os::fd::AsFd;
 use std::os::unix::fs::MetadataExt;
 use std::os::unix::net::{UnixListener, UnixStream};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
@@ -502,7 +502,7 @@ impl Session {
     }
 
     /// Starts the IPC socket in the session's directory and returns its path.
-    pub(crate) fn listen(&mut self) -> std::path::PathBuf {
+    pub(crate) fn listen(&mut self) -> PathBuf {
         let path = self.config.path().join("ipc.sock");
         self.compositor_mut().listen_ipc(&path).unwrap();
         path
@@ -3426,12 +3426,17 @@ pub(crate) fn wait(session: &mut Session, so: impl Fn(&Session) -> bool) {
 }
 
 /// The graphics card to try the tests that need one with, and its device
-/// number. Those tests are ignored unless asked for, as CI, which has no
-/// card, does not ask; one asked for where this user may use no card
-/// fails, rather than passing without having tried anything.
+/// number: the node `OMORFOS_TEST_CARD` names, or `/dev/dri/renderD128`.
+/// A card drawn in software on vgem makes pictures only on its primary
+/// node, `/dev/dri/card0`, which is then named. Those tests are ignored
+/// unless asked for, as CI, which has no card, does not ask; one asked for
+/// where this user may use no card fails, rather than passing without
+/// having tried anything.
 pub(crate) fn graphics_card() -> (std::fs::File, u64) {
     use std::os::unix::fs::MetadataExt;
-    let path = Path::new("/dev/dri/renderD128");
+    let named = std::env::var_os("OMORFOS_TEST_CARD");
+    let path = named.map_or_else(|| PathBuf::from("/dev/dri/renderD128"), PathBuf::from);
+    let path = path.as_path();
     let refused = |error: std::io::Error| {
         format!(
             "no graphics card this user may use at {}: {error}",
