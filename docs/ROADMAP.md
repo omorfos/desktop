@@ -21,44 +21,19 @@ the maintainer. An agent starting work reminds them of what is here, and
 an item goes once it has been tried: what was wrong goes to its stage as
 a known gap.
 
-- Dragging something with a picture of it (stage 8), as files from a
-  file manager: the picture under the pointer, and gone once dropped.
-- The launcher's field and the pointer (stage 6): a click in what is
-  typed puts the cursor there, a drag chooses, and a long sum or name
-  scrolls along with the cursor.
-- Pasting into the launcher (stage 6): text copied in a program, and
-  then `Ctrl+V` in the launcher, in place of what is chosen there; and
-  what the launcher copied itself with `Ctrl+C`, pasted back.
-- The report (stage 8): `omorfosctl report` from a session started by
-  the login screen, with a disk mounted under `/media/<you>`, should
-  have a section "The journal, this login's" with what the session's
-  programs said, and no `/media/<you>/...` paths but `/media/(left
-  out)`. The log's bound is shown only by a login that says more than
-  8 MiB; `session.log` should then begin with the line saying so.
-- Pasting what omorfos itself gives (stage 8), which is now handed over
-  on a thread and through a pipe of its own: what "About" copied and an
-  answer the launcher copied, pasted into a terminal, into an editor
-  and into a program written for X11; something copied in a program
-  that was then closed, which the keeper gives; and a picture
-  `omorfos-screenshot` put on the clipboard, pasted whole into a
-  program that takes pictures.
-- Activation (stage 8): a link clicked in a chat program or a mail
-  program should still open the browser in front, and a file opened
-  from a file manager its program in front; and a program asking for
-  attention by itself should not take the keyboard.
-- A window wider than a frame may be (stage 8), on a graphics card,
-  which the tests do not draw with: `xterm -geometry 5000x40`, some
-  thirty thousand pixels wide in xterm's own small letters, should open
-  in a frame 16384 units wide and be drawn in it, and the overview and
-  the switcher should show it small like any other. One more than
-  32767 pixels wide is not a test of this: an X server draws nothing
-  of it, and it never opens.
-
-- Buttons alike everywhere, as changed on 15 November 2026: the lock
-  screen's power buttons a little larger (36 tall, from 32); the
-  password box's, pinentry's and the portal's question's buttons with
-  their words in the middle; the portal's question laid out as the leave
-  question is. Nothing else should look different.
+- The report (stage 8), what is left of it: `omorfosctl report` from a
+  session started by a login screen, which it has not been; and the
+  log's bound, shown only by a login that says more than 8 MiB, whose
+  `session.log` should then begin with the line saying so. Paths under
+  `/media/<you>` were left out as they should be; the journal's section
+  was not this login's, which is a fault of its own (stage 8).
+- The holder started by a login screen (stage 3): GDM, SDDM or LightDM,
+  where so far it has been started from the console.
+- A new version taken up as it is installed (stage 3): `sudo make
+  install PROFILE=nightly` with the session in use, of a build that is
+  not the one running.
+- A screen that changes size while it is shared (stage 3), with a
+  screen that has modes of more than one size.
 
 ## Where this is going
 
@@ -253,6 +228,12 @@ calls for them.
 - [x] A window that nobody asked for, opening while a fullscreen
       workspace is shown, left on the desktop unseen (activation
       tokens).
+- [ ] A link clicked in VS Code opened its page in Firefox without
+      Firefox coming in front, found by hand on 17 November 2026, where
+      links in other programs and files from a file manager do bring
+      theirs in front. VS Code was running as a Wayland program. Whether
+      it asked for a token, handed it on, or was refused is not known:
+      what it says to the compositor (`WAYLAND_DEBUG=1`) is to be read.
 - [x] Roles (ADR 37): components started by being handed their
       connection, `may` on what `autostart` and `spawn` start, panels,
       taking the keyboard and locking each behind a check of the role,
@@ -398,8 +379,10 @@ calls for them.
       memory made to it, of the card or shared.
 - [ ] A screen changing size while it is shared has only been tried by
       the tests, which resize a screen of their own, and a shared window
-      changing size by hand in Firefox. It is to be tried by hand with a
-      screen, now that its `mode` can be changed while it is shared.
+      changing size by hand in Firefox. A laptop's own screen driven at
+      another rate while it was shared went on being shared, by hand on
+      17 November 2026; its modes are all of one size, so a change of
+      size is still to be tried, with a screen that has more than one.
 - [x] A window shared by itself, when the application can take one: the
       user picks it over the still screens, or the screen from beside
       every window, and it is shared whatever covers it, at its size as
@@ -1057,13 +1040,22 @@ what only games and touchpads need last.
       own screen: no mode is set anew, but the console shows for about a
       fifth of a second, as logind, with no one in control of the session
       for that moment, puts the virtual terminal back into text (ADR 62).
-      Not yet tried with two screens or one on a cable; nor with the
+      With a screen on a cable it is not so (below). Not yet tried with the
       holder taking up its own new version between the two compositors,
       which hands the card on as well.
 - [x] A change of compositor unseen, the third step: the picture before,
       read from the card as each screen shows it, drawn over the session's
       first frames and faded out in a quarter of a second, once the
-      session is shown. Not yet tried on real hardware.
+      session is shown. Tried on a laptop's own screen.
+- [ ] A change of compositor with a screen on a cable, found by hand on
+      17 November 2026 with one on HDMI beside a laptop's own: the
+      screen on the cable went black for about a second, the session
+      stood still for 2863 ms where it does for 811 ms without it, 2287
+      ms of it the next compositor coming up, and a window of foot came
+      back at another size. Each screen did come back showing its
+      workspace. Whether the mode was set anew or the picture lost as
+      the connector was asked what it is, the log does not say: the
+      backend is to say, of each screen, what it found and what it did.
 - [x] The session never out of anyone's control (ADR 63): `omorfos-hold`
       takes the seat once, through libseat, and keeps it while compositors
       come and go, opening the cards and input devices for each and closing
@@ -1071,7 +1063,7 @@ what only games and touchpads need last.
       compositor takes its devices from the holder through Smithay's
       `Session` trait, and its own seat where the holder keeps none. With it
       the virtual terminal is not put back into text between two
-      compositors. Not yet tried on real hardware.
+      compositors. Tried on real hardware, logged in at the console.
 - [x] The holder taking up its own new version only where it is another:
       installing always puts a new file in place of the old, and the holder,
       which lets the seat go to take up a new version, showed the console
@@ -1338,8 +1330,7 @@ the first than on the last.
       neither drawn by the compositor nor in the themes on disk, which
       hold one picture of each shape; a program that read
       `XCURSOR_THEME` or `Xcursor.theme` as it started keeps the scheme
-      it started in; and its shapes are to be looked at again on real
-      hardware, at 24 pixels and at a scale of 1.25, the hands most.
+      it started in.
 - [x] Packages carry the licence texts `CREDITS.md` names, Space
       Grotesk's OFL among them, and those of the crates omorfos is built
       from, gathered by cargo-about as it is packaged (ADR 67).
@@ -1458,9 +1449,8 @@ the first than on the last.
 - [ ] Known gaps in the switcher on a diagonal: the borders further back
       are thinner, being drawn smaller; a theme's `box-shadow` on
       `switcher-window` is not drawn; the pictures are not rounded at the
-      corners; it goes at once, with the dim and blur behind it, rather
-      than fading out as it fades in; and its look, the steps and how
-      much each shrinks, is to be tried on real hardware.
+      corners; and it goes at once, with the dim and blur behind it,
+      rather than fading out as it fades in.
 - [x] An overview of every window on a workspace, and of the workspaces
       (ADR 76): an `overview` action, the windows of the workspace laid
       out small, gliding there from where they are, the one picked by the
@@ -1485,7 +1475,7 @@ the first than on the last.
       `config.yaml`, off unless set, and an action to switch it until it
       next turns.
 - [ ] Known gaps in night light: it is set in the hardware backend,
-      which no test runs, and has been tried on no screen yet; programs
+      which no test runs, and tried by hand on a laptop's own screen; programs
       that set a screen's gamma themselves, through
       `wlr-gamma-control`, as `gammastep` and `wlsunset` do, are not
       offered it; nothing on the panel says it is on; and on an HDR
@@ -1702,6 +1692,19 @@ to false, as `launcher.sums` is (ADR 83).
       text scrolled back to its start as soon as the cursor goes back
       within sight of it, rather than kept where it was, as a text field
       usually does.
+- [ ] Faults in the launcher found by hand on 17 November 2026:
+      - its field took no more than 33 characters, where it is to take
+        64 (`LONGEST`): what was typed is not known, nor whether there
+        should be a bound at all;
+      - text of which a part is chosen is sometimes cut short with an
+        ellipsis, which a field never should be, as it scrolls;
+      - scrolling anywhere on the screen scrolls its list, as its
+        backdrop takes the pointer everywhere: it is to scroll only
+        under the pointer, and what is behind is to scroll where the
+        pointer is beside the box. A program cannot pass a scroll on,
+        so the backdrop is to stop taking the pointer, and a click on
+        the wallpaper alone, which takes no keyboard, still has to
+        close the launcher.
 - [ ] Known gaps in the launcher's size: the share of the screen it takes
       at most, half, is fixed, and is to be a setting of the theme once
       it is asked for; a launcher wider than its screen is put against the
@@ -1769,7 +1772,10 @@ decision of stage 2.
       opened; a quick look at a picture or a document on Space. Remote
       and cloud storage as plugins behind one interface that is designed
       at the start and filled in later. This is the largest single thing
-      on this page.
+      on this page. What is dragged out of it is shown as its icon,
+      faded, with its name beside it, so that what is held is always
+      said (asked on 17 November 2026): the picture of a drag is its
+      program's to draw, and other file managers hand over a bare icon.
 - [ ] **Image viewer** (wish 9): one picture, zoomed and turned, with
       what is known about it in a panel that is out of the way until
       asked for.
@@ -2292,6 +2298,17 @@ Reports and recovery:
 - [ ] Known gaps in the report: the journal's lines of this login are all its programs', not
       only omorfos's; and a line written in the moment the log is cut is
       lost, or put before what was kept.
+- [ ] The report does not know its login where the program it is run
+      from does not, found by hand on 17 November 2026: a terminal that
+      the user's systemd starts, as ghostty is, has no `XDG_SESSION_ID`,
+      so the report run in it gives "The journal, the user's since the
+      computer started" in place of this login's. It is to ask the
+      compositor, or logind, which login it is of.
+- [ ] The user's name by itself, and the computer's, left out of a
+      report unless `--whole` is given (decided on 17 November 2026).
+      Only paths are left out today, so the journal's lines of `sudo`,
+      `pkexec` and PAM name the user, and every line of the journal
+      names the computer.
 - [ ] The screen kept lit while the compositor is started again (ADR
       60): the holder holding the screen's device, so that the last frame
       stays until the next compositor draws over it. The hardware
@@ -2331,8 +2348,6 @@ Known gaps carried forward:
       it moved by, tested.
 - [ ] Known gaps in dragging and dropping: no test drags between a
       program written for X11 and one written for Wayland.
-- [ ] The nested backend has not been run by hand since the event loop
-      moved into `Session`.
 - [x] Two tests that failed only sometimes, both mended on 20 October
       2026 and found so on 15 November: what a program written for X11
       asks of a window not on the desktop is now waited for until it is
@@ -2627,6 +2642,23 @@ specification already says is not said again in a way of omorfos's own.
       question, the portal's question, the welcome card, the lock screen
       and the password box's buttons. Next: the password box's layout, as
       a change of its own; the fields typed in; and the backdrops.
+- [ ] The one button and the one field, further (asked on 17 November
+      2026, as the buttons were tried by hand), for every button and
+      field omorfos draws, in the compositor's parts and in the
+      components alike:
+      - a button may hold an icon, and is no larger or smaller for
+        holding one;
+      - the pointer changes over a button that can be pressed, changes
+        again while it is pressed, and is the shape that says "not
+        allowed" over one that is blocked, which a press does not change.
+        No shape is named for a button pressed, so it is one of the
+        theme's own, with another to fall back on where a theme has
+        none;
+      - the pointer is the shape of text over a field that can be typed
+        into, and "not allowed" over one that cannot.
+
+      What other programs, games and pages show over their own windows
+      stays theirs to say.
 - [ ] Whether, and what: an ADR on what is offered to others and how
       firmly it is promised. Nothing loaded into the compositor's own
       process: a plugin there would run with every key and every window
