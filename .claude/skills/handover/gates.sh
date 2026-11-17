@@ -8,7 +8,8 @@
 #   .claude/skills/handover/gates.sh rest              the rest, run while it is tried
 #   .claude/skills/handover/gates.sh all               handover, then rest
 #   .claude/skills/handover/gates.sh commits [base [tip]]  each commit after base (main) alone, to tip (HEAD)
-#   .claude/skills/handover/gates.sh push              all, then commits for each commit not yet pushed
+#   .claude/skills/handover/gates.sh push              all on the last commit, in a worktree of its own,
+#                                                      then commits for each other commit not yet pushed
 #   .claude/skills/handover/gates.sh uncovered         what the last coverage run missed
 #
 # What passed is written down by the tree it passed on, in
@@ -113,11 +114,13 @@ uncovered() {
 }
 
 # Each commit after `base` by itself, oldest first, up to `tip`, in a
-# worktree of its own: formatting, clippy, and the coverage gate. A commit
-# that passes only with what came after it is found here, as one split
-# badly is. The last commit's tree is what the other tiers ran on: where
-# `all` passed on it, `tip` can be the commit before, as `HEAD~1`, and the
-# tier is a coverage run shorter.
+# worktree of its own: formatting, clippy, and once, without the coverage
+# gate, the tests of each crate it reaches, as `commit` runs them. A
+# commit that passes only with what came after it is found here, as one
+# split badly is. The coverage gate is the last commit's alone (ADR 96):
+# one that builds and passes its tests is what a bisect or a revert
+# needs. One that passed `commit` as it was committed is not checked
+# again.
 commits() {
     local base=${1:-main} tip=${2:-HEAD} tree commit list
     list=$(git rev-list --reverse "$base".."$tip")
@@ -130,8 +133,8 @@ commits() {
         # rebase has, would pass again: it is not checked twice.
         local done_before
         done_before=$(git rev-parse "$commit^{tree}")
-        if has_passed commits "$done_before" || has_passed push "$done_before" ||
-            has_passed all "$done_before"; then
+        if has_passed commit "$done_before" || has_passed commits "$done_before" ||
+            has_passed push "$done_before" || has_passed all "$done_before"; then
             echo "=== $(git log -1 --format='%h %s' "$commit"): passed already, as it is" | tee -a "$log"
             continue
         fi
@@ -164,7 +167,7 @@ commits() {
                 export CARGO_TARGET_DIR="$top/target/commits" &&
                 step cargo fmt --all --check &&
                 step cargo clippy --workspace --all-targets --all-features --locked -- -D warnings &&
-                explain=uncovered step tested cargo coverage --locked -- $(card)
+                reaching "$crates"
         ); then
             git worktree remove --force "$tree"
             rmdir "${tree%/*}"
@@ -177,32 +180,51 @@ commits() {
     rmdir "${tree%/*}"
 }
 
-# Before a push: everything, on the tree as it is, which must be what
-# is committed; and each commit not yet pushed but the last alone, as the
-# last is what everything ran on.
+# Before a push: everything on the last commit, and each commit not yet
+# pushed but the last alone, as the last is what everything ran on. The
+# last commit is checked out in a worktree of its own, built beside the
+# commits', so that the working copy can go on changing while it runs:
+# what passes is the commit, whatever is done meanwhile. Nothing is
+# written down for a commit added meanwhile.
 push() {
-    local upstream
-    [ -z "$(git status --porcelain)" ] || {
-        echo "Commit first: what is pushed is what is committed." >&2
-        exit 1
-    }
+    local upstream commit worktree
     upstream=$(git rev-parse --abbrev-ref --symbolic-full-name '@{upstream}' 2>/dev/null || echo origin/main)
-    handover
-    rest
-    commits "$upstream" HEAD~1
+    commit=$(git rev-parse HEAD)
+    tree=$(git rev-parse "$commit^{tree}")
+    echo "=== $(git log -1 --format='%h %s' "$commit")" | tee -a "$log"
+    # Outside the repository, as in `commits`.
+    worktree="$(mktemp -d)/push"
+    git worktree add -q --detach "$worktree" "$commit"
+    if ! (
+        cd "$worktree" &&
+            export CARGO_TARGET_DIR="$top/target/commits" &&
+            checked &&
+            rest
+    ); then
+        git worktree remove --force "$worktree"
+        rmdir "${worktree%/*}"
+        exit 1
+    fi
+    git worktree remove --force "$worktree"
+    rmdir "${worktree%/*}"
+    commits "$upstream" "$commit~1"
+    passed push "$tree"
 }
 
-# What to ask the tests for besides what CI runs: the tests that need a
-# graphics card, which are ignored unless asked for, where this user may
-# use one: the node OMORFOS_TEST_CARD names, or the first render node.
-# Where they may not, it is said, so that it is not taken for their having
-# passed.
+# The tests that need a graphics card, which CI does not run, are
+# ignored unless asked for, and run here where this user may use one: the
+# node OMORFOS_TEST_CARD names, or the first render node. They are run
+# without the coverage gate, which runs as CI has it: what only the card
+# reaches is left out of it (ADR 2), so the gate would be the same with
+# them, and a second run of it would cost minutes. Where there is no card,
+# it is said, so that it is not taken for their having passed.
 card() {
     local node=${OMORFOS_TEST_CARD:-/dev/dri/renderD128}
     if [ -r "$node" ] && [ -w "$node" ]; then
-        echo --include-ignored
+        step tested cargo test -p omorfos --all-features --locked --test integration \
+            -- --ignored gpu:: sharing:: relayed::
     else
-        echo "No graphics card this user may use: the tests that need one are not run." >&2
+        echo "=== No graphics card this user may use: the tests that need one are not run." | tee -a "$log"
     fi
 }
 
@@ -249,39 +271,48 @@ commit() {
     step .claude/skills/handover/affected.test.sh
     step cargo test -p omorfos-config --all-features --locked --test links
     crates=$(reached HEAD "$tree") || exit 1
-    case "$crates" in
+    reaching "$crates"
+}
+
+# Once, without the coverage gate, the tests of the crates `reached` said.
+reaching() {
+    case "$1" in
         everything) step tested cargo test --workspace --all-features --locked ;;
         "") echo "=== nothing that is built or tested has changed: no more tests" | tee -a "$log" ;;
         *)
             # One word to a crate, as the names have no spaces.
             # shellcheck disable=SC2046
-            step tested cargo test --all-features --locked $(printf -- '-p %s ' $crates)
+            step tested cargo test --all-features --locked $(printf -- '-p %s ' $1)
             ;;
     esac
 }
 
 handover() {
+    checked
+    step make nightly
+    ls -l target/nightly/omorfos
+}
+
+# What `handover` checks, which `push` checks too, but for the build.
+checked() {
     step typos
     step .githooks/pre-commit --tree
     step cargo fmt --all --check
     step cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
     # `cargo coverage` is an alias defined in .cargo/config.toml. This is
-    # every test, once, with the coverage gate.
-    explain=uncovered step tested cargo coverage --locked -- $(card)
+    # every test, once, with the coverage gate, as CI runs it.
+    explain=uncovered step tested cargo coverage --locked
     passed coverage "$tree"
-    step make nightly
-    ls -l target/nightly/omorfos
+    card
 }
 
 rest() {
     step cargo clippy --workspace --all-targets --locked -- -D warnings
-    # As CI has it, without the tests that need a graphics card: what only
-    # the card reaches counts here and not there. Where no card was used,
-    # that is the run `handover` made, if it made one on this tree.
-    if [ -n "$(card 2>/dev/null)" ] || ! has_passed coverage "$tree"; then
+    # As CI has it: the run `handover` made, if it made one on this tree.
+    if ! has_passed coverage "$tree"; then
         explain=uncovered step tested cargo coverage --locked
     else
-        echo "=== the coverage gate passed on this tree in handover, with no card: not run again" | tee -a "$log"
+        echo "=== the coverage gate passed on this tree in handover: not run again" | tee -a "$log"
     fi
     step cargo test --workspace --all-features --doc --locked
     step cargo deny check
@@ -294,6 +325,19 @@ rest() {
 
 tier=${1:-}
 mkdir -p target/gates
+# Two runs of the coverage gate at once share the machine, and tests that
+# wait on a clock time out: a second waits for the first to end. The lock
+# is held by flock, not by a descriptor of this script's, which a program
+# a test starts and leaves behind, as a gpg-agent, would keep held.
+case "$tier" in
+    handover | rest | all | commits | push)
+        if [ -z "${GATES_LOCKED:-}" ]; then
+            flock -n target/gates/running.lock true ||
+                echo "Another run of the gates is going; waiting for it to end." >&2
+            GATES_LOCKED=1 exec flock -o target/gates/running.lock "$0" "$@"
+        fi
+        ;;
+esac
 log="$top/target/gates/${tier:-none}.log"
 : > "$log"
 # What the tier runs on. A tier whose tree changes while it runs has
@@ -314,7 +358,7 @@ case "$tier" in
         ;;
 esac
 case "$tier" in
-    handover | rest | all | push)
+    commit | handover | rest | all)
         if [ "$(tree_now)" = "$tree" ]; then
             passed "$tier" "$tree"
         else

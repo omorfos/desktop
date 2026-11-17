@@ -1,6 +1,7 @@
 # 94. The commit tier tests what a change can reach
 
-- Status: accepted
+- Status: accepted; the gate on each commit but the last taken out by
+  [ADR 96](0096-the-coverage-gate-is-the-last-commits.md)
 - Date: 2026-11-16
 
 ## Context

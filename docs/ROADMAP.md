@@ -2069,6 +2069,20 @@ Security:
       no longer most of a run: each test binary's profile kept from run to
       run, keyed by its build and the files it reads, and only those built
       anew run again (ADR 94, "Alternatives").
+- [x] A push in one coverage run: the gate ran on every commit not yet
+      pushed, five minutes each, and twice on the last where there was a
+      graphics card. Now it runs once, on the last commit, as CI runs it;
+      each other passes `commit`, written down as it is made; the tests
+      that need a card run without the gate; and `push` runs in a
+      worktree of its own, so that work goes on while it runs
+      ([ADR 96](adr/0096-the-coverage-gate-is-the-last-commits.md)).
+- [ ] The tests quicker: the dependencies of a test build optimised,
+      as the tests that draw spend their time in tiny-skia, unoptimised;
+      the three tests that run for over a minute (the panel's clock, the
+      notifications that slide up, the launcher's icons) found out, as
+      each turns a clock that should cost nothing; and `cargo-nextest`
+      tried, which runs each test in a process of its own, so that one
+      that starts a program no longer lends it every other's descriptors.
 - [x] A review, for security, of what the review of 15 November did not
       look at: done on 16 November 2026, and written up in
       [reviews/2026-11-16-what-the-first-review-did-not-look-at.md](reviews/2026-11-16-what-the-first-review-did-not-look-at.md).
@@ -2610,6 +2624,11 @@ Reaching people:
       and release-please set to start at 0.1.0, where it would have made
       a first release 1.0.0. What is left is the maintainer's: merging
       release-please's pull request, and watching the workflow build it.
+- [ ] After the first release: the gates run in CI, and `main` moved on
+      by a merge queue only once they pass, so that a push no longer waits
+      for the coverage gate on the maintainer's machine; a failure is then
+      found some minutes after a push rather than before it (ADR 96,
+      "Alternatives").
 - [x] The shell in the user's language, Polish first: the mechanism
       (ADR 79), Fluent's messages in `i18n/<language>/<program>.ftl`, built
       in, the language the environment asks for with English beneath it a

@@ -88,13 +88,13 @@ may use one, and the nightly build.
 .claude/skills/handover/gates.sh handover
 ```
 
-The `rest` tier, clippy without features, the coverage gate without the
-tests that need a graphics card, the doctests, `cargo deny`, `zizmor` and
-`cargo doc`, is started in
+The `rest` tier, clippy without features, the doctests, `cargo deny`,
+`zizmor` and `cargo doc`, is started in
 the background as the build is handed over (step 5). Before a commit,
 the `commit` tier has to have passed; before the maintainer is told
-`main` is ready to push, the `push` tier (step 6). Never two runs of the
-gates at once: they share the machine, and the X11 tests time out.
+`main` is ready to push, the `push` tier (step 6). A tier that runs the
+coverage gate waits for one already running it, as two would share the
+machine and the tests that wait on a clock would time out.
 
 The tools are in `~/.cargo/bin`, but for `gh actions-lock`, an extension
 of `gh`, at the version CI installs. Each tier keeps its whole output in
@@ -163,9 +163,11 @@ the tests; say so when a change depends on it.
   why and what and the trade-off, wrapped at 100 columns. Check it:
   `committed --config committed.toml main..HEAD`.
 - Merge into `main` by fast-forward only, and delete the branch.
-- Then, on `main` with nothing uncommitted, run `gates.sh push`: every
-  gate on the last commit, and each other commit not yet pushed alone in
-  a worktree of its own. If it fails, put the commit right where it is,
+- Then, on `main`, run `gates.sh push` in the background: every gate on
+  the last commit, and each other commit not yet pushed that did not pass
+  `commit` as it was made, each in a worktree of its own (ADR 96). The
+  working copy is not what it checks, so take up the next item on a
+  branch meanwhile. If it fails, put the commit right where it is,
   amending it or, for one further back, rebasing onto `origin/main`, and
   run it again: nothing of it has been pushed. The push hook refuses
   any commit it has not passed. If `origin/main` has moved, rebase onto

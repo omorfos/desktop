@@ -7,7 +7,8 @@
 #
 # What it takes: for the last commit of what is pushed, `push` or `all`,
 # or `handover` and `rest` both, on its tree; for each other commit,
-# `commits` or any of those. Only branches are checked; a branch deleted
+# `commit`, which it passed as it was committed, `commits`, or any of
+# those (ADR 96). Only branches are checked; a branch deleted
 # has nothing to check.
 #
 # Git runs it once told where it is: git config core.hooksPath .githooks
@@ -34,7 +35,7 @@ while read -r local_ref local_sha remote_ref remote_sha; do
             whole "$tree" || missing="$missing
   $(git log -1 --format='%h %s' "$commit")"
         else
-            has commits "$tree" || whole "$tree" || missing="$missing
+            has commit "$tree" || has commits "$tree" || whole "$tree" || missing="$missing
   $(git log -1 --format='%h %s' "$commit")"
         fi
     done
