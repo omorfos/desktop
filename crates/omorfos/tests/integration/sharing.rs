@@ -447,6 +447,8 @@ struct Seen {
     /// and could not be read, as a reader that reads such memory whatever
     /// its size says fails on.
     unreadable: bool,
+    /// How many pixels across the pictures were agreed to be.
+    across: usize,
 }
 
 /// The pictures a viewer wants: blue first, of any size, in memory of the
@@ -546,6 +548,7 @@ impl Viewer {
         let node = Rc::new(Cell::new(None));
         let seen = Arc::new(Mutex::new(Seen::default()));
         let (named, kept) = (Rc::clone(&node), Arc::clone(&seen));
+        let agreed = Arc::clone(&seen);
         let listener = stream
             .add_local_listener::<()>()
             .state_changed(move |stream, (), _, now| {
@@ -553,8 +556,13 @@ impl Viewer {
                     named.set(Some(stream.node_id()));
                 }
             })
-            .param_changed(|stream, (), id, param| {
-                if id == spa::param::ParamType::Format.as_raw() && param.is_some() {
+            .param_changed(move |stream, (), id, param| {
+                if id == spa::param::ParamType::Format.as_raw()
+                    && let Some(param) = param
+                {
+                    let mut format = spa::param::video::VideoInfoRaw::new();
+                    format.parse(param).unwrap();
+                    agreed.lock().unwrap().across = usize::try_from(format.size().width).unwrap();
                     let wants = told_of_the_pointer();
                     let wants = Pod::from_bytes(&wants).unwrap();
                     stream.update_params(&mut [wants]).unwrap();
@@ -587,7 +595,18 @@ impl Viewer {
                         seen.unreadable = true;
                     }
                     let size = usize::try_from(chunk.size()).unwrap();
-                    let picture = data.data().map(|bytes| bytes[..size].to_vec());
+                    // Each row as far from the last as the chunk says, which
+                    // a card may make wider than the picture: what is past
+                    // the picture is not part of it.
+                    let row = 4 * seen.across;
+                    let stride = usize::try_from(chunk.stride()).unwrap_or_default().max(row);
+                    let rows = |bytes: &mut [u8]| -> Vec<u8> {
+                        let rows = bytes[..size].chunks(stride);
+                        rows.flat_map(|line| &line[..row.min(line.len())])
+                            .copied()
+                            .collect()
+                    };
+                    let picture = data.data().map(rows);
                     if picture.as_ref().is_some_and(|picture| !picture.is_empty()) {
                         seen.picture = picture;
                     }
