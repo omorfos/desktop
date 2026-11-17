@@ -2036,6 +2036,9 @@ fn a_program_in_a_sandbox_that_connects_when_no_descriptor_is_left_is_let_in_onc
 
     // Once there are descriptors again, it is let in, in the sandbox.
     drop(taken);
+    // It is tried again only after a moment, by the relay and by the
+    // sandbox's thread, each in its own time.
+    first.eventually(|_| relayed.relay.borrow().programs() == 2);
     let mut app = first.adopt(waiting);
     first.open(&mut app, "app", (200, 100), GREEN);
     let windows = first.compositor().desktop().windows().count();
