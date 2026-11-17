@@ -243,6 +243,71 @@ fn bind(name: u32, interface: &str, version: u32, number: u32) -> Vec<u8> {
     message(2, 0, &words)
 }
 
+/// Steps `held` until `from` has had `wanted` bytes, counting what the
+/// relay's steps alone allocate.
+fn passed(held: &mut Held, from: &mut UnixStream, wanted: usize) -> u64 {
+    let (mut got, mut made) = (0, 0);
+    let mut chunk = [0; 256];
+    let by = Instant::now() + Duration::from_secs(1);
+    while got < wanted {
+        assert!(Instant::now() < by, "never passed on");
+        made += allocation_counter::measure(|| {
+            held.relay.step(Some(Duration::ZERO), &mut held.said);
+        })
+        .count_total;
+        if let Ok(read) = from.read(&mut chunk) {
+            got += read;
+        }
+    }
+    made
+}
+
+/// The most the relay allocates for a frame drawn, as the test below draws
+/// it: once for each of the two steps it takes, for what is polled; what
+/// it keeps to make the surface again for the next compositor, the attach,
+/// the damage and the frame callback, each its bytes and what it names,
+/// and the callback while it lasts; and a record of the commit, made to be
+/// let go of. It is to come down, and is lowered as each goes; never
+/// raised.
+const FRAME: u64 = 15;
+
+#[test]
+fn passing_on_a_frame_drawn_allocates_only_what_is_kept_of_it() {
+    let mut held = Held::new();
+    let compositor = held.compositor();
+    let (mut program, mut connection, _) = held.connect(&compositor);
+    program.set_nonblocking(true).unwrap();
+    let mut made = get_registry();
+    made.extend(bind(1, "wl_compositor", 6, 3));
+    made.extend(message(3, 0, &[4]));
+    program.write_all(&made).unwrap();
+    passed(&mut held, &mut connection, made.len());
+
+    // Drawn, as a program draws each frame: nothing attached, which may
+    // be, the damage, a frame callback, and committed; and the compositor
+    // says the frame is done, and that the callback is gone.
+    let mut frame = message(4, 1, &[0, 0, 0]);
+    frame.extend(message(4, 9, &[0, 0, 10, 10]));
+    frame.extend(message(4, 3, &[5]));
+    frame.extend(message(4, 6, &[]));
+    let mut done = message(5, 0, &[1]);
+    done.extend(message(1, 1, &[5]));
+    let mut draw = |held: &mut Held| {
+        program.write_all(&frame).unwrap();
+        let up = passed(held, &mut connection, frame.len());
+        connection.write_all(&done).unwrap();
+        up + passed(held, &mut program, done.len())
+    };
+    for _ in 0..10 {
+        draw(&mut held);
+    }
+    let made: u64 = (0..100).map(|_| draw(&mut held)).sum();
+    assert!(
+        made <= 100 * FRAME,
+        "{made} allocations for a hundred frames"
+    );
+}
+
 #[test]
 fn when_the_compositor_goes_a_program_that_can_be_kept_waits_for_the_next() {
     let mut held = Held::new();

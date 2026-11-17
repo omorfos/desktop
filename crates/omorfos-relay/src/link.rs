@@ -15,6 +15,7 @@
 use std::collections::{BTreeMap, HashSet, VecDeque};
 use std::io::{self, IoSlice, IoSliceMut};
 use std::mem::MaybeUninit;
+use std::ops::Range;
 use std::os::fd::{AsFd, BorrowedFd, OwnedFd};
 use std::os::unix::net::UnixStream;
 use std::rc::{Rc, Weak};
@@ -109,6 +110,15 @@ impl Passing {
     fn push(&mut self, (bytes, fds): Sending) {
         let start = self.written.len();
         self.written.extend_from_slice(&bytes);
+        self.written_fds
+            .extend(fds.into_iter().map(|fd| (start, fd)));
+    }
+
+    /// Puts the message read `at` to be written as it is now, with its
+    /// descriptors: copied once, from where it was read.
+    fn pass_on(&mut self, at: Range<usize>, fds: Vec<Rc<OwnedFd>>) {
+        let start = self.written.len();
+        self.written.extend_from_slice(&self.read[at]);
         self.written_fds
             .extend(fds.into_iter().map(|fd| (start, fd)));
     }
@@ -490,15 +500,26 @@ impl Link {
 
     /// Passes on what the program has sent, while it is live.
     fn pass_up(&mut self) -> Result<(), Ended> {
+        // Each message is read where it came, and what was passed on is
+        // taken from what was read once, at the end.
+        let mut start = 0;
+        let passed = self.pass_up_from(&mut start);
+        self.up.read.drain(..start);
+        passed
+    }
+
+    /// Passes on what the program has sent from `start` of what was read,
+    /// and moves `start` past each message passed on.
+    fn pass_up_from(&mut self, start: &mut usize) -> Result<(), Ended> {
         while self.keeping.live() {
-            let Some(header) = wire::header(&self.up.read)? else {
+            let Some(header) = wire::header(&self.up.read[*start..])? else {
                 break;
             };
             if self.up.written.len() + header.size > WRITING {
                 break;
             }
-            let mut message = self.up.read[..header.size].to_vec();
-            let read = self.objects.request(&message, header)?;
+            let at = *start..*start + header.size;
+            let read = self.objects.request(&self.up.read[at.clone()], header)?;
             if self.up.read_fds.len() < read.fds {
                 return Err(Broken("a message without its descriptors").into());
             }
@@ -511,7 +532,7 @@ impl Link {
                 }
             }
             let described = &read.interface.requests[usize::from(read.opcode)];
-            self.up.read.drain(..header.size);
+            *start = at.end;
             let inside = (header.object, self.sandboxed);
             if self.sandboxes.request(inside, &read, described, &fds)? {
                 // The sandbox no compositor knows of is made there as one of
@@ -528,11 +549,17 @@ impl Link {
                 }
                 continue;
             }
-            self.keeping
-                .journal
-                .request(header, &message, &fds, &read, described)?;
-            if self.keeping.request(&read, &mut message, described) {
-                self.send_up((message, fds));
+            self.keeping.journal.request(
+                header,
+                &self.up.read[at.clone()],
+                &fds,
+                &read,
+                described,
+            )?;
+            let message = &mut self.up.read[at.clone()];
+            if self.keeping.request(&read, message, described) {
+                self.last_up = noted(&self.up.read[at.clone()], self.last_up);
+                self.up.pass_on(at, fds);
             }
         }
         Ok(())
@@ -541,34 +568,48 @@ impl Link {
     /// Passes on what the compositor has sent, sifted while the relay
     /// catches up.
     fn pass_down(&mut self) -> Result<(), Ended> {
-        while let Some(header) = wire::header(&self.down.read)? {
+        // As what the program sends is: read where it came, and what was
+        // passed on taken from what was read once, at the end.
+        let mut start = 0;
+        let passed = self.pass_down_from(&mut start);
+        self.down.read.drain(..start);
+        passed
+    }
+
+    /// Passes on what the compositor has sent from `start` of what was
+    /// read, and moves `start` past each message passed on.
+    fn pass_down_from(&mut self, start: &mut usize) -> Result<(), Ended> {
+        while let Some(header) = wire::header(&self.down.read[*start..])? {
             if self.down.written.len() + header.size > WRITING {
                 break;
             }
-            let mut message = self.down.read[..header.size].to_vec();
-            self.down.read.drain(..header.size);
-            let header = self.keeping.before(&self.objects, header, &mut message)?;
+            let at = *start..*start + header.size;
+            *start = at.end;
+            let message = &mut self.down.read[at.clone()];
+            let header = self.keeping.before(&self.objects, header, message)?;
             // What was held back and is known now is read next.
             let again = std::mem::take(&mut self.keeping.again);
-            self.down.read.splice(..0, again);
+            self.down.read.splice(at.end..at.end, again);
             // What the relay is to tell the program as the compositor caught
             // up, globals new to it among them, goes before what follows.
             self.tell_program();
             let Some(header) = header else {
                 continue;
             };
-            let read = self.objects.event(&message, header)?;
+            let message = &self.down.read[at.clone()];
+            let read = self.objects.event(message, header)?;
             if self.down.read_fds.len() < read.fds {
                 return Err(Broken("a message without its descriptors").into());
             }
             let fds: Vec<Rc<OwnedFd>> = self.down.read_fds.drain(..read.fds).map(Rc::new).collect();
+            let message = &self.down.read[at.clone()];
             let body = message.get(HEADER..).unwrap_or_default();
             let kept = self.keeping.journal.event(header, body, &read);
-            let passed = kept && self.keeping.after(&read, &message);
+            let passed = kept && self.keeping.after(&read, message);
             self.errored |= header.object == DISPLAY && header.opcode == ERROR;
             self.tell_program();
             if passed {
-                self.down.push((message, fds));
+                self.down.pass_on(at, fds);
             }
         }
         Ok(())
@@ -599,10 +640,7 @@ impl Link {
 
     /// Puts `sending` to be written to the compositor, noting what it is.
     fn send_up(&mut self, sending: Sending) {
-        let header = wire::header(&sending.0).ok().flatten();
-        self.last_up = header
-            .map(|header| (header.object, header.opcode))
-            .or(self.last_up);
+        self.last_up = noted(&sending.0, self.last_up);
         self.up.push(sending);
     }
 
@@ -720,6 +758,15 @@ fn take_in(from: &UnixStream, passing: &mut Passing, way: Way) -> Result<bool, E
         return Err(wire::TOO_MANY_DESCRIPTORS.into());
     }
     Ok(open)
+}
+
+/// What the last message put to be written to the compositor is to and
+/// was, `message` having been put after the one `before`.
+fn noted(message: &[u8], before: Option<(u32, u16)>) -> Option<(u32, u16)> {
+    let header = wire::header(message).ok().flatten();
+    header
+        .map(|header| (header.object, header.opcode))
+        .or(before)
 }
 
 /// Writes what `passing` has to `to`, as much as it takes now, each
