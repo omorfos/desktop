@@ -2086,6 +2086,16 @@ Security:
       none: `OMORFOS_TEST_CARD=/dev/dri/card0` on vgem, drawn on by
       llvmpipe, which WSL2's kernel has built in (`docs/TESTING.md`). The
       portal opens the node the compositor names, primary or not.
+- [ ] The test of a shared window that grows and shrinks back reaches
+      what lets go of a picture whose memory PipeWire takes away
+      (`xdg-desktop-portal-omorfos/src/lib.rs`, `sharing.feed.abandon`,
+      and what gives back a buffer still held in `omorfos-pipewire`) only
+      while the portal is quick enough to have asked for the picture
+      before the window changes size: in the slower build the coverage
+      gate measures, a portal that did a little more as it was asked how
+      the desktop looks missed it, each time. The picture is to be held
+      by the test, not by timing, so that the gate cannot pass or fail by
+      chance.
 - [ ] In CI too: a job that boots the generic kernel of Ubuntu 26.04
       under virtme-ng, as drmkit does, as the runners' Azure kernels have
       neither vgem nor vkms, with `libgl1-mesa-dri` and `libegl-mesa0`
