@@ -722,6 +722,39 @@ impl Journal {
         ended
     }
 
+    /// Lets go of each screen bound by a name `offered` says is offered no
+    /// longer, with what says where it stands, its `xdg_output`, where
+    /// nothing else kept names either: taken away, they stay the program's,
+    /// which may never say it is done with them, and no compositor has
+    /// them. Returns each, what was made of a screen before the screen.
+    pub fn end_unoffered(&mut self, offered: &dyn Fn(u32) -> bool) -> Vec<u32> {
+        let mut ended = Vec::new();
+        for (number, kept) in self.ordered() {
+            let screen = kept.bound && kept.interface.name == "wl_output";
+            let name = wire::word(&kept.made.bytes, HEADER).unwrap_or_default();
+            if !screen || offered(name) {
+                continue;
+            }
+            // Made of it, by a request that names it once.
+            let of = self.kept.iter().filter(|(_, of)| {
+                let stands = of.interface.name == "zxdg_output_v1" && of.named == 0;
+                stands && of.made.names.contains(&number)
+            });
+            let of: Vec<u32> = of.map(|(of, _)| *of).collect();
+            if kept.named == of.len() {
+                ended.extend(of);
+                ended.push(number);
+            }
+        }
+        for number in &ended {
+            let kept = self.kept.remove(number);
+            for names in kept.iter().flat_map(Kept::names) {
+                self.unname(*number, &names);
+            }
+        }
+        ended
+    }
+
     /// The buffers the next compositor is shown again, each surface's that
     /// it last committed.
     #[must_use]

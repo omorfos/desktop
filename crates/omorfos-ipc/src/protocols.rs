@@ -135,7 +135,8 @@ pub const OFFERED: &[Protocol] = &[
         version: 4,
         replayed: "Bound once for each screen. Each made again for the same screen, by its name; \
                    its mode, geometry and scale are passed on only if they changed, and a screen \
-                   gone meanwhile is taken away, as when it is unplugged.",
+                   gone meanwhile is taken away, as when it is unplugged. One gone, which a \
+                   program may never let go of, is not made again, nor its `xdg_output`.",
     },
     Protocol {
         interface: "wl_seat",

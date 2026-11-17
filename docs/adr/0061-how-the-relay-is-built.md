@@ -234,6 +234,21 @@ as GTK's are, come in step 3.
   had more names than the next compositor had globals, and every program
   that draws with the card was let go, as ghostty and Firefox ESR were
   when 3a was first tried.
+- **A screen that is gone stays the program's, and no compositor's.** A
+  program may never say it is done with a screen taken away: `wl_output`
+  has a request to let go of it only from its third version, and a
+  program that bound it below that can only forget it. GTK 3 binds it at
+  its second, and asks of each screen where it stands, by an `xdg_output`
+  it does not let go of either. Such a screen, with what says where it
+  stands, where nothing else kept names either, is not made again: the
+  relay answers for both from then on, and frees the number of one the
+  program does let go of, whether the screen was pulled out before the
+  compositor went or the next has none for it. It was bound again by a
+  name no longer offered, which cannot be, and so Firefox, waybar and the
+  portal were let go at the first change of compositor after a screen had
+  been pulled out. A program with anything else made of such a screen
+  still kept, as a layer surface or a lock surface on it, is let go as
+  before.
 - **What was focused leaves, and comes back.** When the compositor ends,
   the relay tells the program that the pointer, the keyboard and any field
   typed into have left its surfaces, and the new compositor tells it they

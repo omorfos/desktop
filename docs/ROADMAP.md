@@ -915,8 +915,8 @@ what only games and touchpads need last.
       compositor is back, and the portal to ask again what it holds.
 - [ ] Known gaps in keeping programs, after step 3d: a program holding a buffer
       on the graphics card the compositor made, by `create`, is let go, and
-      so is one bound to a screen the next compositor does not have,
-      where a layer surface on it would rather be closed, or one holding
+      so is one with a surface on a screen the next compositor does not
+      have, where a layer surface on it would rather be closed, or one holding
       anything else no protocol above makes again; a handle exported before and passed on is the
       old compositor's to a program importing by it only after, and a window imported again
       belongs to no window for a moment first; what the next compositor

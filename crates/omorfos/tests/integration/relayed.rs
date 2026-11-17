@@ -473,7 +473,7 @@ fn a_screen_new_to_the_program_is_offered_by_a_name_it_can_bind() {
 }
 
 #[test]
-fn a_program_bound_to_what_the_next_compositor_no_longer_offers_is_let_go() {
+fn a_program_bound_to_a_screen_the_next_compositor_does_not_have_is_kept_and_told_it_is_gone() {
     let relayed = Relayed::new();
     let (mut first, holder) = relayed.compositor_with(|session| {
         session.add_output((640, 480));
@@ -485,7 +485,35 @@ fn a_program_bound_to_what_the_next_compositor_no_longer_offers_is_let_go() {
     relayed.step();
     relayed.step();
     let (mut second, _holder) = relayed.compositor();
-    second.eventually(|_| relayed.relay.borrow().programs() == 0);
+    second.eventually(|second| {
+        second.roundtrip(&mut client);
+        !client.state.outputs_left.is_empty()
+    });
+    relayed.kept();
+    second.open(&mut client, "app", (200, 100), RED);
+    assert_eq!(second.draw().at(10, 10), RED);
+}
+
+#[test]
+fn a_program_that_never_let_go_of_a_screen_pulled_out_is_kept_by_the_next_compositor() {
+    let relayed = Relayed::new();
+    let (mut first, holder) = relayed.compositor();
+    let pulled = first.add_output((640, 480));
+    let mut client = first.adopt(UnixStream::connect(&relayed.path).unwrap());
+    first.open(&mut client, "app", (200, 100), RED);
+    assert_eq!(client.state.screens.len(), 2);
+    // It is told, and does not say it is done with the screen, as one
+    // that bound it below the version it can be let go of at cannot.
+    first.compositor_mut().remove_output(&pulled);
+    first.roundtrip(&mut client);
+    assert!(!client.state.outputs_left.is_empty(), "told it is gone");
+    drop((first, holder));
+    relayed.step();
+    relayed.step();
+    let (mut second, _holder) = relayed.compositor();
+    second.eventually(|session| session.draw().at(10, 10) == RED);
+    second.roundtrip(&mut client);
+    relayed.kept();
 }
 
 #[test]

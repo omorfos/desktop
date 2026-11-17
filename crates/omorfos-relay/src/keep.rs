@@ -1644,12 +1644,12 @@ impl Keeping {
             self.rename(objects);
             let names = &self.names;
             let globals = &self.globals;
-            let rename = |ours: u32| {
-                globals
-                    .iter()
-                    .any(|global| global.name == ours)
-                    .then(|| names.theirs(ours))
-            };
+            let offered = |ours: u32| globals.iter().any(|global| global.name == ours);
+            // A screen that is gone is not made again: the relay answers
+            // for it, as the compositor that took it away did.
+            let unoffered = self.journal.end_unoffered(&offered);
+            self.orphans.extend(unoffered);
+            let rename = |ours: u32| offered(ours).then(|| names.theirs(ours));
             let (mut sending, _) = self.journal.replay(&rename, &mut self.numbering)?;
             self.numbering.fill_to(&mut sending, self.highest);
             self.private.extend(self.numbering.fillers.drain(..));
@@ -3640,6 +3640,70 @@ mod tests {
         assert_eq!(kept.keeping.lost(&kept.objects), Ok(()));
         kept.keeping.join();
         let sync = *kept.keeping.syncs.first().unwrap();
+        let mut done = message(sync, 0, &words(&[0]));
+        let header = wire::header(&done).unwrap().unwrap();
+        let answered = kept.keeping.before(&kept.objects, header, &mut done);
+        assert_eq!(answered, Err(wire::GLOBAL_GONE));
+    }
+
+    #[test]
+    fn a_screen_taken_away_before_the_compositor_went_is_not_made_again() {
+        let mut kept = Kept::registered(&[(1, "wl_output", 4), (2, "wl_output", 4)]);
+        kept.bind(1, "wl_output", 4, 3);
+        kept.bind(2, "wl_output", 4, 4);
+        // Unplugged: a program may never say it is done with it.
+        kept.told(&message(2, 1, &words(&[2]))).unwrap();
+        kept.restarted(&[(7, "wl_output", 4)]);
+        let bound = asked(&kept).into_iter().filter(|asked| *asked == (2, 0));
+        assert_eq!(bound.count(), 1, "the one still there alone");
+        // Done with at last, its number is the relay's to free.
+        kept.keeping.to_program.clear();
+        assert_eq!(kept.send(&message(4, 0, &[])), None);
+        let freed = bytes(&kept.keeping.to_program);
+        assert_eq!(freed, [message(1, 1, &words(&[4]))]);
+    }
+
+    #[test]
+    fn a_screen_the_next_compositor_does_not_have_is_taken_away_and_not_made_again() {
+        let mut kept = Kept::registered(&[(1, "wl_output", 4), (2, "wl_output", 4)]);
+        kept.bind(1, "wl_output", 4, 3);
+        kept.bind(2, "wl_output", 4, 4);
+        kept.restarted(&[(7, "wl_output", 4)]);
+        let removed = message(2, 1, &words(&[2]));
+        assert!(bytes(&kept.keeping.to_program).contains(&removed));
+        let bound = asked(&kept).into_iter().filter(|asked| *asked == (2, 0));
+        assert_eq!(bound.count(), 1, "the one still there alone");
+    }
+
+    #[test]
+    fn what_says_where_a_screen_that_is_gone_stands_is_not_made_again_either() {
+        let globals = [(1, "wl_output", 2), (2, "zxdg_output_manager_v1", 3)];
+        let mut kept = Kept::registered(&globals);
+        kept.bind(1, "wl_output", 2, 3);
+        kept.bind(2, "zxdg_output_manager_v1", 3, 4);
+        // As GTK 3 does, which lets go of neither once the screen is gone.
+        kept.send(&message(4, 1, &words(&[5, 3]))).unwrap();
+        kept.told(&message(2, 1, &words(&[1]))).unwrap();
+        kept.restarted(&[(7, "zxdg_output_manager_v1", 3)]);
+        let made = asked(&kept).into_iter().filter(|asked| *asked == (4, 1));
+        assert_eq!(made.count(), 0, "nothing said to stand anywhere");
+        // Let go of at last, its number is the relay's to free.
+        kept.keeping.to_program.clear();
+        assert_eq!(kept.send(&message(5, 0, &[])), None);
+        let freed = bytes(&kept.keeping.to_program);
+        assert_eq!(freed, [message(1, 1, &words(&[5]))]);
+    }
+
+    #[test]
+    fn a_program_with_a_surface_on_a_screen_that_is_gone_cannot_be_kept() {
+        let mut kept = locking();
+        assert_eq!(kept.keeping.lost(&kept.objects), Ok(()));
+        kept.keeping.join();
+        let sync = *kept.keeping.syncs.first().unwrap();
+        for offered in &LOCKING[..2] {
+            let offered = global(offered.0, offered.1, offered.2);
+            assert_eq!(kept.told(&offered), None);
+        }
         let mut done = message(sync, 0, &words(&[0]));
         let header = wire::header(&done).unwrap().unwrap();
         let answered = kept.keeping.before(&kept.objects, header, &mut done);
