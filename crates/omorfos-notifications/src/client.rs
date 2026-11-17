@@ -15,7 +15,7 @@ use std::time::{Duration, Instant};
 use omorfos_config::{Part, States, Store, Watcher};
 use omorfos_icons::Icons;
 use omorfos_ipc::{Client as Ipc, Reply, Request, Steady};
-use omorfos_shell::picture;
+use omorfos_shell::sheet::Sheet;
 use omorfos_ui::{Glide, Motion, Scale, Text};
 use rustix::event::{PollFd, PollFlags, Timespec, poll};
 use wayland_client::backend::ReadEventsGuard;
@@ -288,9 +288,8 @@ struct Shell {
 struct Face {
     /// Which notification it is.
     key: Key,
-    surface: wl_surface::WlSurface,
+    sheet: Sheet,
     layer: zwlr_layer_surface_v1::ZwlrLayerSurfaceV1,
-    viewport: wp_viewport::WpViewport,
     fraction: wp_fractional_scale_v1::WpFractionalScaleV1,
     /// How large the compositor has been asked to make it.
     size: (u32, u32),
@@ -308,8 +307,6 @@ struct Face {
     ready: bool,
     /// How many pixels the screen has to a unit.
     scale: Scale,
-    /// The picture on it, which the compositor is reading from.
-    buffer: Option<wl_buffer::WlBuffer>,
 }
 
 impl Face {
@@ -329,10 +326,8 @@ impl Face {
     /// Gives the surface back.
     fn close(self) {
         self.fraction.destroy();
-        self.viewport.destroy();
         self.layer.destroy();
-        self.surface.destroy();
-        self.buffer.iter().for_each(wl_buffer::WlBuffer::destroy);
+        self.sheet.destroy();
     }
 }
 
@@ -453,7 +448,7 @@ impl Shell {
             }
             let placed = face.place(now);
             if resized || placed {
-                face.surface.commit();
+                face.sheet.surface().commit();
             }
         }
         let (text, icons) = (&mut self.text, &mut self.icons);
@@ -463,19 +458,7 @@ impl Shell {
         let drawn = ready.try_for_each(|face| {
             let canvas = stack.paint(face.key, text, theme, face.scale, icons, motion);
             canvas.map_or(Ok(()), |canvas| {
-                let size = face.size;
-                picture(shm, &canvas, handle).map(|buffer| {
-                    face.surface.attach(Some(&buffer), 0, 0);
-                    // However many pixels the picture has, it covers this
-                    // much.
-                    face.viewport
-                        .set_destination(size.0.cast_signed(), size.1.cast_signed());
-                    face.surface.damage_buffer(0, 0, i32::MAX, i32::MAX);
-                    face.surface.commit();
-                    // The picture before this one is let go of when the
-                    // compositor says it has finished with it.
-                    face.buffer = Some(buffer);
-                })
+                face.sheet.put(shm, &canvas, face.size, handle)
             })
         });
         motion.end();
@@ -487,7 +470,7 @@ impl Shell {
     fn glide(&mut self, now: Duration) {
         for face in &mut self.faces {
             if face.place(now) {
-                face.surface.commit();
+                face.sheet.surface().commit();
             }
         }
         let moving = self.faces.iter().any(|face| face.top.moving(now));
@@ -519,9 +502,8 @@ impl Shell {
         let fraction = scales.get_fractional_scale(&surface, handle, ());
         Face {
             key,
-            surface,
+            sheet: Sheet::new(surface, viewport),
             layer,
-            viewport,
             fraction,
             size: (0, 0),
             margin: (0, 0),
@@ -530,7 +512,6 @@ impl Shell {
             at: None,
             ready: false,
             scale: Scale::ONE,
-            buffer: None,
         }
     }
 }
@@ -681,7 +662,7 @@ impl Dispatch<wl_pointer::WlPointer, ()> for Shell {
         match event {
             wl_pointer::Event::Enter { surface, .. } => {
                 let mut faces = shell.faces.iter();
-                let on = faces.find(|face| face.surface == surface);
+                let on = faces.find(|face| *face.sheet.surface() == surface);
                 shell.stale |= shell.stack.point(on.map(|face| face.key));
             }
             wl_pointer::Event::Leave { .. } => shell.stale |= shell.stack.point(None),

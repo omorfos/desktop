@@ -16,9 +16,9 @@ use std::time::{Duration, Instant};
 
 use omorfos_config::{Color, Fit, Part, State, States, Store, Style, Theme, Transition};
 use omorfos_i18n::{LOCK, Words};
-use omorfos_shell::picture;
 use omorfos_shell::said::Said;
 use omorfos_shell::shake::{FRAME, SHAKING, shaken};
+use omorfos_shell::sheet::Sheet;
 use omorfos_shell::typing::{Key, Repeat, Typing};
 use omorfos_ui::{Canvas, Image, Scale, Text};
 use rustix::event::{PollFd, PollFlags, Timespec, poll};
@@ -380,14 +380,11 @@ struct Screen {
 
 /// A lock surface.
 struct Face {
-    surface: wl_surface::WlSurface,
-    viewport: wp_viewport::WpViewport,
+    sheet: Sheet,
     /// How large the compositor made it, in units of layout, once it has
     /// said; and how many pixels the screen has to a unit.
     size: (u32, u32),
     scale: Scale,
-    /// The picture the compositor is reading from.
-    buffer: Option<wl_buffer::WlBuffer>,
     /// The buttons drawn on it, and where.
     buttons: Vec<(Button, Area)>,
 }
@@ -530,12 +527,11 @@ impl Shell {
                 // surface's role and its scale, which nothing else is asked.
                 lock.get_lock_surface(&surface, &screen.output, handle, screen.global);
                 scales.get_fractional_scale(&surface, handle, screen.global);
+                let viewport = viewporter.get_viewport(&surface, handle, ());
                 let face = Face {
-                    viewport: viewporter.get_viewport(&surface, handle, ()),
-                    surface,
+                    sheet: Sheet::new(surface, viewport),
                     size: (0, 0),
                     scale: Scale::ONE,
-                    buffer: None,
                     buttons: Vec::new(),
                 };
                 screen.face = Some(face);
@@ -578,17 +574,10 @@ impl Shell {
             };
             let (canvas, buttons) = paint(&theme, &mut self.text, &shown, face.size, face.scale);
             face.buttons = buttons;
-            picture(shm, &canvas, handle).map(|buffer| {
-                face.surface.attach(Some(&buffer), 0, 0);
-                // Told when each drawing is shown: shaking, that is when the
-                // next is due; otherwise it says nothing to do.
-                face.surface.frame(handle, ());
-                let (width, height) = (face.size.0.cast_signed(), face.size.1.cast_signed());
-                face.viewport.set_destination(width, height);
-                face.surface.damage_buffer(0, 0, i32::MAX, i32::MAX);
-                face.surface.commit();
-                face.buffer = Some(buffer);
-            })
+            // Told when each drawing is shown: shaking, that is when the
+            // next is due; otherwise it says nothing to do.
+            face.sheet.surface().frame(handle, ());
+            face.sheet.put(shm, &canvas, face.size, handle)
         })
     }
 
@@ -1219,7 +1208,7 @@ impl Dispatch<wl_pointer::WlPointer, ()> for Shell {
                 let mut screens = shell.screens.iter();
                 let on = screens.find(|screen| {
                     let face = screen.face.as_ref();
-                    face.is_some_and(|face| face.surface == surface)
+                    face.is_some_and(|face| *face.sheet.surface() == surface)
                 });
                 shell.pointer = on.map(|screen| (screen.global, (surface_x, surface_y)));
                 shell.hover();

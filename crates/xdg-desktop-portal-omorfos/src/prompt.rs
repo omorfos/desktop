@@ -21,6 +21,7 @@ use std::os::unix::fs::FileExt;
 use std::os::unix::net::UnixStream;
 
 use omorfos_config::{Color, Part, State, States, Store, Theme};
+use omorfos_shell::sheet::Sheet;
 use omorfos_shell::{picture, whole};
 use omorfos_ui::question::{self, Asked, Laid};
 use omorfos_ui::{Canvas, Scale, Text};
@@ -325,14 +326,12 @@ fn note(said: &str) {
 struct Face {
     /// Which of the pictures it shows, if it is one.
     still: Option<usize>,
-    surface: wl_surface::WlSurface,
+    sheet: Sheet,
     layer: zwlr_layer_surface_v1::ZwlrLayerSurfaceV1,
-    viewport: wp_viewport::WpViewport,
     fraction: wp_fractional_scale_v1::WpFractionalScaleV1,
     /// How large the compositor has made it, once it has said.
     ready: Option<(u32, u32)>,
     scale: Scale,
-    buffer: Option<wl_buffer::WlBuffer>,
     /// The loupe over a picture to pick from, once it has been shown.
     loupe: Option<Loupe>,
 }
@@ -342,10 +341,8 @@ impl Face {
     fn close(self) {
         self.loupe.into_iter().for_each(Loupe::close);
         self.fraction.destroy();
-        self.viewport.destroy();
         self.layer.destroy();
-        self.surface.destroy();
-        self.buffer.iter().for_each(wl_buffer::WlBuffer::destroy);
+        self.sheet.destroy();
     }
 }
 
@@ -450,7 +447,7 @@ impl Shell {
     /// one: it would answer yes to an application they did not know asked.
     fn pressed(&mut self, code: u32) {
         let on = self.keyboard.as_ref();
-        let up = on.is_some_and(|on| self.faces.iter().any(|face| face.surface == *on));
+        let up = on.is_some_and(|on| self.faces.iter().any(|face| face.sheet.surface() == on));
         // The numbers the layout knows keys by are eight higher.
         let code = xkb::Keycode::new(code.saturating_add(8));
         let typing = self.typing.as_ref().filter(|_| up);
@@ -527,7 +524,7 @@ impl Shell {
             let away = face.loupe.take_if(|_| Some(index) != on);
             let _ = away.map(|loupe| {
                 loupe.close();
-                face.surface.commit();
+                face.sheet.surface().commit();
             });
         }
         let ring = self
@@ -544,7 +541,7 @@ impl Shell {
         // Nothing, while where the pointer is is not known.
         still.zip(at).map_or(Ok(()), |((face, still), at)| {
             let shown = face.ready.unwrap_or(UNPLACED);
-            let parent = &face.surface;
+            let parent = face.sheet.surface();
             let loupe = face.loupe.get_or_insert_with(|| {
                 let surface = globals.compositor.create_surface(handle, ());
                 let over = globals
@@ -634,20 +631,14 @@ impl Shell {
                     still.map_or(Canvas::new(1, 1), Still::canvas)
                 }
             };
-            picture(shm, &canvas, handle).map(|buffer| {
-                face.surface.attach(Some(&buffer), 0, 0);
-                // However many pixels the picture has, it covers this much.
-                let (width, height) = (shown.0.cast_signed(), shown.1.cast_signed());
-                face.viewport.set_destination(width, height);
-                face.surface.damage_buffer(0, 0, i32::MAX, i32::MAX);
-                face.surface.commit();
-                if face.buffer.is_none() {
+            let first = face.sheet.blank();
+            face.sheet.put(shm, &canvas, shown, handle).map(|()| {
+                if first {
                     note(&format!(
                         "the question is up, at {} to one",
                         face.scale.factor()
                     ));
                 }
-                face.buffer = Some(buffer);
             })
         });
         painted.collect()
@@ -694,13 +685,11 @@ impl Face {
         surface.commit();
         Self {
             still,
-            surface,
+            sheet: Sheet::new(surface, viewport),
             layer,
-            viewport,
             fraction,
             ready: None,
             scale: Scale::ONE,
-            buffer: None,
             loupe: None,
         }
     }
@@ -1030,7 +1019,10 @@ impl Dispatch<wl_pointer::WlPointer, ()> for Shell {
                 surface_x,
                 surface_y,
             } => {
-                let on = shell.faces.iter().position(|face| face.surface == surface);
+                let on = shell
+                    .faces
+                    .iter()
+                    .position(|face| *face.sheet.surface() == surface);
                 shell.over = on.map(|on| (on, (whole(surface_x), whole(surface_y))));
                 shell.moved = true;
                 // Over a picture to pick from, the pointer is a crosshair.

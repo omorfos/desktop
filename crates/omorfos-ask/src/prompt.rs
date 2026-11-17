@@ -17,8 +17,9 @@ use std::time::Instant;
 use omorfos_config::{Color, Part, State, States, Store, Style, Theme};
 use omorfos_i18n::{Value, Words};
 use omorfos_shell::shake::{FRAME, SHAKE, SHAKING, shaken};
+use omorfos_shell::sheet::Sheet;
 use omorfos_shell::typing::{Key, Repeat, Typing};
-use omorfos_shell::{picture, whole};
+use omorfos_shell::whole;
 use omorfos_ui::{Area, Canvas, Scale, Text};
 use rustix::event::{PollFd, PollFlags, Timespec, poll};
 use wayland_client::backend::ReadEventsGuard;
@@ -450,23 +451,19 @@ fn paint_tooltip(
 
 /// The box on the screen.
 struct Face {
-    surface: wl_surface::WlSurface,
+    sheet: Sheet,
     layer: zwlr_layer_surface_v1::ZwlrLayerSurfaceV1,
-    viewport: wp_viewport::WpViewport,
     fraction: wp_fractional_scale_v1::WpFractionalScaleV1,
     /// Whether the compositor has made room for it.
     ready: bool,
     scale: Scale,
-    buffer: Option<wl_buffer::WlBuffer>,
 }
 
 impl Face {
     fn close(self) {
         self.fraction.destroy();
-        self.viewport.destroy();
         self.layer.destroy();
-        self.surface.destroy();
-        self.buffer.iter().for_each(wl_buffer::WlBuffer::destroy);
+        self.sheet.destroy();
     }
 }
 
@@ -745,7 +742,8 @@ impl Shell {
         self.shaking = self.shaking.filter(|(_, elapsed)| *elapsed < SHAKING);
         // Told when each drawing is shown: shaking, that is when the next
         // is due; otherwise it says nothing to do.
-        face.surface.frame(handle, ());
+        let surface = face.sheet.surface();
+        surface.frame(handle, ());
         let shift = elapsed.map_or(0, shaken);
         let canvas = paint_lines(
             theme,
@@ -755,21 +753,15 @@ impl Shell {
             (asking, (&self.typed, self.marked), self.open),
             (shift, on_eye, focused),
         );
-        picture(&globals.shm, &canvas, handle).map(|buffer| {
-            face.surface.attach(Some(&buffer), 0, 0);
-            // The box takes the pointer and the room it shakes in does not;
-            // the compositor casts the box's shadow round that, as it goes.
-            let region = globals.compositor.create_region(handle, ());
-            let (across, down) = (SIZE.0.cast_signed(), SIZE.1.cast_signed() + lower);
-            region.add(SHAKE + shift, 0, across, down);
-            face.surface.set_input_region(Some(&region));
-            region.destroy();
-            let (width, height) = (SURFACE.0.cast_signed(), SURFACE.1.cast_signed() + lower);
-            face.viewport.set_destination(width, height);
-            face.surface.damage_buffer(0, 0, i32::MAX, i32::MAX);
-            face.surface.commit();
-            face.buffer = Some(buffer);
-        })
+        // The box takes the pointer and the room it shakes in does not;
+        // the compositor casts the box's shadow round that, as it goes.
+        let region = globals.compositor.create_region(handle, ());
+        let (across, down) = (SIZE.0.cast_signed(), SIZE.1.cast_signed() + lower);
+        region.add(SHAKE + shift, 0, across, down);
+        surface.set_input_region(Some(&region));
+        region.destroy();
+        let size = (SURFACE.0, SURFACE.1 + lower.unsigned_abs());
+        face.sheet.put(&globals.shm, &canvas, size, handle)
     }
 }
 
@@ -793,13 +785,11 @@ impl Face {
         let fraction = globals.scales.get_fractional_scale(&surface, handle, ());
         surface.commit();
         Self {
-            surface,
+            sheet: Sheet::new(surface, viewport),
             layer,
-            viewport,
             fraction,
             ready: false,
             scale: Scale::ONE,
-            buffer: None,
         }
     }
 }

@@ -14,7 +14,8 @@ use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 
 use omorfos_config::{Part, States, Theme};
-use omorfos_shell::{picture, whole};
+use omorfos_shell::sheet::Sheet;
+use omorfos_shell::whole;
 use omorfos_ui::{Canvas, Scale, Text};
 use rustix::event::{PollFd, PollFlags, poll};
 use wayland_client::backend::ReadEventsGuard;
@@ -175,13 +176,11 @@ enum Which {
 
 /// The surface behind the card, as large as the screen.
 struct Backdrop {
-    surface: wl_surface::WlSurface,
-    viewport: wp_viewport::WpViewport,
+    sheet: Sheet,
     /// How large the compositor has said it is, once it has.
     size: Option<(u32, u32)>,
     /// The size it was last drawn at.
     drawn: Option<(u32, u32)>,
-    buffer: Option<wl_buffer::WlBuffer>,
 }
 
 impl Backdrop {
@@ -205,29 +204,19 @@ impl Backdrop {
         };
         let mut canvas = Canvas::new(wide, tall);
         canvas.fill((0, 0, wide, tall), shade);
-        picture(shm, &canvas, handle).map(|buffer| {
-            self.surface.attach(Some(&buffer), 0, 0);
-            self.viewport
-                .set_destination(width.cast_signed(), height.cast_signed());
-            self.surface.damage_buffer(0, 0, i32::MAX, i32::MAX);
-            self.surface.commit();
-            self.buffer = Some(buffer);
-            self.drawn = self.size;
-        })
+        let put = self.sheet.put(shm, &canvas, (width, height), handle);
+        put.map(|()| self.drawn = self.size)
     }
 }
 
 /// The card's surface.
 struct Face {
-    surface: wl_surface::WlSurface,
-    viewport: wp_viewport::WpViewport,
+    sheet: Sheet,
     layer: zwlr_layer_surface_v1::ZwlrLayerSurfaceV1,
     /// Whether the compositor has said the surface may be drawn on.
     ready: bool,
     /// How many pixels the screen has to a unit.
     scale: Scale,
-    /// The picture on it, which the compositor is reading from.
-    buffer: Option<wl_buffer::WlBuffer>,
 }
 
 impl Shell {
@@ -354,11 +343,9 @@ impl Shell {
             let viewport = viewporter.get_viewport(&surface, handle, ());
             surface.commit();
             Backdrop {
-                surface,
-                viewport,
+                sheet: Sheet::new(surface, viewport),
                 size: None,
                 drawn: None,
-                buffer: None,
             }
         });
         let behind = self
@@ -384,12 +371,10 @@ impl Shell {
             let viewport = viewporter.get_viewport(&surface, handle, ());
             scales.get_fractional_scale(&surface, handle, ());
             Face {
-                surface,
-                viewport,
+                sheet: Sheet::new(surface, viewport),
                 layer,
                 ready: false,
                 scale: Scale::ONE,
-                buffer: None,
             }
         });
         let face = self.face.insert(face);
@@ -397,21 +382,11 @@ impl Shell {
         face.layer.set_size(width, height);
         if !face.ready {
             // The compositor answers this by saying it may be drawn on.
-            face.surface.commit();
+            face.sheet.surface().commit();
             return behind;
         }
         let canvas = self.card.paint(&mut self.text, &self.theme, face.scale);
-        behind.and(picture(shm, &canvas, handle)).map(|buffer| {
-            face.surface.attach(Some(&buffer), 0, 0);
-            // However many pixels the picture has, it covers this much.
-            face.viewport
-                .set_destination(width.cast_signed(), height.cast_signed());
-            face.surface.damage_buffer(0, 0, i32::MAX, i32::MAX);
-            face.surface.commit();
-            // The picture before this one is let go of when the compositor
-            // says it has finished with it.
-            face.buffer = Some(buffer);
-        })
+        behind.and(face.sheet.put(shm, &canvas, (width, height), handle))
     }
 }
 
@@ -579,7 +554,7 @@ impl Dispatch<wl_pointer::WlPointer, ()> for Shell {
                 ..
             } => {
                 let mut faces = shell.face.iter();
-                shell.on_box = faces.any(|face| face.surface == surface);
+                shell.on_box = faces.any(|face| *face.sheet.surface() == surface);
                 shell.moved(surface_x, surface_y);
             }
             wl_pointer::Event::Motion {

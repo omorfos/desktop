@@ -16,8 +16,9 @@ use omorfos_i18n::{PANEL, Value, Words};
 use omorfos_ipc::{Client as Ipc, Reply, Request, State, Steady};
 use omorfos_shell::month::{self, Month};
 use omorfos_shell::popover::{Hanging, Popovers, Tip};
+use omorfos_shell::sheet::Sheet;
 use omorfos_shell::tooltip::Resting;
-use omorfos_shell::{picture, whole};
+use omorfos_shell::whole;
 use omorfos_ui::{Area, Motion, Scale, Text};
 use rustix::event::{PollFd, PollFlags, Timespec, poll};
 use wayland_client::backend::ReadEventsGuard;
@@ -318,9 +319,8 @@ struct Screen {
 
 /// A bar's surface on a screen.
 struct Face {
-    surface: wl_surface::WlSurface,
+    sheet: Sheet,
     layer: zwlr_layer_surface_v1::ZwlrLayerSurfaceV1,
-    viewport: wp_viewport::WpViewport,
     fraction: wp_fractional_scale_v1::WpFractionalScaleV1,
     /// How wide the compositor made it, in units of layout. Nothing until
     /// it has said.
@@ -331,8 +331,6 @@ struct Face {
     shown: Option<(Bar, Scale, Theme)>,
     /// The buttons that are on their way from one look to another.
     motion: Motion,
-    /// The picture of that, which the compositor is reading from.
-    buffer: Option<wl_buffer::WlBuffer>,
 }
 
 /// What it takes to put a bar on a screen.
@@ -739,25 +737,21 @@ impl Face {
         // The compositor answers this with how wide the bar is to be.
         surface.commit();
         Self {
-            surface,
+            sheet: Sheet::new(surface, viewport),
             layer,
-            viewport,
             fraction,
             width: 0,
             scale: Scale::ONE,
             shown: None,
             motion: Motion::new(),
-            buffer: None,
         }
     }
 
     /// Gives the surface back.
     fn close(self) {
         self.fraction.destroy();
-        self.viewport.destroy();
         self.layer.destroy();
-        self.surface.destroy();
-        self.buffer.iter().for_each(wl_buffer::WlBuffer::destroy);
+        self.sheet.destroy();
     }
 
     /// Draws the bar of the screen called `name`, unless it already shows
@@ -779,18 +773,9 @@ impl Face {
         self.motion.begin(tools.now);
         let canvas = bar.paint(tools.text, tools.theme, *scale, &mut self.motion);
         self.motion.end();
-        let size = (self.width.cast_signed(), bar.height().cast_signed());
-        picture(tools.shm, &canvas, tools.handle).map(|buffer| {
-            self.surface.attach(Some(&buffer), 0, 0);
-            // However many pixels the picture has, it covers this much.
-            self.viewport.set_destination(size.0, size.1);
-            self.surface.damage_buffer(0, 0, i32::MAX, i32::MAX);
-            self.surface.commit();
-            // The picture before this one is let go of when the compositor
-            // says it has finished with it.
-            self.buffer = Some(buffer);
-            self.shown = Some(wanted);
-        })
+        let size = (self.width, bar.height());
+        let put = self.sheet.put(tools.shm, &canvas, size, tools.handle);
+        put.map(|()| self.shown = Some(wanted))
     }
 }
 
@@ -948,7 +933,7 @@ impl Dispatch<wl_pointer::WlPointer, ()> for Shell {
                 let mut screens = shell.screens.iter();
                 let entered = screens.find(|screen| {
                     let face = screen.face.as_ref();
-                    face.is_some_and(|face| face.surface == surface)
+                    face.is_some_and(|face| *face.sheet.surface() == surface)
                 });
                 shell.over = entered.map(|screen| (screen.global, surface_x));
                 let on = shell.popovers.is(&surface);

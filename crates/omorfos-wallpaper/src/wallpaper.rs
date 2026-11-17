@@ -11,6 +11,7 @@ use std::time::{Duration, Instant};
 use omorfos_config::{
     Color, Easing, Fit, Part, Picture, Shown, States, Store, Transition, Watcher,
 };
+use omorfos_shell::sheet::Sheet;
 use omorfos_shell::{picture, pixels};
 use omorfos_ui::{Canvas, Image, Scale};
 use rustix::event::{PollFd, PollFlags, Timespec, poll};
@@ -331,9 +332,8 @@ struct Wanted {
 
 /// A screen's surface.
 struct Face {
-    surface: wl_surface::WlSurface,
+    sheet: Sheet,
     layer: zwlr_layer_surface_v1::ZwlrLayerSurfaceV1,
-    viewport: wp_viewport::WpViewport,
     fraction: wp_fractional_scale_v1::WpFractionalScaleV1,
     /// How large the compositor made it, in units of layout. Nothing until
     /// it has said.
@@ -342,8 +342,6 @@ struct Face {
     scale: Scale,
     /// What is on it now, drawn at that size and scale.
     shown: Option<View>,
-    /// The picture of that, which the compositor is reading from.
-    buffer: Option<wl_buffer::WlBuffer>,
     /// When what it was given was last kept, since the configuration last
     /// changed.
     kept: Option<Duration>,
@@ -776,14 +774,12 @@ impl Face {
         // The compositor answers this with how large it is to be.
         surface.commit();
         Self {
-            surface,
+            sheet: Sheet::new(surface, viewport),
             layer,
-            viewport,
             fraction,
             size: (0, 0),
             scale: Scale::ONE,
             shown: None,
-            buffer: None,
             kept: None,
             fade: None,
         }
@@ -793,10 +789,8 @@ impl Face {
     fn close(mut self) {
         self.fade.take().into_iter().for_each(Fade::close);
         self.fraction.destroy();
-        self.viewport.destroy();
         self.layer.destroy();
-        self.surface.destroy();
-        self.buffer.iter().for_each(wl_buffer::WlBuffer::destroy);
+        self.sheet.destroy();
     }
 
     /// What is to be drawn for `wanted` to be shown, at the size and scale
@@ -832,7 +826,6 @@ impl Face {
         // One fading in already is done with at once, for this to fade in
         // over it.
         self.finish();
-        let units = (size.0.cast_signed(), size.1.cast_signed());
         // Fading in, it is given twice: once for the surface it fades in
         // on and once for the screen's own, which shows it after.
         let given = buffer().and_then(|first| {
@@ -842,24 +835,13 @@ impl Face {
         given.map(|(buffer, after)| {
             match after {
                 Some(after) => {
-                    self.fade = Some(Fade::open(tools, &self.surface, units, buffer, after));
+                    let under = self.sheet.surface();
+                    self.fade = Some(Fade::open(tools, under, *size, buffer, after));
                 }
-                None => self.put(buffer, units),
+                None => self.sheet.show(buffer, *size),
             }
             self.shown = Some(view.clone());
         })
-    }
-
-    /// Shows `buffer` on the screen's own surface, `size` units of layout.
-    fn put(&mut self, buffer: wl_buffer::WlBuffer, (width, height): (i32, i32)) {
-        self.surface.attach(Some(&buffer), 0, 0);
-        // However many pixels the picture has, it covers the screen.
-        self.viewport.set_destination(width, height);
-        self.surface.damage_buffer(0, 0, i32::MAX, i32::MAX);
-        self.surface.commit();
-        // The picture before this one is let go of when the compositor
-        // says it has finished with it.
-        self.buffer = Some(buffer);
     }
 
     /// Takes what is fading in a step further, as far as `fade` says it is
@@ -887,15 +869,9 @@ impl Face {
         let Some(fading) = self.fade.take() else {
             return;
         };
-        let (width, height) = self
-            .shown
-            .as_ref()
-            .map(|(_, size, _)| *size)
-            .unwrap_or_default();
-        self.put(
-            fading.after.clone(),
-            (width.cast_signed(), height.cast_signed()),
-        );
+        let size = self.shown.as_ref().map(|(_, size, _)| *size);
+        self.sheet
+            .show(fading.after.clone(), size.unwrap_or_default());
         fading.close();
     }
 }
@@ -906,7 +882,7 @@ impl Fade {
     fn open(
         tools: &Tools<'_>,
         under: &wl_surface::WlSurface,
-        (width, height): (i32, i32),
+        (width, height): (u32, u32),
         buffer: wl_buffer::WlBuffer,
         after: wl_buffer::WlBuffer,
     ) -> Self {
@@ -918,7 +894,7 @@ impl Fade {
         // It changes as it fades, without the screen's surface.
         subsurface.set_desync();
         let viewport = tools.viewporter.get_viewport(&surface, handle, ());
-        viewport.set_destination(width, height);
+        viewport.set_destination(width.cast_signed(), height.cast_signed());
         let alpha = tools.alphas.get_surface(&surface, handle, ());
         surface.attach(Some(&buffer), 0, 0);
         surface.damage_buffer(0, 0, i32::MAX, i32::MAX);

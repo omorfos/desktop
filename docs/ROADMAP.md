@@ -2119,9 +2119,15 @@ Security:
       nothing to pass one, what is polled. What is left is what is kept
       of each frame, made anew each time; the message it replaces could
       be written over instead.
-- [ ] Medium: putting a picture on a scaled surface written fifteen
+- [x] Medium: putting a picture on a scaled surface written fifteen
       times
-      ([finding 16](reviews/2026-11-16-the-whole-tree.md#16-putting-a-picture-on-a-scaled-surface-is-written-fifteen-times)).
+      ([finding 16](reviews/2026-11-16-the-whole-tree.md#16-putting-a-picture-on-a-scaled-surface-is-written-fifteen-times)):
+      `Scale::from_numerator`, and `omorfos_shell::sheet::Sheet` for
+      every surface that shows one picture at a time. The picker's
+      surfaces, the portal's loupe and the wallpaper's fade are left as
+      they are: they keep pictures to show again, take one off by
+      attaching none, or wait for the commit of the surface under them.
+      Each program still takes its scale's events itself.
 - [ ] Low to medium: one program takes every sandbox's place
       ([finding 5 of what was not looked at](reviews/2026-11-16-what-the-first-review-did-not-look-at.md#5-one-program-can-take-every-place-the-relay-keeps-for-sandboxes)).
 - [ ] Low to medium: words of a program's own in the notice for every

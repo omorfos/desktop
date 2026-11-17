@@ -19,6 +19,7 @@ pub mod month;
 pub mod popover;
 pub mod said;
 pub mod shake;
+pub mod sheet;
 pub mod tooltip;
 pub mod typing;
 
