@@ -500,7 +500,15 @@ impl Picker {
             text.measure(&typed_in[first..at.max(first)], font)
                 .min(room.saturating_sub(1))
         };
-        text.draw(canvas, &typed_in[first..], typed, input.color, font);
+        // Cut at the field's edge, never short: it is what scrolls.
+        text.draw_cut(
+            canvas,
+            &typed_in[first..],
+            typed,
+            0..room,
+            input.color,
+            font,
+        );
         let chosen = self.field.chosen();
         if chosen.is_empty() {
             // A line where the next character will go, which stays in the
@@ -525,8 +533,10 @@ impl Picker {
                 tall,
             );
             canvas.fill(mark, marked.ground());
-            let shown = chosen.start.max(first)..chosen.end.max(first);
-            text.draw(canvas, &typed_in[shown], mark, marked.color, font);
+            // The same line again, as far across as the mark, so that
+            // every letter stands where it stood.
+            let shown = &typed_in[first..];
+            text.draw_cut(canvas, shown, typed, start..end, marked.color, font);
         }
     }
 
@@ -836,6 +846,79 @@ mod tests {
         picker.key(Key::Down);
         typed(&mut picker, "t");
         assert_eq!(picker.query(), "t");
+    }
+
+    /// Which columns of what is typed, in the upper half of its line, hold
+    /// anything but `ground`, under the built-in theme.
+    fn inked_columns(picker: &Picker, ground: impl Fn(u32) -> u32) -> Vec<bool> {
+        let (left, top, room, tall) = Picker::typed_area(&Theme::default());
+        let canvas = painted(picker);
+        let (left, top) = (left.unsigned_abs(), top.unsigned_abs());
+        let inked = |x: u32| (top..top + tall / 2).any(|y| canvas.at(x, y) != ground(x));
+        (left..left + room).map(inked).collect()
+    }
+
+    #[test]
+    fn text_wider_than_the_field_is_cut_at_its_edge_and_never_short_with_an_ellipsis() {
+        let theme = Theme::default();
+        let input = theme.style(Part::LauncherInput, States::NONE);
+        let mut picker = picker(&["Files"]);
+        // Each is tall, where the dots of an ellipsis are low.
+        typed(&mut picker, &"W".repeat(60));
+        let home = Edit::Move {
+            way: Way::Back,
+            reach: Reach::Line,
+            choosing: false,
+        };
+        picker.key(Key::Edit(home));
+        let inked = inked_columns(&picker, |_| argb(input.background));
+        let font = theme.font(Part::LauncherInput, States::NONE);
+        let letter = usize::try_from(Text::new().measure("W", font)).unwrap();
+        let last = &inked[inked.len() - letter..];
+        assert!(last.contains(&true), "letters up to the edge");
+    }
+
+    #[test]
+    fn choosing_a_part_of_what_is_typed_leaves_every_letter_where_it_was() {
+        let theme = Theme::default();
+        let input = theme.style(Part::LauncherInput, States::NONE);
+        let marked = theme.style(Part::LauncherInput, States::NONE.with(State::Active));
+        let (left, top, _, _) = Picker::typed_area(&theme);
+        let (left, top) = (left.unsigned_abs(), top.unsigned_abs());
+        // On the mark where it is chosen, and on the field elsewhere.
+        let inked = |picker: &Picker| {
+            let canvas = painted(picker);
+            let on_mark = |x: u32| canvas.at(left + x, top) == argb(marked.background);
+            let ground = |x: u32| {
+                let ground = if on_mark(x - left) { &marked } else { &input };
+                argb(ground.background)
+            };
+            let marks = (0..200).filter(|x| on_mark(*x)).count();
+            (inked_columns(picker, ground), marks)
+        };
+        // Letters that sit closer together than each is wide, in a font
+        // that has them so.
+        let mut picker = picker(&["Files"]);
+        typed(&mut picker, "WAVE To AVA");
+        picker.key(Key::All);
+        let (all, whole) = inked(&picker);
+        let step = |way, choosing| {
+            Key::Edit(Edit::Move {
+                way,
+                reach: Reach::Character,
+                choosing,
+            })
+        };
+        picker.key(step(Way::Back, false));
+        for _ in 0..2 {
+            picker.key(step(Way::On, false));
+        }
+        for _ in 0..5 {
+            picker.key(step(Way::On, true));
+        }
+        let (part, some) = inked(&picker);
+        assert!(some > 5 && some < whole, "{some} of {whole} chosen");
+        assert_eq!(part, all);
     }
 
     #[test]

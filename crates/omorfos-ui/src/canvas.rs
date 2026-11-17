@@ -1051,7 +1051,30 @@ impl Text {
         let (left, width) = span(canvas.scale, area.0, area.2);
         let (top, height) = span(canvas.scale, area.1, area.3);
         let (_, wide) = self.room(canvas, text, font, (area.2, width));
-        self.draw_pixels(canvas, text, (left, top, wide, height), color, font);
+        self.draw_pixels(canvas, text, ((left, top, wide, height), None), color, font);
+    }
+
+    /// Draws one line of `text` from the left of `area`, vertically centred
+    /// and cut at the area's edge where it does not fit, with no ellipsis,
+    /// as what is typed in a field is, which scrolls; and of that only
+    /// what lies as far across the area as `shown`, in units of layout,
+    /// for a part of it to be drawn again in another colour with every
+    /// letter where it was.
+    pub fn draw_cut(
+        &mut self,
+        canvas: &mut Canvas,
+        text: &str,
+        area: Area,
+        shown: Range<u32>,
+        color: Color,
+        font: &Font,
+    ) {
+        let (left, width) = span(canvas.scale, area.0, area.2);
+        let (top, height) = span(canvas.scale, area.1, area.3);
+        let across = |units: u32| span(canvas.scale, area.0, units.min(area.2)).1;
+        let shown = across(shown.start)..across(shown.end);
+        let area = (left, top, width, height);
+        self.draw_pixels(canvas, text, (area, Some(shown)), color, font);
     }
 
     /// Draws one line of `text` in the middle of `area`, across and down,
@@ -1072,7 +1095,7 @@ impl Text {
         // Half of whatever it is over by, a pixel or two, before it too.
         let shift = (i64::from(width) - i64::from(wide)) / 2;
         let left = left.saturating_add(i32::try_from(shift).unwrap_or(0));
-        self.draw_pixels(canvas, text, (left, top, wide, height), color, font);
+        self.draw_pixels(canvas, text, ((left, top, wide, height), None), color, font);
     }
 
     /// How many pixels `text` takes, drawn on `canvas` in `font`, and how
@@ -1094,12 +1117,14 @@ impl Text {
     }
 
     /// Draws one line of `text` in an area counted in pixels, vertically
-    /// centred and cut short with an ellipsis if it does not fit.
+    /// centred and cut short with an ellipsis if it does not fit; or, with
+    /// `cut`, cut at the area's edge, and only the pixels that far across
+    /// it drawn.
     fn draw_pixels(
         &mut self,
         canvas: &mut Canvas,
         text: &str,
-        (left, top, width, height): Area,
+        ((left, top, width, height), cut): (Area, Option<Range<u32>>),
         color: Color,
         font: &Font,
     ) {
@@ -1109,8 +1134,14 @@ impl Text {
         let size = float(font.size.get()) * 96.0 / 72.0 * scale;
         let mut buffer = Buffer::new(&mut self.fonts, Metrics::new(size, float(height)));
         buffer.set_wrap(Wrap::None);
-        buffer.set_ellipsize(Ellipsize::End(EllipsizeHeightLimit::Lines(1)));
-        buffer.set_size(Some(float(width)), Some(float(height)));
+        if cut.is_none() {
+            buffer.set_ellipsize(Ellipsize::End(EllipsizeHeightLimit::Lines(1)));
+            buffer.set_size(Some(float(width)), Some(float(height)));
+        } else {
+            buffer.set_size(None, Some(float(height)));
+        }
+        let shown = cut.unwrap_or(0..width);
+        let shown = i64::from(shown.start)..i64::from(shown.end);
         let family = chosen(&mut self.chosen, &self.fonts, &font.family);
         buffer.set_text(text, &attributes(font, family), Shaping::Advanced, None);
         let ink = cosmic_text::Color::rgba(color.red, color.green, color.blue, color.alpha);
@@ -1124,6 +1155,7 @@ impl Text {
                 // of side bearing or more for an ellipsis in a tiny area.
                 // Only the part inside the area is drawn.
                 let columns = visible(x, glyph_width, width);
+                let columns = columns.filter(|column| shown.contains(&i64::from(*column)));
                 for row in visible(y, glyph_height, height) {
                     for column in columns.clone() {
                         canvas.blend(left + column, top + row, ink_color, ink.a());
@@ -1293,6 +1325,39 @@ mod tests {
         let ink = |columns: Range<u32>| inked(&canvas, columns, 0);
         assert!(ink(0..long) > 0);
         assert_eq!(ink(long..long + 10), 0, "and none of it lies beyond");
+    }
+
+    #[test]
+    fn text_cut_at_an_edge_is_as_it_is_whole_as_far_as_it_is_shown() {
+        let mut text = Text::new();
+        let font = Font::default();
+        let said = "web and more, and more again";
+        let long = text.measure(said, &font);
+        let (half, quarter) = (long / 2, long / 4);
+        for factor in [1.0, 1.5, 2.0] {
+            let scale = Scale::new(factor);
+            let canvas = || Canvas::scaled(long + 10, 24, scale);
+            let mut whole = canvas();
+            text.draw(&mut whole, said, (0, 0, long, 24), RED, &font);
+            // In half the room, the half that fits, and no ellipsis.
+            let mut cut = canvas();
+            text.draw_cut(&mut cut, said, (0, 0, half, 24), 0..half, RED, &font);
+            // And of that, only as far across as is asked for.
+            let mut part = canvas();
+            text.draw_cut(&mut part, said, (0, 0, half, 24), quarter..half, RED, &font);
+            let (_, edge) = span(scale, 0, half);
+            let (_, from) = span(scale, 0, quarter);
+            for y in 0..whole.height() {
+                for x in 0..whole.width() {
+                    let shown = if x < edge { whole.at(x, y) } else { 0 };
+                    assert_eq!(cut.at(x, y), shown, "at {x}, {y}, scale {factor}");
+                    let shown = if x >= from { shown } else { 0 };
+                    assert_eq!(part.at(x, y), shown, "at {x}, {y}, scale {factor}");
+                }
+            }
+            let beyond = inked(&whole, edge..whole.width(), 0);
+            assert!(beyond > 0, "there is more of it than is shown");
+        }
     }
 
     #[test]
