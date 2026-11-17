@@ -2076,6 +2076,23 @@ Security:
       ([finding 4 of what was not looked at](reviews/2026-11-16-what-the-first-review-did-not-look-at.md#4-a-programs-buffer-of-the-graphics-card-that-is-not-finished-holds-up-drawing)).
 - [ ] Medium: on a card, an idle session wakes at the screen's rate
       ([finding 5](reviews/2026-11-16-the-whole-tree.md#5-on-a-graphics-card-a-session-with-nothing-changing-wakes-at-the-screens-rate-for-good)).
+- [ ] The tests that need a card run on a virtual one, here and in CI,
+      so that these two and the card's code are tested where there is
+      none. Under WSL2 the kernel has vgem built in (`/dev/dri/card0` and
+      `renderD128`), and Mesa's `kms_swrast` draws with llvmpipe: the
+      blur shader's test passes on `renderD128` as it is; GBM can make,
+      export and map buffers only on `card0`, where EGL takes them in, as
+      `gpu.rs` does, and draws into them. So: `common::graphics_card()`
+      and `gates.sh`'s `card()` take the node from the environment, with
+      `renderD128` the default; the portal's `card.rs` takes a primary
+      node too where the render node cannot make buffers (vgem), or there
+      is none (vkms); the user is in `render` and `video`. In CI, whose
+      Azure kernels have neither vgem nor vkms, a job boots the generic
+      kernel of 26.04 under virtme-ng, as drmkit does, with
+      `libgl1-mesa-dri` and `libegl-mesa0` installed. Then `gpu.rs` is
+      the first file to come off ADR 2's list; `shader.rs` and `card.rs`
+      need their errors made reachable first. The hardware backend, on
+      vkms, comes after.
 - [x] Medium: the keyboard's row of a menu unseen in the light scheme
       ([finding 9](reviews/2026-11-16-the-whole-tree.md#9-in-the-light-scheme-which-row-of-a-menu-the-keyboard-is-on-cannot-be-seen)):
       the row the keyboard is on is `menu-item:focus`, the accent with
