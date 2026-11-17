@@ -484,6 +484,13 @@ calls for them.
       a request that does not wait.
 - [x] An arrangement of the screens for each set that may be plugged in
       (`arrangements`), followed as screens come and go.
+- [ ] The windows of a screen that was unplugged put back on it when it
+      is plugged in again (asked on 17 November 2026): today they go to
+      the primary screen and stay there. Each window is to go back to
+      the screen and the workspace it was on, at the size it had, unless
+      the user has moved or resized it since, which is taken as its
+      being where they want it. A screen is known again by its own name
+      (EDID) where it has one, and by its socket otherwise.
 
 What is left of this stage that is new, in the order it is to be done,
 as decided on 2026-10-21: what is felt every day first, the lock screen
