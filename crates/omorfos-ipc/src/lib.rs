@@ -43,3 +43,15 @@ pub use message::{
     Standing, State, Window, Workspace, decode, encode,
 };
 pub use steady::{AGAIN, Steady};
+
+/// Waits, five seconds at most, for the other end of `ours` to be gone. A
+/// connection's end is closed only as the last copy of its descriptor is,
+/// and a test beside the one waiting that starts a program holds a copy
+/// of every descriptor for a moment, as `docs/TESTING.md` says.
+#[cfg(test)]
+fn gone(ours: impl std::os::fd::AsFd) {
+    use rustix::event::{PollFd, PollFlags, Timespec, poll};
+    let mut ended = [PollFd::new(&ours, PollFlags::IN)];
+    let soon = Timespec::try_from(std::time::Duration::from_secs(5)).ok();
+    rustix::io::retry_on_intr(|| poll(&mut ended, soon.as_ref())).unwrap();
+}

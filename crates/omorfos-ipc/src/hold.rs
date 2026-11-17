@@ -592,6 +592,7 @@ mod tests {
     fn a_hand_that_cannot_be_given_or_taken_says_why() {
         let (ours, theirs) = UnixStream::pair().unwrap();
         drop(theirs);
+        crate::gone(&ours);
         assert!(give(&ours, "\n", &[]).is_err(), "nobody to take it");
         // Nothing handed yet, to one that will not wait for it.
         let (_ours, theirs) = UnixStream::pair().unwrap();

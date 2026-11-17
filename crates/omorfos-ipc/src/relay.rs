@@ -536,6 +536,7 @@ mod tests {
     fn the_other_end_closing_is_said() {
         let (ours, theirs) = pair().unwrap();
         drop(ours);
+        crate::gone(&theirs);
         let closed = receive(theirs.as_fd()).unwrap_err();
         assert_eq!(closed.kind(), io::ErrorKind::UnexpectedEof);
         assert!(

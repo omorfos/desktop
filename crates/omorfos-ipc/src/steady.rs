@@ -182,8 +182,10 @@ mod tests {
     #[test]
     fn one_that_cannot_be_made_again_ends_when_it_closes() {
         let (ours, theirs) = UnixStream::pair().unwrap();
+        let watched = ours.try_clone().unwrap();
         let mut steady = Steady::new(Client::from_stream(ours), None, None, NOW).unwrap();
         drop(theirs);
+        crate::gone(&watched);
         assert!(heard(&mut steady, NOW).is_err());
         assert!(steady.send(&Request::Version, NOW).is_err());
     }
@@ -194,7 +196,9 @@ mod tests {
         let socket = directory.path().join("omorfos.sock");
         let listening = UnixListener::bind(&socket).unwrap();
         let first = Some(Request::Subscribe);
-        let client = Client::connect(&socket).unwrap();
+        let stream = UnixStream::connect(&socket).unwrap();
+        let watched = stream.try_clone().unwrap();
+        let client = Client::from_stream(stream);
         let mut steady = Steady::new(client, first, Some(socket.clone()), NOW).unwrap();
         let (compositor, _) = listening.accept().unwrap();
         assert_eq!(asked(&compositor), encode(&Request::Subscribe));
@@ -202,6 +206,7 @@ mod tests {
         // The compositor goes, and with it its socket.
         drop((compositor, listening));
         std::fs::remove_file(&socket).unwrap();
+        crate::gone(&watched);
         assert_eq!(heard(&mut steady, NOW).unwrap(), [], "away, not ended");
         assert!(steady.waited().is_none());
         assert_eq!(
