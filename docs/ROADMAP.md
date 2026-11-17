@@ -1020,6 +1020,16 @@ what only games and touchpads need last.
       after step 3d), unasked; and on real hardware it has not yet been
       tried. `wl_touch`
       is made again once the compositor offers touch.
+- [ ] A new version of the compositor that waits said to, and what for:
+      in `omorfosctl state` and in the report, that one is installed and
+      not yet taken up, since when, and what holds it back, a window
+      fullscreen, something recording or playing, the session kept awake,
+      the launcher or the sealed prompt open, a program written for X11,
+      the screens off, or input too lately. Nothing says so today, in the
+      state or the log: on 17 November one installed fifty seconds into a
+      login was not taken up in the eight minutes until the login ended,
+      and why could not be found; installed again later, it was taken up
+      ten seconds on.
 - [x] The compositor's own new version checked before it is taken up:
       run, asked only for its version, and not taken up where it cannot be
       run or fails, which the user is told, rather than replaced by the
