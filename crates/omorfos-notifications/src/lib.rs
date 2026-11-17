@@ -66,10 +66,12 @@ pub fn start(variable: &dyn Fn(&str) -> Option<OsString>) -> Failure {
     let socket = get("OMORFOS_SOCKET");
     let socket =
         omorfos_ipc::socket_path(socket.as_deref(), runtime.as_deref(), display.as_deref());
+    let kept = omorfos_config::kept_dir(runtime.as_deref());
     match wayland.zip(config) {
         Some((wayland, config)) => {
             let icons = Icons::new(icons);
-            client::run(&wayland, address, socket.as_deref(), &config, icons)
+            let config = (config.as_path(), kept.as_deref());
+            client::run(&wayland, address, socket.as_deref(), config, icons)
         }
         None => "this is not an omorfos session: XDG_RUNTIME_DIR, WAYLAND_DISPLAY or HOME is \
                  not set"

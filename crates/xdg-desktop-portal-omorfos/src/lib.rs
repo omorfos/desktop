@@ -61,9 +61,11 @@ pub const ABOUT: About = About {
 /// Why the program cannot go on, in words for the user.
 pub type Failure = Box<dyn Error + Send + Sync>;
 
-/// How the desktop whose configuration is in a folder looks.
-fn look(config: &Path) -> Appearance {
-    let store = Store::open(config);
+/// How the desktop whose configuration is in a folder looks, a file of it
+/// that does not load as the compositor keeps it in `kept`, if that says
+/// where.
+fn look((config, kept): (&Path, Option<&Path>)) -> Appearance {
+    let store = Store::open(config).starting_from(kept);
     let config = store.current();
     Appearance::of(&config.theme, &config.general, config.scheme)
 }
@@ -75,7 +77,8 @@ fn look(config: &Path) -> Appearance {
 /// found by `XDG_RUNTIME_DIR` and `WAYLAND_DISPLAY`, unless it handed over
 /// a connection; the bus is at `DBUS_SESSION_BUS_ADDRESS`; and the
 /// configuration is found as the compositor finds it, by `XDG_CONFIG_HOME`
-/// and `HOME`.
+/// and `HOME`, a file of it that does not load as the compositor keeps it
+/// in `XDG_RUNTIME_DIR`.
 ///
 /// It goes on for as long as the compositor does. The bus outlives a
 /// session, and without that a copy would be left answering for a session
@@ -85,6 +88,7 @@ pub fn start(variable: &dyn Fn(&str) -> Option<OsString>) -> Failure {
     let (home, config) = (variable("HOME"), variable("XDG_CONFIG_HOME"));
     let config = omorfos_config::config_dir(config.as_deref(), home.as_deref());
     let (runtime, display) = (variable("XDG_RUNTIME_DIR"), variable("WAYLAND_DISPLAY"));
+    let kept = omorfos_config::kept_dir(runtime.as_deref());
     let wayland = runtime.clone().zip(display.clone());
     let wayland = wayland.map(|(runtime, display)| Path::new(&runtime).join(display));
     let remote = variable("PIPEWIRE_REMOTE").and_then(|remote| remote.into_string().ok());
@@ -113,18 +117,22 @@ pub fn start(variable: &dyn Fn(&str) -> Option<OsString>) -> Failure {
     let folder = omorfos_screenshot::pictures(named.as_deref(), &home).join("Screenshots");
     let session = omorfos_shell::connect(&wayland);
     let session = session.map_err(|error| Failure::from(format!("{}: {error}", wayland.display())));
-    let asked = config.clone();
+    let (asked, kept_asked) = (config.clone(), kept.clone());
     let portal = session.and_then(|session| {
         let keep = keeper(socket.clone());
-        let portal = Portal::open(address, Box::new(move || look(&asked)), keep);
+        let looked = move || look((&asked, kept_asked.as_deref()));
+        let portal = Portal::open(address, Box::new(looked), keep);
         portal.map(|portal| (portal, session))
     });
     let portal = portal.and_then(|(portal, session)| {
-        let desk = Desk::new(session, Store::open(&config));
+        let desk = Desk::new(session, Store::open(&config).starting_from(kept.as_deref()));
         desk.map(|desk| (portal, desk))
     });
     match portal {
-        Ok((portal, desk)) => serve(&portal, &config, desk, (&folder, remote, entries, socket)),
+        Ok((portal, desk)) => {
+            let config = (config.as_path(), kept.as_deref());
+            serve(&portal, config, desk, (&folder, remote, entries, socket))
+        }
         Err(failure) => failure,
     }
 }
@@ -861,7 +869,7 @@ impl Backend<'_> {
 /// session has gone.
 fn serve(
     portal: &Portal,
-    config: &Path,
+    (config, kept): (&Path, Option<&Path>),
     desk: Desk,
     (folder, remote, entries, socket): (&Path, Option<String>, Vec<PathBuf>, Option<PathBuf>),
 ) -> Failure {
@@ -869,9 +877,9 @@ fn serve(
     let _ = fs::create_dir_all(config);
     // Its own, for the watcher to wake when the scheme may change, if it
     // goes by the time of day: what it looks is read afresh each time.
-    let mut store = Store::open(config);
+    let mut store = Store::open(config).starting_from(kept);
     let mut watcher = Watcher::of(&store).ok();
-    let mut last = look(config);
+    let mut last = look((config, kept));
     let mut backend = Backend {
         portal,
         desk,
@@ -938,7 +946,7 @@ fn serve(
         if changed.is_some_and(|changed| changed.unwrap_or(false)) {
             backend.desk.reread();
         }
-        let now = look(config);
+        let now = look((config, kept));
         portal.changed(&last, &now);
         last = now;
     }

@@ -40,7 +40,8 @@ pub const ABOUT: About = About {
 /// `runtime_dir` (`XDG_RUNTIME_DIR`). The compositor's own socket and the
 /// configuration directory are found as `omorfosctl` and the compositor
 /// find them, from `socket` (`OMORFOS_SOCKET`), `config_home`
-/// (`XDG_CONFIG_HOME`) and `home` (`HOME`).
+/// (`XDG_CONFIG_HOME`) and `home` (`HOME`). A file of it that does not load
+/// starts from the copy of it kept in `runtime_dir`, as the compositor's.
 ///
 /// The variables are passed in so that this can be used and tested without
 /// touching the environment.
@@ -56,8 +57,11 @@ pub fn start(
     let wayland = wayland.map(|(directory, display)| Path::new(directory).join(display));
     let socket = omorfos_ipc::socket_path(socket, runtime_dir, wayland_display);
     let config = omorfos_config::config_dir(config_home, home);
+    let kept = omorfos_config::kept_dir(runtime_dir);
     match wayland.zip(socket).zip(config) {
-        Some(((wayland, socket), config)) => panel::run(&wayland, &socket, &config),
+        Some(((wayland, socket), config)) => {
+            panel::run(&wayland, &socket, (&config, kept.as_deref()))
+        }
         None => "this is not an omorfos session: XDG_RUNTIME_DIR, WAYLAND_DISPLAY or HOME is \
                  not set"
             .into(),

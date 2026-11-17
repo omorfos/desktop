@@ -2073,10 +2073,10 @@ Security:
       ([finding 7](reviews/2026-11-16-the-whole-tree.md#7-a-configuration-broken-when-the-compositor-starts-again-is-put-aside-for-the-defaults-not-the-last-that-loaded)):
       the compositor keeps a copy of each file that loads in
       `$XDG_RUNTIME_DIR/omorfos/last-good/` and starts from it (ADR 3).
-- [ ] The parts of the session started again (ADR 28) start from what
-      the compositor keeps of the configuration too: each opens its store
-      in a library its tests run, so the directory is to be handed to it
-      from its `main`, as the compositor's is from the hardware backend.
+- [x] The parts of the session started again (ADR 28) start from what
+      the compositor keeps of the configuration too, and so do the portal,
+      the clipboard's keeper and the password box; they read the copies
+      and leave the keeping to the compositor.
 - [ ] Medium: a buffer of the card not finished holds up drawing; with a
       card
       ([finding 4 of what was not looked at](reviews/2026-11-16-what-the-first-review-did-not-look-at.md#4-a-programs-buffer-of-the-graphics-card-that-is-not-finished-holds-up-drawing)).

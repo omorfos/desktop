@@ -64,7 +64,9 @@ pub struct Wallpaper {
 
 impl Wallpaper {
     /// A wallpaper on the Wayland connection `wayland`, as the
-    /// configuration in `config` has it, with pictures named from `home`,
+    /// configuration in `config` has it, starting from what was kept of it
+    /// in the directory given beside it, if one is, as the compositor does
+    /// ([`Store::keep_in`]); with pictures named from `home`,
     /// and `unnamed` on a screen for which it names neither a picture nor a
     /// colour. The pictures of a directory are shuffled from `seed`.
     ///
@@ -77,7 +79,7 @@ impl Wallpaper {
     /// Returns an error if the connection cannot be used.
     pub fn new(
         wayland: UnixStream,
-        config: &Path,
+        (config, kept): (&Path, Option<&Path>),
         cache: Option<PathBuf>,
         home: Option<PathBuf>,
         unnamed: Option<Picture>,
@@ -87,7 +89,7 @@ impl Wallpaper {
         connection.map(|connection| {
             let queue = connection.new_event_queue();
             connection.display().get_registry(&queue.handle(), ());
-            let store = Store::open(config);
+            let store = Store::open(config).starting_from(kept);
             Self {
                 connection,
                 queue,
@@ -254,7 +256,7 @@ impl Wallpaper {
 /// on. Returns why.
 pub(crate) fn run(
     wayland: &Path,
-    config: &Path,
+    config: (&Path, Option<&Path>),
     cache: Option<PathBuf>,
     (home, unnamed): (Option<PathBuf>, Option<Picture>),
 ) -> Failure {

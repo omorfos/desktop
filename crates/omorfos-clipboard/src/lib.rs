@@ -104,15 +104,18 @@ type Kept = Vec<(String, Arc<[u8]>)>;
 /// `variable` looks up an environment variable. The compositor is found
 /// by `XDG_RUNTIME_DIR` and `WAYLAND_DISPLAY`, unless it handed over a
 /// connection; and how long what is copied is kept, by the configuration
-/// found from `XDG_CONFIG_HOME` and `HOME`, as it is when this starts.
+/// found from `XDG_CONFIG_HOME` and `HOME`, as it is when this starts, or
+/// as it last loaded where it does not load now, as the compositor keeps it
+/// in `XDG_RUNTIME_DIR`.
 #[must_use]
 pub fn start(variable: &dyn Fn(&str) -> Option<OsString>) -> Failure {
     let config = omorfos_config::config_dir(
         variable("XDG_CONFIG_HOME").as_deref(),
         variable("HOME").as_deref(),
     );
+    let kept = omorfos_config::kept_dir(variable("XDG_RUNTIME_DIR").as_deref());
     let forget = config.map_or(0, |config| {
-        let store = omorfos_config::Store::open(&config);
+        let store = omorfos_config::Store::open(&config).starting_from(kept.as_deref());
         store.current().general.clipboard.forget.get()
     });
     let forget = (forget > 0).then(|| Duration::from_secs(u64::from(forget)));

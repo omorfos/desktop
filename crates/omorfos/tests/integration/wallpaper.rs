@@ -50,7 +50,7 @@ fn installed(
         .unwrap();
     let config = session.config.path().to_owned();
     let (cache, home) = (cache.map(Path::to_owned), home.map(Path::to_owned));
-    Wallpaper::new(theirs, &config, cache, home, unnamed, 0).unwrap()
+    Wallpaper::new(theirs, (&config, None), cache, home, unnamed, 0).unwrap()
 }
 
 /// Lets the wallpaper and the compositor talk, `now` into the wallpaper's

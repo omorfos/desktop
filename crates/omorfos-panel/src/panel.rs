@@ -68,7 +68,9 @@ pub struct Panel {
 
 impl Panel {
     /// A panel on the Wayland connection `wayland`, themed from the
-    /// configuration in `config`.
+    /// configuration in `config`, starting from what was kept of it in
+    /// `kept`, where that is given, as the compositor does
+    /// ([`Store::keep_in`]).
     ///
     /// `news` and `commands` are two connections to the compositor's own
     /// socket. The first is given over to hearing of the session, and what
@@ -82,7 +84,7 @@ impl Panel {
     pub fn new(
         wayland: UnixStream,
         (news, commands): (Ipc, Ipc),
-        config: &Path,
+        (config, kept): (&Path, Option<&Path>),
         socket: Option<&Path>,
     ) -> Result<Self, Failure> {
         let steady =
@@ -98,7 +100,7 @@ impl Panel {
         connection.map(|(connection, (news, commands))| {
             let queue = connection.new_event_queue();
             connection.display().get_registry(&queue.handle(), ());
-            let store = Store::open(config);
+            let store = Store::open(config).starting_from(kept);
             let watcher = Watcher::of(&store).ok();
             Self {
                 connection,
@@ -234,7 +236,7 @@ impl Panel {
 /// Runs a panel in the session whose Wayland socket is at `wayland` and
 /// whose own socket is at `socket`, themed from `config`, until it cannot
 /// go on. Returns why.
-pub(crate) fn run(wayland: &Path, socket: &Path, config: &Path) -> Failure {
+pub(crate) fn run(wayland: &Path, socket: &Path, config: (&Path, Option<&Path>)) -> Failure {
     let streams = omorfos_shell::connect(wayland).and_then(|wayland| {
         let news = Ipc::connect(socket);
         let both = news.and_then(|news| Ipc::connect(socket).map(|commands| (news, commands)));

@@ -105,6 +105,9 @@ pub struct Places {
     pub me: u32,
     /// Where the configuration is, for the look of the prompt.
     pub config: Option<PathBuf>,
+    /// Where the compositor keeps a copy of each file of it that loaded,
+    /// for one that does not load now to be as it was.
+    pub kept: Option<PathBuf>,
     /// Where the compositor is, unless it handed over a connection.
     pub wayland: Option<PathBuf>,
     /// Where `omorfos-pinentry` asks for a passphrase to be asked, in the
@@ -141,6 +144,7 @@ impl Places {
             groups: PathBuf::from("/etc/group"),
             me: rustix::process::getuid().as_raw(),
             config: omorfos_config::config_dir(config.as_deref(), home.as_deref()),
+            kept: omorfos_config::kept_dir(runtime.as_deref()),
             door: runtime
                 .as_ref()
                 .map(|runtime| Path::new(runtime).join(door::NAME)),
@@ -198,7 +202,10 @@ pub fn run(places: &Places, stream: UnixStream) -> Failure {
             .ok()
     });
     let config = places.config.clone().unwrap_or_default();
-    let desk = Desk::new(stream, Store::open(&config));
+    let desk = Desk::new(
+        stream,
+        Store::open(&config).starting_from(places.kept.as_deref()),
+    );
     let agent = desk.and_then(|desk| {
         let agent = Agent::open(&places.system, session, &places.locale);
         agent.map(|agent| (agent, desk))

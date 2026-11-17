@@ -46,7 +46,13 @@ across sessions, where one could be run long after the file it came from was
 changed: a new session loads what is on disk. Each file stands alone, as in
 a reload; a copy is read as any file is, and one that does not load is the
 defaults. The directory is handed to the store by the hardware backend, not
-read from the environment by it, so that tests keep their own.
+read from the environment by it, so that tests keep their own. The parts of
+the session the compositor starts and starts again (ADR 28), and the portal
+and the password box, start from the copies too, found from the
+`XDG_RUNTIME_DIR` each is given, but write none: the compositor, which runs
+for as long as they do, is the one that keeps them, and a part that opens
+the configuration each time it is asked, as the portal does, does not write
+files each time.
 
 **Files are capped at 1 MiB**, checked while reading.
 

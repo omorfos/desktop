@@ -87,14 +87,37 @@ impl Store {
     /// [`kept_dir`]: crate::kept_dir
     pub fn keep_in(&mut self, kept: impl Into<PathBuf>) {
         let kept = kept.into();
-        let (fallback, _) = Config::load(&kept, &Config::default());
+        self.start_from(&kept);
+        self.kept = Some(kept);
+        self.keep();
+    }
+
+    /// The store, with a file that does not load given the copy of it
+    /// kept in `kept` if that says where, as [`Store::keep_in`] gives it,
+    /// but keeping nothing itself: for the parts of the session the
+    /// compositor starts, which start again as it does but leave the
+    /// keeping to it, the one program that runs for as long as they do.
+    #[must_use]
+    pub fn starting_from(mut self, kept: Option<&Path>) -> Self {
+        if let Some(kept) = kept {
+            self.start_from(kept);
+        }
+        self
+    }
+
+    /// Loads the configuration again, a file that does not load given
+    /// the copy of it in `kept`, where there is one that loads; and only
+    /// if a file did not load, as there is nothing to be given otherwise.
+    fn start_from(&mut self, kept: &Path) {
+        if self.diagnostics.is_empty() {
+            return;
+        }
+        let (fallback, _) = Config::load(kept, &Config::default());
         let (config, diagnostics) = Config::load(&self.directory, &fallback);
         let config = Arc::new(config);
-        self.kept = Some(kept);
         self.current = Arc::clone(&config);
         self.loaded = config;
         self.diagnostics = diagnostics;
-        self.keep();
     }
 
     /// Copies each file that loaded, as it is on disk, to where they are
@@ -300,6 +323,32 @@ mod tests {
         assert_eq!(again.diagnostics().len(), 1, "and what is wrong");
         // What is kept is still what loaded, and is so for the next.
         assert_eq!(keeping(&directory, &kept).current().keys, good.keys);
+    }
+
+    #[test]
+    fn a_part_of_the_session_starts_from_what_is_kept_and_keeps_nothing_itself() {
+        let (directory, runtime) = (TempDir::new().unwrap(), TempDir::new().unwrap());
+        let kept = runtime.path().join("last-good");
+        write(&directory, "keys.yaml", GOOD_KEYS);
+        let good = Arc::clone(keeping(&directory, &kept).current());
+
+        write(&directory, "keys.yaml", "bindings: [\n");
+        let mut part = Store::open(directory.path()).starting_from(Some(&kept));
+        assert_eq!(part.current().keys, good.keys, "the bindings that loaded");
+        assert_eq!(part.diagnostics().len(), 1);
+        // Mended, it is what is on disk, and what is kept is left to the
+        // compositor to keep.
+        write(&directory, "keys.yaml", "");
+        assert!(part.reload());
+        assert_eq!(part.current().keys, Config::default().keys);
+        assert_eq!(
+            fs::read_to_string(kept.join("keys.yaml")).unwrap(),
+            GOOD_KEYS
+        );
+        // Told nowhere, a file that does not load is the defaults.
+        write(&directory, "keys.yaml", "bindings: [\n");
+        let alone = Store::open(directory.path()).starting_from(None);
+        assert_eq!(alone.current().keys, Config::default().keys);
     }
 
     #[test]

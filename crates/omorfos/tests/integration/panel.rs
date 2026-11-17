@@ -61,7 +61,7 @@ fn panel_on(session: &mut Session, news: Ipc, commands: Ipc, config: &Path) -> P
         .compositor_mut()
         .insert_client(ours, omorfos::Roles::ALL)
         .unwrap();
-    Panel::new(theirs, (news, commands), config, None).unwrap()
+    Panel::new(theirs, (news, commands), (config, None), None).unwrap()
 }
 
 /// A panel in the session, as it runs in use.
@@ -653,7 +653,7 @@ fn the_panel_hears_the_news_again_once_the_compositors_socket_is_back() {
         .unwrap();
     let both = (Ipc::connect(&path).unwrap(), Ipc::connect(&path).unwrap());
     let config = session.config.path().to_owned();
-    let mut panel = Panel::new(theirs, both, &config, Some(&path)).unwrap();
+    let mut panel = Panel::new(theirs, both, (&config, None), Some(&path)).unwrap();
     let turn = |session: &mut Session, panel: &mut Panel, now: Duration| {
         for _ in 0..20 {
             panel.turn(TIME, now).unwrap();

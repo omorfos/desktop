@@ -102,7 +102,7 @@ fn notifier(session: &mut Session, daemon: &Daemon) -> Notifier {
         .insert_client(ours, omorfos::Roles::PANEL)
         .unwrap();
     let config = session.config.path().to_owned();
-    Notifier::new(theirs, bus, (None, None), &config, Icons::default()).unwrap()
+    Notifier::new(theirs, bus, (None, None), (&config, None), Icons::default()).unwrap()
 }
 
 /// Sends a notification as a program would, and returns its number.
@@ -751,7 +751,14 @@ fn informed(session: &mut Session, daemon: &Daemon) -> Notifier {
         .unwrap();
     let config = session.config.path().to_owned();
     let news = Ipc::connect(&socket).unwrap();
-    Notifier::new(theirs, bus, (Some(news), None), &config, Icons::default()).unwrap()
+    Notifier::new(
+        theirs,
+        bus,
+        (Some(news), None),
+        (&config, None),
+        Icons::default(),
+    )
+    .unwrap()
 }
 
 #[test]
@@ -814,7 +821,8 @@ fn the_notifications_take_only_the_state_of_the_session_from_what_they_are_told(
     let config = session.config.path().to_owned();
     let (news, mut compositor) = UnixStream::pair().unwrap();
     let news = Some(Ipc::from_stream(news));
-    let mut notifier = Notifier::new(theirs, bus, (news, None), &config, Icons::default()).unwrap();
+    let mut notifier =
+        Notifier::new(theirs, bus, (news, None), (&config, None), Icons::default()).unwrap();
 
     // It asks to be told what is wrong, as one that will show it.
     let mut asked = String::new();
@@ -860,7 +868,7 @@ fn the_notifications_ask_what_is_wrong_again_once_the_compositors_socket_is_back
     let path = directory.path().join("omorfos.sock");
     let listening = UnixListener::bind(&path).unwrap();
     let news = (Some(Ipc::connect(&path).unwrap()), Some(path.as_path()));
-    let mut notifier = Notifier::new(theirs, bus, news, &config, Icons::default()).unwrap();
+    let mut notifier = Notifier::new(theirs, bus, news, (&config, None), Icons::default()).unwrap();
     let (compositor, _) = listening.accept().unwrap();
 
     // The compositor's socket goes, as the compositor is started anew: the
@@ -894,7 +902,8 @@ fn notifications_that_cannot_ask_what_is_wrong_leave_it_to_the_compositor() {
     let (news, gone) = UnixStream::pair().unwrap();
     drop(gone);
     let news = Some(Ipc::from_stream(news));
-    let mut notifier = Notifier::new(theirs, bus, (news, None), &config, Icons::default()).unwrap();
+    let mut notifier =
+        Notifier::new(theirs, bus, (news, None), (&config, None), Icons::default()).unwrap();
 
     until(&mut session, &mut notifier, Duration::ZERO, |_| true);
     assert_ne!(session.draw().at(NOTICE.0, NOTICE.1), BACKGROUND);
@@ -919,7 +928,8 @@ fn what_has_happened_in_the_session_is_shown_for_a_while_among_the_notifications
     let config = session.config.path().to_owned();
     let (news, mut compositor) = UnixStream::pair().unwrap();
     let news = Some(Ipc::from_stream(news));
-    let mut notifier = Notifier::new(theirs, bus, (news, None), &config, Icons::default()).unwrap();
+    let mut notifier =
+        Notifier::new(theirs, bus, (news, None), (&config, None), Icons::default()).unwrap();
 
     let happened = Told {
         events: vec!["something was started again".to_owned()],

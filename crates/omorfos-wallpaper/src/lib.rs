@@ -73,8 +73,12 @@ pub fn start(
     let cache = cache.map(|cache| cache.join("wallpaper"));
     let unnamed = installed(data, home);
     let home = home.map(|home| Path::new(home).to_owned());
+    let kept = omorfos_config::kept_dir(runtime_dir);
     match wayland.zip(config) {
-        Some((wayland, config)) => wallpaper::run(&wayland, &config, cache, (home, unnamed)),
+        Some((wayland, config)) => {
+            let config = (config.as_path(), kept.as_deref());
+            wallpaper::run(&wayland, config, cache, (home, unnamed))
+        }
         None => "this is not an omorfos session: XDG_RUNTIME_DIR, WAYLAND_DISPLAY or HOME is \
                  not set"
             .into(),

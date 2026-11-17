@@ -57,8 +57,10 @@ pub struct Notifier {
 
 impl Notifier {
     /// Notifications on the Wayland connection `wayland`, heard of over
-    /// `bus`, themed and set up from the configuration in `config`, with
-    /// the pictures that are named looked up in `icons`.
+    /// `bus`, themed and set up from the configuration in `config`,
+    /// starting from what was kept of it in the directory given beside it,
+    /// if one is, as the compositor does ([`Store::keep_in`]); with the
+    /// pictures that are named looked up in `icons`.
     ///
     /// `news` is a connection to the compositor's own socket, on which it
     /// is asked to say what is wrong with the session, so that it can be
@@ -74,7 +76,7 @@ impl Notifier {
         wayland: UnixStream,
         bus: Bus,
         (news, socket): (Option<Ipc>, Option<&Path>),
-        config: &Path,
+        (config, kept): (&Path, Option<&Path>),
         icons: Icons,
     ) -> Result<Self, Failure> {
         let socket = socket.map(Path::to_owned);
@@ -84,7 +86,7 @@ impl Notifier {
         connection.map_err(Failure::from).map(|connection| {
             let queue = connection.new_event_queue();
             connection.display().get_registry(&queue.handle(), ());
-            let store = Store::open(config);
+            let store = Store::open(config).starting_from(kept);
             let watcher = Watcher::of(&store).ok();
             Self {
                 connection,
@@ -237,7 +239,7 @@ pub(crate) fn run(
     wayland: &Path,
     address: Option<&str>,
     socket: Option<&Path>,
-    config: &Path,
+    config: (&Path, Option<&Path>),
     icons: Icons,
 ) -> Failure {
     let wayland = omorfos_shell::connect(wayland).map_err(Failure::from);
