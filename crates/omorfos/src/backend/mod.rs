@@ -158,6 +158,23 @@ pub fn driver<T: Copy + PartialEq>(current: Option<T>, possible: &[T], in_use: &
         .or_else(|| possible.iter().copied().find(free))
 }
 
+/// Whether a socket of the graphics card is to be asked anew what is
+/// plugged into it, rather than taken at what the kernel last found. The
+/// kernel would have it asked as a compositor starts and as it hears that
+/// something was plugged in or pulled out, and at no other time, as asking
+/// is slow and may make a screen flicker: it reads the screen's own
+/// account of itself over the cable, and waits on a socket with nothing in
+/// it, on one laptop 1.2 s for a screen on HDMI and 0.8 s for the empty
+/// socket beside it. A compositor that takes the screens as the one before
+/// left them, `kept`, is not starting in that sense: the one before asked,
+/// a moment ago (ADR 62). It asks only a socket the kernel knows nothing
+/// of, neither `connected` nor `disconnected`, or one with a screen that
+/// it has no `modes` for.
+#[must_use]
+pub const fn asks_anew(kept: bool, (connected, disconnected): (bool, bool), modes: usize) -> bool {
+    !kept || (!disconnected && (!connected || modes == 0))
+}
+
 /// A way of running the compositor until the session ends, started as it
 /// was.
 pub type Launcher = fn(Start) -> Result<(), Box<dyn Error>>;
@@ -214,6 +231,34 @@ mod tests {
         assert_eq!(driver(None, &[1, 2], &[1]), Some(2), "none driving it");
         assert_eq!(driver(Some(1), &[1, 2], &[1, 2]), None, "none free");
         assert_eq!(driver::<u32>(None, &[], &[]), None);
+    }
+
+    #[test]
+    fn a_socket_is_asked_anew_as_the_session_starts_and_as_screens_come_and_go() {
+        let (screen, empty, unknown) = ((true, false), (false, true), (false, false));
+        assert!(
+            asks_anew(false, screen, 2),
+            "a screen whose modes are known"
+        );
+        assert!(asks_anew(false, empty, 0), "nothing plugged in");
+        assert!(asks_anew(false, unknown, 0));
+    }
+
+    #[test]
+    fn screens_kept_from_the_compositor_before_are_asked_only_where_the_kernel_does_not_know() {
+        let (screen, empty, unknown) = ((true, false), (false, true), (false, false));
+        assert!(
+            !asks_anew(true, screen, 2),
+            "a screen whose modes are known"
+        );
+        assert!(!asks_anew(true, empty, 0), "nothing plugged in");
+        assert!(asks_anew(true, unknown, 0), "never looked at");
+        assert!(
+            asks_anew(true, screen, 0),
+            "a screen, and no way to drive it"
+        );
+        // What the kernel last found of a socket now empty is not a screen.
+        assert!(!asks_anew(true, empty, 3));
     }
 
     #[test]

@@ -1047,15 +1047,29 @@ what only games and touchpads need last.
       read from the card as each screen shows it, drawn over the session's
       first frames and faded out in a quarter of a second, once the
       session is shown. Tried on a laptop's own screen.
-- [ ] A change of compositor with a screen on a cable, found by hand on
-      17 November 2026 with one on HDMI beside a laptop's own: the
-      screen on the cable went black for about a second, the session
-      stood still for 2863 ms where it does for 811 ms without it, 2287
-      ms of it the next compositor coming up, and a window of foot came
-      back at another size. Each screen did come back showing its
-      workspace. Whether the mode was set anew or the picture lost as
-      the connector was asked what it is, the log does not say: the
-      backend is to say, of each screen, what it found and what it did.
+- [x] A change of compositor with a screen on a cable less than half
+      as slow, found by hand on 17 November 2026 with one on HDMI beside
+      a laptop's own: the session stood still for 2863 ms where it does
+      for 811 ms without it. The next compositor asked every socket of
+      the card anew what was in it, 1.2 s for the screen on HDMI and 0.8
+      s for the empty socket beside it; no mode was set anew. Taking
+      the screens as the one before left them, it now takes what the
+      kernel last found, and asks only where the kernel does not know
+      (ADR 62): the same change stands still for 1207 to 1272 ms. At
+      login, and as a screen is plugged in or pulled out, it asks as it
+      did, which is when the kernel says to.
+- [ ] The same change, what is left: with the screen on HDMI the next
+      compositor still takes 636 to 697 ms to come up, where it takes
+      266 ms with the laptop's screen alone, and where those 400 ms go
+      is not known. The backend is to say what it spent on each screen
+      when it is slow to come up.
+- [ ] The same change, what is not explained: the screen on the cable
+      went black for about a second the first time, and in none of the
+      five changes watched after, three with the sockets asked anew and
+      two without; and a
+      window of foot came back at another size, once. Asking a socket
+      anew may make a screen flicker, the kernel says, so the first may
+      be gone with it. Waits on: either happening again.
 - [x] The session never out of anyone's control (ADR 63): `omorfos-hold`
       takes the seat once, through libseat, and keeps it while compositors
       come and go, opening the cards and input devices for each and closing

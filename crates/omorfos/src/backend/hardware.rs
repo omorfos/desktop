@@ -952,11 +952,31 @@ impl Hardware {
         let Ok(resources) = self.card.resource_handles() else {
             return Vec::new();
         };
+        // Taken as the compositor before left them, until each shows what
+        // this one draws.
+        let kept = self.before.is_some();
         let mut found: Vec<(bool, Found)> = resources
             .connectors()
             .iter()
             .filter_map(|handle| {
-                let socket = self.card.get_connector(*handle, true).ok()?;
+                // As the kernel last found it, which costs nothing, and anew
+                // unless the compositor before asked a moment ago: asking
+                // took two seconds with a screen on a cable.
+                let socket = self.card.get_connector(*handle, false).ok()?;
+                let state = socket.state();
+                let anew = super::asks_anew(
+                    kept,
+                    (
+                        state == connector::State::Connected,
+                        state == connector::State::Disconnected,
+                    ),
+                    socket.modes().len(),
+                );
+                let socket = if anew {
+                    self.card.get_connector(*handle, true).ok()?
+                } else {
+                    socket
+                };
                 if socket.state() != connector::State::Connected {
                     return None;
                 }

@@ -169,6 +169,18 @@ each window where it was.
   that is its pictures, which are gone by then. The console comes back as
   the kernel brings it back once the card is let go of, rather than as
   Smithay would have set it.
+- A compositor that takes the screens as the one before left them
+  takes what is plugged into the card as the kernel last found it, and
+  does not ask anew. Asking anew reads each screen's account of itself
+  over its cable and waits on sockets with nothing in them, which on a
+  laptop with a screen on HDMI took two seconds of each change; the
+  kernel says of it that it is slow and may make a screen flicker, and
+  that it is to be done as a compositor starts and as screens are
+  plugged in and pulled out, and not otherwise. So it is done at login,
+  where no card is handed over, and whenever the kernel says something
+  came or went; in a change of compositor the one before did it, a
+  moment ago, and only a socket the kernel knows nothing of, or a screen
+  it has no modes for, is asked (`backend::asks_anew`).
 - The first change of compositor after this is installed is not yet
   unseen: the holder running, of the version before, does not know
   `showing`, and only takes up its new version after it has closed the
