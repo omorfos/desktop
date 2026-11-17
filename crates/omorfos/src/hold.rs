@@ -230,6 +230,8 @@ impl Compositor {
     /// version where one is installed, telling it the next is to say so if
     /// that is `regardless` of the session being in use.
     pub(crate) fn step_down(&mut self, regardless: bool) {
+        // Where the pointer is is said only with another change until now.
+        self.tell_relay(true);
         if let Some(holder) = self.holder.as_mut() {
             holder.stepping_down = Some(regardless);
             self.running = false;

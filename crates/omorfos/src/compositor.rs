@@ -722,11 +722,11 @@ impl Compositor {
     /// What each part of the session the relay keeps is called, as the
     /// next compositor is to know it by, and its process: the locker among
     /// them, while it runs.
-    pub(crate) fn kept_parts(&self) -> Vec<(&'static str, u32)> {
+    pub(crate) fn kept_parts(&self) -> impl Iterator<Item = (&'static str, u32)> {
         let kept = self.components.iter();
         let kept = kept.filter_map(|component| component.kind.called().zip(component.process));
         let locker = self.on_demand.locker.0.map(|process| (LOCKER, process));
-        kept.chain(locker).collect()
+        kept.chain(locker)
     }
 
     /// Hands the relay, over `relay`, what is to be kept as programs are:
@@ -1365,7 +1365,7 @@ impl Compositor {
         self.count_desktop_change();
         self.publish_ipc(now);
         self.tell_holder();
-        self.tell_relay();
+        self.tell_relay(false);
     }
 
     /// Has it say what it says in the first of `languages`, by their codes,

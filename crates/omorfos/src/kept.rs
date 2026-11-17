@@ -43,6 +43,9 @@ pub(crate) struct Parts {
     /// Where the relay has been told the session is, the pointer, and the
     /// parts of it kept by the relay.
     desk: Option<(Desk, (i32, i32), Named<'static>)>,
+    /// The count of the desktop's and the screens' changes when the relay
+    /// was last told of them.
+    changes: Option<u64>,
     /// What each part kept by the relay was called by the compositor before,
     /// by its process, as the relay handed it back.
     pub(crate) known: HashMap<u32, String>,
@@ -118,22 +121,33 @@ impl Compositor {
 
     /// Tells the relay where each window of a program it keeps is, and
     /// where the session is, as far as either changed since it was last
-    /// told.
-    pub(crate) fn tell_relay(&mut self) {
-        let parts = self.kept_parts();
-        let Parts {
-            relay,
-            told,
-            desk: told_desk,
-            ..
-        } = &mut self.autostarted.parts;
-        let Some(relay) = relay.as_ref() else {
+    /// told: looked at only once the desktop or the screens have changed,
+    /// or the parts it keeps, or `everything` is to be told as it is, as
+    /// the compositor steps down. Where the pointer is is told only with
+    /// another change, or then: the relay keeps it to put it back after a
+    /// restart, and would otherwise be woken by every move.
+    pub(crate) fn tell_relay(&mut self, everything: bool) {
+        let Some(relay) = self.autostarted.parts.relay.as_ref() else {
             return;
         };
+        let told_desk = &self.autostarted.parts.desk;
+        let parts = told_desk
+            .as_ref()
+            .is_some_and(|(.., parts)| self.kept_parts().eq(parts.iter().copied()));
+        let changes = Some(self.changes);
+        if !everything && self.autostarted.parts.changes == changes && parts {
+            return;
+        }
+        let parts: Named<'static> = self.kept_parts().collect();
+        self.autostarted.parts.changes = changes;
+        let told = &mut self.autostarted.parts.told;
         let name = |at: usize| self.heads.get(at).map(|head| head.output.name());
         for mapped in &self.windows {
-            let kept = self.desktop.kept(mapped.id);
-            let Some(((number, toplevel), kept)) = mapped.kept_by.zip(kept) else {
+            let kept = mapped.kept_by.and_then(|key| {
+                let kept = self.desktop.kept(mapped.id);
+                kept.map(|kept| (key, kept))
+            });
+            let Some(((number, toplevel), kept)) = kept else {
                 continue;
             };
             if told.get(&(number, toplevel)) == Some(&kept) {
@@ -156,6 +170,7 @@ impl Compositor {
         #[expect(clippy::cast_possible_truncation, reason = "a position on a screen")]
         let pointer = (at.x as i32, at.y as i32);
         let now = Some((shown, pointer, parts));
+        let told_desk = &mut self.autostarted.parts.desk;
         if *told_desk != now {
             let names: Vec<String> = self.heads.iter().map(|head| head.output.name()).collect();
             let said = now

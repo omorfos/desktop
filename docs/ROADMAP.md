@@ -2094,7 +2094,7 @@ Security:
       ([finding 15](reviews/2026-11-16-the-whole-tree.md#15-a-program-can-map-any-number-of-windows-if-the-count-of-those-shown-were-lost-and-no-test-would-know)).
 - [x] Medium: the IPC state built every turn
       ([finding 10](reviews/2026-11-16-the-whole-tree.md#10-every-turn-builds-what-is-told-to-ipc-peers-and-copies-it-though-none-listens)).
-- [ ] Medium: every window looked up again for the relay every turn
+- [x] Medium: every window looked up again for the relay every turn
       ([finding 11](reviews/2026-11-16-the-whole-tree.md#11-under-the-relay-every-turn-looks-every-window-up-again-and-every-move-of-the-pointer-is-sent)).
 - [ ] Medium: the relay allocating for every message
       ([finding 12](reviews/2026-11-16-the-whole-tree.md#12-the-relay-allocates-for-every-message-it-passes)).

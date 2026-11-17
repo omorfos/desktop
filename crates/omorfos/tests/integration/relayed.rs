@@ -2143,16 +2143,81 @@ fn the_next_compositor_shows_nothing_until_the_panel_and_windows_kept_are_back()
     unreachable!("nothing was ever shown");
 }
 
-#[test]
-fn a_compositor_stepping_down_tells_the_relay_it_is_going_before_it_closes_anything() {
-    let mut session = Session::new();
-    let (_holder, relays, _path, _socket) = unready(&mut session);
-    session.compositor_mut().perform(&Action::RestartCompositor);
+/// What the compositor has handed the relay, over `relays`, since it was
+/// last asked.
+fn handed(relays: &OwnedFd) -> Vec<Hand> {
     let mut said = Vec::new();
     while let Ok(Some(received)) = relay::receive(relays.as_fd()) {
         said.extend(received.hand);
     }
-    assert_eq!(said, [Hand::Going]);
+    said
+}
+
+#[test]
+fn a_compositor_stepping_down_tells_the_relay_it_is_going_before_it_closes_anything() {
+    let mut session = Session::new();
+    let (_holder, relays, _path, _socket) = unready(&mut session);
+    session.step();
+    handed(&relays);
+    session.compositor_mut().perform(&Action::RestartCompositor);
+    assert_eq!(handed(&relays), [Hand::Going]);
+}
+
+#[test]
+fn where_the_pointer_is_is_told_the_relay_as_the_compositor_steps_down_and_not_as_it_moves() {
+    let mut session = Session::new();
+    let (_holder, relays, _path, _socket) = relayed(&mut session);
+    session.step();
+    let before = handed(&relays);
+    assert!(
+        matches!(before.as_slice(), [.., Hand::Desk(_)]),
+        "{before:?}"
+    );
+
+    for _ in 0..3 {
+        session
+            .compositor_mut()
+            .input(Input::Motion { x: 40.0, y: 30.0 }, 0);
+        session.step();
+    }
+    assert_eq!(handed(&relays), [], "nothing for the pointer alone");
+
+    session.compositor_mut().perform(&Action::RestartCompositor);
+    let said = handed(&relays);
+    let [Hand::Desk(desk), Hand::Going] = said.as_slice() else {
+        unreachable!("where the session is, and then going: {said:?}")
+    };
+    assert!(
+        !before.contains(&Hand::Desk(desk.clone())),
+        "the pointer moved: {desk}"
+    );
+}
+
+#[test]
+fn a_session_kept_by_the_relay_with_nothing_changing_allocates_little() {
+    let relayed = Relayed::new();
+    let (mut session, _holder) = relayed.compositor();
+    let mut client = session.adopt(UnixStream::connect(&relayed.path).unwrap());
+    let _window = session.open_decorated(&mut client, "app", (200, 100), RED);
+    session.eventually(|session| !session.render());
+
+    // The compositor's turns alone: the relay is stepped between them.
+    let stepped = std::mem::take(&mut session.stepped);
+    for turn in 0..10 {
+        relayed.step();
+        let made = allocation_counter::measure(|| {
+            session.advance(Duration::from_millis(16));
+            session.render();
+        });
+        assert_eq!(made.count_current, 0, "turn {turn} kept what it made");
+        assert!(
+            made.count_total <= crate::quiet::CEILING,
+            "turn {turn} allocated {} times, more than {}",
+            made.count_total,
+            crate::quiet::CEILING
+        );
+    }
+    session.stepped = stepped;
 }
 
 #[test]

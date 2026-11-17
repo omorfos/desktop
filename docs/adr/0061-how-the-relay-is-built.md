@@ -453,7 +453,14 @@ and fails while that is other than what 3e still has to come.
   the holder, carries it: it keeps the programs, survives the compositor
   ending however it ends, and has no record's size to fit in, where the
   holder keeps as little as ADR 60 says. An output not there is taken to
-  be the one with the keyboard. In the second part, a window that shares
+  be the one with the keyboard. The compositor tells the relay of these
+  only once the desktop or the screens have changed, and where the
+  pointer is only along with such a change and as it steps down, before
+  it says it is going: told of every move, the relay would be woken by
+  each. A compositor that ends without stepping down leaves the pointer
+  where it was at the last change, and the next puts it back there, which
+  may be over another window than the one it left; a program is then told
+  the pointer left, as it would be by any move. In the second part, a window that shares
   a frame says what the frame is known by, where it is among the tabs and
   whether it is the one shown; one that shares a workspace says what the
   workspace is known by, how it is cut and which part it fills; and
