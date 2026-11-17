@@ -35,6 +35,9 @@ wayland-protocols-plasma = { version = "0.3.12", features = ["server"] }
 workspace = true
 
 [dev-dependencies]
+# How much the relay allocates on a step and for a message, held to a
+# most, as the compositor's turns are.
+allocation-counter = "0.8.1"
 # Who the tests run as, to check the relay says so; and the limit on
 # descriptors, and descriptors handed over a socket, to see the relay hold
 # programs to a most of them and go on with none left.

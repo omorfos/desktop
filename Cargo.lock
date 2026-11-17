@@ -2180,6 +2180,7 @@ dependencies = [
 name = "omorfos-relay"
 version = "0.1.0"
 dependencies = [
+ "allocation-counter",
  "omorfos-ipc",
  "rustix 1.1.6",
  "tempfile",

@@ -194,6 +194,22 @@ fn what_a_program_and_the_compositor_send_each_other_is_passed_on() {
 }
 
 #[test]
+fn a_step_with_nothing_to_pass_allocates_only_what_it_polls() {
+    let mut held = Held::new();
+    let compositor = held.compositor();
+    let (_program, _connection, _) = held.connect(&compositor);
+    held.relay.step(Some(Duration::ZERO), &mut held.said);
+
+    for step in 0..10 {
+        let made = allocation_counter::measure(|| {
+            held.relay.step(Some(Duration::ZERO), &mut held.said);
+        });
+        // What is polled borrows each connection, and is made at each step.
+        assert_eq!(made.count_total, 1, "step {step} allocated");
+    }
+}
+
+#[test]
 fn no_program_is_let_in_until_there_is_a_compositor() {
     let mut held = Held::new();
     let _waiting = UnixStream::connect(&held.socket).unwrap();

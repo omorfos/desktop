@@ -102,6 +102,10 @@ pub struct Relay {
     /// was still there, each until when it is waited for to be seen gone:
     /// kept with the rest if it is, let go if it is not.
     doubtful: Vec<(Link, Instant)>,
+    /// How each connection polled was found in the last step, and whether
+    /// each program had a compositor to be polled for then: kept between
+    /// steps so that a step with nothing to pass makes neither again.
+    polled: (Vec<PollFlags>, Vec<bool>),
 }
 
 impl Relay {
@@ -121,6 +125,7 @@ impl Relay {
             going: false,
             paused: (None, false),
             doubtful: Vec::new(),
+            polled: (Vec::new(), Vec::new()),
         }
     }
 
@@ -136,21 +141,20 @@ impl Relay {
     /// for what it sent. Returns whether the relay is to go on: not once the
     /// holder has gone.
     pub fn step(&mut self, timeout: Option<Duration>, log: &mut dyn Write) -> bool {
-        let joined: Vec<bool> = self
-            .links
-            .iter()
-            .map(|link| link.compositor().is_some())
-            .collect();
-        let ready = self.wait(timeout);
-        let mut ready = ready.into_iter();
+        let (mut polled, mut joined) = std::mem::take(&mut self.polled);
+        joined.clear();
+        joined.extend(self.links.iter().map(|link| link.compositor().is_some()));
+        self.wait(timeout, &mut polled);
         // What the holder hands changes what the rest are; they are read
         // again once that is taken.
-        if ready
-            .next()
+        if polled
+            .first()
             .is_some_and(|holder| holder.intersects(READABLE))
         {
+            self.polled = (polled, joined);
             return self.hear_holder(log);
         }
+        let mut ready = polled.iter().copied().skip(1);
         let readable =
             |ready: Option<PollFlags>| ready.is_some_and(|ready| ready.intersects(READABLE));
         let compositor_ready = self.compositor.as_ref().map(|_| readable(ready.next()));
@@ -176,7 +180,12 @@ impl Relay {
         // order they are seen, a program losing it is then kept.
         let mut ended = Vec::new();
         let mut lost = false;
-        for ((index, link), joined) in self.links.iter_mut().enumerate().zip(joined) {
+        for ((index, link), joined) in self
+            .links
+            .iter_mut()
+            .enumerate()
+            .zip(joined.iter().copied())
+        {
             let program = ready.next().unwrap_or(PollFlags::empty());
             let compositor = joined.then(|| ready.next()).flatten();
             match serve(link, program, compositor) {
@@ -239,6 +248,7 @@ impl Relay {
         self.sandboxes.retain(|_| !ended.next().unwrap_or_default());
         self.take_sandboxes(log);
         self.tell_ready();
+        self.polled = (polled, joined);
         true
     }
 
@@ -296,13 +306,17 @@ impl Relay {
         }
     }
 
-    /// Waits up to `timeout` for any connection to be ready, and says how
-    /// each is: the holder's, the compositor's and the socket while there
+    /// Waits up to `timeout` for any connection to be ready, and says in
+    /// `found` how each is: the holder's, the compositor's and the socket while there
     /// is one, then each sandbox's end and, while there is a compositor, its
     /// socket, then each program's and, while it has one, its connection to
     /// the compositor.
-    fn wait(&self, timeout: Option<Duration>) -> Vec<PollFlags> {
-        let mut polled = vec![PollFd::new(&self.holder, PollFlags::IN)];
+    fn wait(&self, timeout: Option<Duration>, found: &mut Vec<PollFlags>) {
+        // What is polled borrows each connection, and so is made again at
+        // each step, the one allocation of a step with nothing to pass.
+        let most = 3 + 2 * (self.sandboxes.len() + self.links.len());
+        let mut polled = Vec::with_capacity(most);
+        polled.push(PollFd::new(&self.holder, PollFlags::IN));
         // A socket not listened to is still among what is polled, asking
         // for nothing, so that each is where it is expected to be.
         let left = self
@@ -363,7 +377,8 @@ impl Relay {
         let timeout = timeout.and_then(|timeout| Timespec::try_from(timeout).ok());
         // Interrupted, nothing is ready, and the caller steps again.
         let _ = poll(&mut polled, timeout.as_ref());
-        polled.iter().map(PollFd::revents).collect()
+        found.clear();
+        found.extend(polled.iter().map(PollFd::revents));
     }
 
     /// Decides on the programs kept aside: kept with the rest if the
