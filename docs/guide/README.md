@@ -77,7 +77,10 @@ file is optional, and every change is taken up as soon as it is saved:
 
 If a file has a mistake, omorfos keeps using that file's previous contents
 and reports the problem with its file, line and column. The other files
-still apply. Problems are shown among the notifications, at the top right
+still apply. If omorfos starts again before the mistake is put right, after
+a crash or to take up a new version, it still uses the previous contents,
+which it keeps until you log out; at your next login, a file with a mistake
+starts out with the defaults. Problems are shown among the notifications, at the top right
 of the screen, each until you click it away or put it right, and are
 printed by `omorfosctl config check`. Where no notifications are being
 shown by omorfos, they are in a notice of the compositor's own in the same

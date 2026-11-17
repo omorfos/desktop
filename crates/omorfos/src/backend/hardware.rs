@@ -161,6 +161,9 @@ pub fn run(start: Start) -> Result<(), Box<dyn Error>> {
     let holder = holder(start)?;
 
     let mut session = Session::new(config_directory)?;
+    // What loaded is kept for the session, for the next compositor in it.
+    let kept = omorfos_config::kept_dir(env::var_os("XDG_RUNTIME_DIR").as_deref());
+    session.compositor_mut().keep_config_in(kept);
     // The seat is the holder's to give, where it keeps it (ADR 63).
     let mut handed = holder.map(Handed::take).transpose()?;
     let held = handed.as_mut().and_then(Handed::seat);

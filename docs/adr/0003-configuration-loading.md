@@ -34,6 +34,20 @@ reload: a broken theme should not block a keybinding fix. The cost is that
 no validation spans files, so cross-file references (a rule naming workspace
 9 when there are 4) must be handled where they are used.
 
+**What loaded is kept for the session.** The previous value of a file lives
+in the process, which a compositor started again has not got. So each file
+that loads is copied to `$XDG_RUNTIME_DIR/omorfos/last-good/`, the user's
+alone and emptied at logout, and a file that fails at startup is given its
+copy there in place of the defaults: a compositor started again after a
+crash, or for its new version, comes up as it was, though a file was saved
+with a mistake meanwhile. The copies are not kept beside the files, where a
+configuration kept in git or shared between machines would carry them, nor
+across sessions, where one could be run long after the file it came from was
+changed: a new session loads what is on disk. Each file stands alone, as in
+a reload; a copy is read as any file is, and one that does not load is the
+defaults. The directory is handed to the store by the hardware backend, not
+read from the environment by it, so that tests keep their own.
+
 **Files are capped at 1 MiB**, checked while reading.
 
 **Watching uses inotify on the directory**, through the `inotify` crate. The

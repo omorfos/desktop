@@ -66,7 +66,8 @@ be lost, and decides nothing.
   that was running is kept open as a file, so that a new one which does
   not come up is followed by the one that did, and the user told, as a
   configuration that does not load is followed by the last that did
-  (ADR 3).
+  (ADR 3), which is kept for the session for the compositor started
+  again to load too.
 - **Whether the session is locked, and which X display it has.** Two
   words, said by the compositor as they change. A compositor started
   while the session was locked comes up locked, and starts the locker

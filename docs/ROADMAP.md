@@ -2068,9 +2068,15 @@ Security:
       ([finding 8](reviews/2026-11-16-the-whole-tree.md#8-after-one-failed-hold-on-sleep-at-waking-the-lock-is-never-waited-for-again)):
       a hold that fails at waking ends the watcher, as one at the start
       does, and the compositor starts it again.
-- [ ] Medium: a configuration broken at a restart put aside for the
+- [x] Medium: a configuration broken at a restart put aside for the
       defaults
-      ([finding 7](reviews/2026-11-16-the-whole-tree.md#7-a-configuration-broken-when-the-compositor-starts-again-is-put-aside-for-the-defaults-not-the-last-that-loaded)).
+      ([finding 7](reviews/2026-11-16-the-whole-tree.md#7-a-configuration-broken-when-the-compositor-starts-again-is-put-aside-for-the-defaults-not-the-last-that-loaded)):
+      the compositor keeps a copy of each file that loads in
+      `$XDG_RUNTIME_DIR/omorfos/last-good/` and starts from it (ADR 3).
+- [ ] The parts of the session started again (ADR 28) start from what
+      the compositor keeps of the configuration too: each opens its store
+      in a library its tests run, so the directory is to be handed to it
+      from its `main`, as the compositor's is from the hardware backend.
 - [ ] Medium: a buffer of the card not finished holds up drawing; with a
       card
       ([finding 4 of what was not looked at](reviews/2026-11-16-what-the-first-review-did-not-look-at.md#4-a-programs-buffer-of-the-graphics-card-that-is-not-finished-holds-up-drawing)).

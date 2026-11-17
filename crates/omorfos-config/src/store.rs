@@ -1,10 +1,14 @@
 //! The configuration in effect.
 
+use std::fs::{self, DirBuilder, OpenOptions};
+use std::io::{self, Write};
+use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
-use crate::{Config, Diagnostic, SchemeChoice, Theme};
+use crate::config::read;
+use crate::{Config, Diagnostic, FILES, SchemeChoice, Theme};
 
 /// How long day takes to turn into night, or night into day: how long a
 /// change of scheme that `scheme: auto` makes is drawn over.
@@ -19,10 +23,14 @@ pub const STEP: Duration = Duration::from_millis(250);
 ///
 /// A reload never makes things worse: a file that fails to load keeps the
 /// value it had, the other files still apply, and the problems are kept for
-/// the caller to show to the user.
+/// the caller to show to the user. Told where to keep them, with
+/// [`Store::keep_in`], it keeps a copy of each file that loads, for a
+/// program started again to load in place of one that fails.
 #[derive(Debug)]
 pub struct Store {
     directory: PathBuf,
+    /// Where a copy of each file that loaded is kept, if anywhere.
+    kept: Option<PathBuf>,
     /// What is in effect: what was loaded, but for its theme while one
     /// scheme turns into the other.
     current: Arc<Config>,
@@ -55,10 +63,56 @@ impl Store {
         let config = Arc::new(config);
         Self {
             directory,
+            kept: None,
             current: Arc::clone(&config),
             loaded: config,
             diagnostics,
             turning: None,
+        }
+    }
+
+    /// Keeps a copy of each file that loads in `kept`, from now on, and
+    /// loads the configuration again with a file that fails to load given
+    /// the copy kept of it, where there is one, in place of the built-in
+    /// defaults.
+    ///
+    /// `kept` is to be the user's alone and last as long as the session,
+    /// as a directory under `XDG_RUNTIME_DIR` does ([`kept_dir`]): a
+    /// program started again in the same session comes up with what was in
+    /// effect before it, though a file has gone wrong meanwhile (ADR 60),
+    /// and one started in a new session with what is on disk. Each file
+    /// stands alone, as in a reload. What is kept is read as any file is,
+    /// and a copy that does not load is the defaults.
+    ///
+    /// [`kept_dir`]: crate::kept_dir
+    pub fn keep_in(&mut self, kept: impl Into<PathBuf>) {
+        let kept = kept.into();
+        let (fallback, _) = Config::load(&kept, &Config::default());
+        let (config, diagnostics) = Config::load(&self.directory, &fallback);
+        let config = Arc::new(config);
+        self.kept = Some(kept);
+        self.current = Arc::clone(&config);
+        self.loaded = config;
+        self.diagnostics = diagnostics;
+        self.keep();
+    }
+
+    /// Copies each file that loaded, as it is on disk, to where they are
+    /// kept, if they are: one that is not there is kept as empty, which
+    /// loads as it does. A copy that cannot be written leaves the one
+    /// before; what is in effect is not changed by it.
+    fn keep(&self) {
+        let Some(kept) = &self.kept else {
+            return;
+        };
+        let made = DirBuilder::new().recursive(true).mode(0o700).create(kept);
+        let loaded = FILES.iter().filter(|name| {
+            let path = self.directory.join(name);
+            !self.diagnostics.iter().any(|said| said.file == path)
+        });
+        for name in made.iter().flat_map(|()| loaded.clone()) {
+            let text = read(&self.directory.join(name));
+            let _ = text.map(|text| copy(&text, kept, name));
         }
     }
 
@@ -104,6 +158,7 @@ impl Store {
     pub fn reload(&mut self) -> bool {
         let (config, diagnostics) = Config::load(&self.directory, &self.loaded);
         self.diagnostics = diagnostics;
+        self.keep();
         let changed = config != *self.loaded;
         if changed {
             let auto = |config: &Config| config.general.appearance.scheme == SchemeChoice::Auto;
@@ -168,6 +223,18 @@ impl Store {
     }
 }
 
+/// Writes `text` as the file `name` in `kept`, readable by the user alone,
+/// whole or not at all: to a file beside it, then put in its place.
+fn copy(text: &str, kept: &Path, name: &str) -> io::Result<()> {
+    let writing = kept.join(format!(".{name}.new"));
+    let mut options = OpenOptions::new();
+    options.write(true).create(true).truncate(true).mode(0o600);
+    let written = options
+        .open(&writing)
+        .and_then(|mut file| file.write_all(text.as_bytes()));
+    written.and_then(|()| fs::rename(&writing, kept.join(name)))
+}
+
 /// How far, from 0 to 1, a scheme has turned into the other by `step`.
 #[expect(
     clippy::cast_precision_loss,
@@ -208,6 +275,71 @@ mod tests {
         let store = Store::open(directory.path());
         assert_eq!(**store.current(), Config::default());
         assert_eq!(store.diagnostics().len(), 1);
+    }
+
+    const GOOD_KEYS: &str = "bindings:\n  - { keys: Super+Return, action: close }\n";
+
+    /// A store of `directory`, keeping what loaded in `kept`.
+    fn keeping(directory: &TempDir, kept: &Path) -> Store {
+        let mut store = Store::open(directory.path());
+        store.keep_in(kept);
+        store
+    }
+
+    #[test]
+    fn a_file_gone_wrong_before_it_is_opened_again_is_what_last_loaded() {
+        let (directory, runtime) = (TempDir::new().unwrap(), TempDir::new().unwrap());
+        let kept = runtime.path().join("last-good");
+        write(&directory, "keys.yaml", GOOD_KEYS);
+        let good = Arc::clone(keeping(&directory, &kept).current());
+        assert_ne!(good.keys, Config::default().keys);
+
+        write(&directory, "keys.yaml", "bindings: [\n");
+        let again = keeping(&directory, &kept);
+        assert_eq!(again.current().keys, good.keys, "the bindings that loaded");
+        assert_eq!(again.diagnostics().len(), 1, "and what is wrong");
+        // What is kept is still what loaded, and is so for the next.
+        assert_eq!(keeping(&directory, &kept).current().keys, good.keys);
+    }
+
+    #[test]
+    fn what_is_kept_follows_what_loads_last_and_is_the_users_alone() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let (directory, runtime) = (TempDir::new().unwrap(), TempDir::new().unwrap());
+        let kept = runtime.path().join("omorfos").join("last-good");
+        write(&directory, "keys.yaml", GOOD_KEYS);
+        let mut store = keeping(&directory, &kept);
+        let mode = |path: &Path| fs::metadata(path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode(&kept), 0o700);
+        assert_eq!(mode(&kept.join("keys.yaml")), 0o600);
+
+        // Taken away, the bindings are the defaults, and so is what is kept.
+        fs::remove_file(directory.path().join("keys.yaml")).unwrap();
+        assert!(store.reload());
+        write(&directory, "keys.yaml", "bindings: [\n");
+        let again = keeping(&directory, &kept);
+        assert_eq!(again.current().keys, Config::default().keys);
+    }
+
+    #[test]
+    fn a_copy_that_does_not_load_is_the_defaults_and_one_that_cannot_be_kept_changes_nothing() {
+        let (directory, runtime) = (TempDir::new().unwrap(), TempDir::new().unwrap());
+        let kept = runtime.path().join("last-good");
+        fs::create_dir(&kept).unwrap();
+        fs::write(kept.join("keys.yaml"), "bindings: [\n").unwrap();
+        write(&directory, "keys.yaml", "bindings: [\n");
+        let store = keeping(&directory, &kept);
+        assert_eq!(store.current().keys, Config::default().keys);
+
+        // Where a file stands in the way, nothing is kept, and what is on
+        // disk is still what loads.
+        let blocked = runtime.path().join("blocked");
+        fs::write(&blocked, "").unwrap();
+        write(&directory, "keys.yaml", GOOD_KEYS);
+        let store = keeping(&directory, &blocked);
+        assert_ne!(store.current().keys, Config::default().keys);
+        assert_eq!(store.diagnostics(), []);
     }
 
     #[test]

@@ -128,6 +128,26 @@ fn a_broken_save_keeps_the_previous_configuration_and_reports_the_problem() {
 }
 
 #[test]
+fn a_file_gone_wrong_while_the_compositor_starts_again_is_as_it_last_loaded() {
+    let runtime = TempDir::new().unwrap();
+    let kept = runtime.path().join("last-good");
+    let red = ("theme.css", "desktop { background: #ff0000; }\n");
+    let mut first = Session::with_config(&[red]);
+    first.compositor_mut().keep_config_in(Some(kept.clone()));
+    drop(first);
+
+    let mut next = Session::with_config(&[("theme.css", "desktop { background: oops; }\n")]);
+    next.compositor_mut().keep_config_in(Some(kept));
+    assert_eq!(next.draw().at(5, 5), RED, "the colour that last loaded");
+    let problems = next.compositor().problems();
+    assert!(problems[0].contains("theme.css:1:23"), "{problems:?}");
+
+    // Nowhere to keep anything, it is as it was.
+    next.compositor_mut().keep_config_in(None);
+    assert_eq!(next.draw().at(5, 5), RED);
+}
+
+#[test]
 fn a_window_a_rule_opens_fullscreen_is_told_so_before_it_draws() {
     use wayland_protocols::xdg::shell::client::xdg_toplevel::State;
 

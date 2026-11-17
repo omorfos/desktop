@@ -36,6 +36,17 @@ pub fn cache_dir(xdg_cache_home: Option<&OsStr>, home: Option<&OsStr>) -> Option
         .map(|base| base.join("omorfos"))
 }
 
+/// Resolves the directory a copy of each configuration file that loaded
+/// is kept in ([`crate::Store::keep_in`]): `$XDG_RUNTIME_DIR/omorfos/last-good`,
+/// which is the user's alone and is emptied when they log out. `None`
+/// unless the variable holds an absolute path; nothing is kept then.
+#[must_use]
+pub fn kept_dir(xdg_runtime_dir: Option<&OsStr>) -> Option<PathBuf> {
+    let runtime = xdg_runtime_dir.map(PathBuf::from);
+    let runtime = runtime.filter(|path| path.is_absolute());
+    runtime.map(|runtime| runtime.join("omorfos").join("last-good"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -68,6 +79,15 @@ mod tests {
     fn is_none_without_an_absolute_base() {
         assert_eq!(resolve(None, None), None);
         assert_eq!(resolve(Some("relative"), Some("also/relative")), None);
+    }
+
+    #[test]
+    fn what_last_loaded_is_kept_in_the_runtime_directory_if_it_is_absolute() {
+        let kept = |runtime: Option<&str>| kept_dir(runtime.map(OsStr::new));
+        let expected = PathBuf::from("/run/user/1000/omorfos/last-good");
+        assert_eq!(kept(Some("/run/user/1000")), Some(expected));
+        assert_eq!(kept(Some("relative")), None);
+        assert_eq!(kept(None), None);
     }
 
     #[test]

@@ -1401,6 +1401,18 @@ impl Compositor {
         }
     }
 
+    /// Keeps a copy of each configuration file that loads in `kept`, if
+    /// there is anywhere to, and applies what loads with a file that does
+    /// not given what was kept of it: the compositor started again in the
+    /// same session comes up as it was, though a file has gone wrong since
+    /// (ADR 60). See [`omorfos_config::Store::keep_in`].
+    pub fn keep_config_in(&mut self, kept: Option<PathBuf>) {
+        if let Some(kept) = kept {
+            self.store.keep_in(kept);
+            self.apply_config(Vec::new());
+        }
+    }
+
     /// Reads the configuration again and applies it.
     pub fn reload_config(&mut self) {
         self.store.reload();
