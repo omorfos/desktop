@@ -449,7 +449,7 @@ impl Frosting<PixmanRenderer, Drawn> for Blank {
 
 /// A blur wider than it is asked for, as a shader that sampled further
 /// apart than it should would make.
-struct Wider;
+pub(crate) struct Wider;
 
 impl Frosting<PixmanRenderer, Drawn> for Wider {
     fn blur(

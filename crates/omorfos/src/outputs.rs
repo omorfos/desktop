@@ -187,6 +187,7 @@ impl Compositor {
         if let Some(head) = head {
             head.modes = modes.to_vec();
             head.mode = Some(driven);
+            self.changes += 1;
         }
     }
 
@@ -556,6 +557,7 @@ impl Compositor {
             layer_map_for_output(&head.output).arrange();
         }
         self.desktop.set_primary(self.primary());
+        self.changes += 1;
         self.update_screens();
         self.configure_lock_surfaces();
     }

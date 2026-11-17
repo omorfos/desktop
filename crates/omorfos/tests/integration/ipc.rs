@@ -356,6 +356,94 @@ fn a_subscriber_is_sent_the_state_now_and_whenever_it_changes() {
     assert!(moved.workspaces[1].active);
 }
 
+/// What a subscriber is told by the turn after, if anything.
+fn told(session: &mut Session, peer: &mut Client) -> Option<State> {
+    session.step();
+    match peer.try_receive() {
+        Ok(Some(Reply::State(state))) => Some(state),
+        other => {
+            assert!(matches!(other, Ok(None)), "{other:?}");
+            None
+        }
+    }
+}
+
+#[test]
+fn a_subscriber_is_told_of_a_change_to_anything_the_state_is_made_of() {
+    let mut session = Session::new();
+    session.write_config("config.yaml", "workspaces: [web, code]\n");
+    let socket = session.listen();
+    let mut peer = Client::connect(&socket).unwrap();
+    assert_eq!(session.ask(&mut peer, &Request::Reload), Reply::Done);
+    let Reply::State(_) = session.ask(&mut peer, &Request::Subscribe) else {
+        unreachable!("expected the state")
+    };
+    peer.set_nonblocking(true).unwrap();
+    assert_eq!(told(&mut session, &mut peer), None, "nothing changed");
+
+    // What is configured, though the desktop is as it was.
+    session.write_config("config.yaml", "workspaces: [mail, chat]\n");
+    session.compositor_mut().reload_config();
+    let state = told(&mut session, &mut peer).expect("the names");
+    assert_eq!(state.workspaces[0].name, "mail");
+
+    // The ways a screen can be driven.
+    let mode = omorfos_config::OfferedMode {
+        width: 640,
+        height: 480,
+        refresh: 60,
+        preferred: true,
+    };
+    let output = session.output();
+    session.compositor_mut().offer_modes(&output, &[mode], mode);
+    let state = told(&mut session, &mut peer).expect("the modes");
+    assert_eq!(state.screens[0].modes, ["640x480@60"]);
+
+    // The lock, which a locker covering the one screen confirms.
+    let _lock = crate::lock::lock(&mut session);
+    let last = std::iter::from_fn(|| told(&mut session, &mut peer)).last();
+    assert!(last.expect("the lock").locked, "the last told is locked");
+
+    // Where the screens stand.
+    session.add_output((320, 240));
+    let state = told(&mut session, &mut peer).expect("the second screen");
+    assert_eq!(state.screens.len(), 2);
+
+    // What is wrong.
+    let command = omorfos_config::Command::new("/nonexistent/omorfos-test-program", [""; 0]);
+    let spawn = omorfos_config::Action::Spawn(command.unwrap().into());
+    session.compositor_mut().perform(&spawn);
+    let state = told(&mut session, &mut peer).expect("the problem");
+    assert_eq!(state.problems.len(), 1);
+
+    // What has happened.
+    let said = session.try_frosting(Ok(crate::glass::Wider)).err().unwrap();
+    let state = told(&mut session, &mut peer).expect("the event");
+    assert_eq!(state.events, [said]);
+
+    // Staying awake.
+    session
+        .compositor_mut()
+        .perform(&omorfos_config::Action::StayAwake);
+    let state = told(&mut session, &mut peer).expect("staying awake");
+    assert!(state.awake.is_some());
+
+    // The radios, as another peer says.
+    let mut radios = Client::connect(&socket).unwrap();
+    let said = vec![omorfos_ipc::Radio {
+        kind: "wifi".to_owned(),
+        off: false,
+        switched: false,
+    }];
+    let asked = Request::Radios {
+        radios: said.clone(),
+    };
+    radios.send(&asked).unwrap();
+    session.step();
+    let state = told(&mut session, &mut peer).expect("the radios");
+    assert_eq!(state.radios, said);
+}
+
 #[test]
 fn a_line_that_is_not_a_request_gets_an_error_and_the_connection_survives() {
     let mut session = Session::new();

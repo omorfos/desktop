@@ -318,6 +318,11 @@ pub struct Compositor {
     pub(crate) heads: Vec<Head>,
     /// The outputs that stand nowhere of their own.
     pub(crate) aside: Aside,
+    /// How many times the desktop or the screens have changed: where the
+    /// screens stand, how large, and the ways each can be driven. What IPC
+    /// peers and the relay are told of them is made again only once this
+    /// has moved.
+    pub(crate) changes: u64,
     /// Pictures of the screen being taken by programs that may.
     pub(crate) capture: Capture,
     _surfaces: Offered,
@@ -335,6 +340,9 @@ pub struct Compositor {
     pub(crate) foreign_toplevels: ForeignToplevelListState,
 
     pub(crate) desktop: Desktop,
+    /// The desktop as it was at the end of the turn before, to count its
+    /// changes by.
+    desktop_before: Desktop,
     /// Windows the desktop knows about.
     pub(crate) windows: Vec<Mapped>,
     /// Toplevels that exist but have not shown any content yet.
@@ -540,11 +548,13 @@ impl Compositor {
                     popups: PopupManager::default(),
                     heads: Vec::new(),
                     aside: Aside::default(),
+                    changes: 0,
                     screens: Vec::new(),
                     layer_shell,
                     data_device,
                     foreign_toplevels,
                     desktop: Desktop::new(omorfos_core::Settings::default(), 1),
+                    desktop_before: Desktop::new(omorfos_core::Settings::default(), 1),
                     windows: Vec::new(),
                     unmapped: Vec::new(),
                     scene: Vec::new(),
@@ -1352,6 +1362,7 @@ impl Compositor {
         self.update_seal();
         self.space.refresh();
         self.popups.cleanup();
+        self.count_desktop_change();
         self.publish_ipc(now);
         self.tell_holder();
         self.tell_relay();
@@ -1362,6 +1373,15 @@ impl Compositor {
     /// it started, unless told otherwise, as tests do.
     pub fn set_languages(&mut self, languages: &[String]) {
         self.words = Words::in_languages(&COMPOSITOR, languages);
+    }
+
+    /// Counts a change of the desktop since the turn before among the
+    /// changes, as each turn ends.
+    fn count_desktop_change(&mut self) {
+        if self.desktop != self.desktop_before {
+            self.desktop_before.clone_from(&self.desktop);
+            self.changes += 1;
+        }
     }
 
     // --- Configuration -------------------------------------------------------

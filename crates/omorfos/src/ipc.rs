@@ -53,8 +53,8 @@ pub(crate) struct Server {
     /// The user who may connect: the owner of the socket file.
     owner: u32,
     peers: Vec<Peer>,
-    /// The state last sent to subscribers.
-    published: Option<State>,
+    /// The state last sent to subscribers, and what it was made from.
+    published: Option<Published>,
     /// When peers that could not be sent everything are tried again, or
     /// the socket listened to again.
     pub(crate) retry: Option<Instant>,
@@ -64,6 +64,16 @@ pub(crate) struct Server {
     /// be accepted from, when no descriptor was left; it is tried again at
     /// each turn, and listened to again once it can be.
     paused: bool,
+}
+
+/// The state last sent to subscribers, with what it was made from that
+/// is not in it as it is: so that a turn in which none of it changed need
+/// not make the state again to know it is the same.
+#[derive(Debug)]
+struct Published {
+    state: State,
+    /// The count of the desktop's and the screens' changes then.
+    changes: u64,
 }
 
 /// What a peer that is sent the state whenever it changes wants it for.
@@ -368,20 +378,34 @@ impl Compositor {
         let Some(mut server) = self.ipc.take() else {
             return;
         };
-        let state = self.ipc_state();
-        let changed = server.published.as_ref() != Some(&state);
-        let update = Reply::State(state.clone());
-        for peer in server
-            .peers
-            .iter_mut()
-            .filter(|peer| peer.follows.is_some())
-        {
-            if changed || peer.waiting {
-                peer.queue(&update);
-                peer.waiting = false;
+        // Made again only for a peer that follows it, and only once
+        // something it is made of has changed, or a peer has just asked.
+        let follows = server.peers.iter().any(|peer| peer.follows.is_some());
+        let same = server
+            .published
+            .as_ref()
+            .is_some_and(|published| self.as_published(published));
+        let waiting = server.peers.iter().any(|peer| peer.waiting);
+        if follows && (!same || waiting) {
+            let state = self.ipc_state();
+            let told = server.published.as_ref().map(|published| &published.state);
+            let changed = told != Some(&state);
+            let update = Reply::State(state.clone());
+            for peer in server
+                .peers
+                .iter_mut()
+                .filter(|peer| peer.follows.is_some())
+            {
+                if changed || peer.waiting {
+                    peer.queue(&update);
+                    peer.waiting = false;
+                }
             }
+            server.published = Some(Published {
+                state,
+                changes: self.changes,
+            });
         }
-        server.published = Some(state);
         for peer in &mut server.peers {
             peer.flush();
         }
@@ -580,6 +604,22 @@ impl Compositor {
             screen(head, nowhere, String::new(), true)
         });
         standing.chain(mirrors).chain(dark).collect()
+    }
+
+    /// Whether the state would be as `published` is: whether what it is
+    /// made of is as it was then. A window's handle is made and let go of
+    /// with the window, and so is the same while the desktop is; and the
+    /// configuration, which names the workspaces, is applied by laying the
+    /// screens out again, which is counted among the changes.
+    fn as_published(&self, published: &Published) -> bool {
+        let state = &published.state;
+        let awake = self.presence.awake.map(crate::lock::Awake::said);
+        published.changes == self.changes
+            && state.problems == self.problems()
+            && self.events().eq(state.events.iter().map(String::as_str))
+            && state.locked == self.is_locked_for_certain()
+            && state.awake.map(|awake| awake.until) == awake
+            && state.radios == self.radios
     }
 
     fn ipc_state(&self) -> State {

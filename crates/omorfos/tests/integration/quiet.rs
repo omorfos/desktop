@@ -39,3 +39,28 @@ fn a_session_with_nothing_changing_draws_nothing_wakes_for_nothing_and_allocates
         );
     }
 }
+
+#[test]
+fn a_session_with_nothing_changing_allocates_no_more_for_a_peer_that_follows_it() {
+    let mut session = Session::new();
+    let mut peer = omorfos_ipc::Client::connect(&session.listen()).unwrap();
+    let mut client = session.connect();
+    let _window = session.open_decorated(&mut client, "app", (200, 100), 0xff00_ff00);
+    let told = session.ask(&mut peer, &omorfos_ipc::Request::Subscribe);
+    assert!(matches!(told, omorfos_ipc::Reply::State(_)), "{told:?}");
+    session.eventually(|session| !session.render());
+
+    for turn in 0..10 {
+        assert_eq!(session.compositor().deadline(), None, "turn {turn}");
+        let made = allocation_counter::measure(|| {
+            session.advance(Duration::from_millis(16));
+            session.render();
+        });
+        assert_eq!(made.count_current, 0, "turn {turn} kept what it made");
+        assert!(
+            made.count_total <= CEILING,
+            "turn {turn} allocated {} times, more than {CEILING}",
+            made.count_total
+        );
+    }
+}
