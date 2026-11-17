@@ -1731,10 +1731,37 @@ to false, as `launcher.sums` is (ADR 83).
       the screen and puts it there, and the launcher draws itself as wide
       as it would be anyway: it is to lay itself out at the width it is
       given. Only a screen less than 480 units wide shows it.
-- [ ] Files in the launcher: those in the home directory that are not
-      hidden, found by name and opened with the program for their kind.
-      Which directories are looked in is a setting, and nothing is kept
-      on disk about them.
+- [ ] The launcher's look (asked on 17 November 2026): of glass by
+      default, see-through and blurring what is behind it, as menus and
+      notifications are; its text field with no background of its own;
+      and a sign before the field that says what the launcher is doing
+      with what is typed: a magnifying glass to begin with and while it
+      searches (Lucide's `search`), a calculator while it works out a
+      sum (`calculator`), a terminal while it is given a command
+      (`terminal`), and a grid while a program is being picked
+      (`layout-grid`, or `layout-grid-circles`, as was asked for, if
+      Lucide has it).
+- [ ] Commands in the launcher (asked on 17 November 2026): what is
+      typed after `>` is run as a command in a new window of the
+      terminal, by the user's shell, and the window stays open after
+      it, so that what it says can be read and gone on from there. The
+      `>` sets it apart from a program's name. `launcher.commands:
+      false` turns it off (ADR 83). The launcher keeps nothing of what
+      was run; nor does the shell's history, as the shell that runs it
+      is not the one typed into. A command with nothing to say opens a
+      window all the same: there is no way to run one unseen, until it
+      is missed.
+- [ ] The terminal, as a setting: which program it is and how it is
+      given a command to run, `foot` unless said otherwise, for the
+      built-in key, the menu, programs that ask for a terminal
+      (`Terminal=true`) and commands in the launcher. Today each starts
+      `foot`, and nothing says which the user prefers.
+- [ ] Files in the launcher (asked again on 17 November 2026): those
+      found by name and opened with the program for their kind. They
+      are looked for in the home directory and hidden ones are passed
+      over, unless the configuration says otherwise: which directories,
+      and whether hidden files are among them. `launcher.files: false`
+      turns it off (ADR 83). Nothing is kept on disk about them.
 - [ ] Shortcuts in the launcher: a word, and what to do with the rest of
       what is typed. "google" with a question opens the default browser
       at a search for it; "ai" opens an assistant, in the browser or a
