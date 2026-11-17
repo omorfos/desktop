@@ -27,8 +27,6 @@ a known gap.
   `session.log` should then begin with the line saying so. Paths under
   `/media/<you>` were left out as they should be; the journal's section
   was not this login's, which is a fault of its own (stage 8).
-- The holder started by a login screen (stage 3): GDM, SDDM or LightDM,
-  where so far it has been started from the console.
 - A new version taken up as it is installed (stage 3): `sudo make
   install PROFILE=nightly` with the session in use, of a build that is
   not the one running.
@@ -812,7 +810,7 @@ what only games and touchpads need last.
       (below), so nothing asks for a swap but the user, and ADR 59's
       word about the next login stands.
 - [ ] Known gaps in the holder: on real hardware it has been tried by
-      hand, started from a console, but not yet by a login screen, and
+      hand, started from a console and by a login screen, GDM, but
       the backend's part of it, taking the connection and becoming the
       holder, is run by no test; a compositor that hangs without ending is
       waited for for ever; and `restart_compositor` has neither a key
@@ -2107,8 +2105,15 @@ Security:
 - [ ] Medium: a buffer of the card not finished holds up drawing; with a
       card
       ([finding 4 of what was not looked at](reviews/2026-11-16-what-the-first-review-did-not-look-at.md#4-a-programs-buffer-of-the-graphics-card-that-is-not-finished-holds-up-drawing)).
-- [ ] Medium: on a card, an idle session wakes at the screen's rate
-      ([finding 5](reviews/2026-11-16-the-whole-tree.md#5-on-a-graphics-card-a-session-with-nothing-changing-wakes-at-the-screens-rate-for-good)).
+- [x] Medium: on a card, an idle session wakes at the screen's rate
+      ([finding 5](reviews/2026-11-16-the-whole-tree.md#5-on-a-graphics-card-a-session-with-nothing-changing-wakes-at-the-screens-rate-for-good)):
+      the backend says a frame has gone, where none was drawn, only
+      while something on that screen waits to be told
+      (`Compositor::awaits_frame`), which looks at just what is told.
+      Counted by hand on a laptop's own screen at 60 Hz, with nothing
+      moving: one and two waits for something to happen in ten seconds
+      (`perf stat -e syscalls:sys_enter_epoll_wait`), where there were
+      600 and more.
 - [x] The tests that need a card run on a virtual one where there is
       none: `OMORFOS_TEST_CARD=/dev/dri/card0` on vgem, drawn on by
       llvmpipe, which WSL2's kernel has built in (`docs/TESTING.md`). The

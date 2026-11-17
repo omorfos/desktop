@@ -111,6 +111,14 @@ allocator of the integration tests, and is held under a ceiling that only
 comes down: a change that makes an idle turn allocate more fails it, and
 one that takes allocations out lowers it in the same commit.
 
+On a graphics card a frame that reaches the screen says when the next
+may be drawn; where nothing was drawn, the hardware backend says so a
+frame later, and only while `Compositor::awaits_frame` says something on
+that screen waits to be told. The tests hold it to what
+`Compositor::send_frames` tells, a window, a panel and a picture given
+for the pointer among them, since a frame awaited that is never told
+would wake the session at the screen's rate for good.
+
 ### Time
 
 The session's clock is `session.now`, and it stands still. Nothing takes

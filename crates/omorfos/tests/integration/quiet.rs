@@ -3,7 +3,12 @@
 
 use std::time::Duration;
 
-use crate::common::Session;
+use omorfos::Input;
+use omorfos_config::Action;
+
+use crate::common::{Client, Session, Toplevel, WIDTH};
+use crate::cursors::theme;
+use crate::layers::panel;
 
 /// The most a turn of a session with nothing changing may allocate, which
 /// is what it allocates today, with one window in a frame of ours: 16 in
@@ -63,4 +68,108 @@ fn a_session_with_nothing_changing_allocates_no_more_for_a_peer_that_follows_it(
             made.count_total
         );
     }
+}
+
+/// Whether anything on the session's screen waits to be told that a frame
+/// was shown there.
+fn awaited(session: &Session) -> bool {
+    session.compositor().awaits_frame(&session.output())
+}
+
+/// `session` with one window open and nothing left to draw or to tell.
+fn settled_in(mut session: Session) -> (Session, Client, Toplevel) {
+    let mut client = session.connect();
+    let window = session.open(&mut client, "app", (200, 100), 0xff00_ff00);
+    session.eventually(|session| !session.render());
+    session.send_frames(Duration::from_millis(16));
+    (session, client, window)
+}
+
+/// A session with one window open and nothing left to draw or to tell.
+fn settled() -> (Session, Client, Toplevel) {
+    settled_in(Session::new())
+}
+
+#[test]
+fn a_frame_is_awaited_only_while_a_window_has_asked_to_be_told_of_one() {
+    let (mut session, mut client, window) = settled();
+    assert!(!awaited(&session), "nothing asked");
+
+    // Asked with nothing changed: nothing is drawn, so no frame reaching
+    // the screen will say so, and the backend has to, a frame later.
+    client.request_frame(&window.surface);
+    session.roundtrip(&mut client);
+    assert!(!session.render(), "nothing changed");
+    assert!(awaited(&session));
+
+    session.send_frames(Duration::from_millis(32));
+    assert!(!awaited(&session), "told, and nothing asked since");
+}
+
+#[test]
+fn a_frame_a_window_on_a_workspace_not_shown_asked_for_is_not_awaited() {
+    let (mut session, mut client, window) = settled_in(Session::with_workspaces());
+    session.compositor_mut().perform(&Action::NextWorkspace);
+    assert_eq!(session.compositor().desktop().active_workspace(), 1);
+    // Once the workspaces have slid, and the window is off the screen.
+    session.advance(Duration::from_secs(1));
+    session.eventually(|session| !session.render());
+    session.send_frames(Duration::from_millis(32));
+
+    // It is told of no frame while it is not shown, so waiting for it would
+    // be waiting for good.
+    client.request_frame(&window.surface);
+    session.roundtrip(&mut client);
+    assert!(!awaited(&session));
+}
+
+#[test]
+fn a_frame_a_panel_asked_for_is_awaited() {
+    let (mut session, mut client, _window) = settled();
+    let (panel, _role) = session.open_layer(&mut client, &panel(), (WIDTH, 30), 0xffff_ff00);
+    session.eventually(|session| !session.render());
+    session.send_frames(Duration::from_millis(32));
+    assert!(!awaited(&session), "nothing asked");
+
+    client.request_frame(&panel);
+    session.roundtrip(&mut client);
+    assert!(awaited(&session));
+    session.send_frames(Duration::from_millis(48));
+    assert!(!awaited(&session), "told");
+}
+
+#[test]
+fn a_frame_the_picture_a_program_gave_the_pointer_asked_for_is_awaited() {
+    let (mut session, mut client, _window) = settled();
+    theme(&mut session);
+    session
+        .compositor_mut()
+        .input(Input::Motion { x: 50.0, y: 50.0 }, 0);
+    session.roundtrip(&mut client);
+    let picture = client.surface();
+    client.set_cursor(Some(&picture), (2, 2));
+    client.fill(&picture, (6, 6), 0xffff_ffff);
+    session.roundtrip(&mut client);
+    session.eventually(|session| !session.render());
+    session.send_frames(Duration::from_millis(32));
+    assert!(!awaited(&session), "nothing asked");
+
+    client.request_frame(&picture);
+    session.roundtrip(&mut client);
+    assert!(awaited(&session));
+    session.send_frames(Duration::from_millis(48));
+    assert!(!awaited(&session), "told");
+}
+
+#[test]
+fn a_frame_asked_for_on_one_screen_is_not_awaited_on_another() {
+    let (mut session, mut client, window) = settled();
+    let second = session.add_output((800, 600));
+    session.eventually(|session| !session.render());
+    session.send_frames(Duration::from_millis(32));
+
+    client.request_frame(&window.surface);
+    session.roundtrip(&mut client);
+    assert!(awaited(&session), "where the window is");
+    assert!(!session.compositor().awaits_frame(&second));
 }

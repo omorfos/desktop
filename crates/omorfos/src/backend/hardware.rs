@@ -785,11 +785,12 @@ fn turn(
                 true
             }
         };
-        if drawn || screen.ticking {
+        // Nothing changed, so no frame will reach the screen to pace the
+        // applications that are waiting to draw. Tell them a frame later,
+        // where any is waiting: with none, nothing is to wake for.
+        if drawn || screen.ticking || !compositor.awaits_frame(&screen.output) {
             continue;
         }
-        // Nothing changed, so no frame will reach the screen to pace the
-        // applications that are waiting to draw. Tell them a frame later.
         screen.ticking = true;
         let later = Rc::clone(hardware);
         let (connector, started) = (screen.connector, *started);

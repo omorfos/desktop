@@ -32,7 +32,7 @@ use smithay::utils::{Logical, Point, Rectangle};
 use smithay::wayland::shell::wlr_layer::Layer;
 
 use crate::Scale;
-use crate::compositor::{Compositor, Element, Painted, View, color, layer_origin};
+use crate::compositor::{Compositor, Element, Painted, Told, View, color, layer_origin};
 use crate::glass::{self, Pane};
 use crate::outputs::domain;
 use crate::paint;
@@ -951,10 +951,11 @@ impl Compositor {
             .collect()
     }
 
-    /// Tells each window the overview on `output` shows, on its own or on a
-    /// workspace in its strip, that what it drew has been shown, so that it
-    /// is kept up to date there as it would be on the screen.
-    pub(crate) fn send_overview_frames(&self, output: &Output, elapsed: Duration) {
+    /// Hands `told` each window the overview on `output` shows, on its own
+    /// or on a workspace in its strip, which is told that what it drew has
+    /// been shown, so that it is kept up to date there as it would be on
+    /// the screen.
+    pub(crate) fn each_overviewed(&self, output: &Output, told: &mut dyn FnMut(Told<'_>)) {
         let here = self.head(output).map(|head| domain(head.area()));
         let looking = self.cards.overview.open.as_ref();
         let looking = looking.filter(|looking| here == Some(looking.screen));
@@ -964,12 +965,7 @@ impl Compositor {
             on.filter_map(|listed| self.mapped(listed.window.id))
         });
         for mapped in shown {
-            let output = output.clone();
-            mapped
-                .window
-                .send_frame(&output, elapsed, Some(Duration::ZERO), |_, _| {
-                    Some(output.clone())
-                });
+            told(Told::Window(&mapped.window));
         }
     }
 }

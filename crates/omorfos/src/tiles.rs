@@ -24,7 +24,7 @@ use smithay::wayland::compositor::with_states;
 use smithay::wayland::shell::xdg::SurfaceCachedState;
 
 use crate::Scale;
-use crate::compositor::{Compositor, Element, Mapped, Painted, View, color, logical_size};
+use crate::compositor::{Compositor, Element, Mapped, Painted, Told, View, color, logical_size};
 use crate::icons::{Icon, WindowIcons, icon_pixels};
 use crate::input::Drag;
 use crate::outputs::Head;
@@ -656,10 +656,10 @@ impl Compositor {
         pictures.map(Element::Cropped).collect()
     }
 
-    /// Tells each window offered in a part with nothing in it on `output`
-    /// that what it drew has been shown, so that its picture there is
-    /// kept up to date as it would be on the screen.
-    pub(crate) fn send_offered_frames(&self, output: &Output, elapsed: Duration) {
+    /// Hands `told` each window offered in a part with nothing in it on
+    /// `output`, which is told that what it drew has been shown, so that
+    /// its picture there is kept up to date as it would be on the screen.
+    pub(crate) fn each_offered(&self, output: &Output, told: &mut dyn FnMut(Told<'_>)) {
         let here = self.head(output).map(Head::area);
         let offers = self.hover.lines.offers.iter();
         let offers = offers.filter(|offer| {
@@ -667,12 +667,7 @@ impl Compositor {
             here.is_some_and(|here| here.contains(corner))
         });
         for mapped in offers.filter_map(|offer| self.mapped(offer.window)) {
-            let output = output.clone();
-            mapped
-                .window
-                .send_frame(&output, elapsed, Some(Duration::ZERO), |_, _| {
-                    Some(output.clone())
-                });
+            told(Told::Window(&mapped.window));
         }
     }
 

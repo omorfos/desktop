@@ -29,7 +29,7 @@ use smithay::reexports::wayland_server::backend::ObjectId;
 
 use crate::Scale;
 use crate::bridge;
-use crate::compositor::{Compositor, Element, Painted, View, color, logical};
+use crate::compositor::{Compositor, Element, Painted, Told, View, color, logical};
 use crate::glass::{self, Pane};
 use crate::icons::{Icon, Making, Sizes, WindowIcons};
 use crate::outputs::domain;
@@ -970,10 +970,10 @@ impl Compositor {
         }
     }
 
-    /// Tells each window shown in the switcher on `output` that what it
-    /// drew has been shown, so that its picture there is kept up to date
-    /// as it would be on the screen.
-    pub(crate) fn send_switched_frames(&self, output: &Output, elapsed: Duration) {
+    /// Hands `told` each window shown in the switcher on `output`, which
+    /// is told that what it drew has been shown, so that its picture there
+    /// is kept up to date as it would be on the screen.
+    pub(crate) fn each_switched(&self, output: &Output, told: &mut dyn FnMut(Told<'_>)) {
         let here = self.head(output).map(|head| domain(head.area()));
         let switching = self
             .shown_switcher()
@@ -987,12 +987,7 @@ impl Compositor {
             .iter()
             .filter_map(|item| self.mapped(item.window));
         for mapped in shown {
-            let output = output.clone();
-            mapped
-                .window
-                .send_frame(&output, elapsed, Some(Duration::ZERO), |_, _| {
-                    Some(output.clone())
-                });
+            told(Told::Window(&mapped.window));
         }
     }
 }

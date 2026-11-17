@@ -54,7 +54,7 @@ use smithay::backend::renderer::utils::with_renderer_surface_state;
 use smithay::backend::renderer::{
     Color32F, ExportMem, ImportAll, ImportMem, Offscreen, Renderer, RendererSuper, Texture,
 };
-use smithay::desktop::utils::send_frames_surface_tree;
+use smithay::desktop::utils::{send_frames_surface_tree, with_surfaces_surface_tree};
 use smithay::desktop::{LayerMap, LayerSurface, PopupManager, Space, Window, layer_map_for_output};
 use smithay::input::keyboard::{KeyboardHandle, XkbConfig};
 use smithay::input::pointer::{
@@ -75,7 +75,8 @@ use smithay::utils::{
 };
 use smithay::wayland::alpha_modifier::AlphaModifierState;
 use smithay::wayland::compositor::{
-    CompositorClientState, CompositorState, SurfaceData, send_surface_state, with_states,
+    CompositorClientState, CompositorState, SurfaceAttributes, SurfaceData, send_surface_state,
+    with_states,
 };
 use smithay::wayland::cursor_shape::CursorShapeManagerState;
 use smithay::wayland::dmabuf::{DmabufFeedbackBuilder, DmabufGlobal, DmabufState};
@@ -4451,44 +4452,80 @@ impl Compositor {
     /// that output's pace and not at several at once.
     pub fn send_frames(&mut self, output: &Output, elapsed: Duration) {
         self.confirm_lock();
-        let shown = |surface: &WlSurface| {
-            send_frames_surface_tree(surface, output, elapsed, Some(Duration::ZERO), |_, _| {
-                Some(output.clone())
-            });
+        let whose = |_: &WlSurface, _: &SurfaceData| Some(output.clone());
+        let throttle = Some(Duration::ZERO);
+        self.each_told(output, &mut |told| match told {
+            Told::Window(window) => window.send_frame(output, elapsed, throttle, whose),
+            Told::Layer(layer) => layer.send_frame(output, elapsed, throttle, whose),
+            Told::Surface(surface) => {
+                send_frames_surface_tree(surface, output, elapsed, throttle, whose);
+            }
+        });
+    }
+
+    /// Whether anything on `output` has asked to be told of the next frame
+    /// shown there and has not been: what [`Compositor::send_frames`] would
+    /// tell, and nothing else, as waiting on what is never told would be
+    /// waiting for good. Where nothing is drawn, no frame reaches the
+    /// screen to say so, and a backend that paces by the screen has to tell
+    /// them a frame later; with nothing waiting it has no one to tell, and
+    /// a session with nothing changing is left asleep (ADR 9).
+    #[must_use]
+    pub fn awaits_frame(&self, output: &Output) -> bool {
+        let mut awaited = false;
+        let mut asks = |_: &WlSurface, states: &SurfaceData| {
+            let mut attributes = states.cached_state.get::<SurfaceAttributes>();
+            awaited |= !attributes.current().frame_callbacks.is_empty();
         };
+        self.each_told(output, &mut |told| match told {
+            Told::Window(window) => window.with_surfaces(&mut asks),
+            Told::Layer(layer) => layer.with_surfaces(&mut asks),
+            Told::Surface(surface) => with_surfaces_surface_tree(surface, &mut asks),
+        });
+        awaited
+    }
+
+    /// Hands `told` everything on `output` that is told of the frames shown
+    /// there, each once.
+    fn each_told(&self, output: &Output, told: &mut dyn FnMut(Told<'_>)) {
         let here = |head: Option<&Head>| head.is_some_and(|head| head.output == *output);
         if let Some(surface) = self.lock_surface_on(output) {
-            shown(surface);
+            told(Told::Surface(surface));
         }
         for frame in &self.scene {
             if here(self.head_for(frame.outer)) {
-                frame
-                    .window
-                    .send_frame(output, elapsed, Some(Duration::ZERO), |_, _| {
-                        Some(output.clone())
-                    });
+                told(Told::Window(&frame.window));
             }
         }
-        self.send_offered_frames(output, elapsed);
-        self.send_switched_frames(output, elapsed);
-        self.send_overview_frames(output, elapsed);
+        self.each_offered(output, told);
+        self.each_switched(output, told);
+        self.each_overviewed(output, told);
         for layer in layer_map_for_output(output).layers() {
-            layer.send_frame(output, elapsed, Some(Duration::ZERO), |_, _| {
-                Some(output.clone())
-            });
+            told(Told::Layer(layer));
         }
         // An application may animate the picture it gave for the pointer,
         // and that of what it drags, which is drawn where the pointer is.
         if let Look::Surface(surface) = &self.shown
             && here(self.pointer_head())
         {
-            shown(surface);
+            told(Told::Surface(surface));
         }
         let pointed = here(self.pointer_head());
         if let Some(icon) = self.hover.dragged.as_ref().filter(|_| pointed) {
-            shown(&icon.surface);
+            told(Told::Surface(&icon.surface));
         }
     }
+}
+
+/// Something told that a frame was shown on its screen.
+pub(crate) enum Told<'a> {
+    /// A window, with the menus it has open.
+    Window(&'a Window),
+    /// A panel or the like, with the menus it has open.
+    Layer(&'a LayerSurface),
+    /// A surface with those laid on it: a lock screen, or a picture a
+    /// program gave for the pointer or for what it drags.
+    Surface(&'a WlSurface),
 }
 
 /// One output's view of the space, for drawing on it.
