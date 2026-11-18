@@ -108,6 +108,39 @@ that is done without anything of ours running as root for longer than
 one change takes (ADR 35) is for an ADR of its own, and a review for
 security, before any of it is written.
 
+### A program that stands alone follows the desktop it is on
+
+Where it is not omorfos's desktop, a program of ours is to look at home
+on whoever's it is, as other programs are asked to on ours (ADR 97). It
+asks the settings portal, which is what omorfos itself answers and what
+GNOME, KDE and a portal installed beside sway or Hyprland answer too,
+for six things, and takes them over its own:
+
+- whether the desktop is dark or light;
+- the accent;
+- whether contrast is to be high;
+- whether what moves is to move less;
+- at which side of a titlebar the buttons stand, and in which order,
+  for those of ours that draw their own;
+- the fonts, and the pointer's theme and size.
+
+The first four are freedesktop's own settings, the four the settings
+portal documents. The last two are
+GNOME's, `button-layout` and the settings of its interface, which every
+toolkit reads through the portal and omorfos serves under those names:
+a convention, not a specification, and safe to lean on.
+
+It asks them on omorfos too, of omorfos's own portal, in place of the
+compositor's socket: one way of learning them everywhere.
+
+Glass is not among them. No desktop says how much of what is behind a
+surface should show; that stays the program's, from `theme.css`. What
+is behind a program of ours is blurred where the compositor offers to,
+by `ext-background-effect`, which is in wayland-protocols and which
+KDE and GNOME have both taken up in 2026, and the program is solid
+where it does not. Nothing says "less transparency" either: high contrast is the
+nearest any desktop says, and makes ours solid.
+
 ## What standing alone obliges
 
 - **Settings and a theme of its own.** A program that stands alone
