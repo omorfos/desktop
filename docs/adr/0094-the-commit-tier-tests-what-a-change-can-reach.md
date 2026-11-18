@@ -43,6 +43,41 @@ more; `commits` passes a commit that reaches none as the one before it.**
 `affected.test.sh` tests it against the workspace as it is, in every
 `commit` run, and that each path on the list is still there.
 
+**One list, asked by every tier, and finer than crates** (added on
+18 November 2026). The list was first of what is read by nothing, and
+all else outside the crates reached everything: a line changed in the
+README, a manual page or a workflow ran every test there is, and `push`
+did not ask at all. The maintainer asked that a change be tested by what
+reads it. `affected.sh` now has two lists, and `commit`, `commits` and
+`push` all ask it:
+
+- **Read by nothing** that is built or tested: the first list, with what
+  was missing from it, the guides for agents, the design language, the
+  list of standards, and what only a tool every tier runs is set by,
+  `clippy.toml` and `rustfmt.toml` among them.
+- **Read by less than everything**: each path with what it reaches. What
+  is built into the programs reaches the crate it is built into and what
+  depends on that, as a crate's own file does: the messages of `i18n/`,
+  what the schemas promise, the credits. What one test or two read
+  reaches those tests alone, written `crate:test`, as the guide and the
+  manual pages reach the tests that hold them to the code, and the
+  packaging, the README, the licences and the Makefile the test of what
+  is packaged. The gates' scripts and the hooks reach `scripts`, which
+  is shellcheck where it is installed, and the workflows `workflows`,
+  the two checks of them.
+
+The built-in theme needed nothing: it is a file of the crate that reads
+it, and reaches what draws with it, as it must, a tint changed having
+broken tests in the compositor and in each program that draws.
+
+A path on neither list still reaches everything. What keeps a path from
+being put on one wrongly is tested, where before it was only watched
+for: `affected.test.sh` looks through the crates for what each reads
+from outside itself, written out from two folders up or named outright
+by a test at the top of the repository, and fails where such a path is
+not said to reach the crate that reads it. It finds what is written as
+a path; a path made up as the test runs it would not be found.
+
 **The coverage gate is not narrowed, anywhere.** A change to one crate
 can leave a line of another unreached: of one it depends on, whose code
 its tests were what ran, as well as of one that depends on it. Showing

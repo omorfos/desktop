@@ -71,7 +71,9 @@ before it must build and pass the tests of what it reaches, alone
 `.claude/skills/handover/gates.sh push` runs them on the last commit, in
 a worktree of its own so that work can go on meanwhile, and checks each
 before it that is not yet pushed, and writes down what passed; the push
-hook refuses a commit it has not written down. Before every commit,
+hook refuses a commit it has not written down. A commit that changes
+nothing that is built, as one to the documents, is tested by what reads
+what it changed and not built again. Before every commit,
 `gates.sh commit` runs
 what is quick: formatting, clippy, and once, without the coverage gate,
 the tests of every crate the change can reach (ADR 94). A commit the push finds wanting is put right before it

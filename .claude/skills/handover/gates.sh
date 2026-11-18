@@ -9,6 +9,7 @@
 #   .claude/skills/handover/gates.sh all               handover, then rest
 #   .claude/skills/handover/gates.sh commits [base [tip]]  each commit after base (main) alone, to tip (HEAD)
 #   .claude/skills/handover/gates.sh push              all on the last commit, in a worktree of its own,
+#                                                      or what it reaches alone if it has built nothing new,
 #                                                      then commits for each other commit not yet pushed
 #   .claude/skills/handover/gates.sh uncovered         what the last coverage run missed
 #
@@ -20,6 +21,9 @@
 # what to run: a crate, as `-p omorfos-core`, or tests of the
 # integration binary by name, as `tiles::`; it builds what they need and
 # runs only them. Run from the top of the repository.
+# Where a commit is built in a worktree, in a subshell that goes into it,
+# what it is built in is set for that subshell alone, as it is meant to be.
+# shellcheck disable=SC2030,SC2031
 set -uo pipefail
 export PATH="$HOME/.cargo/bin:$PATH"
 
@@ -180,26 +184,77 @@ commits() {
     rmdir "${tree%/*}"
 }
 
+# The commit a push's change is counted from: the last before `commit`,
+# back to what is pushed, on which everything has passed, as it had on
+# what is pushed before it went.
+passed_before() {
+    local each
+    for each in $(git rev-list "$1..$2~1" 2>/dev/null); do
+        each=$(git rev-parse "$each^{tree}")
+        if has_passed push "$each" || has_passed all "$each"; then
+            echo "$each"
+            return
+        fi
+    done
+    git rev-parse "$1^{tree}"
+}
+
+# Whether what a change reaches, as `reached` says it, has anything that
+# is built in it: a crate, or everything. One of a crate's tests alone,
+# the scripts and the workflows are not.
+built() {
+    local word
+    for word in $1; do
+        case "$word" in
+            scripts | workflows | *:*) ;;
+            *) return 0 ;;
+        esac
+    done
+    return 1
+}
+
+# What a push needs of a commit that has built nothing new since one on
+# which everything passed: the code is that code, and the coverage gate,
+# its tests and its documentation would say what they said (ADR 96). What
+# the change can reach is run, by the one list every tier asks, with what
+# is quick and reads the whole tree.
+light() {
+    echo "=== nothing that is built has changed since everything passed:" \
+        "the coverage gate and the tests of the code are not run again" | tee -a "$log"
+    step typos
+    step .githooks/pre-commit --tree
+    step cargo fmt --all --check
+    step cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+    step .claude/skills/handover/affected.test.sh
+    step cargo test -p omorfos-config --all-features --locked --test links
+    # The workflows are checked below whether or not they changed.
+    reaching "${1//workflows/}"
+    step cargo deny check
+    workflows
+}
+
 # Before a push: everything on the last commit, and each commit not yet
 # pushed but the last alone, as the last is what everything ran on. The
 # last commit is checked out in a worktree of its own, built beside the
 # commits', so that the working copy can go on changing while it runs:
 # what passes is the commit, whatever is done meanwhile. Nothing is
-# written down for a commit added meanwhile.
+# written down for a commit added meanwhile. A commit that has built
+# nothing new since one on which everything passed is not built and
+# tested again: what it reaches is.
 push() {
-    local upstream commit worktree
+    local upstream commit worktree reach
     upstream=$(git rev-parse --abbrev-ref --symbolic-full-name '@{upstream}' 2>/dev/null || echo origin/main)
     commit=$(git rev-parse HEAD)
     tree=$(git rev-parse "$commit^{tree}")
     echo "=== $(git log -1 --format='%h %s' "$commit")" | tee -a "$log"
+    reach=$(reached "$(passed_before "$upstream" "$commit")" "$tree") || exit 1
     # Outside the repository, as in `commits`.
     worktree="$(mktemp -d)/push"
     git worktree add -q --detach "$worktree" "$commit"
     if ! (
         cd "$worktree" &&
             export CARGO_TARGET_DIR="$top/target/commits" &&
-            checked &&
-            rest
+            if built "$reach"; then checked && rest; else light "$reach"; fi
     ); then
         git worktree remove --force "$worktree"
         rmdir "${worktree%/*}"
@@ -274,17 +329,51 @@ commit() {
     reaching "$crates"
 }
 
-# Once, without the coverage gate, the tests of the crates `reached` said.
+# Once, without the coverage gate, the tests of what `reached` said: each
+# crate, one of a crate's tests where that is all a path is read by, and
+# the checks of the scripts and of the workflows.
 reaching() {
+    local crates=() word
     case "$1" in
-        everything) step tested cargo test --workspace --all-features --locked ;;
-        "") echo "=== nothing that is built or tested has changed: no more tests" | tee -a "$log" ;;
+        everything)
+            step tested cargo test --workspace --all-features --locked
+            return
+            ;;
+        *[![:space:]]*) ;;
         *)
-            # One word to a crate, as the names have no spaces.
-            # shellcheck disable=SC2046
-            step tested cargo test --all-features --locked $(printf -- '-p %s ' $1)
+            echo "=== nothing that is built or tested has changed: no more tests" | tee -a "$log"
+            return
             ;;
     esac
+    # One word to each, as the names have no spaces.
+    for word in $1; do
+        case "$word" in
+            scripts) scripts ;;
+            workflows) workflows ;;
+            *:lib) step tested cargo test --all-features --locked -p "${word%:lib}" --lib ;;
+            *:*) step tested cargo test --all-features --locked -p "${word%%:*}" --test "${word#*:}" ;;
+            *) crates+=(-p "$word") ;;
+        esac
+    done
+    [ ${#crates[@]} -eq 0 ] || step tested cargo test --all-features --locked "${crates[@]}"
+}
+
+# The scripts of the gates and the hooks, by shellcheck. Where it is not
+# installed, it is said, so that it is not taken for their having passed.
+scripts() {
+    if command -v shellcheck >/dev/null; then
+        step shellcheck .claude/skills/handover/gates.sh .claude/skills/handover/affected.sh \
+            .claude/skills/handover/affected.test.sh .githooks/pre-commit .githooks/pre-push
+    else
+        echo "=== shellcheck is not installed: the scripts are not checked by it." | tee -a "$log"
+    fi
+}
+
+# The workflows, as CI checks them but for what needs the network: each
+# action they use has a commit in the lockfile.
+workflows() {
+    step zizmor --offline --no-progress .
+    step gh actions-lock --verify-local
 }
 
 handover() {
@@ -316,10 +405,7 @@ rest() {
     fi
     step cargo test --workspace --all-features --doc --locked
     step cargo deny check
-    # The workflows, as CI checks them but for what needs the network:
-    # each action they use has a commit in the lockfile.
-    step zizmor --offline --no-progress .
-    step gh actions-lock --verify-local
+    workflows
     RUSTDOCFLAGS="-D warnings" step cargo doc --workspace --all-features --no-deps --locked
 }
 

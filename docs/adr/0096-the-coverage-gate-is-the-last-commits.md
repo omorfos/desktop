@@ -41,6 +41,19 @@ without the tests that need a graphics card, as CI runs it.**
 - Two runs of the coverage gate never run at once: `handover`, `rest`,
   `all`, `commits` and `push` each wait for one already going, through
   `flock`.
+- A last commit that has built nothing new is not built and tested
+  again (added on 18 November 2026). `push` asks the list every tier
+  asks (ADR 94) what has changed since the last commit on which
+  everything passed, which is what was pushed or one since that `push`
+  passed on. Where that reaches no crate, the code is the code that
+  passed, and the coverage gate, its tests, its doctests and its
+  documentation would say what they said: they are not run. What the
+  change does reach is: the tests that read what changed, the links
+  between documents, spelling, the formatter and clippy, `cargo deny`,
+  and the checks of the workflows. A change to the roadmap then costs a
+  push two or three minutes where it cost the half hour everything now
+  takes. Coverage itself is narrowed no further than this: it is run
+  whole, or, where no code has changed, not at all.
 
 ## Consequences
 

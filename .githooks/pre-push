@@ -25,7 +25,8 @@ whole() {
 }
 
 missing=""
-while read -r local_ref local_sha remote_ref remote_sha; do
+# Git says four things of each ref: the two not asked about are unnamed.
+while read -r _ local_sha remote_ref _; do
     case "$remote_ref" in refs/heads/*) ;; *) continue ;; esac
     case "$local_sha" in *[!0]*) ;; *) continue ;; esac
     # What the remote does not have yet, the last first.
