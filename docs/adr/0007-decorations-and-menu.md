@@ -1,6 +1,7 @@
 # 7. Decorations and the root menu
 
-- Status: accepted
+- Status: accepted; a program that prefers its own titlebar left to it by
+  [97. A window's frame](0097-a-windows-frame-bulkier-glass-buttons-at-the-left.md)
 - Date: 2026-10-09
 
 ## Context

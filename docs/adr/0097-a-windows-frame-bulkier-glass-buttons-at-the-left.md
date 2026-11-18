@@ -39,6 +39,20 @@ fonts and the pointer, as they did. omorfos ships no theme for a
 toolkit and forces no frame; a rule with `decorations: true` still
 does, for whoever asks.
 
+**A program that says it draws its own titlebar is left to.** ADR 7
+answered every program that asked who decorates it "the compositor",
+whatever it preferred, since frames carry the tabs. Some ask and say
+they prefer their own, and draw it whatever they are told: Visual
+Studio Code, as Electron's programs with a titlebar of their own
+making do, then had two, as the maintainer found on 18 November 2026.
+One that says so before its window is shown is now told it may, and
+gets no frame; one that asks and states no preference, or prefers
+ours, gets ours as before. A window that is shown keeps the frame it
+was shown in, or none, whatever it asks then: a frame does not come
+and go under a window in use, nor against a rule that forced it. Such
+a window cannot be a tab, which is the price ADR 7 would not pay and
+this one does.
+
 **The titlebar is 48 tall and thick glass**: the surface at nine tenths
 of itself over what is behind it blurred 32 pixels, with the light
 along its top in the dark scheme, as DESIGN.md has had a titlebar from

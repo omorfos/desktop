@@ -1,8 +1,9 @@
 # Using windows
 
-Windows that support it get a titlebar and border drawn by omorfos.
-Applications that insist on drawing their own, such as GTK ones, are left
-alone; a rule with `decorations: true` forces a frame onto them anyway.
+Windows that ask for one get a titlebar drawn by omorfos. Applications
+that draw their own, such as GTK ones, and those that say they would
+rather, such as Visual Studio Code, are left alone; a rule with
+`decorations: true` forces a frame onto them anyway.
 
 | To | Do this |
 |---|---|

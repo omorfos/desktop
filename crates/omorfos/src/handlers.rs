@@ -499,13 +499,24 @@ impl Compositor {
         window.or_else(|| self.surface_origin(surface))
     }
 
-    /// Tells a toplevel that the compositor draws its decoration. Whatever
-    /// the client prefers, the answer is the same: frames carry the tabs, so
-    /// they are ours to draw. Clients that cannot go without their own
-    /// titlebar never ask, and are left undecorated.
-    fn decorate(toplevel: &ToplevelSurface) {
+    /// Tells a toplevel who draws its decoration: the compositor, unless
+    /// its program says, before the window is shown, that it prefers its
+    /// `own`, as one that draws a titlebar of its own making does, which
+    /// would otherwise have two (ADR 97). A window that is shown keeps
+    /// the frame it was shown in, or none, whatever it asks then. Programs
+    /// that never ask are left undecorated.
+    fn decorate(&self, toplevel: &ToplevelSurface, own: bool) {
+        let asked = if own {
+            DecorationMode::ClientSide
+        } else {
+            DecorationMode::ServerSide
+        };
+        let surface = toplevel.wl_surface();
+        let mut waiting = self.unmapped.iter();
+        let waiting = waiting.any(|unmapped| unmapped.wl_surface() == surface);
         toplevel.with_pending_state(|state| {
-            state.decoration_mode = Some(DecorationMode::ServerSide);
+            let kept = state.decoration_mode.filter(|_| !waiting);
+            state.decoration_mode = Some(kept.unwrap_or(asked));
         });
         if toplevel.is_initial_configure_sent() {
             toplevel.send_configure();
@@ -515,15 +526,15 @@ impl Compositor {
 
 impl XdgDecorationHandler for Compositor {
     fn new_decoration(&mut self, toplevel: ToplevelSurface) {
-        Self::decorate(&toplevel);
+        self.decorate(&toplevel, false);
     }
 
-    fn request_mode(&mut self, toplevel: ToplevelSurface, _mode: DecorationMode) {
-        Self::decorate(&toplevel);
+    fn request_mode(&mut self, toplevel: ToplevelSurface, mode: DecorationMode) {
+        self.decorate(&toplevel, mode == DecorationMode::ClientSide);
     }
 
     fn unset_mode(&mut self, toplevel: ToplevelSurface) {
-        Self::decorate(&toplevel);
+        self.decorate(&toplevel, false);
     }
 }
 

@@ -70,27 +70,64 @@ fn a_decorated_window_is_drawn_inside_its_frame() {
 }
 
 #[test]
-fn the_compositor_insists_on_decorating_whatever_mode_is_requested() {
+fn a_program_that_says_it_draws_its_own_titlebar_is_left_to() {
     let mut session = Session::new();
     let mut client = session.connect();
-    let window = client.toplevel_uncommitted("picky", "");
+    let window = client.toplevel_uncommitted("code", "");
     let decoration = client.decoration(&window);
     decoration.set_mode(Mode::ClientSide);
     window.surface.commit();
     session.roundtrip(&mut client);
+    let events = client.take_events();
     assert!(
-        client
-            .take_events()
-            .contains(&Event::Decoration { server_side: true })
+        events.contains(&Event::Decoration { server_side: false }),
+        "{events:?}"
     );
 
     client.fill(&window.surface, (200, 100), RED);
     session.roundtrip(&mut client);
+    let frame = session.compositor().desktop().frames().next().unwrap();
+    assert_eq!(frame.decoration, None, "with no frame of ours round it");
+    assert_eq!(session.draw().at(0, 0), RED, "nor a second titlebar");
+}
+
+#[test]
+fn a_program_that_takes_back_what_it_said_before_it_is_shown_is_decorated() {
+    let mut session = Session::new();
+    let mut client = session.connect();
+    let window = client.toplevel_uncommitted("unsure", "");
+    let decoration = client.decoration(&window);
+    decoration.set_mode(Mode::ClientSide);
+    decoration.unset_mode();
+    window.surface.commit();
+    session.roundtrip(&mut client);
+    let events = client.take_events();
+    assert!(
+        events.contains(&Event::Decoration { server_side: true }),
+        "{events:?}"
+    );
+    client.fill(&window.surface, (200, 100), RED);
+    session.roundtrip(&mut client);
+    let frame = session.compositor().desktop().frames().next().unwrap();
+    assert!(frame.decoration.is_some());
+}
+
+#[test]
+fn a_window_that_is_shown_keeps_the_frame_it_was_shown_in_whatever_it_asks_then() {
+    let mut session = Session::new();
+    let mut client = session.connect();
+    let window = client.toplevel_uncommitted("picky", "");
+    let decoration = client.decoration(&window);
+    window.surface.commit();
+    session.roundtrip(&mut client);
+    client.fill(&window.surface, (200, 100), RED);
+    session.roundtrip(&mut client);
     client.take_events();
 
-    // Asking again once the window is up, or withdrawing the preference,
-    // changes nothing: the compositor never hands decoration to the client.
+    // Asking once the window is up, or withdrawing the preference, is
+    // answered, and with what it has: its frame does not come and go.
     decoration.set_mode(Mode::ClientSide);
+    session.roundtrip(&mut client);
     decoration.unset_mode();
     session.roundtrip(&mut client);
     let events = client.take_events();
@@ -98,16 +135,8 @@ fn the_compositor_insists_on_decorating_whatever_mode_is_requested() {
         !events.contains(&Event::Decoration { server_side: false }),
         "{events:?}"
     );
-    assert!(
-        session
-            .compositor()
-            .desktop()
-            .frames()
-            .next()
-            .unwrap()
-            .decoration
-            .is_some()
-    );
+    let frame = session.compositor().desktop().frames().next().unwrap();
+    assert!(frame.decoration.is_some());
 }
 
 #[test]
