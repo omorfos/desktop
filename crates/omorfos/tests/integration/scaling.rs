@@ -172,10 +172,13 @@ fn decorations_are_drawn_at_the_scale() {
     assert_ne!(bar, BACKGROUND);
     assert_eq!(picture.at(190, 93), bar, "the titlebar is 96 pixels tall");
     assert_eq!(picture.at(190, 100), RED, "and the window begins under it");
-    // The border is one unit wide, so two pixels.
-    let border = picture.at(0, 120);
-    assert_ne!(border, RED);
-    assert_eq!(picture.at(1, 120), border);
+    // The border is one unit wide, so two pixels, and seen through: what
+    // is under each of them is the desktop, not the window.
+    for x in [0, 1] {
+        let border = picture.at(x, 120);
+        let red = (border >> 16) & 0xff;
+        assert!(red < 0x80, "at {x}: {border:#x}");
+    }
     assert_eq!(picture.at(6, 120), RED);
 }
 

@@ -720,12 +720,14 @@ impl Card {
         let from = left.saturating_add_unsigned(room.saturating_sub(wide) / 2);
         let down = top.saturating_add_unsigned(tall.saturating_sub(DOT) / 2);
         let accent = theme.style(Part::QuestionButton, States::NONE.with(State::Active));
-        let quiet = theme.style(Part::Launcher, States::NONE);
+        // The others in the colour of a line between things, which the
+        // hairline round the card, being seen through, is too faint for.
+        let quiet = theme.style(Part::MenuSeparator, States::NONE);
         for (place, dot) in (0..count).zip(0..) {
             let background = if dot == self.step {
                 accent.background
             } else {
-                quiet.border.left.color
+                quiet.color
             };
             let at = from.saturating_add_unsigned(place * DOT * 2);
             let style = Style {

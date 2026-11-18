@@ -6494,14 +6494,18 @@ impl FrameInfo {
     }
 }
 
-/// Converts a configured colour into the renderer's form.
+/// Converts a configured colour into the renderer's form: its red, green
+/// and blue each as much of itself as the colour is there at all, which
+/// is how the renderer takes a colour that can be seen through. Given as
+/// they are, one that is light and nearly clear is drawn nearly white.
 pub(crate) fn color(color: omorfos_config::Color) -> Color32F {
-    let channel = |value: u8| f32::from(value) / 255.0;
+    let share = f32::from(color.alpha) / 255.0;
+    let channel = |value: u8| f32::from(value) / 255.0 * share;
     Color32F::new(
         channel(color.red),
         channel(color.green),
         channel(color.blue),
-        channel(color.alpha),
+        share,
     )
 }
 

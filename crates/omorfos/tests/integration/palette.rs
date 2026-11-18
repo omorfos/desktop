@@ -280,15 +280,18 @@ fn an_arrow_points_from_the_pictures_at_the_button_they_belong_to() {
     let foot = button.origin.y + button.size.height.cast_signed();
 
     point(&mut session, (button.origin.x + 4, foot - 10));
-    let titlebar = session.draw().at(middle, foot - 1);
+    let before = session.draw();
+    let (titlebar, under) = (before.at(middle, foot - 1), before.at(middle, foot));
     session.advance(REST);
     let picture = session.draw();
     // It is in the room between the titlebar and the pictures, over the
-    // window, edged as they are: seen whatever colour the titlebar is.
-    assert_eq!(
-        picture.at(middle, foot),
-        0xff22_2e57,
-        "its point, at the titlebar"
+    // window, edged as they are, with a hairline that lightens what is
+    // under it: seen whatever colour the titlebar is.
+    let point = picture.at(middle, foot);
+    let green = |pixel: u32| (pixel >> 8) & 0xff;
+    assert!(
+        green(point) > green(under),
+        "its point, at the titlebar: {under:#x} {point:#x}"
     );
     assert_eq!(
         picture.at(middle, foot + 4),

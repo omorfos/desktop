@@ -1229,8 +1229,9 @@ the first than on the last.
       sheet out, in looking at what is under it and in cutting it to its
       corners. Both are to come down to nothing.
 - [x] One hairline and one blur for every surface (ADR 97): `--edge`
-      round a window and everything that floats, a fainter hairline by
-      default, and `--blur` wherever there is glass, each changed in one
+      round a window and everything that floats, a hairline seen
+      through by default, light in the dark scheme and navy in the
+      light, and `--blur` wherever there is glass, each changed in one
       place and by a part's own rule for that part alone.
 - [ ] Glass by default on what else floats, in `--glass-thick` and
       `--blur` as titlebars have it: menus, tooltips, notifications, the

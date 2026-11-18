@@ -932,7 +932,9 @@ mod tests {
     const TEXT: Color = Color::rgb(0xe6, 0xea, 0xf5);
     const TEXT_DIM: Color = Color::rgb(0x9a, 0xa4, 0xc7);
     const BORDER: Color = Color::rgb(0x2b, 0x3a, 0x6b);
-    const BORDER_FAINT: Color = Color::rgb(0x22, 0x2e, 0x57);
+    /// The hairline round a window and everything that floats: light, seen
+    /// through.
+    const EDGE: Color = Color::rgba(255, 255, 255, 20);
     const BORDER_STRONG: Color = Color::rgb(0x74, 0x82, 0xb3);
 
     /// A colour as thick glass is tinted with it: nine tenths of itself.
@@ -1690,14 +1692,14 @@ mod tests {
     ];
 
     #[test]
-    fn a_frame_has_a_faint_hairline_with_focus_or_without() {
+    fn a_frame_has_a_hairline_seen_through_with_focus_or_without() {
         let theme = Theme::default();
         let focused = theme.style(Part::Window, FOCUSED);
-        assert_eq!(focused.border, Edges::all(line(BORDER_FAINT, 1)));
+        assert_eq!(focused.border, Edges::all(line(EDGE, 1)));
         assert_eq!(focused.radius, 12);
         assert_eq!(focused.background, CLEAR, "the window fills it itself");
         let other = theme.style(Part::Window, States::NONE);
-        assert_eq!(other.border, Edges::all(line(BORDER_FAINT, 1)));
+        assert_eq!(other.border, Edges::all(line(EDGE, 1)));
         assert_eq!(other.radius, 12);
     }
 
@@ -1706,13 +1708,13 @@ mod tests {
         let border = |theme: &Theme, part| theme.style(part, States::NONE).border;
         let built_in = Theme::default();
         for part in EDGED {
-            let hairline = Edges::all(line(BORDER_FAINT, 1));
+            let hairline = Edges::all(line(EDGE, 1));
             assert_eq!(border(&built_in, part), hairline, "{part:?}");
         }
         // In the light scheme it is that scheme's.
         let light = Theme::parse_in("", Scheme::Light, Accent::Cyan).unwrap();
-        let cream = Color::rgb(0xef, 0xea, 0xd7);
-        assert_eq!(border(&light, Part::Window), Edges::all(line(cream, 1)));
+        let navy = Color::rgba(12, 18, 38, 26);
+        assert_eq!(border(&light, Part::Window), Edges::all(line(navy, 1)));
 
         let thick = Theme::parse(":root { --edge: 2px solid #f00; }").unwrap();
         let none = Theme::parse(":root { --edge: none; }").unwrap();
@@ -1814,7 +1816,7 @@ mod tests {
         let theme = Theme::default();
         let menu = theme.style(Part::Menu, States::NONE);
         assert_eq!((menu.background, menu.color), (SURFACE, TEXT));
-        assert_eq!(menu.border, Edges::all(line(BORDER_FAINT, 1)));
+        assert_eq!(menu.border, Edges::all(line(EDGE, 1)));
         assert_eq!(menu.radius, 10);
         let row = theme.style(Part::MenuItem, States::NONE);
         assert_eq!((row.background, row.color), (CLEAR, TEXT));
@@ -1874,7 +1876,7 @@ mod tests {
         let theme = Theme::default();
         let tooltip = theme.style(Part::Tooltip, States::NONE);
         assert_eq!((tooltip.background, tooltip.color), (SURFACE, TEXT));
-        assert_eq!(tooltip.border, Edges::all(line(BORDER_FAINT, 1)));
+        assert_eq!(tooltip.border, Edges::all(line(EDGE, 1)));
         assert_eq!(tooltip.radius, 10);
     }
 
@@ -2055,7 +2057,7 @@ mod tests {
         let frame = theme.style(Part::Window, States::NONE);
         assert_eq!(
             frame.border,
-            Edges::all(line(BORDER_FAINT, 3)),
+            Edges::all(line(EDGE, 3)),
             "its colour is left"
         );
         assert_eq!(frame.radius, 0);
@@ -2096,7 +2098,7 @@ mod tests {
         );
         assert_eq!(theme.style(Part::Task, ACTIVE).border.bottom.color, RED);
         let plain = theme.style(Part::Window, States::NONE);
-        assert_eq!(plain.border.top.color, BORDER_FAINT);
+        assert_eq!(plain.border.top.color, EDGE);
     }
 
     #[test]

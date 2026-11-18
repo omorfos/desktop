@@ -105,6 +105,17 @@ are now as faint as the window's. What asks for a password keeps its
 own tint and its dimming: those are there for safety, not for looks.
 The bar has no edge, as before.
 
+**The hairline is seen through.** With `--border-faint` on real
+hardware it was still more than was wanted, and the maintainer asked
+for one subtler yet. It is now light at 8 in a hundred in the dark
+scheme, `rgba(255, 255, 255, 0.08)`, and navy at 10 in the light: a
+line that takes its colour from what is under it, so that it is there
+over anything and loud over nothing, where one colour is either lost
+on a ground like itself or stands out on one unlike it. Round a window
+it is over what is behind the window; along the top of a titlebar,
+over the titlebar's glass. A theme that wants a hairline of one colour
+gives `--edge` one.
+
 **GTK 3 is told to read the portal.** Outside a sandbox GTK 3 reads
 the desktop's settings from GNOME's own store, where the buttons are
 whatever GNOME was last told, and from the portal only with
@@ -156,6 +167,13 @@ tall as it is: a control of 32 has room in it.
   to the curve and not smoothed, nothing being drawn along it; and a
   frame of its against the edge of the screen cannot be held by that
   side to resize it.
+- A colour that can be seen through and is not black was drawn far too
+  strong by the compositor wherever it filled with one, a border's
+  straight sides among them: a hairline of light at 8 in a hundred came
+  out white. Nothing built in had been such a colour. The renderer is
+  now given such colours as it takes them.
+- The welcome card's dots took their colour from the launcher's
+  hairline, which is now too faint for them; they take a separator's.
 - GTK 3's programs ask the portal for their file dialogs too, which
   the backend for GTK answers, as it did for those in a sandbox.
 - The light scheme's unfocused titlebar is all but solid.

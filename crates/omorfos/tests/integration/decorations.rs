@@ -207,9 +207,23 @@ fn a_stale_size_still_in_flight_is_not_mistaken_for_a_resize() {
     );
 }
 
-/// Colours of the default theme, as `0xAARRGGBB`: the hairline round a
-/// frame, and a titlebar, which is glass, over the desktop's ground.
+/// Colours as `0xAARRGGBB`: a hairline some of these tests give a frame,
+/// which the default theme's, being seen through, is not told from what
+/// is under it by; and the default theme's titlebar, which is glass,
+/// over the desktop's ground.
 const HAIRLINE: u32 = 0xff22_2e57;
+
+/// A theme whose frames have that hairline round them.
+const EDGED: &str = "window { border: 1px solid #222e57; }\n";
+
+/// Whether a pixel is lighter than the desktop's ground in red, green and
+/// blue, as the default theme's hairline is over it, and over the shadow
+/// a window casts on it.
+fn lit(pixel: u32) -> bool {
+    let channels = pixel.to_be_bytes().into_iter().skip(1);
+    let ground = BACKGROUND.to_be_bytes().into_iter().skip(1);
+    channels.zip(ground).all(|(pixel, ground)| pixel > ground)
+}
 const FOCUSED_TITLEBAR: u32 = 0xff13_1b37;
 const UNFOCUSED_TITLEBAR: u32 = 0xff0f_172e;
 
@@ -250,11 +264,17 @@ fn a_decorated_frame_is_drawn_with_a_titlebar_and_a_hairline_round_it() {
     let size = frame.geometry.size;
     assert_eq!((size.width, size.height), (202, 149), "larger by it");
 
+    // Light, seen through: over the desktop, a little lighter than it.
     let picture = session.draw();
-    assert_eq!(picture.at(100, 0), HAIRLINE, "along the top");
-    assert_eq!(picture.at(0, 60), HAIRLINE, "left border");
-    assert_eq!(picture.at(201, 60), HAIRLINE, "right border");
-    assert_eq!(picture.at(100, 148), HAIRLINE, "bottom border");
+    for (x, y, side) in [
+        (100, 0, "along the top"),
+        (0, 60, "left border"),
+        (201, 60, "right border"),
+        (100, 148, "bottom border"),
+    ] {
+        let seen = picture.at(x, y);
+        assert!(lit(seen) && seen != RED, "{side}: {seen:#x}");
+    }
     assert_eq!(picture.at(1, 60), RED, "and the window within");
     let beyond = picture.at(202, 60);
     assert!(shaded(beyond, BACKGROUND), "{beyond:#x}");
@@ -288,7 +308,11 @@ fn the_desktop_and_its_frames_are_drawn_light_when_the_configuration_asks() {
     let picture = session.draw();
     assert_eq!(picture.at(600, 400), 0xfffc_f7e3, "a warm cream behind");
     assert_eq!(picture.at(190, 14), 0xffff_fcf2, "the titlebar with focus");
-    assert_eq!(picture.at(0, 60), 0xffef_ead7, "its hairline");
+    let hairline = picture.at(0, 60);
+    assert!(
+        hairline != RED && hairline < 0xfffc_f7e3,
+        "its hairline, navy seen through: {hairline:#x}"
+    );
 }
 
 /// `config.yaml` going by the sun on the equator, as far round as it is
@@ -425,8 +449,11 @@ fn a_frame_gets_to_the_colours_of_its_focus_over_the_time_the_theme_gives() {
 #[test]
 fn a_window_and_its_frame_come_onto_the_screen_over_the_time_the_theme_gives() {
     // As large as it is all the while, for its edges to be where they are.
-    let theme = "window { transition: 100ms linear; border-width: 1px; }\n\
-                 @starting-style { window { scale: 1 } }\n";
+    let theme = format!(
+        "{EDGED}window {{ transition: 100ms linear; }}\n\
+         @starting-style {{ window {{ scale: 1 }} }}\n"
+    );
+    let theme = theme.as_str();
     let mut session = Session::with_config(&[("theme.css", theme)]);
     let mut client = session.connect();
     // The titlebar, the border down the left and the window itself.
@@ -479,8 +506,11 @@ fn a_window_and_its_frame_go_from_the_screen_over_the_time_the_theme_gives() {
     use omorfos_config::Action;
 
     // As large as it is all the while, for its edges to be where they are.
-    let theme = "window { transition: 100ms linear; border-width: 1px; }\n\
-                 window:closing { scale: 1 }\n";
+    let theme = format!(
+        "{EDGED}window {{ transition: 100ms linear; }}\n\
+         window:closing {{ scale: 1 }}\n"
+    );
+    let theme = theme.as_str();
     let mut session =
         Session::with_config(&[("theme.css", theme), ("config.yaml", FOUR_WORKSPACES)]);
     let mut client = session.connect();

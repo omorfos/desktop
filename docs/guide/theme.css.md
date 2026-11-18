@@ -54,10 +54,11 @@ away here; open it to see how a part is drawn before changing it.
   --glass-thick-dim: rgba(16, 23, 47, 0.9); /* a titlebar, where focus is elsewhere */
   /* What is the same for everything that floats, and for a window: the
    * hairline round it, and how far what is behind it is blurred where it
-   * is glass. `--edge: none` does without the hairline everywhere; a
-   * `border` or a `backdrop-filter` of a part's own changes that part
-   * alone. */
-  --edge: 1px solid var(--border-faint);
+   * is glass. The hairline is light that can be seen through, so that it
+   * is there over anything and loud over nothing. `--edge: none` does
+   * without it everywhere; a `border` or a `backdrop-filter` of a part's
+   * own changes that part alone. */
+  --edge: 1px solid rgba(255, 255, 255, 0.08);
   --blur: 32px;
   /* A titlebar's buttons, which are the same colours in the light scheme,
    * where they have an edge to be seen by on cream. */
@@ -593,6 +594,7 @@ light:
    * this much of it. */
   --glass-thick-dim: rgba(246, 240, 218, 0.97);
   --button-rim: rgba(12, 18, 38, 0.14);
+  --edge: 1px solid rgba(12, 18, 38, 0.1); /* navy, on cream */
 }
 ```
 
@@ -642,7 +644,8 @@ values:
 
 Two of them are what every surface shares: `--edge`, the hairline round
 a window and round everything that floats (menus, tooltips, the panel's
-popovers, the launcher, notifications, the switcher and "About"), and
+popovers, the launcher, notifications, the switcher and "About"), which
+is seen through, so that it takes its colour from what is under it, and
 `--blur`, how far what is behind glass is blurred wherever there is
 glass. Change either once and it is changed everywhere; a rule for one
 part changes that part alone:

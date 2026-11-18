@@ -603,8 +603,15 @@ mod tests {
         }
     }
 
+    /// A colour as a canvas holds it: each of red, green and blue as much
+    /// of itself as the colour is there at all.
     fn argb(color: Color) -> u32 {
-        u32::from_be_bytes([color.alpha, color.red, color.green, color.blue])
+        let share = |channel: u8| {
+            let shared = u16::from(channel) * u16::from(color.alpha) / 255;
+            u8::try_from(shared).unwrap()
+        };
+        let (red, green, blue) = (share(color.red), share(color.green), share(color.blue));
+        u32::from_be_bytes([color.alpha, red, green, blue])
     }
 
     /// The notification `key` is of, drawn, if it is showing.

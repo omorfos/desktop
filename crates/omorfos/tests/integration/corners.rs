@@ -10,10 +10,11 @@ use crate::windows::{BACKGROUND, BLUE, GREEN, RED, shaded};
 const RIGHT: i32 = 201;
 const BOTTOM: i32 = 148;
 
-/// A session whose frames have the hairline the built-in theme gives
-/// them, which is what follows a corner round.
+/// A session whose frames have a hairline round them that cannot be seen
+/// through, as the built-in theme's can: what follows a corner round, to
+/// be told from what is under it.
 fn edged() -> Session {
-    Session::new()
+    Session::with_config(&[("theme.css", "window { border: 1px solid #222e57; }\n")])
 }
 
 #[test]
@@ -129,7 +130,7 @@ fn what_is_behind_a_frame_shows_past_its_corners() {
 fn a_radius_of_nothing_leaves_the_corners_square() {
     let mut session = Session::with_config(&[(
         "theme.css",
-        "window { border: 1px solid; border-radius: 0; }\n",
+        "window { border: 1px solid #222e57; border-radius: 0; }\n",
     )]);
     let mut client = session.connect();
     session.open_decorated(&mut client, "app", (200, 100), RED);

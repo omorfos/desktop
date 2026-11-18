@@ -910,9 +910,14 @@ fn notifications_that_cannot_ask_what_is_wrong_leave_it_to_the_compositor() {
 }
 
 /// The colour of the line around a notification that is nothing special.
-fn plain() -> u32 {
-    let style = Theme::default().style(Part::Notification, States::NONE);
-    argb(style.border.left.color)
+/// Whether a pixel is the edge of a notification with nothing wrong: the
+/// hairline, light seen through, so a little lighter than the desktop
+/// under it, and nowhere near the red of what is wrong.
+fn plain(pixel: u32) -> bool {
+    let channels = pixel.to_be_bytes().into_iter().skip(1);
+    let ground = BACKGROUND.to_be_bytes().into_iter().skip(1);
+    let mut lifted = channels.zip(ground);
+    lifted.all(|(pixel, ground)| (ground + 1..ground + 0x30).contains(&pixel))
 }
 
 #[test]
@@ -942,11 +947,11 @@ fn what_has_happened_in_the_session_is_shown_for_a_while_among_the_notifications
     let edge = |session: &mut Session| session.draw().at(EDGE.0, EDGE.1);
     let at = Duration::from_secs;
     until(&mut session, &mut notifier, at(100), |session| {
-        edge(session) == plain()
+        plain(edge(session))
     });
     // And goes by itself after as long as notifications stay.
     until(&mut session, &mut notifier, at(104), |_| true);
-    assert_eq!(edge(&mut session), plain());
+    assert!(plain(edge(&mut session)));
     until(&mut session, &mut notifier, at(105), |session| {
         edge(session) == BACKGROUND
     });

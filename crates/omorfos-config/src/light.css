@@ -25,4 +25,5 @@
    * this much of it. */
   --glass-thick-dim: rgba(246, 240, 218, 0.97);
   --button-rim: rgba(12, 18, 38, 0.14);
+  --edge: 1px solid rgba(12, 18, 38, 0.1); /* navy, on cream */
 }
