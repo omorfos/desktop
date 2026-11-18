@@ -1546,10 +1546,9 @@ the first than on the last.
       it draws its own titlebar is left to, and GTK 3 is told to read
       the portal. Settled by the maintainer in a mock and on real
       hardware, on 18 November 2026.
-- [ ] What is left of the redesign of windows: the closing buttons of
-      "About" and of the welcome card, which sits oddly in its corner
-      (as the maintainer found on 15 November 2026), drawn where and as
-      a window's is; whether Chromium puts its buttons where it is
+- [ ] What is left of the redesign of windows: the closing button of
+      "About", drawn where and as a window's is (the welcome card's,
+      which sat oddly in its corner, is gone); whether Chromium puts its buttons where it is
       told, tried by hand; whether the switcher's pictures show a
       window's frame, which they do not; whether the side is a setting
       (the review of the defaults); and a theme unable to style the
@@ -2728,8 +2727,10 @@ Reaching people:
       asked on 14 November 2026: a welcome with the mark, the keys,
       light, dark or with the day as small pictures of the desktop, a
       wallpaper, and the applications that open what, read from
-      `mimeapps.list` and not yet chosen there; Skip, Back, Next and the
-      close button on each, its buttons as a question's.
+      `mimeapps.list` and not yet chosen there; Skip, Back and Next on
+      each, its buttons as a question's. The close button it had in its
+      corner was taken out on 18 November 2026, as the maintainer
+      asked: it looked out of place, and Skip does what it did.
 - [ ] Packages beyond `.deb` and the AUR.
 
 ## 9. For others to build on

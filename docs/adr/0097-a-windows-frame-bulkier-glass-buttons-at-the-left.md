@@ -180,5 +180,6 @@ tall as it is: a control of 32 has room in it.
 - Windows framed by omorfos, GTK's, libadwaita's and Qt's own titlebars
   have their buttons at the left in the same order, and GTK 3's, Firefox
   among them. Whether Chromium follows is to be tried by hand.
-- "About" and the welcome card still have their closing buttons at the
-  right; they are to follow.
+- "About" still has its closing button at the right; it is to follow.
+  The welcome card had one too, which looked out of place there and
+  did what Skip does, and has none now.

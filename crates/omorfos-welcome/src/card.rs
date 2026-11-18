@@ -1,8 +1,8 @@
 //! The card: a few steps, one at a time, from a welcome to the keys that
 //! matter, light or dark, a wallpaper and the applications that open what;
 //! which of its parts has the keyboard, how it is drawn and what a key or a
-//! click does to it. Every step has the window's close button, Skip, and
-//! Back and Next; closed, skipped or finished, it keeps what was chosen.
+//! click does to it. Every step has Skip, and Back and Next; skipped or
+//! finished, it keeps what was chosen.
 //!
 //! Nothing here knows of Wayland or of files.
 
@@ -38,9 +38,6 @@ const MARK: u32 = 96;
 
 /// How large a dot is that says which step it is, and the room between.
 const DOT: u32 = 8;
-
-/// How large the close button is.
-const CLOSE: u32 = 14;
 
 /// How many pictures stand side by side, the rest in rows under them.
 const ACROSS: u32 = 3;
@@ -98,8 +95,6 @@ pub enum Focus {
     Next,
     /// Done, with what was chosen kept.
     Skip,
-    /// The window's close button: done, as Skip.
-    Close,
 }
 
 /// A choice made on the card, to be saved.
@@ -203,9 +198,8 @@ pub struct Card {
 /// Where the card's parts are, under a theme.
 struct Layout {
     whole: Area,
-    /// The heading of a step, beside the close button.
+    /// The heading of a step.
     heading: Area,
-    close: Area,
     /// The room for a step's own, and how tall a row of it is.
     body: Area,
     pitch: u32,
@@ -229,13 +223,7 @@ impl Layout {
             card.inset().top.cast_signed(),
         );
         let at = |down: u32| top.saturating_add_unsigned(down);
-        let heading = (left, top, room.saturating_sub(CLOSE + GAP), pitch);
-        let close = (
-            left.saturating_add_unsigned(room - CLOSE),
-            at(pitch.saturating_sub(CLOSE) / 2),
-            CLOSE,
-            CLOSE,
-        );
+        let heading = (left, top, room, pitch);
         let body = (left, at(pitch), room, ROWS * pitch);
         let problem = (left, at(pitch + ROWS * pitch), room, pitch / 2);
         let foot = pitch + ROWS * pitch + pitch / 2 + GAP;
@@ -266,7 +254,6 @@ impl Layout {
         Self {
             whole: (0, 0, WIDTH, height),
             heading,
-            close,
             body,
             pitch,
             problem,
@@ -384,13 +371,12 @@ impl Card {
     }
 
     /// Everything that can have the keyboard at this step, in the order Tab
-    /// goes: its choices, Back but on the first, Next, Skip and the close
-    /// button.
+    /// goes: its choices, Back but on the first, Next and Skip.
     fn focusable(&self) -> Vec<Focus> {
         let back = (self.step > 0).then_some(Focus::Back);
         let mut all = self.choices();
         all.extend(back);
-        all.extend([Focus::Next, Focus::Skip, Focus::Close]);
+        all.extend([Focus::Next, Focus::Skip]);
         all
     }
 
@@ -435,7 +421,7 @@ impl Card {
     /// What pressing `focus` comes to, by a key or a click.
     fn press(&mut self, focus: Focus) -> Outcome {
         match focus {
-            Focus::Close | Focus::Skip => Outcome::Close,
+            Focus::Skip => Outcome::Close,
             Focus::Next if self.last() => Outcome::Close,
             Focus::Next => self.go(self.step + 1),
             Focus::Back => self.go(self.step.saturating_sub(1)),
@@ -474,11 +460,7 @@ impl Card {
         let mut areas: Vec<(Focus, Area)> = choices.into_iter().zip(pictures).collect();
         let back = (self.step > 0).then_some((Focus::Back, layout.back));
         areas.extend(back);
-        areas.extend([
-            (Focus::Next, layout.next),
-            (Focus::Skip, layout.skip),
-            (Focus::Close, layout.close),
-        ]);
+        areas.extend([(Focus::Next, layout.next), (Focus::Skip, layout.skip)]);
         areas
     }
 
@@ -676,7 +658,7 @@ impl Card {
     }
 
     /// Draws Skip, the dots that say which step it is, Back but on the
-    /// first step, Next or Finish, and the close button.
+    /// first step, and Next or Finish.
     fn paint_foot(&self, canvas: &mut Canvas, text: &mut Text, theme: &Theme, layout: &Layout) {
         // Skip is only words, not to be taken for going on.
         let told = theme.style(Part::LauncherDescription, self.states(Focus::Skip));
@@ -707,11 +689,6 @@ impl Card {
             &self.said.next
         };
         button(canvas, Focus::Next, layout.next, on);
-
-        let lit = self.states(Focus::Close).with(State::Focused);
-        let close = theme.style(Part::ButtonClose, lit);
-        let close = ringed(close, theme, self.focus == Focus::Close);
-        canvas.draw_box(layout.close, &close);
 
         // A dot for each step, the one it is at in the accent.
         let (left, top, room, tall) = layout.dots;
@@ -864,21 +841,19 @@ mod tests {
     }
 
     #[test]
-    fn skip_the_close_button_and_escape_close_it_at_any_step() {
+    fn skip_and_escape_close_it_at_any_step_and_nothing_else_does() {
         let mut card = card(2, 1);
         card.key(Key::Enter);
         assert_eq!(card.key(Key::Escape), Outcome::Close);
-        // Tab goes Next, Skip, the close button, and round.
+        // Tab goes Next, Skip, and round: there is no button in the corner
+        // that closes it, Skip being the one that does.
         card.key(Key::Next);
         assert_eq!(card.focus(), Focus::Skip);
         assert_eq!(card.key(Key::Enter), Outcome::Close);
         card.key(Key::Next);
-        assert_eq!(card.focus(), Focus::Close);
-        assert_eq!(card.key(Key::Enter), Outcome::Close);
-        card.key(Key::Next);
         assert_eq!(card.focus(), Focus::Back, "round to the first");
         card.key(Key::Back);
-        assert_eq!(card.focus(), Focus::Close);
+        assert_eq!(card.focus(), Focus::Skip);
     }
 
     #[test]
@@ -960,8 +935,11 @@ mod tests {
         );
         let (x, y) = middle(layout.skip);
         assert_eq!(card.click(x, y, &theme), Outcome::Close);
-        let (x, y) = middle(layout.close);
-        assert_eq!(card.click(x, y, &theme), Outcome::Close);
+        // In the corner where a button that closed it was, a click does
+        // nothing.
+        let (left, top, wide, _) = layout.heading;
+        let corner = (left + wide.cast_signed() - 7, top + 7);
+        assert_eq!(card.click(corner.0, corner.1, &theme), Outcome::Stay);
         assert_eq!(card.click(-5, -5, &theme), Outcome::Stay);
     }
 
@@ -1006,21 +984,18 @@ mod tests {
             let canvas = card.paint(&mut text, &theme, Scale::ONE);
             assert!(inked(&canvas, layout.body) > 50, "step {step}");
             assert!(inked(&canvas, layout.next) > 50, "Next, at step {step}");
-            assert!(inked(&canvas, layout.close) > 20, "the close button");
+            let (left, top, wide, tall) = layout.heading;
+            let corner = (left + wide.cast_signed() - 20, top, 20, tall);
+            assert_eq!(inked(&canvas, corner), 0, "nothing in the corner");
             assert_eq!(inked(&canvas, layout.back) > 0, step > 0, "Back, at {step}");
             card.key(Key::Enter);
         }
-        // Skip and the close button with the keyboard are ringed.
+        // Skip with the keyboard is ringed.
         let mut ringed = self::card(0, 0);
         let plain = inked(&ringed.paint(&mut text, &theme, Scale::ONE), layout.skip);
         ringed.key(Key::Next);
         let focused = inked(&ringed.paint(&mut text, &theme, Scale::ONE), layout.skip);
         assert!(focused > plain, "{focused} {plain}");
-        ringed.key(Key::Next);
-        let canvas = ringed.paint(&mut text, &theme, Scale::ONE);
-        let (x, y, ..) = layout.close;
-        let ring = (x - 4, y - 4, CLOSE + 8, CLOSE + 8);
-        assert!(inked(&canvas, ring) > inked(&canvas, layout.close));
         // Without a mark, the first step still says hello.
         let shown = Shown {
             mark: None,
