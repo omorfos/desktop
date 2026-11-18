@@ -215,5 +215,5 @@ The mark, the name as drawn and the pictures are under
 be shared and changed, with credit and under the same licence. That
 licence gives no right to the name: something made from them is not to
 be passed off as omorfos. The program that draws them is under the MIT
-licence, as all of omorfos's code is. [CREDITS.md](../CREDITS.md) lists
+licence, as all of omorfos's code is. [CREDITS.md](CREDITS.md) lists
 the font the name is drawn from.

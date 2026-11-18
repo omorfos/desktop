@@ -24,7 +24,7 @@ It is a fresh implementation, not a port: see
   [docs/DESIGN.md](docs/DESIGN.md); its mark, colours and pictures, and
   how `omorfos-brand` draws them as it is built:
   [docs/BRAND.md](docs/BRAND.md). What is someone else's is credited in
-  [CREDITS.md](CREDITS.md) before it is built in.
+  [CREDITS.md](docs/CREDITS.md) before it is built in.
 - Decisions and their reasons: [docs/adr/](docs/adr/)
 - Reviews, each with what it found, how it was shown and what to change:
   [docs/reviews/](docs/reviews/)

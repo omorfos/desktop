@@ -160,15 +160,15 @@ Flatpak) that are installed, and pass over the rest (docs/TESTING.md).
 | [docs/DESIGN.md](docs/DESIGN.md) | What it is to look like, and the rules a part is drawn by |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | How the code is laid out |
 | [docs/adr/](docs/adr/) | Each decision that shaped it, and why |
-| [CREDITS.md](CREDITS.md) | Whose work it is drawn with |
-| [ACCESSIBILITY.md](ACCESSIBILITY.md) | What there is for those who see, move or read differently, what is not there yet, and how to say |
-| [SECURITY.md](SECURITY.md) | How to report a vulnerability, privately |
+| [CREDITS.md](docs/CREDITS.md) | Whose work it is drawn with |
+| [ACCESSIBILITY.md](docs/ACCESSIBILITY.md) | What there is for those who see, move or read differently, what is not there yet, and how to say |
+| [SECURITY.md](docs/SECURITY.md) | How to report a vulnerability, privately |
 
 ## Working on it
 
-[CONTRIBUTING.md](CONTRIBUTING.md) says how to help and what a change is
+[CONTRIBUTING.md](docs/CONTRIBUTING.md) says how to help and what a change is
 held to, and everyone taking part follows the
-[code of conduct](CODE_OF_CONDUCT.md). [AGENTS.md](AGENTS.md) is the
+[code of conduct](docs/CODE_OF_CONDUCT.md). [AGENTS.md](AGENTS.md) is the
 place to start on the code, for people as much as for agents, and
 [docs/TESTING.md](docs/TESTING.md) says how things are tested. Before a change goes in, all of these pass:
 

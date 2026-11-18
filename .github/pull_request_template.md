@@ -1,6 +1,6 @@
 <!--
-Thank you. A security vulnerability is not reported here: see SECURITY.md.
-CONTRIBUTING.md says what a change is held to; what follows is what a
+Thank you. A security vulnerability is not reported here: see docs/SECURITY.md.
+docs/CONTRIBUTING.md says what a change is held to; what follows is what a
 reviewer needs to know of this one. Leave out what does not apply.
 -->
 

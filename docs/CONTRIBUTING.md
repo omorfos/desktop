@@ -3,7 +3,7 @@
 Thank you for wanting to help. omorfos is the program between every other
 program on the desktop and the person using it, so a change is held to
 what that asks: it is secure first, then correct, then fast, then clean,
-then pleasant, and lean throughout. [AGENTS.md](AGENTS.md) says what
+then pleasant, and lean throughout. [AGENTS.md](../AGENTS.md) says what
 each of those means here, and is the place to start, for people as much
 as for agents.
 
@@ -19,9 +19,9 @@ Everyone taking part is expected to follow the
   bring it about.
 - **Something larger than a fix**, a feature, a new setting, a new
   dependency or a change to how something works, is best talked over in
-  an issue first. [docs/ROADMAP.md](docs/ROADMAP.md) says what is
+  an issue first. [docs/ROADMAP.md](ROADMAP.md) says what is
   planned and in what order, and the
-  [decisions](docs/adr/) say why things are as they are; a change that
+  [decisions](adr/) say why things are as they are; a change that
   goes against one of them needs a new decision, not only code.
 - **The defaults**, of keys and of settings, are to be reviewed
   together (see the roadmap), so a change to one alone may be asked to
@@ -29,8 +29,8 @@ Everyone taking part is expected to follow the
 
 ## Building and testing
 
-[AGENTS.md](AGENTS.md) lists what is needed to build and to run the tests,
-and [docs/TESTING.md](docs/TESTING.md) how the tests are written: through
+[AGENTS.md](../AGENTS.md) lists what is needed to build and to run the tests,
+and [docs/TESTING.md](TESTING.md) how the tests are written: through
 a real Wayland client, asserting on what the protocol says and on the
 pixels drawn. Before you open a pull request, all of these pass:
 
@@ -53,7 +53,7 @@ What is checked, and is not given way on:
 
 - **Coverage is 100%** of lines, functions and regions, error paths
   among them. Code that cannot run in CI is kept free of decisions, and
-  listed in [ADR 2](docs/adr/0002-coverage-policy.md) before it is left
+  listed in [ADR 2](adr/0002-coverage-policy.md) before it is left
   out.
 - **No `unsafe`**, no `unwrap` or `panic!` outside tests, and every
   public item documented. A lint is not turned off to make code pass; a
@@ -84,14 +84,14 @@ who speaks the language has read it (ADR 79).
   `type(scope): summary`, in lower case, at most 72 characters, with a
   body that says why the change is needed, what it does and what was
   given up for it. Releases and their notes are made from these, as
-  [docs/RELEASING.md](docs/RELEASING.md) says.
+  [docs/RELEASING.md](RELEASING.md) says.
 - Each commit is one change, which builds and passes on its own. A
   refactor, a fix and a feature are three commits.
 - What a user can set or see is in the guide,
-  [docs/guide/](docs/guide/README.md), in the same change; a
+  [docs/guide/](guide/README.md), in the same change; a
   finished item of the roadmap is ticked; and a decision someone will
   later ask "why" about gets a new ADR.
-- What is drawn follows [docs/DESIGN.md](docs/DESIGN.md), and can be used
+- What is drawn follows [docs/DESIGN.md](DESIGN.md), and can be used
   with the keyboard alone, as [ACCESSIBILITY.md](ACCESSIBILITY.md) says.
 - The pull request's template asks for what a reviewer needs. Small and
   focused is reviewed sooner than large.
@@ -103,5 +103,5 @@ above, and it is your own or yours to give under the project's licence.
 ## Licence
 
 By contributing, you agree that your code is under the
-[MIT licence](LICENSE), and pictures of the brand under
-[CC BY-SA 4.0](LICENSE-pictures), as the rest of omorfos is.
+[MIT licence](../LICENSE), and pictures of the brand under
+[CC BY-SA 4.0](../LICENSE-pictures), as the rest of omorfos is.

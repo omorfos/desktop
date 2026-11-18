@@ -6,7 +6,7 @@ body:
     attributes:
       value: >-
         Thank you for taking the time. A security vulnerability goes
-        through private reporting instead, as SECURITY.md says.
+        through private reporting instead, as docs/SECURITY.md says.
   - type: textarea
     id: what
     attributes:

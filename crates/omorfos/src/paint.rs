@@ -1213,7 +1213,7 @@ mod tests {
     #[test]
     fn every_heading_of_the_credits_and_every_kind_of_thing_is_translated() {
         let polish = Words::in_languages(&omorfos_i18n::COMPOSITOR, &["pl".to_owned()]);
-        let credits = omorfos_core::credits(include_str!("../../../CREDITS.md"));
+        let credits = omorfos_core::credits(include_str!("../../../docs/CREDITS.md"));
         assert!(credits.len() >= 3, "{credits:?}");
         for section in &credits {
             let said = credits_heading(&polish, &section.heading);

@@ -34,7 +34,7 @@ fn the_crates_licences_are_gathered_as_those_cargo_deny_allows() {
 
 #[test]
 fn every_package_carries_the_licences_credits_names_and_the_crates() {
-    let credits = read("CREDITS.md");
+    let credits = read("docs/CREDITS.md");
     let packagings = [
         "Makefile",
         "packaging/aur/PKGBUILD",

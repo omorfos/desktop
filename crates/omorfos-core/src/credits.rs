@@ -161,7 +161,7 @@ No table here.
 
     #[test]
     fn every_row_of_the_credits_is_read_whole() {
-        let file = include_str!("../../../CREDITS.md");
+        let file = include_str!("../../../docs/CREDITS.md");
         let rows = file.lines().filter(|line| line.starts_with("| ")).count();
         let tables = file.lines().filter(|line| line.starts_with("|---")).count();
         let all = credits(file);

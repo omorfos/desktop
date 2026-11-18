@@ -45,12 +45,12 @@ unread=(
     docs/STANDARDS.md
     docs/TESTING.md
     docs/UPSTREAM.md
-    ACCESSIBILITY.md
+    docs/ACCESSIBILITY.md
     AGENTS.md
     CLAUDE.md
-    CODE_OF_CONDUCT.md
-    CONTRIBUTING.md
-    SECURITY.md
+    docs/CODE_OF_CONDUCT.md
+    docs/CONTRIBUTING.md
+    docs/SECURITY.md
     _typos.toml
     committed.toml
     clippy.toml
@@ -66,7 +66,7 @@ unread=(
 only=(
     # Built into the programs: what depends on the crate is reached too.
     "schemas/promised.txt omorfos-ipc"
-    "CREDITS.md omorfos-core"
+    "docs/CREDITS.md omorfos-core"
     # Read by a test or two, which hold them to the code.
     "schemas/ omorfos-config:schemas"
     "docs/guide/ omorfos-config:documentation omorfos:packaging"

@@ -73,7 +73,7 @@ has "what the schemas promise is built into the protocol, and reaches what speak
 has "a message is built into the programs that say it" yes omorfos-panel crates/omorfos-i18n/i18n/pl/panel.ftl
 has "a message is not built into the model" no omorfos-core crates/omorfos-i18n/i18n/pl/panel.ftl
 has "a message is not built into the relay" no omorfos-relay crates/omorfos-i18n/i18n/en/compositor.ftl
-has "the credits are built into the compositor" yes omorfos CREDITS.md
+has "the credits are built into the compositor" yes omorfos docs/CREDITS.md
 says "the Makefile reaches the tests that read it" \
     "omorfos-brand:lib omorfos:packaging" Makefile
 says "a test of a crate that is reached whole is not named beside it" \

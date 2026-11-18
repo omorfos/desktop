@@ -2,7 +2,7 @@
 
 omorfos is to be usable by everyone who uses a computer, however they see,
 move or read. That is part of how it is designed, not added after:
-[docs/DESIGN.md](docs/DESIGN.md) puts legibility before looks, measures
+[docs/DESIGN.md](DESIGN.md) puts legibility before looks, measures
 the contrast of every colour it names, never lets colour be the only sign
 of something, and asks of every new part whether it can be worked with
 the keyboard alone.
@@ -57,7 +57,7 @@ is, what is not there yet, and how to tell us what stands in your way.
 
 ## What is not there yet
 
-These are on the [roadmap](docs/ROADMAP.md), and some are waited on by
+These are on the [roadmap](ROADMAP.md), and some are waited on by
 others:
 
 - **Screen readers.** Nothing the desktop draws itself is told to one yet:

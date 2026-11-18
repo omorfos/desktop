@@ -4873,7 +4873,7 @@ impl Notice {
 const ABOUT_WIDTH: u32 = 640;
 
 /// What `CREDITS.md` said as omorfos was built, for "About" to show.
-const CREDITS: &str = include_str!("../../../CREDITS.md");
+const CREDITS: &str = include_str!("../../../docs/CREDITS.md");
 
 /// The cards the compositor shows over everything: the notice of what is
 /// wrong, "About", the overview, and whether to leave.

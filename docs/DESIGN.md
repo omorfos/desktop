@@ -310,7 +310,7 @@ as a toggle is. A submenu lies 4 over the edge of the menu it opens from
 
 What is not ours is credited. Everything drawn or designed by someone
 else that omorfos ships or recommends is named, with its authors and its
-licence, in [CREDITS.md](../CREDITS.md); the licence texts go into every
+licence, in [CREDITS.md](CREDITS.md); the licence texts go into every
 package; and "About" in the menu shows the same list. Nothing of someone
 else's is built in before it is in that file.
 
