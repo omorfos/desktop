@@ -1071,6 +1071,50 @@ impl Compositor {
             .or_else(|| on_layer(Layer::Background))
     }
 
+    /// Takes a press beside what demands the keyboard, where its program
+    /// has laid a surface that takes no pointer over the rest, as the
+    /// launcher has its backdrop: a way of saying never mind, which closes
+    /// what that program shows; and takes the release after it. Says
+    /// whether it took either: nothing behind sees them. What is behind is
+    /// pointed at and scrolled all the same, which a program that took
+    /// the pointer there could not pass on.
+    fn press_beside(&mut self, pressed: bool) -> bool {
+        if !pressed {
+            return std::mem::take(&mut self.hover.beside);
+        }
+        let demanding = self.demanding().and_then(|surface| surface.client());
+        let Some(demanding) = demanding.map(|client| client.id()) else {
+            return false;
+        };
+        let theirs = |surface: &WlSurface| {
+            let client = surface.client().map(|client| client.id());
+            client.as_ref() == Some(&demanding)
+        };
+        let under = self.under().and_then(|under| under.focus());
+        if under.is_some_and(|(surface, _)| theirs(&surface)) {
+            return false;
+        }
+        let point = self.pointer_location;
+        let mut shown = Vec::new();
+        let mut over = false;
+        for head in &self.heads {
+            let layers = layer_map_for_output(&head.output);
+            let corner = head.area().loc.to_f64();
+            for layer in layers.layers().filter(|layer| theirs(layer.wl_surface())) {
+                let area = layers.layer_geometry(layer).unwrap_or_default();
+                over |= area.to_f64().contains(point - corner);
+                shown.push(layer.clone());
+            }
+        }
+        if over {
+            for layer in shown {
+                layer.layer_surface().send_close();
+            }
+        }
+        self.hover.beside = over;
+        over
+    }
+
     /// Takes a press or a release that is for something of ours laid over
     /// the windows, the pictures of arrangements or a line between two
     /// windows, and says whether it was: nothing under them sees it.
@@ -1212,7 +1256,7 @@ impl Compositor {
             }
             return;
         }
-        if self.press_ours(button, pressed, time) {
+        if self.press_ours(button, pressed, time) || self.press_beside(pressed) {
             return;
         }
         let under = self.under();

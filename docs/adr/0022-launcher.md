@@ -48,8 +48,16 @@ have needed `unsafe`; the crate was already in the tree through Smithay.
 Its look is three parts in the theme: `launcher`, `launcher-input` and
 `launcher-item`, the last `:active` when it is the one that would start.
 
-**A second surface covers the rest of the screen**, under the box, so that
-a click beside the launcher is the launcher's to hear of and closes it. It
+**A second surface covers the rest of the screen**, under the box, and
+takes no pointer. A press on it is a way of saying never mind: the
+compositor closes what a program that has taken the keyboard shows, at a
+press beside it where that program has laid a surface that takes no
+pointer, and nothing behind sees the press or its release. At first the
+surface took the pointer, for the launcher to hear of the click itself;
+but then it heard of everything else there too, and scrolling anywhere on
+the screen scrolled its list, where what is behind should scroll, which
+a program cannot pass on. A program that takes the keyboard and lays no
+such surface is left alone, and a press beside it is the window's. It
 is one transparent pixel stretched over the screen unless the theme gives
 `launcher-backdrop` a colour, to dim what is behind, in which case it is
 drawn once at the screen's size. The box stays a small surface of its own,

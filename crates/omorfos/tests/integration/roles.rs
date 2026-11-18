@@ -1,7 +1,7 @@
 //! Who may do what: a program has what an ordinary one has unless the
 //! compositor started it for more.
 
-use omorfos::Roles;
+use omorfos::{Input, Roles};
 use smithay::wayland::selection::ext_data_control::DataControlHandler;
 use wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_shell_v1::Layer;
 use wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_surface_v1::{
@@ -97,6 +97,40 @@ fn only_what_is_let_takes_the_keyboard_from_a_window() {
     session.roundtrip(&mut app);
     let events = app.take_events();
     assert!(events.contains(&Event::KeyboardLeave), "{events:?}");
+}
+
+#[test]
+fn a_press_beside_what_has_taken_the_keyboard_and_covers_nothing_else_is_the_windows() {
+    let mut session = Session::new();
+    let mut app = session.connect();
+    session.open(&mut app, "app", (200, 100), RED);
+    let mut launcher = session.connect_as(Roles::OVERLAY);
+    let grabbing = strip(Layer::Top, KeyboardInteractivity::Exclusive);
+    session.open_layer(&mut launcher, &grabbing, (640, 20), GREEN);
+    session.roundtrip(&mut app);
+    app.take_events();
+    launcher.take_events();
+
+    // On the window, below the strip: only a program that has laid
+    // something that takes no pointer there is closed by a press on it.
+    let below = Input::Motion { x: 50.0, y: 60.0 };
+    session.compositor_mut().input(below, 0);
+    for pressed in [true, false] {
+        let button = Input::Button {
+            button: 0x110,
+            pressed,
+        };
+        session.compositor_mut().input(button, 0);
+    }
+    session.roundtrip(&mut app);
+    session.roundtrip(&mut launcher);
+    let pressed = |event: &Event| matches!(event, Event::PointerButton { pressed: true, .. });
+    assert!(
+        app.take_events().iter().any(pressed),
+        "the window is pressed"
+    );
+    let closed = launcher.take_events().contains(&Event::LayerClosed);
+    assert!(!closed, "and what has the keyboard stays");
 }
 
 #[test]

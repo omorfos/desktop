@@ -3060,6 +3060,22 @@ impl Compositor {
         self.animation.motion.end();
     }
 
+    /// The surface that demands the keyboard, which it has for as long as
+    /// it is up, as a launcher's: of what was started to take it from
+    /// whatever has it, and of no other.
+    pub(crate) fn demanding(&self) -> Option<WlSurface> {
+        self.heads.iter().find_map(|head| {
+            let layers = layer_map_for_output(&head.output);
+            let demanding = layers.layers().rev().find(|layer| {
+                let roles = Self::roles(layer.wl_surface().client().as_ref());
+                layer.cached_state().keyboard_interactivity == KeyboardInteractivity::Exclusive
+                    && matches!(layer.layer(), Layer::Top | Layer::Overlay)
+                    && roles.has(Roles::OVERLAY)
+            });
+            demanding.map(|layer| layer.wl_surface().clone())
+        })
+    }
+
     /// Gives the keyboard to whoever should have it now.
     fn sync_keyboard_focus(&mut self, focused: Option<WindowId>) {
         let sealed = self.sealed().map(|(_, surface, _)| surface);
@@ -3100,18 +3116,7 @@ impl Compositor {
         // A panel that was clicked and accepts the keyboard comes next.
         self.layer_focus = self.layer_focus.take().filter(Resource::is_alive);
         let menu = menu.or_else(|| self.layer_focus.clone());
-        let demanding = self.heads.iter().find_map(|head| {
-            let layers = layer_map_for_output(&head.output);
-            let demanding = layers.layers().rev().find(|layer| {
-                // Only what was started to may take the keyboard from
-                // whatever has it.
-                let roles = Self::roles(layer.wl_surface().client().as_ref());
-                layer.cached_state().keyboard_interactivity == KeyboardInteractivity::Exclusive
-                    && matches!(layer.layer(), Layer::Top | Layer::Overlay)
-                    && roles.has(Roles::OVERLAY)
-            });
-            demanding.map(|layer| layer.wl_surface().clone())
-        });
+        let demanding = self.demanding();
         let focus = demanding.or(menu).map(Focus::Surface).or_else(|| {
             let window = focused.and_then(|id| self.mapped(id));
             window.map(|mapped| mapped.role.focus(&mapped.surface))
@@ -5354,6 +5359,9 @@ pub(crate) struct Hover {
     pub(crate) button: Option<(WindowId, Button)>,
     /// The button it was pressed on and has yet to be let go on.
     pub(crate) pressed: Option<(WindowId, Button)>,
+    /// Whether it was pressed beside what demands the keyboard, which
+    /// closed that, and has yet to be let go: nothing sees either.
+    pub(crate) beside: bool,
     /// The titlebar it last pressed on, when and where, which is what a
     /// second press has to match to be a double click.
     pub(crate) clicked: Option<(WindowId, u32, DomainPoint)>,

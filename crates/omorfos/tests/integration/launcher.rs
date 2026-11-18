@@ -602,6 +602,39 @@ fn the_wheel_and_the_touchpad_scroll_the_list_and_the_pointer_chooses_in_it() {
 }
 
 #[test]
+fn scrolling_beside_the_launcher_scrolls_what_is_behind_it_and_not_its_list() {
+    let mut session = Session::new();
+    let mut client = session.connect();
+    session.open(&mut client, "app", (WIDTH, HEIGHT), RED);
+    let six = ["Alpha", "Bravo", "Charlie", "Delta", "Echo", "Foxtrot"];
+    let mut launcher = launcher_of(&mut session, &six);
+    settle(&mut session, &mut launcher);
+    // Beside it, where the window underneath shows.
+    let beside = Input::Motion { x: 5.0, y: 5.0 };
+    session.compositor_mut().input(beside, 0);
+    settle(&mut session, &mut launcher);
+    session.roundtrip(&mut client);
+    client.take_events();
+
+    scroll(&mut session, 15.0);
+    settle(&mut session, &mut launcher);
+    session.roundtrip(&mut client);
+    let told = client.take_events();
+    let scrolled = Event::PointerScroll {
+        vertical: true,
+        value: 15.0,
+    };
+    assert!(
+        told.contains(&scrolled),
+        "the window was scrolled: {told:?}"
+    );
+    // The list was not: its first program is still the one chosen.
+    press(&mut session, key::RETURN);
+    settle(&mut session, &mut launcher);
+    session.eventually(|session| mark(session, "alpha") == "x");
+}
+
+#[test]
 fn a_key_held_down_is_taken_again_and_again_until_it_is_let_go() {
     let mut session = Session::new();
     let mut launcher = launcher(&mut session);

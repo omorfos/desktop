@@ -27,9 +27,6 @@ a known gap.
   `session.log` should then begin with the line saying so. Paths under
   `/media/<you>` were left out as they should be; the journal's section
   was not this login's, which is a fault of its own (stage 8).
-- A new version taken up as it is installed (stage 3): `sudo make
-  install PROFILE=nightly` with the session in use, of a build that is
-  not the one running.
 - A screen that changes size while it is shared (stage 3), with a
   screen that has modes of more than one size.
 
@@ -1017,8 +1014,8 @@ what only games and touchpads need last.
       written for X11 with no window open, as one in the tray, still
       closes as it is taken up, until Smithay can take up a running X
       server (stage 8); so does any program the relay lets go (known gaps
-      after step 3d), unasked; and on real hardware it has not yet been
-      tried. `wl_touch`
+      after step 3d), unasked. Tried on real hardware on 17 November
+      2026: taken up ten seconds after it was installed. `wl_touch`
       is made again once the compositor offers touch.
 - [ ] A new version of the compositor that waits said to, and what for:
       in `omorfosctl state` and in the report, that one is installed and
@@ -1721,19 +1718,20 @@ to false, as `launcher.sums` is (ADR 83).
       text scrolled back to its start as soon as the cursor goes back
       within sight of it, rather than kept where it was, as a text field
       usually does.
-- [ ] Faults in the launcher found by hand on 17 November 2026:
-      - its field took no more than 33 characters, where it is to take
-        64 (`LONGEST`): what was typed is not known, nor whether there
-        should be a bound at all;
-      - text of which a part is chosen is sometimes cut short with an
-        ellipsis, which a field never should be, as it scrolls;
-      - scrolling anywhere on the screen scrolls its list, as its
-        backdrop takes the pointer everywhere: it is to scroll only
-        under the pointer, and what is behind is to scroll where the
-        pointer is beside the box. A program cannot pass a scroll on,
-        so the backdrop is to stop taking the pointer, and a click on
-        the wallpaper alone, which takes no keyboard, still has to
-        close the launcher.
+- [x] Faults in the launcher found by hand on 17 November 2026:
+      - its field seemed to take no more than 33 characters, where it
+        takes 64 (`LONGEST`): it does take 64 of any kind, and what was
+        seen is thought to be a line of one wide letter, of which 34 fill
+        the field, scrolled and looking the same. Whether 64 is enough
+        is for the commands and the files it is to take (below);
+      - text of which a part is chosen was sometimes cut short with an
+        ellipsis, as was a long line with the cursor before its end: what
+        is typed is now cut at the field's edge, and what is chosen
+        drawn with every letter where it stood;
+      - scrolling anywhere on the screen scrolled its list, as its
+        backdrop took the pointer everywhere: the backdrop takes none
+        now, what is behind is pointed at and scrolled, and the
+        compositor closes the launcher at a press beside it (ADR 22).
 - [ ] Known gaps in the launcher's size: the share of the screen it takes
       at most, half, is fixed, and is to be a setting of the theme once
       it is asked for; a launcher wider than its screen is put against the

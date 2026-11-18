@@ -24,7 +24,7 @@ use rustix::event::{PollFd, PollFlags, Timespec, poll};
 use wayland_client::backend::ReadEventsGuard;
 use wayland_client::protocol::{
     wl_buffer, wl_compositor, wl_data_device, wl_data_device_manager, wl_data_offer, wl_keyboard,
-    wl_pointer, wl_registry, wl_seat, wl_shm, wl_shm_pool, wl_surface,
+    wl_pointer, wl_region, wl_registry, wl_seat, wl_shm, wl_shm_pool, wl_surface,
 };
 use wayland_client::{Connection, Dispatch, EventQueue, Proxy, QueueHandle, WEnum, delegate_noop};
 use wayland_protocols::wp::fractional_scale::v1::client::{
@@ -213,13 +213,11 @@ struct Shell {
     copied: Option<wl_data_offer::WlDataOffer>,
     /// What is being pasted, as far as it has arrived.
     pasting: Option<Pasting>,
-    /// What covers the rest of the screen, so that a click beside the
-    /// launcher is the launcher's to hear of.
+    /// What covers the rest of the screen, to dim it, and for the
+    /// compositor to close the launcher at a press on it.
     backdrop: Option<Backdrop>,
     /// The launcher's box, once there is everything needed to make it.
     face: Option<Face>,
-    /// Whether the pointer is on the box, and not on what is behind it.
-    on_box: bool,
     picker: Picker,
     icons: Icons,
     theme: Theme,
@@ -325,7 +323,6 @@ impl Shell {
             pasting: None,
             backdrop: None,
             face: None,
-            on_box: false,
             picker,
             icons,
             theme,
@@ -366,11 +363,11 @@ impl Shell {
     fn moved(&mut self, x: f64, y: f64) {
         self.over = (whole(x), whole(y));
         let (x, y) = self.over;
-        // Only on the box do places mean anything to the list. Held down
-        // since it was pressed in the field, it chooses what it goes over.
+        // Held down since it was pressed in the field, it chooses what it
+        // goes over.
         let (theme, text) = (&self.theme, &mut self.text);
         self.stale |= self.picker.drag(x, y, theme, text);
-        self.stale |= self.on_box && self.picker.point(x, y, &self.theme);
+        self.stale |= self.picker.point(x, y, &self.theme);
     }
 
     /// Takes in a scroll of the wheel or the touchpad, `by` so far downwards:
@@ -549,6 +546,12 @@ impl Shell {
             // Every edge of the screen, panels and all.
             layer.set_anchor(zwlr_layer_surface_v1::Anchor::all());
             layer.set_exclusive_zone(-1);
+            // It takes no pointer: what is behind it is pointed at and
+            // scrolled through it, and the compositor closes the launcher
+            // at a press there.
+            let nowhere = compositor.create_region(handle, ());
+            surface.set_input_region(Some(&nowhere));
+            nowhere.destroy();
             let viewport = viewporter.get_viewport(&surface, handle, ());
             surface.commit();
             Backdrop {
@@ -799,22 +802,17 @@ impl Dispatch<wl_pointer::WlPointer, ()> for Shell {
     ) {
         let (x, y) = shell.over;
         match event {
+            // Only ever on the box: the backdrop takes no pointer.
             wl_pointer::Event::Enter {
-                surface,
                 surface_x,
                 surface_y,
                 ..
-            } => {
-                let mut faces = shell.face.iter();
-                shell.on_box = faces.any(|face| *face.sheet.surface() == surface);
-                shell.moved(surface_x, surface_y);
             }
-            wl_pointer::Event::Motion {
+            | wl_pointer::Event::Motion {
                 surface_x,
                 surface_y,
                 ..
             } => shell.moved(surface_x, surface_y),
-            // Anywhere: over the backdrop as well as the box.
             wl_pointer::Event::Axis {
                 axis: WEnum::Value(wl_pointer::Axis::VerticalScroll),
                 value,
@@ -825,12 +823,7 @@ impl Dispatch<wl_pointer::WlPointer, ()> for Shell {
                 state: WEnum::Value(wl_pointer::ButtonState::Pressed),
                 ..
             } => {
-                // A click beside the box is a way of saying never mind.
-                let outcome = if shell.on_box {
-                    shell.picker.click(x, y, &shell.theme, &mut shell.text)
-                } else {
-                    Outcome::Close
-                };
+                let outcome = shell.picker.click(x, y, &shell.theme, &mut shell.text);
                 shell.take(outcome);
             }
             wl_pointer::Event::Button {
@@ -906,6 +899,7 @@ impl Dispatch<wl_data_offer::WlDataOffer, Forms> for Shell {
 }
 
 delegate_noop!(Shell: wl_compositor::WlCompositor);
+delegate_noop!(Shell: wl_region::WlRegion);
 delegate_noop!(Shell: wl_data_device_manager::WlDataDeviceManager);
 delegate_noop!(Shell: ignore wl_shm::WlShm);
 delegate_noop!(Shell: wl_shm_pool::WlShmPool);
