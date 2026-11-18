@@ -487,6 +487,50 @@ calls for them.
       a request that does not wait.
 - [x] An arrangement of the screens for each set that may be plugged in
       (`arrangements`), followed as screens come and go.
+- [ ] A screen once plugged in remembered, and a scale that suits it
+      chosen for it (asked on 18 November 2026). Today a screen is told
+      from another by the socket it is on (`name: HDMI-A-1`), so that
+      another monitor on the same socket has the last one's settings;
+      nothing chosen while running is kept; and `output.scale: auto`
+      takes how dense a screen is, over 120 to the inch, whatever kind
+      of screen it is. On the maintainer's laptop, 3840 by 2160 and
+      some 280 to the inch, that chooses 2.5, which is too large: 1.75
+      is what suits, and 2 will do, which is some 150 to the inch; and
+      a scale of 2 set for every screen, to put that right, is far too
+      large on the monitor then plugged in. A screen read from nearer
+      can have things smaller on it. To do, in this order:
+  - [ ] What the market chooses, found out before a rule is settled:
+        the scale other systems give by default to the panels there
+        are, laptops by size and resolution, monitors on a desk,
+        televisions; written up, with the laptop above as one point.
+  - [ ] A screen known by what it is: its maker, model and serial, as
+        it says them, and the socket only where it says none. What is
+        set for a screen by its socket's name goes on working.
+  - [ ] A better guess: from how dense a screen is and how far it is
+        read from, by the kind it is (a laptop's own, a monitor, a
+        television, told by its socket and its size), rounded to a
+        whole scale where one is near, those being the sharpest. A
+        screen that says nothing of its size, or what cannot be so, as
+        televisions and projectors do, is guessed from its resolution
+        alone, and never so small or so large that it cannot be used.
+  - [ ] Everything of a screen remembered once it has been plugged in:
+        its mode and how often it is drawn, its scale, where it stands
+        among the others, which way up it is, and whether it shows what
+        another shows; and plugged in again, at any socket, it is as it
+        was. In three layers, each over the one before, as the rest of
+        what is settled is to be: what omorfos guesses; what the
+        session has kept for that screen; and the user's own files. A
+        guess is made once, when a screen is first seen, and kept: one
+        made later never takes the place of what is kept, through a
+        screen pulled out and plugged in, sleep, and the compositor
+        started again.
+  - [ ] Guessing again when asked: `omorfosctl`, and Settings when
+        there is one, has omorfos guess anew for a screen and keep
+        that in place of what it kept; the user's own files are changed
+        only where the user says so.
+  - [ ] Known gap to close with it: `omorfosctl state` says how large a
+        screen is in units of layout, after its scale, which reads as
+        its resolution and is not: both are to be said.
 - [ ] The windows of a screen that was unplugged put back on it when it
       is plugged in again (asked on 17 November 2026): today they go to
       the primary screen and stay there. Each window is to go back to
