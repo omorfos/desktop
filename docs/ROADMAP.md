@@ -50,6 +50,14 @@ performance, then everything else. Three things follow from them.
 - **Looks are built once.** The design language and how effects are drawn
   are decided before the bar and the dock are written, not after.
 
+And one thing beside them, which is what omorfos is for as much as being
+small and safe is (ADR 99): **the standards there are, before any of its
+own.** It speaks what desktops have agreed; where they have agreed
+nothing it says so ([STANDARDS.md](STANDARDS.md)) and takes it to those
+who could, so that the desktops are easier to be beside, for its users
+and for theirs. It is not to be one more way of doing what there are
+already too many of.
+
 ## How the stages were ordered
 
 1. What takes a day and is felt every day comes first.
@@ -2815,6 +2823,29 @@ specification already says is not said again in a way of omorfos's own.
       and the IPC client, so that another repository's bar or applet
       looks and behaves as omorfos's own, started and kept as they are
       (ADR 28, ADR 60).
+- [ ] What is not yet a standard, raised where it could become one
+      (ADR 99, [STANDARDS.md](STANDARDS.md)), each read up on first and
+      joined where someone has proposed it already, by the maintainer
+      or an agent asked to:
+  - [ ] the side and order of a titlebar's buttons, as a setting of the
+        portal's own in place of GNOME's `button-layout`;
+  - [ ] the interface's font and the monospaced one, likewise;
+  - [ ] the pointer's theme and size, if a setting is still wanted
+        where programs name shapes;
+  - [ ] the icon theme in use;
+  - [ ] less transparency, as a key beside `reduced-motion`;
+  - [ ] layer-shell, or what follows it, in wayland-protocols, which
+        every small desktop's shell stands on and GNOME does not offer;
+  - [ ] raising and closing another program's windows, with the dock;
+  - [ ] a window's picture shown by a program that is not given it, as
+        a dock's previews, a taskbar's, a switcher's or an overview's,
+        and what chooses a window to share: once the dock is built;
+  - [ ] controls in a titlebar: what became of the 2022 proposal to
+        xdg-specs, read before stage 7;
+  - [ ] typing without a keyboard and input methods, with the on-screen
+        keyboard;
+  - [ ] what a protocol for a session that outlives its compositor
+        would have to carry, written up from what the relay remembers.
 - [ ] Programs that stand alone (ADR 98), the first of them: the lock
       screen, the wallpaper and `omorfos-clipboard` made to run where
       omorfos is not, what little they ask of it made optional, each

@@ -30,6 +30,10 @@ It is a fresh implementation, not a port: see
   [docs/reviews/](docs/reviews/)
 - What is to go back to the projects omorfos is built on, and how to see
   whether it still has to: [docs/UPSTREAM.md](docs/UPSTREAM.md)
+- What omorfos speaks that is not yet a standard, and where each is to
+  be raised: [docs/STANDARDS.md](docs/STANDARDS.md). Something agreed
+  is used before anything of our own is made
+  ([ADR 99](docs/adr/0099-standards-before-inventions.md)).
 - Routines, step by step, in [.claude/skills/](.claude/skills/): handing a
   change over (`handover`), a failed pipeline (`ci-failure`),
   Dependabot's updates (`dependencies`), and a review of any kind

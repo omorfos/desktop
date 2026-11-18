@@ -9,6 +9,11 @@ A Wayland desktop for Linux, written in Rust: small, fast, driven by text
 files, with windows that can share a frame as tabs, and growing into a
 whole desktop with a modern look. *omorfos* is Greek for "beautiful".
 
+It means to add nothing to the ways a Linux desktop already has of doing
+one thing: it speaks the standards there are, and where there is none it
+[says so](docs/STANDARDS.md) and takes the question to those who could
+agree one.
+
 > **Status:** early development, and not released yet. It runs as the
 > session you log in to, on real hardware, but has been tried on very
 > few machines. Expect rough edges and changing defaults. What is done and what is next is in
