@@ -188,7 +188,7 @@ choice to make.
 
 | Glass | Tint | Blur | Used for | What may be written on it |
 |---|---|---|---|---|
-| Thick | 90% in the dark scheme, 94% in the light | 32 px | A titlebar, the bar, a menu, a tooltip, a notification, the launcher, the switcher, "About" | Anything |
+| Thick | 80% in the dark scheme, 85% in the light | 32 px | A titlebar, the bar, a menu, a tooltip, a notification, the launcher, the switcher, "About" | Anything |
 | Sealed | 95% | 32 px | The notice of what is wrong, whose heading is red; and, with everything else dimmed and blurred 24 px, what asks for a password | Anything |
 
 One tint and one blur for all of them, `--glass-thick` and `--blur`, as
@@ -196,14 +196,21 @@ there is one hairline (ADR 97): a theme changes each once. A thinner
 glass for the bar and the dock, on which only `--text` could be written,
 was the first plan and is not built: the bar writes dim text too.
 
-- The tint is the surface colour at that opacity, and these are floors
-  that were worked out, not chosen: the least, rounded up, at which the
-  text allowed on the glass keeps 4.5 to 1 over the worst thing that can
-  be behind it, a white window in the dark scheme and a black one in the
-  light. Text needs 67% in the dark scheme and 54% in the light; dim text
-  needs 87% and 89%. Blur makes the worst case rare; it does not make it
-  impossible, so it is not counted on.
-- No setting of the built-in theme takes glass below its floor.
+- The tint is the surface colour at that opacity, and it has a floor
+  that is worked out, not chosen: what is written on glass keeps 4.5 to
+  1 over an ordinary ground behind it, a grey half way between light and
+  dark, and 3 to 1 over the worst thing that can be there, a white
+  window in the dark scheme and a black one in the light. Dim text sets
+  it: 75% in the dark scheme and 84% in the light, where text is dark on
+  cream and whatever dark shows through brings the cream towards it.
+  The floor was first 4.5 to 1 over the worst, which made glass 90% and
+  94%: thick enough that little of what was behind could be seen, for
+  the sake of a case that blur and chance make rare
+  ([ADR 97](adr/0097-a-windows-frame-bulkier-glass-buttons-at-the-left.md)).
+  Whoever needs more has `reduce_transparency`.
+- No setting of the built-in theme takes glass below its floor. The
+  light scheme's titlebar without focus, whose dim text is on the
+  dimmer cream, is 93%.
 - Glass has the hairline edge of everything that floats, `--edge`, light
   seen through in the dark scheme and navy seen through in the light,
   and is blurred as far as `--blur` says, each said once for every

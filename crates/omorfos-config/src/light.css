@@ -19,13 +19,13 @@
   --capture: #c4303a;
   --glass-thin: rgba(255, 253, 244, 0.7);
   /* More of itself than in the dark scheme: dim text, and the accent as
-   * text, are read on cream over a black window at no less. */
-  --glass-thick: rgba(255, 253, 244, 0.94);
+   * text, are read on cream over an ordinary ground at no less. */
+  --glass-thick: rgba(255, 253, 244, 0.85);
   --glass-sealed: rgba(255, 253, 244, 0.95);
   --glass-rim: transparent; /* light on cream is not seen */
-  /* Dim text on the dimmer cream is read over a black window only at
-   * this much of it. */
-  --glass-thick-dim: rgba(246, 240, 218, 0.97);
+  /* Dim text on the dimmer cream is read over an ordinary ground only
+   * at this much of it. */
+  --glass-thick-dim: rgba(246, 240, 218, 0.93);
   --button-rim: rgba(12, 18, 38, 0.14);
   --edge: 1px solid rgba(12, 18, 38, 0.1); /* navy, on cream */
 }

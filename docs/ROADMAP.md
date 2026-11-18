@@ -1237,9 +1237,11 @@ the first than on the last.
       `--blur` as titlebars have it (ADR 97): menus, tooltips, the
       notice, notifications, the launcher and the welcome card drawn as
       it is, the switcher, the bar and its popovers; asked for by the
-      maintainer on 18 November 2026. Each held to 4.5 to 1 over the
-      worst that can be behind it, which made the light scheme's glass
-      94 in a hundred and the notice's 95. The bar's glass keeps within
+      maintainer on 18 November 2026. Each held to 4.5 to 1 over an
+      ordinary ground and 3 to 1 over the worst that can be behind it,
+      the dark scheme's glass at 80 in a hundred and the light's at 85,
+      thinner than the 90 and 94 a stricter rule first made them; the
+      notice's is 95. The bar's glass keeps within
       the room its theme gives it. The tests' screen blurs only where a
       test asks.
 - [ ] Known gaps in a frame whose theme takes its edge away: the
@@ -1552,11 +1554,12 @@ the first than on the last.
       hardware, on 18 November 2026.
 - [ ] What is left of the redesign of windows: the closing button of
       "About", drawn where and as a window's is (the welcome card's,
-      which sat oddly in its corner, is gone); whether Chromium puts its buttons where it is
-      told, tried by hand; whether the switcher's pictures show a
-      window's frame, which they do not; whether the side is a setting
-      (the review of the defaults); and a theme unable to style the
-      button under the pointer apart from the other two.
+      which sat oddly in its corner, is gone); whether the switcher's
+      pictures show a window's frame, which they do not; whether the
+      side is a setting (the review of the defaults); and a theme unable
+      to style the button under the pointer apart from the other two.
+      Google Chrome puts its buttons where it is told, as tried on
+      18 November 2026.
 - [ ] Titlebars with controls in them, for omorfos's own programs (stage
       7), as GNOME Files and the Finder have: back and forward, where
       one is, a field to search in, where a plain window has its title.

@@ -1753,11 +1753,11 @@ mod tests {
         let outer = Rect::new(Point::new(300, 200), Size::new(400, 300));
         let frame = Decoration::new(outer, tall, 1);
         let alpha = |canvas: &Canvas, x| canvas.at(x, 40) >> 24;
-        for (focused, tint) in [(true, 0xe6), (false, 0xe6)] {
+        for (focused, tint) in [(true, 0xcc), (false, 0xcc)] {
             let canvas = titlebar(&mut text, &theme, &frame, &[""], 0, focused, Scale::ONE);
             assert_eq!(canvas.height(), 48);
             for x in [1, 200, 398] {
-                assert_eq!(alpha(&canvas, x), tint, "nine tenths of it at {x}");
+                assert_eq!(alpha(&canvas, x), tint, "four fifths of it at {x}");
             }
             assert_eq!(alpha(&canvas, 0), 20, "the hairline down its side");
         }

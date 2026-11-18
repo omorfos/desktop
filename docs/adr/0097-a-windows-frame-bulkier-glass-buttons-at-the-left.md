@@ -133,6 +133,23 @@ which only `--text` might be written, is not built: the bar writes dim
 text. The bar's glass keeps within the room its theme gives it, which
 a bar that floats clear of the screen's edges has the desktop in.
 
+**Glass is thinner, and its floor less strict.** At 90 and 94 in a
+hundred, on real hardware, little of what was behind could be seen:
+the maintainer asked for less. What held it there was the design
+language's rule that everything written on glass keep 4.5 to 1 over
+the worst that can be behind it, a white window in the dark scheme and
+a black one in the light, which dim text does at no less. The worst is
+rare, and rarer for the blur, and the rule made every sheet nearly
+solid for its sake. It is now 4.5 to 1 over an ordinary ground, a grey
+half way between, and 3 to 1 over the worst, which the theme's tests
+hold everything written on glass to. Dim text then needs 75 in a
+hundred in the dark scheme and 84 in the light; the maintainer chose
+80 and 85. The light scheme's titlebar without focus is 93, its dim
+text being on the dimmer cream, and the notice keeps the prompt's 95
+for its red. `reduce_transparency` is for whoever needs more. The
+other ways out were to brighten dim text on glass, which brings it
+nearer ordinary text, and to thin only the glass that carries none.
+
 **GTK 3 is told to read the portal.** Outside a sandbox GTK 3 reads
 the desktop's settings from GNOME's own store, where the buttons are
 whatever GNOME was last told, and from the portal only with
@@ -204,7 +221,8 @@ tall as it is: a control of 32 has room in it.
 - The light scheme's unfocused titlebar is all but solid.
 - Windows framed by omorfos, GTK's, libadwaita's and Qt's own titlebars
   have their buttons at the left in the same order, and GTK 3's, Firefox
-  among them. Whether Chromium follows is to be tried by hand.
+  among them, and Google Chrome's, as the maintainer found on
+  18 November 2026.
 - "About" still has its closing button at the right; it is to follow.
   The welcome card had one too, which looked out of place there and
   did what Skip does, and has none now.

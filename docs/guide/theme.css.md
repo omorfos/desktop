@@ -47,10 +47,10 @@ away here; open it to see how a part is drawn before changing it.
    * makes a menu solid again. Give the surface another colour, and these
    * too. */
   --glass-thin: rgba(20, 28, 56, 0.7);    /* the panel: text on it, never dim */
-  --glass-thick: rgba(20, 28, 56, 0.9);   /* menus, notifications, the launcher */
+  --glass-thick: rgba(20, 28, 56, 0.8);   /* menus, notifications, the launcher */
   --glass-sealed: rgba(20, 28, 56, 0.95); /* what asks for a password */
   --glass-rim: rgba(255, 255, 255, 0.06); /* the light along the top */
-  --glass-thick-dim: rgba(16, 23, 47, 0.9); /* a titlebar, where focus is elsewhere */
+  --glass-thick-dim: rgba(16, 23, 47, 0.8); /* a titlebar, where focus is elsewhere */
   /* What is the same for everything that floats, and for a window: the
    * hairline round it, and how far what is behind it is blurred where it
    * is glass. The hairline is light that can be seen through, so that it
@@ -597,13 +597,13 @@ light:
   --capture: #c4303a;
   --glass-thin: rgba(255, 253, 244, 0.7);
   /* More of itself than in the dark scheme: dim text, and the accent as
-   * text, are read on cream over a black window at no less. */
-  --glass-thick: rgba(255, 253, 244, 0.94);
+   * text, are read on cream over an ordinary ground at no less. */
+  --glass-thick: rgba(255, 253, 244, 0.85);
   --glass-sealed: rgba(255, 253, 244, 0.95);
   --glass-rim: transparent; /* light on cream is not seen */
-  /* Dim text on the dimmer cream is read over a black window only at
-   * this much of it. */
-  --glass-thick-dim: rgba(246, 240, 218, 0.97);
+  /* Dim text on the dimmer cream is read over an ordinary ground only
+   * at this much of it. */
+  --glass-thick-dim: rgba(246, 240, 218, 0.93);
   --button-rim: rgba(12, 18, 38, 0.14);
   --edge: 1px solid rgba(12, 18, 38, 0.1); /* navy, on cream */
 }

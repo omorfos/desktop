@@ -937,9 +937,14 @@ mod tests {
     const EDGE: Color = Color::rgba(255, 255, 255, 20);
     const BORDER_STRONG: Color = Color::rgb(0x74, 0x82, 0xb3);
 
-    /// A colour as thick glass is tinted with it: nine tenths of itself.
+    /// What is behind glass most of the time, which is neither light nor
+    /// dark: a grey half way between.
+    const ORDINARY: Color = Color::rgb(0x80, 0x80, 0x80);
+
+    /// A colour as thick glass is tinted with it in the dark scheme: four
+    /// fifths of itself.
     const fn thick(color: Color) -> Color {
-        Color::rgba(color.red, color.green, color.blue, 0xe6)
+        Color::rgba(color.red, color.green, color.blue, 0xcc)
     }
     const SURFACE_RAISED: Color = Color::rgb(0x24, 0x33, 0x64);
     const ON_ACCENT: Color = BACKGROUND;
@@ -1606,9 +1611,11 @@ mod tests {
     fn meets_contrast(theme: &Theme, which: &str) {
         let style = |part, states| theme.style(part, states);
         let hovered = States::NONE.with(State::Hovered);
-        // What is written on glass is read over the worst that can be
-        // behind it: a white window in the dark scheme and a black one in
-        // the light.
+        // What is written on glass is read at 4.5 to 1 over an ordinary
+        // ground behind it, and at 3 to 1 over the worst that can be
+        // there, a white window in the dark scheme and a black one in the
+        // light (ADR 97): the worst is rare, and glass thick enough to
+        // write over it as over anything shows little of what is behind.
         let worst = if theme.dark() {
             Color::rgb(255, 255, 255)
         } else {
@@ -1623,13 +1630,17 @@ mod tests {
                 };
                 style(part, states).background
             });
-            let ratio = text.color.contrast(over(under, worst));
+            let ratio = text.color.contrast(over(under, ORDINARY));
             assert!(ratio >= 4.5, "{which}: text {index}: {ratio:.2} to 1");
+            let ratio = text.color.contrast(over(under, worst));
+            assert!(ratio >= 3.0, "{which}: text {index} at worst: {ratio:.2}");
         }
         for states in [FOCUSED, States::NONE] {
             let bar = style(Part::Titlebar, states);
-            let ratio = bar.color.contrast(over(bar.background, worst));
+            let ratio = bar.color.contrast(over(bar.background, ORDINARY));
             assert!(ratio >= 4.5, "{which}: a title on glass: {ratio:.2} to 1");
+            let ratio = bar.color.contrast(over(bar.background, worst));
+            assert!(ratio >= 3.0, "{which}: a title at worst: {ratio:.2} to 1");
         }
         let surface = style(Part::Menu, States::NONE).background;
         let raised = style(Part::MenuItem, hovered).background;
@@ -2388,8 +2399,8 @@ mod tests {
         )
         .unwrap();
         let panel = theme.style(Part::Panel, States::NONE);
-        // Of glass, half of the nine tenths it is.
-        assert_eq!(panel.background.alpha, 115);
+        // Of glass, half of the four fifths it is.
+        assert_eq!(panel.background.alpha, 102);
         assert_eq!(panel.color.alpha, 128);
         assert_eq!(panel.border.top.color, Color::rgba(255, 255, 255, 128));
         assert_eq!(panel.outline.color, Color::rgba(255, 255, 255, 128));

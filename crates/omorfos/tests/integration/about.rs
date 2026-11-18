@@ -18,10 +18,10 @@ const LEFT_BUTTON: u32 = 0x110;
 /// What "About" is drawn on in the dark scheme: its glass, solid in the
 /// surface's colour where what is behind is not blurred.
 const SURFACE: u32 = 0xff14_1c38;
-const UNBLURRED: u32 = 0xff13_1a36;
+const UNBLURRED: u32 = 0xff12_1933;
 /// And where a theme takes both its blur and its shadow away: the surface
-/// at 90% over the background.
-const BARE: u32 = 0xff13_1b37;
+/// at 80% over the background.
+const BARE: u32 = 0xff12_1a35;
 
 /// Where "About" has nothing drawn on it but its ground: a little inside
 /// its left edge, half way down, the screen being 640 wide and it as wide
