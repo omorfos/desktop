@@ -2526,6 +2526,11 @@ impl Compositor {
             // Qt connects again, to the same socket, when the compositor
             // is started again under the holder (ADR 60), but only if told.
             ("QT_WAYLAND_RECONNECT", OsString::from("1")),
+            // GTK 3 outside a sandbox reads the desktop's settings from
+            // GNOME's own store, and from the portal, where omorfos says
+            // them, only if told: the side a titlebar's buttons stand at
+            // among them (ADR 97). GTK 4 reads the portal unasked.
+            ("GTK_USE_PORTAL", OsString::from("1")),
         ];
         let located = [
             ("WAYLAND_DISPLAY", display),

@@ -2,7 +2,8 @@
 
 - Status: accepted; the side and the order changed by
   [97. A window's frame](0097-a-windows-frame-bulkier-glass-buttons-at-the-left.md),
-  which keeps how programs are told
+  which keeps how programs are told, and found GTK 3 outside a sandbox,
+  not GTK 4, to be the one that does not read the portal unasked
 - Date: 2026-11-09
 
 ## Context

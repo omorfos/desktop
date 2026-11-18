@@ -12,12 +12,12 @@ use std::time::Duration;
 use crate::common::{Client, Event, FOUR_WORKSPACES, HEIGHT, Session, WIDTH, between, half_way};
 use crate::windows::{BACKGROUND, BLUE, RED, shaded};
 
-/// The default theme's frame: no border and a 48 pixel titlebar.
-const BORDER: i32 = 0;
+/// The default theme's frame: a 1 pixel border and a 48 pixel titlebar.
+const BORDER: i32 = 1;
 const TITLEBAR: i32 = 48;
 
-/// A theme whose frames have a hairline round them.
-const EDGED: &str = "window { border-width: 1px; }\n";
+/// A theme whose frames have no hairline round them.
+const BARE: &str = "window { border: none; }\n";
 
 #[test]
 fn a_window_that_asks_is_told_the_compositor_decorates_it() {
@@ -207,16 +207,15 @@ fn a_stale_size_still_in_flight_is_not_mistaken_for_a_resize() {
     );
 }
 
-/// Colours of the default theme, as `0xAARRGGBB`: the hairline a theme
-/// may give a frame, and a titlebar, which is glass, over the desktop's
-/// ground.
+/// Colours of the default theme, as `0xAARRGGBB`: the hairline round a
+/// frame, and a titlebar, which is glass, over the desktop's ground.
 const HAIRLINE: u32 = 0xff22_2e57;
 const FOCUSED_TITLEBAR: u32 = 0xff13_1b37;
 const UNFOCUSED_TITLEBAR: u32 = 0xff0f_172e;
 
 #[test]
-fn a_decorated_frame_is_drawn_with_a_titlebar_and_no_edge() {
-    let mut session = Session::new();
+fn a_theme_may_take_the_hairline_from_a_frame() {
+    let mut session = Session::with_config(&[("theme.css", BARE)]);
     let mut client = session.connect();
     session.open_decorated(&mut client, "foot", (200, 100), RED);
 
@@ -243,8 +242,8 @@ fn a_decorated_frame_is_drawn_with_a_titlebar_and_no_edge() {
 }
 
 #[test]
-fn a_theme_may_give_a_frame_a_hairline_round_it() {
-    let mut session = Session::with_config(&[("theme.css", EDGED)]);
+fn a_decorated_frame_is_drawn_with_a_titlebar_and_a_hairline_round_it() {
+    let mut session = Session::new();
     let mut client = session.connect();
     session.open_decorated(&mut client, "foot", (200, 100), RED);
     let frame = session.compositor().desktop().frames().next().unwrap();
@@ -289,7 +288,7 @@ fn the_desktop_and_its_frames_are_drawn_light_when_the_configuration_asks() {
     let picture = session.draw();
     assert_eq!(picture.at(600, 400), 0xfffc_f7e3, "a warm cream behind");
     assert_eq!(picture.at(190, 14), 0xffff_fcf2, "the titlebar with focus");
-    assert_eq!(picture.at(0, 60), RED, "and no edge");
+    assert_eq!(picture.at(0, 60), 0xffef_ead7, "its hairline");
 }
 
 /// `config.yaml` going by the sun on the equator, as far round as it is
@@ -933,7 +932,7 @@ fn a_window_can_be_rolled_up_into_its_titlebar_and_let_down_again() {
     let mut client = session.connect();
     session.open_decorated(&mut client, "first", (200, 100), RED);
     client.take_events();
-    assert_eq!(first_frame(&session).geometry.size.height, 148);
+    assert_eq!(first_frame(&session).geometry.size.height, 149);
 
     choose(&mut session, 5);
     assert!(first_frame(&session).standing.shaded);

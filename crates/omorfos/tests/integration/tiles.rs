@@ -401,8 +401,9 @@ fn a_window_dragged_to_an_edge_is_shown_the_half_it_would_take() {
     );
 
     // Away from the edge again, nothing is offered and nothing happens.
+    // Looked for clear of the shadow the window casts where it now is.
     point(&mut session, 300, 240);
-    assert_eq!(session.draw().at(250, 400), BACKGROUND);
+    assert_eq!(session.draw().at(250, 440), BACKGROUND);
     button(&mut session, LEFT, false, 0);
     assert_eq!(placed(&session).1, 0);
     assert_ne!(parts(&session), before, "it was only moved");

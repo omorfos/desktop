@@ -1248,6 +1248,8 @@ mod tests {
         surface: Color,
         /// The hairline round it.
         edge: Color,
+        /// A line between things: rows of a menu, tabs.
+        line: Color,
         focused: Tone,
         unfocused: Tone,
     }
@@ -1272,6 +1274,7 @@ mod tests {
             danger: theme.style(Part::NoticeHeading, States::NONE).color,
             surface: theme.style(Part::Menu, States::NONE).background,
             edge: theme.style(Part::Menu, States::NONE).border.top.color,
+            line: theme.style(Part::Tab, States::NONE).border.left.color,
             focused: tone(States::NONE.with(State::Focused)),
             unfocused: tone(States::NONE),
         }
@@ -1454,7 +1457,7 @@ mod tests {
         assert_eq!((plain.width(), plain.height()), (200, 73));
         assert_eq!(plain.at(0, 30), argb(colors.edge), "outlined");
         assert_eq!(plain.at(190, 10), argb(colors.surface));
-        assert_eq!(plain.at(100, 36), argb(colors.edge), "the separator's line");
+        assert_eq!(plain.at(100, 36), argb(colors.line), "the separator's line");
         assert!(inked(&plain, 10..100, argb(colors.surface)) > 40, "labels");
         let arrow = (176..190).flat_map(|x| (41..69).map(move |y| (x, y)));
         let arrow_ink = arrow
@@ -1732,23 +1735,23 @@ mod tests {
     }
 
     #[test]
-    fn the_built_in_titlebar_is_glass_to_its_edge_with_no_outline() {
+    fn the_built_in_titlebar_is_glass_within_its_hairline() {
         let theme = Theme::default();
         let mut text = Text::new();
-        let bare = FrameMetrics {
-            border: 0,
+        let tall = FrameMetrics {
             titlebar: 48,
-            buttons: [0; 3],
+            ..METRICS
         };
         let outer = Rect::new(Point::new(300, 200), Size::new(400, 300));
-        let frame = Decoration::new(outer, bare, 1);
+        let frame = Decoration::new(outer, tall, 1);
         let alpha = |canvas: &Canvas, x| canvas.at(x, 40) >> 24;
         for (focused, tint) in [(true, 0xe6), (false, 0xe6)] {
             let canvas = titlebar(&mut text, &theme, &frame, &[""], 0, focused, Scale::ONE);
             assert_eq!(canvas.height(), 48);
-            for x in [0, 200, 399] {
+            for x in [1, 200, 398] {
                 assert_eq!(alpha(&canvas, x), tint, "nine tenths of it at {x}");
             }
+            assert_eq!(alpha(&canvas, 0), 0xff, "the hairline down its side");
         }
     }
 
@@ -1938,7 +1941,7 @@ mod tests {
         assert_eq!(focused.at(350, 14), argb(colors.focused.titlebar));
         assert_eq!(
             focused.at(200, 14),
-            argb(colors.edge),
+            argb(colors.line),
             "a line separates the tabs"
         );
         assert_eq!(
@@ -1951,7 +1954,7 @@ mod tests {
         let unfocused = titlebar(&mut text, &theme, &frame(2), &titles, 0, false, Scale::ONE);
         assert_eq!(
             unfocused.at(150, 27),
-            argb(colors.edge),
+            argb(colors.line),
             "marked without the accent"
         );
         assert_eq!(unfocused.at(350, 27), argb(colors.unfocused.titlebar));

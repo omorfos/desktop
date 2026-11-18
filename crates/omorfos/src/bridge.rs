@@ -421,7 +421,7 @@ mod tests {
             raise_on_focus: true,
             placement: Placement::Cascade,
             decoration: Metrics {
-                border: 0,
+                border: 1,
                 titlebar: 48,
                 buttons: [32, 24, 24],
             },
@@ -459,7 +459,7 @@ mod tests {
                 raise_on_focus: false,
                 placement: Placement::Center,
                 decoration: Metrics {
-                    border: 0,
+                    border: 1,
                     titlebar: 48,
                     buttons: [32, 24, 24],
                 },

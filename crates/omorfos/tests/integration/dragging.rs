@@ -82,7 +82,7 @@ fn shown_app(session: &Session) -> String {
         .unwrap_or_default()
 }
 
-/// A decorated 200 by 100 window: a 200 by 148 frame at the corner.
+/// A decorated 200 by 100 window: a 202 by 149 frame at the corner.
 fn decorated(session: &mut Session, client: &mut Client, app_id: &str) {
     session.open_decorated(client, app_id, (200, 100), RED);
 }
@@ -104,7 +104,7 @@ fn dragging_the_titlebar_moves_the_frame() {
     drag(&mut session, LEFT, (100, 10), (200, 110));
     session.roundtrip(&mut client);
 
-    assert_eq!(frames(&session), [rect(100, 100, 200, 148)]);
+    assert_eq!(frames(&session), [rect(100, 100, 202, 149)]);
     assert_eq!(
         session.draw().at(101, 150),
         RED,
@@ -124,11 +124,10 @@ fn dragging_a_border_resizes_the_frame_and_the_window_is_told() {
     decorated(&mut session, &mut client, "foot");
     client.take_events();
 
-    // Just outside it, where a frame with no edge is held by.
     drag(&mut session, LEFT, (201, 60), (301, 60));
     session.roundtrip(&mut client);
 
-    assert_eq!(frames(&session), [rect(0, 0, 300, 148)]);
+    assert_eq!(frames(&session), [rect(0, 0, 302, 149)]);
     assert_eq!(client.last_configure().0, (300, 100));
 }
 
@@ -141,11 +140,11 @@ fn a_window_dragged_larger_fills_its_frame_until_it_draws_and_keeps_its_corners_
     session.advance(std::time::Duration::from_secs(1));
 
     drag(&mut session, LEFT, (201, 60), (301, 60));
-    assert_eq!(frames(&session), [rect(0, 0, 300, 148)]);
+    assert_eq!(frames(&session), [rect(0, 0, 302, 149)]);
     let picture = session.draw();
-    assert_eq!(picture.at(293, 60), RED, "the window across the frame");
-    assert_eq!(picture.at(293, 141), RED, "down to its rounded corner");
-    let outside = picture.at(299, 147);
+    assert_eq!(picture.at(295, 60), RED, "the window across the frame");
+    assert_eq!(picture.at(295, 142), RED, "down to its rounded corner");
+    let outside = picture.at(301, 148);
     assert!(shaded(outside, BACKGROUND), "outside it: {outside:#x}");
 }
 
@@ -155,9 +154,9 @@ fn a_frame_can_be_grabbed_just_outside_its_corner() {
     let mut client = session.connect();
     decorated(&mut session, &mut client, "foot");
 
-    drag(&mut session, LEFT, (202, 150), (252, 200));
+    drag(&mut session, LEFT, (204, 151), (254, 201));
 
-    assert_eq!(frames(&session), [rect(0, 0, 250, 198)]);
+    assert_eq!(frames(&session), [rect(0, 0, 252, 199)]);
 }
 
 #[test]
@@ -166,11 +165,11 @@ fn a_frame_cannot_be_made_smaller_than_a_small_window() {
     let mut client = session.connect();
     decorated(&mut session, &mut client, "foot");
 
-    drag(&mut session, LEFT, (201, 149), (-500, -500));
+    drag(&mut session, LEFT, (201, 148), (-500, -500));
 
     assert_eq!(
         frames(&session),
-        [rect(0, 0, 64, 80)],
+        [rect(0, 0, 66, 81)],
         "a 64 by 32 window plus its frame"
     );
 }
@@ -343,7 +342,7 @@ fn a_tab_dropped_on_another_titlebar_joins_that_frame() {
     assert_eq!(shown_app(&session), "terminal", "the dropped tab is shown");
     assert_eq!(
         frames(&session),
-        [rect(0, 0, 200, 148)],
+        [rect(0, 0, 202, 149)],
         "in the frame it was dropped on"
     );
     assert_eq!(session.draw().at(100, 60), BLUE);
@@ -358,8 +357,8 @@ fn clicking_a_tab_shows_it() {
     drag(&mut session, MIDDLE, (150, 40), (100, 10));
     session.roundtrip(&mut client);
 
-    // Two tabs share what the buttons leave of the 200 pixel titlebar,
-    // the 120 at its right: the editor's is the left half of that.
+    // Two tabs share what the buttons leave of the 202 pixel titlebar,
+    // the 122 at its right: the editor's is the left half of that.
     move_to(&mut session, 100, 10);
     press(&mut session, LEFT);
     release(&mut session, LEFT);
@@ -396,7 +395,7 @@ fn a_tab_dropped_back_on_its_own_titlebar_stays_where_it_was() {
     drag(&mut session, MIDDLE, (100, 10), (130, 10));
 
     assert_eq!(tab_counts(&session), [1]);
-    assert_eq!(frames(&session), [rect(0, 0, 200, 148)]);
+    assert_eq!(frames(&session), [rect(0, 0, 202, 149)]);
 }
 
 #[test]
@@ -413,11 +412,11 @@ fn other_buttons_are_swallowed_while_a_drag_is_in_progress() {
     release(&mut session, RIGHT);
     session.roundtrip(&mut client);
 
-    assert_eq!(frames(&session), [rect(100, 100, 200, 148)]);
+    assert_eq!(frames(&session), [rect(100, 100, 202, 149)]);
     assert_eq!(buttons(&client.take_events()), 0);
 
     // The release ended the drag, so further motion moves nothing.
     move_to(&mut session, 400, 400);
     session.step();
-    assert_eq!(frames(&session), [rect(100, 100, 200, 148)]);
+    assert_eq!(frames(&session), [rect(100, 100, 202, 149)]);
 }

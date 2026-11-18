@@ -474,7 +474,7 @@ fn a_window_of_a_program_written_for_x11_is_kept_in_a_frame_no_larger_than_one_m
     for _ in 0..50 {
         session.step();
     }
-    let room = u16::try_from(most).unwrap();
+    let room = u16::try_from(most).unwrap() - 2;
     assert_eq!(size_of(&mut session, &program, window), (room, 100));
     // Once a frame has been shown, the X server hands over the window at
     // that size, and it is drawn in its frame: as wide as it first was,
@@ -496,7 +496,7 @@ fn a_window_of_a_program_written_for_x11_is_maximized_and_made_fullscreen_like_a
     session.step();
     assert!(frame(&session).1);
     // All of the screen, less the frame around it.
-    let filling = (wide, tall - 48);
+    let filling = (wide - 2, tall - 49);
     assert_eq!(size_of(&mut session, &program, window), filling);
     // And the program draws it that large, once it is told that what it
     // drew before has been shown.
@@ -1483,14 +1483,14 @@ fn on_a_dense_screen_a_program_written_for_x11_draws_with_as_many_pixels_as_it_h
 
     // Its two hundred pixels are a hundred units, in a frame of ours.
     let (frame, ..) = frame(&session);
-    assert_eq!((frame.size.width, frame.size.height), (100, 50 + 48));
+    assert_eq!((frame.size.width, frame.size.height), (100 + 2, 50 + 49));
     assert_eq!(size_of(&mut session, &program, window), (200, 100));
     // And each of them is a pixel of the screen: the window is drawn from
-    // 0 to 200 across and from 96 to 196 down.
+    // 2 to 202 across and from 96 to 196 down.
     session.eventually(|session| session.draw().at(100, 100) == RED);
     let picture = session.draw();
-    assert_eq!(picture.at(1, 97), RED, "its first pixel");
-    assert_eq!(picture.at(198, 120), RED, "its last column");
+    assert_eq!(picture.at(3, 97), RED, "its first pixel");
+    assert_eq!(picture.at(200, 120), RED, "its last column");
     assert_eq!(picture.at(100, 194), RED, "its last rows");
     for (x, y, place) in [(210, 120, "beside it"), (100, 204, "below it")] {
         let seen = picture.at(x, y);
@@ -1654,7 +1654,7 @@ fn programs_written_for_x11_are_stretched_to_size_unless_asked_to_draw_for_the_s
 
     // Its two hundred pixels are two hundred units, each drawn as four.
     let (frame, ..) = frame(&session);
-    assert_eq!((frame.size.width, frame.size.height), (200, 100 + 48));
+    assert_eq!((frame.size.width, frame.size.height), (200 + 2, 100 + 49));
     assert_eq!(size_of(&mut session, &program, window), (200, 100));
     session.eventually(|session| session.draw().at(300, 200) == RED);
     for _ in 0..50 {

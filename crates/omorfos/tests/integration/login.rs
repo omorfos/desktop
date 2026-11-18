@@ -43,6 +43,11 @@ fn the_session_is_described_by_where_it_is_once_that_is_known() {
         "Qt connects again to a compositor started again under the holder"
     );
 
+    assert_eq!(
+        before["GTK_USE_PORTAL"], "1",
+        "GTK 3 reads the desktop's settings where omorfos says them"
+    );
+
     session.compositor_mut().set_socket_name("wayland-7");
     let path = session.listen();
     let after = told(&session);

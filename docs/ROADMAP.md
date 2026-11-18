@@ -1228,11 +1228,25 @@ the first than on the last.
       session beside the 17 of a window in a solid frame, in laying its
       sheet out, in looking at what is under it and in cutting it to its
       corners. Both are to come down to nothing.
-- [ ] Known gaps in a frame without an edge: the window's bottom
-      corners are cut to the curve with nothing drawn along it, where a
-      border was, so they are not smoothed; and a frame at the edge of
+- [x] One hairline and one blur for every surface (ADR 97): `--edge`
+      round a window and everything that floats, a fainter hairline by
+      default, and `--blur` wherever there is glass, each changed in one
+      place and by a part's own rule for that part alone.
+- [ ] Glass by default on what else floats, in `--glass-thick` and
+      `--blur` as titlebars have it: menus, tooltips, notifications, the
+      launcher, the switcher and the bar, each of which is its own
+      program's to draw but for the first; asked for by the maintainer
+      on 18 November 2026, to follow the shared variables.
+- [ ] Known gaps in a frame whose theme takes its edge away: the
+      window's bottom corners are cut to the curve with nothing drawn
+      along it, so they are not smoothed; and a frame at the edge of
       the screen cannot be held by that side to resize it, the room to
       hold it by being outside it.
+- [ ] Known gap in what programs are told: a portal started again with
+      other settings than it had, as after an upgrade that changes the
+      built-in theme, does not say that they changed, so a program
+      already running keeps what it read, the side of a titlebar's
+      buttons among it, until it is started again.
 - [x] Blur for other programs that ask (`ext-background-effect`), under
       windows and panels, as far as `window`'s `backdrop-filter` says, cut
       to the surface, a window's to the window proper and not the shadow
@@ -1527,13 +1541,16 @@ the first than on the last.
       glass; the buttons 16 across at the left, close, minimize,
       maximize, red, amber and green in both schemes, all three showing
       their signs while the pointer is on any; a title alone in the
-      middle; no edge round the window. Settled by the maintainer in a
-      mock, on 18 November 2026.
+      middle; a fainter hairline round the window. A program that says
+      it draws its own titlebar is left to, and GTK 3 is told to read
+      the portal. Settled by the maintainer in a mock and on real
+      hardware, on 18 November 2026.
 - [ ] What is left of the redesign of windows: the closing buttons of
       "About" and of the welcome card, which sits oddly in its corner
       (as the maintainer found on 15 November 2026), drawn where and as
-      a window's is; whether Firefox and Chromium put their buttons
-      where they are told, tried by hand; whether the side is a setting
+      a window's is; whether Chromium puts its buttons where it is
+      told, tried by hand; whether the switcher's pictures show a
+      window's frame, which they do not; whether the side is a setting
       (the review of the defaults); and a theme unable to style the
       button under the pointer apart from the other two.
 - [ ] Titlebars with controls in them, for omorfos's own programs (stage

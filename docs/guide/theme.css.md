@@ -43,7 +43,7 @@ away here; open it to see how a part is drawn before changing it.
    * a window's titlebar, and "About", which is seldom shown;
    *   menu {
    *     background: var(--glass-thick);
-   *     backdrop-filter: blur(32px);
+   *     backdrop-filter: blur(var(--blur));
    *     box-shadow: 0 12px 32px rgba(0, 0, 0, 0.36), inset 0 1px var(--glass-rim);
    *   }
    * makes a menu glass. Give the surface another colour, and these too. */
@@ -52,6 +52,13 @@ away here; open it to see how a part is drawn before changing it.
   --glass-sealed: rgba(20, 28, 56, 0.95); /* what asks for a password */
   --glass-rim: rgba(255, 255, 255, 0.06); /* the light along the top */
   --glass-thick-dim: rgba(16, 23, 47, 0.9); /* a titlebar, where focus is elsewhere */
+  /* What is the same for everything that floats, and for a window: the
+   * hairline round it, and how far what is behind it is blurred where it
+   * is glass. `--edge: none` does without the hairline everywhere; a
+   * `border` or a `backdrop-filter` of a part's own changes that part
+   * alone. */
+  --edge: 1px solid var(--border-faint);
+  --blur: 32px;
   /* A titlebar's buttons, which are the same colours in the light scheme,
    * where they have an edge to be seen by on cream. */
   --close: #f8616d;
@@ -105,13 +112,14 @@ launcher-backdrop:closing { opacity: 0; }
 desktop { background: var(--background); }
 
 /* A window's frame. Its sizes are taken from the rule without a state.
- * It has no edge, with focus or without: focus is in the titlebar, and in
- * the shadow; `border-width: 1px` gives it a hairline.
+ * Its edge is the hairline of everything that floats, with focus or
+ * without: focus is in the titlebar, and in the shadow; `border: none`
+ * does without it.
  * The shadow says the window floats over the desktop, and how far: the one
  * with focus is lifted higher. A shadow is black and falls straight down;
  * `box-shadow: none` does without it. */
 window {
-  border: 0 solid var(--border-faint);
+  border: var(--edge);
   border-radius: 12px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.14);
   /* What is behind a program, blurred where it asks to be see-through.
@@ -139,7 +147,7 @@ titlebar {
   height: 48px;
   background: var(--glass-thick-dim);
   color: var(--text-dim);
-  backdrop-filter: blur(32px);
+  backdrop-filter: blur(var(--blur));
   box-shadow: inset 0 1px var(--glass-rim);
 }
 titlebar:focus {
@@ -186,7 +194,7 @@ button-close:hover, button-minimize:hover, button-maximize:hover {
 menu {
   background: var(--surface);
   color: var(--text);
-  border: 1px solid var(--border);
+  border: var(--edge);
   border-radius: 10px;
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.36);
 }
@@ -236,7 +244,7 @@ tooltip {
   padding: 4px 8px;
   background: var(--surface);
   color: var(--text);
-  border: 1px solid var(--border);
+  border: var(--edge);
   border-radius: 10px;
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.36);
 }
@@ -286,7 +294,7 @@ popover {
   padding: 8px;
   background: var(--surface);
   color: var(--text);
-  border: 1px solid var(--border);
+  border: var(--edge);
   border-radius: 10px;
 }
 popover-item {
@@ -322,7 +330,7 @@ launcher {
   padding: 12px;
   background: var(--surface);
   color: var(--text);
-  border: 1px solid var(--border);
+  border: var(--edge);
   border-radius: 10px;
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.36);
 }
@@ -367,7 +375,7 @@ notification {
   padding: 12px;
   background: var(--surface);
   color: var(--text);
-  border: 1px solid var(--border);
+  border: var(--edge);
   border-radius: 10px;
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.36);
 }
@@ -440,7 +448,7 @@ question-input:active {
 switcher {
   padding: 12px;
   background: var(--surface);
-  border: 1px solid var(--border);
+  border: var(--edge);
   border-radius: 12px;
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.36);
 }
@@ -525,9 +533,9 @@ sealed {
 about {
   padding: 20px;
   background: var(--glass-thick);
-  backdrop-filter: blur(32px);
+  backdrop-filter: blur(var(--blur));
   color: var(--text);
-  border: 1px solid var(--border);
+  border: var(--edge);
   border-radius: 12px;
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.36), inset 0 1px var(--glass-rim);
 }
@@ -630,6 +638,21 @@ values:
   --accent: #e0af68;
   --background: #101014;
 }
+```
+
+Two of them are what every surface shares: `--edge`, the hairline round
+a window and round everything that floats (menus, tooltips, the panel's
+popovers, the launcher, notifications, the switcher and "About"), and
+`--blur`, how far what is behind glass is blurred wherever there is
+glass. Change either once and it is changed everywhere; a rule for one
+part changes that part alone:
+
+```css
+:root {
+  --edge: none;   /* no hairline round anything */
+  --blur: 24px;
+}
+menu { border: 1px solid var(--border); } /* but round menus, a stronger one */
 ```
 
 A panel that floats clear of the screen's edges, see-through, with rounded

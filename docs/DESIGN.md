@@ -203,7 +203,9 @@ choice to make.
   needs 87% and 89%. Blur makes the worst case rare; it does not make it
   impossible, so it is not counted on.
 - No setting of the built-in theme takes glass below its floor.
-- Glass has a hairline edge of `--border`, and in the dark scheme a
+- Glass has the hairline edge of everything that floats, `--edge`, in
+  `--border-faint`, and is blurred as far as `--blur` says, each said
+  once for every surface; and in the dark scheme a
   second, inner hairline of white at 6% along the top, as light on the
   rim of a sheet.
 - The picture behind is given a little more saturation as it is blurred,
@@ -235,9 +237,10 @@ straight down.
 
 - The window with focus has its titlebar in `--surface` and its text in
   `--text`, its buttons in their colours and its shadow deeper; the
-  others are in `--surface-dim` and `--text-dim`. No window has an edge,
-  with focus or without: its shadow says where it ends, and an edge round
-  the focused window is louder than it need be once there are shadows
+  others are in `--surface-dim` and `--text-dim`. Every window's edge is
+  the same faint hairline, `--edge`, with focus or without, and it is the
+  one round everything that floats: a brighter edge round the focused
+  window is louder than it need be once there are shadows
   ([ADR 97](adr/0097-a-windows-frame-bulkier-glass-buttons-at-the-left.md)).
 - A titlebar's buttons are at its left: close, minimize, maximize, in
   red, amber and green, the same in both schemes, with a faint edge on

@@ -287,7 +287,7 @@ fn an_arrow_points_from_the_pictures_at_the_button_they_belong_to() {
     // window, edged as they are: seen whatever colour the titlebar is.
     assert_eq!(
         picture.at(middle, foot),
-        0xff2b_3a6b,
+        0xff22_2e57,
         "its point, at the titlebar"
     );
     assert_eq!(

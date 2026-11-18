@@ -5,20 +5,20 @@ use omorfos::Scale;
 use crate::common::Session;
 use crate::windows::{BACKGROUND, BLUE, GREEN, RED, shaded};
 
-/// The default theme's frame around a window 200 by 100, given a border
-/// of one: a titlebar of 48 and corners rounded to a radius of twelve.
+/// The default theme's frame around a window 200 by 100: a border of one,
+/// a titlebar of 48 and corners rounded to a radius of twelve.
 const RIGHT: i32 = 201;
 const BOTTOM: i32 = 148;
 
-/// A session whose frames have a hairline round them, which is what
-/// follows a corner round.
+/// A session whose frames have the hairline the built-in theme gives
+/// them, which is what follows a corner round.
 fn edged() -> Session {
-    Session::with_config(&[("theme.css", "window { border-width: 1px; }\n")])
+    Session::new()
 }
 
 #[test]
 fn without_an_edge_the_window_itself_is_rounded_at_the_bottom_corners() {
-    let mut session = Session::new();
+    let mut session = Session::with_config(&[("theme.css", "window { border: none; }\n")]);
     let mut client = session.connect();
     session.open_decorated(&mut client, "app", (200, 100), RED);
     let picture = session.draw();

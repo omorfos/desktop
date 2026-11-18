@@ -447,7 +447,7 @@ fn told_to_it_takes_the_window_with_focus_in_place_of_the_screens() {
     assert_eq!(paths.len(), 1);
     // As large as the window in its frame with the shadow it casts, and
     // see-through beyond that.
-    assert_eq!(saved(&paths[0], (0, 0)), ((248, 196), 0));
+    assert_eq!(saved(&paths[0], (0, 0)), ((250, 197), 0));
     assert_eq!(saved(&paths[0], (24 + 1 + 100, 16 + 28 + 50)).1, GREEN);
 }
 

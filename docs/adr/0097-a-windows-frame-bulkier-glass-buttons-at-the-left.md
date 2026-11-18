@@ -89,9 +89,30 @@ buttons leave of it, less as much again at the other end, so that it
 is in the middle of the window and not of what is beside the buttons.
 Tabs share what the buttons leave, as before.
 
-**The window has no edge.** `window`'s border has no width, and keeps a
-colour, `--border-faint`, so that `window { border-width: 1px }` gives
-a theme a hairline. The shadow says where a window ends.
+**The window's edge is a fainter hairline, the one round everything
+that floats.** It was first built with none, as chosen in the mock;
+tried on real hardware, the maintainer asked for the hairline after
+all, in `--border-faint`, and for what is the same on every surface
+to be said once. So the built-in theme has `--edge`, `1px solid
+var(--border-faint)`, which is the border of a window, a menu, a
+tooltip, the panel's popovers, the launcher, a notification, the
+switcher and "About"; and `--blur`, 32 pixels, which is how far what
+is behind glass is blurred wherever there is glass, beside the tint it
+already had one name for, `--glass-thick`. `--edge: none` does without
+the hairline everywhere, and a `border` of a part's own changes that
+part alone. Menus and the rest had `--border`, a little stronger; they
+are now as faint as the window's. What asks for a password keeps its
+own tint and its dimming: those are there for safety, not for looks.
+The bar has no edge, as before.
+
+**GTK 3 is told to read the portal.** Outside a sandbox GTK 3 reads
+the desktop's settings from GNOME's own store, where the buttons are
+whatever GNOME was last told, and from the portal only with
+`GTK_USE_PORTAL=1`, which the session now sets for what it starts:
+Firefox's buttons then stand where omorfos's do. GTK 4 reads the
+portal unasked, which ADR 68 had the other way about: measured on
+18 November 2026 with GTK 3.24.49 and 4.18.6. A program already
+running keeps the layout it started with.
 
 **omorfos's own programs will put their controls in the titlebar**, as
 GNOME Files and the Finder do: back and forward, where one is, a field
@@ -110,18 +131,16 @@ tall as it is: a control of 32 has room in it.
 - **Other buttons**: signs always shown, rounded squares, rings filled
   under the pointer, grey circles with signs as GNOME has them, signs
   alone. Tried in the mock; the dots were chosen.
-- **A hairline in `--border-faint`.** Tried in the mock; none was
-  chosen.
+- **No hairline at all.** Chosen in the mock and built; taken back once
+  seen on real hardware.
+- **Writing GNOME's own setting**, for GTK 3 to read. It would change
+  a GNOME session of the same user's.
 - **The side as a setting.** Left for the review of the defaults, as
   ADR 68 left it.
 
 ## Consequences
 
-- A frame's window is 20 pixels shorter in the same frame than it was,
-  and one pixel wider at each side and at the bottom.
-- With no edge, a window the colour of what is behind it is told from
-  it by its shadow and its titlebar alone; a theme that takes the
-  shadow away should give the border a width.
+- A frame's window is 20 pixels shorter in the same frame than it was.
 - Glass behind titlebars is drawn for every framed window that can be
   seen. What that costs has not been measured on a modest laptop
   (ADR 33, and the roadmap's item for it); it is to be, with `omorfosctl
@@ -133,12 +152,15 @@ tall as it is: a control of 32 has room in it.
   own, and both are to come down.
 - In a picture of a window by itself, where nothing is behind it, its
   titlebar is solid.
-- With no edge drawn along them, the window's bottom corners are cut
-  to the curve and not smoothed.
+- A theme that takes the edge away has the window's bottom corners cut
+  to the curve and not smoothed, nothing being drawn along it; and a
+  frame of its against the edge of the screen cannot be held by that
+  side to resize it.
+- GTK 3's programs ask the portal for their file dialogs too, which
+  the backend for GTK answers, as it did for those in a sandbox.
 - The light scheme's unfocused titlebar is all but solid.
 - Windows framed by omorfos, GTK's, libadwaita's and Qt's own titlebars
-  have their buttons at the left in the same order. Whether Firefox and
-  Chromium follow is to be tried by hand. GTK 3 outside a sandbox is
-  still thought not to be told (ADR 68).
+  have their buttons at the left in the same order, and GTK 3's, Firefox
+  among them. Whether Chromium follows is to be tried by hand.
 - "About" and the welcome card still have their closing buttons at the
   right; they are to follow.

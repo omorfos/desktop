@@ -1676,16 +1676,68 @@ mod tests {
         }
     }
 
+    /// What the built-in theme draws a hairline round: a window, and
+    /// everything that floats.
+    const EDGED: [Part; 8] = [
+        Part::Window,
+        Part::Menu,
+        Part::Tooltip,
+        Part::Popover,
+        Part::Launcher,
+        Part::Notification,
+        Part::Switcher,
+        Part::About,
+    ];
+
     #[test]
-    fn a_frame_has_no_edge_with_focus_or_without_until_it_is_given_a_width() {
+    fn a_frame_has_a_faint_hairline_with_focus_or_without() {
         let theme = Theme::default();
         let focused = theme.style(Part::Window, FOCUSED);
-        assert_eq!(focused.border, Edges::all(line(BORDER_FAINT, 0)));
+        assert_eq!(focused.border, Edges::all(line(BORDER_FAINT, 1)));
         assert_eq!(focused.radius, 12);
         assert_eq!(focused.background, CLEAR, "the window fills it itself");
         let other = theme.style(Part::Window, States::NONE);
-        assert_eq!(other.border, Edges::all(line(BORDER_FAINT, 0)));
+        assert_eq!(other.border, Edges::all(line(BORDER_FAINT, 1)));
         assert_eq!(other.radius, 12);
+    }
+
+    #[test]
+    fn one_hairline_is_round_a_window_and_everything_that_floats_and_is_changed_in_one_place() {
+        let border = |theme: &Theme, part| theme.style(part, States::NONE).border;
+        let built_in = Theme::default();
+        for part in EDGED {
+            let hairline = Edges::all(line(BORDER_FAINT, 1));
+            assert_eq!(border(&built_in, part), hairline, "{part:?}");
+        }
+        // In the light scheme it is that scheme's.
+        let light = Theme::parse_in("", Scheme::Light, Accent::Cyan).unwrap();
+        let cream = Color::rgb(0xef, 0xea, 0xd7);
+        assert_eq!(border(&light, Part::Window), Edges::all(line(cream, 1)));
+
+        let thick = Theme::parse(":root { --edge: 2px solid #f00; }").unwrap();
+        let none = Theme::parse(":root { --edge: none; }").unwrap();
+        for part in EDGED {
+            assert_eq!(border(&thick, part), Edges::all(line(RED, 2)), "{part:?}");
+            assert_eq!(border(&none, part).widths(), Edges::NONE, "{part:?}");
+        }
+        // A part's own is that part's alone.
+        let bare = Theme::parse("window { border: none; }").unwrap();
+        assert_eq!(border(&bare, Part::Window).widths(), Edges::NONE);
+        assert_eq!(border(&bare, Part::Menu), border(&built_in, Part::Menu));
+    }
+
+    #[test]
+    fn what_is_glass_is_blurred_as_far_as_one_variable_says() {
+        let blur = |theme: &Theme, part| theme.style(part, States::NONE).blur;
+        let built_in = Theme::default();
+        let wider = Theme::parse(":root { --blur: 40px; }").unwrap();
+        for part in [Part::Titlebar, Part::About] {
+            assert_eq!(blur(&built_in, part), 32, "{part:?}");
+            assert_eq!(blur(&wider, part), 40, "{part:?}");
+        }
+        let own = Theme::parse("titlebar { backdrop-filter: blur(20px); }").unwrap();
+        assert_eq!(blur(&own, Part::Titlebar), 20);
+        assert_eq!(blur(&own, Part::About), 32, "and no other");
     }
 
     #[test]
@@ -1762,7 +1814,7 @@ mod tests {
         let theme = Theme::default();
         let menu = theme.style(Part::Menu, States::NONE);
         assert_eq!((menu.background, menu.color), (SURFACE, TEXT));
-        assert_eq!(menu.border, Edges::all(line(BORDER, 1)));
+        assert_eq!(menu.border, Edges::all(line(BORDER_FAINT, 1)));
         assert_eq!(menu.radius, 10);
         let row = theme.style(Part::MenuItem, States::NONE);
         assert_eq!((row.background, row.color), (CLEAR, TEXT));
@@ -1822,7 +1874,7 @@ mod tests {
         let theme = Theme::default();
         let tooltip = theme.style(Part::Tooltip, States::NONE);
         assert_eq!((tooltip.background, tooltip.color), (SURFACE, TEXT));
-        assert_eq!(tooltip.border, Edges::all(line(BORDER, 1)));
+        assert_eq!(tooltip.border, Edges::all(line(BORDER_FAINT, 1)));
         assert_eq!(tooltip.radius, 10);
     }
 
