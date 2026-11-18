@@ -163,20 +163,16 @@ fn decorations_are_drawn_at_the_scale() {
     session.open_decorated(&mut client, "app", (100, 50), RED);
     let frame = session.compositor().desktop().frames().next().unwrap();
     let client_area = frame.client();
-    assert_eq!(client_area.origin.y, 28, "under a titlebar of 28 units");
+    assert_eq!(client_area.origin.y, 48, "under a titlebar of 48 units");
 
     let picture = session.draw();
     // To the right of the title, and below the rounded corner.
     let bar = picture.at(190, 30);
     assert_ne!(bar, RED);
     assert_ne!(bar, BACKGROUND);
-    assert_eq!(picture.at(190, 53), bar, "the titlebar is 56 pixels tall");
-    assert_eq!(picture.at(190, 62), RED, "and the window begins under it");
-    // The border is one unit wide, so two pixels.
-    let border = picture.at(0, 80);
-    assert_ne!(border, RED);
-    assert_eq!(picture.at(1, 80), border);
-    assert_eq!(picture.at(6, 80), RED);
+    assert_eq!(picture.at(190, 93), bar, "the titlebar is 96 pixels tall");
+    assert_eq!(picture.at(190, 100), RED, "and the window begins under it");
+    assert_eq!(picture.at(2, 120), RED, "and reaches the frame's edge");
 }
 
 #[test]

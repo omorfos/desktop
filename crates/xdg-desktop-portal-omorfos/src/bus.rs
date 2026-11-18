@@ -869,7 +869,7 @@ pub(crate) mod tests {
             font: "Inter, sans-serif 11".to_owned(),
             monospace: "JetBrains Mono, monospace 11".to_owned(),
             icons: "Adwaita".to_owned(),
-            buttons: ":minimize,maximize,close".to_owned(),
+            buttons: "close,minimize,maximize:".to_owned(),
             still: false,
         }
     }
@@ -944,7 +944,7 @@ pub(crate) mod tests {
             .unwrap()
             .try_into()
             .unwrap();
-        assert_eq!(buttons, ":minimize,maximize,close");
+        assert_eq!(buttons, "close,minimize,maximize:");
         let reply = peer.call_method(
             Some(NAME),
             PATH,

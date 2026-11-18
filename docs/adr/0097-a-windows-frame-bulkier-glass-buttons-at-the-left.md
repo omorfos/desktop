@@ -1,0 +1,130 @@
+# 97. A window's frame: taller, glass, its buttons at the left
+
+- Status: accepted
+- Date: 2026-11-18
+
+## Context
+
+Windows were to be redesigned so that every program's looks the same
+(stage 4). They cannot be made the same: a program that draws its own
+frame, as GTK's, Firefox's, Chromium's, Discord's, Steam's, Telegram's
+and Spotify's do, draws what it likes, and the two ways to change that
+were both refused by the maintainer.
+
+- **A theme for each toolkit**, GTK 2, 3 and 4 and Qt, kept in step
+  with omorfos's. That is what makes a Linux desktop tiring: three or
+  four themes to find, install and keep agreeing, and omorfos one more
+  standard beside them. omorfos is to be where that ends, not another
+  of it.
+- **A frame forced on programs that draw their own.** It gives them two
+  titlebars and two buttons that close, and breaks those that lay
+  themselves out round their own.
+
+What is left is to fit in beside what programs draw: to tell them what
+every desktop tells them, and to draw omorfos's own frame, on the
+windows that ask for one, so that it is at home among theirs.
+
+That frame was plain: a titlebar 28 tall, solid, with three dots 12
+across at its right and a hairline round the window. The maintainer
+asked for it to be bulkier, to be glass as the design language says a
+titlebar is, for its buttons to be larger and at the left, for a sign
+on each of them once the pointer is on any, and for a fainter edge;
+tried the choices in a mock in a browser, and settled these.
+
+## Decision
+
+**Programs are told, never themed.** The settings portal and the X11
+settings say the scheme, the accent, the order of the buttons, the
+fonts and the pointer, as they did. omorfos ships no theme for a
+toolkit and forces no frame; a rule with `decorations: true` still
+does, for whoever asks.
+
+**The titlebar is 48 tall and thick glass**: the surface at nine tenths
+of itself over what is behind it blurred 32 pixels, with the light
+along its top in the dark scheme, as DESIGN.md has had a titlebar from
+the start. It is the first thing the built-in theme makes glass besides
+"About". Without focus it is the dimmer surface, at nine tenths in the
+dark scheme and at 97 in a hundred in the light one: dim text on the
+dimmer cream keeps 4.5 to 1 over a black window at no less, and the
+floors of glass are worked out, not chosen. `reduce_transparency` makes
+it solid, as it does everything.
+
+**A tab has no ground of its own.** The titlebar's glass is behind
+every tab; the one shown is told by its underline and its text.
+
+**The buttons are at the left: close, minimize, maximize**, close
+outermost, 16 across, 12 from the edge and 8 apart, each hit in its
+share of the whole height of the titlebar. This takes back ADR 68's
+side and its order; what ADR 68 says of telling programs stands, and
+they are now told `close,minimize,maximize:`. They are red, amber and
+green in both schemes, colours of their own (`--close`, `--minimize`,
+`--maximize`) and no longer `--danger`, `--warning` and `--success`,
+which the light scheme has deeper so that they can be read as text; on
+cream each has a faint darker edge, since amber on cream is not seen
+without.
+
+**All three show their signs while the pointer is on any of them**, and
+have their colours then, with focus or without. A button's place is
+learnt; the signs are for telling which is which before pressing, and
+that is wanted as the pointer arrives among them, not on the one it
+happens to be on. All three are `:hover` together: a theme cannot
+style the one under the pointer apart from the others any more.
+
+**A title alone stands in the middle of the titlebar**: of what the
+buttons leave of it, less as much again at the other end, so that it
+is in the middle of the window and not of what is beside the buttons.
+Tabs share what the buttons leave, as before.
+
+**The window has no edge.** `window`'s border has no width, and keeps a
+colour, `--border-faint`, so that `window { border-width: 1px }` gives
+a theme a hairline. The shadow says where a window ends.
+
+**omorfos's own programs will put their controls in the titlebar**, as
+GNOME Files and the Finder do: back and forward, where one is, a field
+to search in, where a plain window has its title. Each will draw its
+own, in this look and taller by what a control needs. That is built
+with the first of them (stage 7), and is why the plain titlebar is as
+tall as it is: a control of 32 has room in it.
+
+## Alternatives
+
+- **The buttons kept at the right**, where ADR 68 put them so that
+  every window had them on one side. Programs that listen to nothing,
+  Discord, Steam and Spotify among them, keep theirs at the right, so
+  there are two sides again. The maintainer prefers the left and
+  accepts that.
+- **Other buttons**: signs always shown, rounded squares, rings filled
+  under the pointer, grey circles with signs as GNOME has them, signs
+  alone. Tried in the mock; the dots were chosen.
+- **A hairline in `--border-faint`.** Tried in the mock; none was
+  chosen.
+- **The side as a setting.** Left for the review of the defaults, as
+  ADR 68 left it.
+
+## Consequences
+
+- A frame's window is 20 pixels shorter in the same frame than it was,
+  and one pixel wider at each side and at the bottom.
+- With no edge, a window the colour of what is behind it is told from
+  it by its shadow and its titlebar alone; a theme that takes the
+  shadow away should give the border a width.
+- Glass behind titlebars is drawn for every framed window that can be
+  seen. What that costs has not been measured on a modest laptop
+  (ADR 33, and the roadmap's item for it); it is to be, with `omorfosctl
+  frames`, and the built-in titlebar made solid again if it costs a
+  frame.
+- Where nothing changes, a glass titlebar costs a turn 7 allocations
+  for each window, beside the 17 of a window in a solid frame: the
+  tests of a quiet session hold both, the second as a ceiling of its
+  own, and both are to come down.
+- In a picture of a window by itself, where nothing is behind it, its
+  titlebar is solid.
+- With no edge drawn along them, the window's bottom corners are cut
+  to the curve and not smoothed.
+- The light scheme's unfocused titlebar is all but solid.
+- Windows framed by omorfos, GTK's, libadwaita's and Qt's own titlebars
+  have their buttons at the left in the same order. Whether Firefox and
+  Chromium follow is to be tried by hand. GTK 3 outside a sandbox is
+  still thought not to be told (ADR 68).
+- "About" and the welcome card still have their closing buttons at the
+  right; they are to follow.

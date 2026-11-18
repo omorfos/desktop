@@ -40,7 +40,7 @@ away here; open it to see how a part is drawn before changing it.
   /* Glass: the surface, at as much of itself as text on it needs to be
    * read over anything, and light along its top as on the rim of a sheet.
    * Nothing here is glass until what it costs has been measured, but for
-   * "About", which is seldom shown;
+   * a window's titlebar, and "About", which is seldom shown;
    *   menu {
    *     background: var(--glass-thick);
    *     backdrop-filter: blur(32px);
@@ -51,6 +51,14 @@ away here; open it to see how a part is drawn before changing it.
   --glass-thick: rgba(20, 28, 56, 0.9);   /* menus, notifications, the launcher */
   --glass-sealed: rgba(20, 28, 56, 0.95); /* what asks for a password */
   --glass-rim: rgba(255, 255, 255, 0.06); /* the light along the top */
+  --glass-thick-dim: rgba(16, 23, 47, 0.9); /* a titlebar, where focus is elsewhere */
+  /* A titlebar's buttons, which are the same colours in the light scheme,
+   * where they have an edge to be seen by on cream. */
+  --close: #f8616d;
+  --minimize: #fde047;
+  --maximize: #a3e635;
+  --on-button: #0c1226;      /* the sign on one */
+  --button-rim: transparent;
 
   /* What programs are told to write code and terminals in, at the size of
    * the rest: omorfos writes nothing in it itself. */
@@ -97,13 +105,13 @@ launcher-backdrop:closing { opacity: 0; }
 desktop { background: var(--background); }
 
 /* A window's frame. Its sizes are taken from the rule without a state.
- * Its edge is a hairline with focus or without, as programs that draw
- * their own draw it: focus is in the titlebar, and in the shadow. The
- * shadow says the window floats over the desktop, and how far: the one
+ * It has no edge, with focus or without: focus is in the titlebar, and in
+ * the shadow; `border-width: 1px` gives it a hairline.
+ * The shadow says the window floats over the desktop, and how far: the one
  * with focus is lifted higher. A shadow is black and falls straight down;
  * `box-shadow: none` does without it. */
 window {
-  border: 1px solid var(--border);
+  border: 0 solid var(--border-faint);
   border-radius: 12px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.14);
   /* What is behind a program, blurred where it asks to be see-through.
@@ -124,49 +132,54 @@ offer {
 }
 offer:hover { color: var(--text); }
 
+/* A titlebar is thick glass: what is behind it blurred, under the surface
+ * at as much of itself as text on it needs. `backdrop-filter: none` and a
+ * background that cannot be seen through make it solid. */
 titlebar {
-  height: 28px;
-  background: var(--surface-dim);
+  height: 48px;
+  background: var(--glass-thick-dim);
   color: var(--text-dim);
+  backdrop-filter: blur(32px);
+  box-shadow: inset 0 1px var(--glass-rim);
 }
 titlebar:focus {
-  background: var(--surface);
+  background: var(--glass-thick);
   color: var(--text);
 }
 
-/* A title in a titlebar. Where there are several, the border on the left
- * is the line between one tab and the next. */
+/* A title in a titlebar: in the middle of it where it is alone. Where
+ * there are several, each is a tab, and the border on the left is the
+ * line between one tab and the next. */
 tab {
   padding: 0 12px;
-  background: var(--surface-dim);
   color: var(--text-dim);
   border-left: 1px solid var(--border);
 }
 tab:active { border-bottom: 2px solid var(--border); }
 tab:active:focus {
-  background: var(--surface);
   color: var(--text);
   border-bottom-color: var(--accent);
 }
 
-/* The buttons at the right of a titlebar: minimize, maximize, close. Each
+/* The buttons at the left of a titlebar: close, minimize, maximize. Each
  * is a box in its share of the titlebar, as wide as its min-width with its
  * margin around it, and its color is that of the sign drawn on it. They
- * are :focus with their frame and :hover under the pointer. Give one a
- * min-width of 0 to do without it. */
-button-close, button-maximize, button-minimize {
-  min-width: 12px;
-  margin: 8px 4px;
-  border-radius: 6px;
+ * are :focus with their frame, and all three are :hover while the pointer
+ * is on any of them. Give one a min-width of 0 to do without it. */
+button-close, button-minimize, button-maximize {
+  min-width: 16px;
+  margin: 16px 4px;
+  border: 1px solid var(--button-rim);
+  border-radius: 8px;
   background: var(--border);
   color: transparent;
 }
-button-close { margin-right: 12px; }
-button-close:focus, button-close:hover { background: var(--danger); }
-button-maximize:focus, button-maximize:hover { background: var(--success); }
-button-minimize:focus, button-minimize:hover { background: var(--warning); }
-button-close:hover, button-maximize:hover, button-minimize:hover {
-  color: var(--background);
+button-close { margin-left: 12px; }
+button-close:focus, button-close:hover { background: var(--close); }
+button-minimize:focus, button-minimize:hover { background: var(--minimize); }
+button-maximize:focus, button-maximize:hover { background: var(--maximize); }
+button-close:hover, button-minimize:hover, button-maximize:hover {
+  color: var(--on-button);
 }
 
 /* What floats over windows casts a deeper shadow than they do. */
@@ -568,6 +581,10 @@ light:
   --glass-thick: rgba(255, 253, 244, 0.9);
   --glass-sealed: rgba(255, 253, 244, 0.95);
   --glass-rim: transparent; /* light on cream is not seen */
+  /* Dim text on the dimmer cream is read over a black window only at
+   * this much of it. */
+  --glass-thick-dim: rgba(246, 240, 218, 0.97);
+  --button-rim: rgba(12, 18, 38, 0.14);
 }
 ```
 
@@ -797,8 +814,9 @@ Not every part uses every property yet:
   titlebar, which is how one is made smaller than the titlebar is tall).
 - The buttons of a titlebar are drawn from `background`, `border`,
   `border-radius` and `color`, which is the colour of the sign on each: a
-  cross, a plus and a bar. They stand at the right, the cross outermost,
-  and programs that draw their own titlebars are told the same.
+  cross, a bar and a plus. They stand at the left, the cross outermost,
+  and programs that draw their own titlebars are told the same. All
+  three are `:hover` while the pointer is on any of them.
 - `padding` is honoured by `tab`, `menu-item`, `menu-sign`, `notice`,
   `panel`, `workspace`, `task`, `clock`, `question` (the room round what
   a box that asks holds) and `question-button` (the room either side of

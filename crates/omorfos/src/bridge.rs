@@ -62,12 +62,12 @@ pub fn settings(config: &Config) -> Settings {
     }
 }
 
-/// The buttons of a titlebar, from the right, and the part of the theme
+/// The buttons of a titlebar, from the left, and the part of the theme
 /// that says how each looks.
 pub(crate) const BUTTONS: [(Button, Part); 3] = [
     (Button::Close, Part::ButtonClose),
-    (Button::Maximize, Part::ButtonMaximize),
     (Button::Minimize, Part::ButtonMinimize),
+    (Button::Maximize, Part::ButtonMaximize),
 ];
 
 /// How a window a rule calls private is hidden, as the domain has it.
@@ -421,9 +421,9 @@ mod tests {
             raise_on_focus: true,
             placement: Placement::Cascade,
             decoration: Metrics {
-                border: 1,
-                titlebar: 28,
-                buttons: [28, 20, 20],
+                border: 0,
+                titlebar: 48,
+                buttons: [32, 24, 24],
             },
         };
         assert_eq!(settings(&Config::default()), expected);
@@ -442,9 +442,9 @@ mod tests {
             Metrics {
                 border: 3,
                 titlebar: 40,
-                // One as wide as it says with its margin, one that is not
-                // there, and one as the built-in theme has it.
-                buttons: [20, 0, 20],
+                // One as wide as it says with its margin, one as the
+                // built-in theme has it, and one that is not there.
+                buttons: [20, 24, 0],
             }
         );
     }
@@ -459,9 +459,9 @@ mod tests {
                 raise_on_focus: false,
                 placement: Placement::Center,
                 decoration: Metrics {
-                    border: 1,
-                    titlebar: 28,
-                    buttons: [28, 20, 20],
+                    border: 0,
+                    titlebar: 48,
+                    buttons: [32, 24, 24],
                 },
             }
         );

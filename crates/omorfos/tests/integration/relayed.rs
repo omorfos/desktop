@@ -1960,7 +1960,7 @@ fn windows_that_shared_a_frame_share_it_again_in_their_order() {
     first.open_decorated(&mut client, "terminal", (200, 100), BLUE);
     // The terminal's tab carried to the editor's titlebar, and the editor
     // shown again.
-    crate::dragging::drag(&mut first, crate::dragging::MIDDLE, (100, 40), (100, 10));
+    crate::dragging::drag(&mut first, crate::dragging::MIDDLE, (150, 40), (100, 10));
     first.roundtrip(&mut client);
     first.compositor_mut().perform(&Action::PreviousTab);
     first.roundtrip(&mut client);
@@ -2242,10 +2242,10 @@ fn a_session_kept_by_the_relay_with_nothing_changing_allocates_little() {
         });
         assert_eq!(made.count_current, 0, "turn {turn} kept what it made");
         assert!(
-            made.count_total <= crate::quiet::CEILING,
+            made.count_total <= crate::quiet::GLAZED,
             "turn {turn} allocated {} times, more than {}",
             made.count_total,
-            crate::quiet::CEILING
+            crate::quiet::GLAZED
         );
     }
     session.stepped = stepped;

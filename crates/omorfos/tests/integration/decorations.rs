@@ -12,9 +12,12 @@ use std::time::Duration;
 use crate::common::{Client, Event, FOUR_WORKSPACES, HEIGHT, Session, WIDTH, between, half_way};
 use crate::windows::{BACKGROUND, BLUE, RED, shaded};
 
-/// The default theme's frame: a 1 pixel border and a 28 pixel titlebar.
-const BORDER: i32 = 1;
-const TITLEBAR: i32 = 28;
+/// The default theme's frame: no border and a 48 pixel titlebar.
+const BORDER: i32 = 0;
+const TITLEBAR: i32 = 48;
+
+/// A theme whose frames have a hairline round them.
+const EDGED: &str = "window { border-width: 1px; }\n";
 
 #[test]
 fn a_window_that_asks_is_told_the_compositor_decorates_it() {
@@ -175,42 +178,58 @@ fn a_stale_size_still_in_flight_is_not_mistaken_for_a_resize() {
     );
 }
 
-/// Colours of the default theme, as `0xAARRGGBB`.
-const HAIRLINE: u32 = 0xff2b_3a6b;
-const FOCUSED_TITLEBAR: u32 = 0xff14_1c38;
-const UNFOCUSED_TITLEBAR: u32 = 0xff10_172f;
+/// Colours of the default theme, as `0xAARRGGBB`: the hairline a theme
+/// may give a frame, and a titlebar, which is glass, over the desktop's
+/// ground.
+const HAIRLINE: u32 = 0xff22_2e57;
+const FOCUSED_TITLEBAR: u32 = 0xff13_1b37;
+const UNFOCUSED_TITLEBAR: u32 = 0xff0f_172e;
 
 #[test]
-fn a_decorated_frame_is_drawn_with_a_titlebar_and_borders() {
+fn a_decorated_frame_is_drawn_with_a_titlebar_and_no_edge() {
     let mut session = Session::new();
     let mut client = session.connect();
     session.open_decorated(&mut client, "foot", (200, 100), RED);
 
     let picture = session.draw();
-    // The frame is 202 by 129: a 28 pixel titlebar, then the window, with a
-    // 1 pixel border on the left, right and bottom.
+    // The frame is 200 by 148: a 48 pixel titlebar, then the window, with
+    // nothing round it.
     assert_eq!(
-        picture.at(190, 14),
+        picture.at(190, 24),
         FOCUSED_TITLEBAR,
         "titlebar, clear of the title"
     );
-    assert_eq!(
-        picture.at(100, 0),
-        HAIRLINE,
-        "the focused frame's outline is a hairline"
-    );
-    assert_eq!(picture.at(0, 60), HAIRLINE, "left border");
-    assert_eq!(picture.at(201, 60), HAIRLINE, "right border");
-    assert_eq!(picture.at(100, 128), HAIRLINE, "bottom border");
+    assert_eq!(picture.at(0, 60), RED, "the window, to the frame's left");
+    assert_eq!(picture.at(199, 60), RED, "and to its right");
+    assert_eq!(picture.at(100, 147), RED, "and to the foot of it");
     // Beyond the frame there is only its shadow.
     for (x, y, place) in [
         (0, 0, "the top corners are rounded"),
-        (202, 60, "nothing beyond the frame"),
-        (100, 129, "nothing below it"),
+        (200, 60, "nothing beyond the frame"),
+        (100, 148, "nothing below it"),
     ] {
         let seen = picture.at(x, y);
         assert!(shaded(seen, BACKGROUND), "{place}: {seen:#x}");
     }
+}
+
+#[test]
+fn a_theme_may_give_a_frame_a_hairline_round_it() {
+    let mut session = Session::with_config(&[("theme.css", EDGED)]);
+    let mut client = session.connect();
+    session.open_decorated(&mut client, "foot", (200, 100), RED);
+    let frame = session.compositor().desktop().frames().next().unwrap();
+    let size = frame.geometry.size;
+    assert_eq!((size.width, size.height), (202, 149), "larger by it");
+
+    let picture = session.draw();
+    assert_eq!(picture.at(100, 0), HAIRLINE, "along the top");
+    assert_eq!(picture.at(0, 60), HAIRLINE, "left border");
+    assert_eq!(picture.at(201, 60), HAIRLINE, "right border");
+    assert_eq!(picture.at(100, 148), HAIRLINE, "bottom border");
+    assert_eq!(picture.at(1, 60), RED, "and the window within");
+    let beyond = picture.at(202, 60);
+    assert!(shaded(beyond, BACKGROUND), "{beyond:#x}");
 }
 
 #[test]
@@ -220,7 +239,8 @@ fn the_title_is_written_on_the_titlebar() {
     session.open_decorated(&mut client, "foot", (300, 100), RED);
 
     let picture = session.draw();
-    let title_area = (11..150).flat_map(|x| (4..24).map(move |y| (x, y)));
+    // In the middle of it.
+    let title_area = (100..200).flat_map(|x| (14..34).map(move |y| (x, y)));
     let inked = title_area
         .filter(|(x, y)| picture.at(*x, *y) != FOCUSED_TITLEBAR)
         .count();
@@ -239,8 +259,8 @@ fn the_desktop_and_its_frames_are_drawn_light_when_the_configuration_asks() {
 
     let picture = session.draw();
     assert_eq!(picture.at(600, 400), 0xfffc_f7e3, "a warm cream behind");
-    assert_eq!(picture.at(190, 14), 0xffff_fdf4, "the titlebar with focus");
-    assert_eq!(picture.at(0, 60), 0xffe4_ddc4, "its hairline");
+    assert_eq!(picture.at(190, 14), 0xffff_fcf2, "the titlebar with focus");
+    assert_eq!(picture.at(0, 60), RED, "and no edge");
 }
 
 /// `config.yaml` going by the sun on the equator, as far round as it is
@@ -281,7 +301,7 @@ fn day_turns_into_night_over_a_minute_and_a_scheme_changed_by_hand_at_once() {
     session.open_decorated(&mut client, "foot", (200, 100), RED);
     let seen = |session: &mut Session| {
         let picture = session.draw();
-        (picture.at(600, 400), picture.at(120, 14))
+        (picture.at(600, 400), picture.at(190, 14))
     };
     let (desktop, titlebar) = seen(&mut session);
     assert_eq!(desktop, DAY);
@@ -328,14 +348,13 @@ fn a_frame_that_loses_focus_is_redrawn_in_the_unfocused_colours() {
         .input(omorfos::Input::Motion { x: 600.0, y: 400.0 }, 0);
 
     let picture = session.draw();
-    assert_eq!(picture.at(120, 14), UNFOCUSED_TITLEBAR);
-    assert_eq!(picture.at(0, 100), HAIRLINE);
+    assert_eq!(picture.at(190, 14), UNFOCUSED_TITLEBAR);
 }
 
 #[test]
 fn a_frame_gets_to_the_colours_of_its_focus_over_the_time_the_theme_gives() {
     let theme = "window, titlebar { transition: 100ms linear; }\n\
-                 window { border-color: #ff0000; }\n\
+                 window { border: 1px solid #ff0000; }\n\
                  window:focus { border-color: #0000ff; }\n\
                  titlebar { background: #ff0000; }\n\
                  titlebar:focus { background: #0000ff; }\n";
@@ -378,7 +397,7 @@ fn a_frame_gets_to_the_colours_of_its_focus_over_the_time_the_theme_gives() {
 #[test]
 fn a_window_and_its_frame_come_onto_the_screen_over_the_time_the_theme_gives() {
     // As large as it is all the while, for its edges to be where they are.
-    let theme = "window { transition: 100ms linear; }\n\
+    let theme = "window { transition: 100ms linear; border-width: 1px; }\n\
                  @starting-style { window { scale: 1 } }\n";
     let mut session = Session::with_config(&[("theme.css", theme)]);
     let mut client = session.connect();
@@ -432,7 +451,7 @@ fn a_window_and_its_frame_go_from_the_screen_over_the_time_the_theme_gives() {
     use omorfos_config::Action;
 
     // As large as it is all the while, for its edges to be where they are.
-    let theme = "window { transition: 100ms linear; }\n\
+    let theme = "window { transition: 100ms linear; border-width: 1px; }\n\
                  window:closing { scale: 1 }\n";
     let mut session =
         Session::with_config(&[("theme.css", theme), ("config.yaml", FOUR_WORKSPACES)]);
@@ -611,15 +630,15 @@ fn a_window_of_one_colour_fades_out_too() {
 }
 
 /// The colours of a titlebar's buttons under the default theme: close,
-/// maximize and minimize when their frame has focus, and all of them when
+/// minimize and maximize when their frame has focus, and all of them when
 /// it has not.
-const BUTTONS: [u32; 3] = [0xfff8_616d, 0xffa3_e635, 0xfffd_e047];
+const BUTTONS: [u32; 3] = [0xfff8_616d, 0xfffd_e047, 0xffa3_e635];
 const PLAIN_BUTTON: u32 = 0xff2b_3a6b;
 
 /// The middle of each button of a frame whose corner is at the screen's.
-const CLOSE: (i32, i32) = (184, 14);
-const MAXIMIZE: (i32, i32) = (164, 14);
-const MINIMIZE: (i32, i32) = (144, 14);
+const CLOSE: (i32, i32) = (20, 24);
+const MINIMIZE: (i32, i32) = (44, 24);
+const MAXIMIZE: (i32, i32) = (68, 24);
 
 const LEFT: u32 = 0x110;
 const RIGHT: u32 = 0x111;
@@ -659,10 +678,10 @@ fn a_titlebar_has_buttons_that_close_make_fullscreen_and_minimize() {
     session.open_decorated(&mut client, "first", (200, 100), RED);
     client.take_events();
     let picture = session.draw();
-    let shown = [CLOSE, MAXIMIZE, MINIMIZE].map(|(x, y)| picture.at(x, y));
+    let shown = [CLOSE, MINIMIZE, MAXIMIZE].map(|(x, y)| picture.at(x, y));
     assert_eq!(shown, BUTTONS);
 
-    // The second is for fullscreen: the window goes to a workspace of
+    // The third is for fullscreen: the window goes to a workspace of
     // its own, and comes back from it where it was.
     let places = |session: &Session| session.compositor().desktop().workspaces().count();
     click(&mut session, MAXIMIZE);
@@ -735,7 +754,7 @@ fn a_button_does_nothing_unless_the_pointer_is_let_go_on_it() {
 }
 
 #[test]
-fn a_button_is_coloured_under_the_pointer_whether_or_not_its_frame_has_focus() {
+fn the_buttons_are_coloured_with_the_pointer_on_any_whether_or_not_their_frame_has_focus() {
     let mut session = Session::new();
     let mut client = session.connect();
     session.open_decorated(&mut client, "first", (200, 100), RED);
@@ -745,21 +764,19 @@ fn a_button_is_coloured_under_the_pointer_whether_or_not_its_frame_has_focus() {
     session.step();
     let buttons = |session: &mut Session| {
         let picture = session.draw();
-        [(179, 14), (159, 14), (139, 14)].map(|(x, y)| picture.at(x, y))
+        // Each beside its middle, clear of the sign on it.
+        [CLOSE, MINIMIZE, MAXIMIZE].map(|(x, y)| picture.at(x - 6, y))
     };
     assert_eq!(buttons(&mut session), [PLAIN_BUTTON; 3]);
 
+    // On one of them, all three are, each with a sign of what it does.
     point(&mut session, MAXIMIZE);
     session.step();
-    assert_eq!(
-        buttons(&mut session),
-        [PLAIN_BUTTON, BUTTONS[1], PLAIN_BUTTON]
-    );
-    assert_ne!(
-        session.draw().at(MAXIMIZE.0, MAXIMIZE.1),
-        BUTTONS[1],
-        "with a sign on it of what it does"
-    );
+    assert_eq!(buttons(&mut session), BUTTONS);
+    let picture = session.draw();
+    for ((x, y), plain) in [CLOSE, MINIMIZE, MAXIMIZE].into_iter().zip(BUTTONS) {
+        assert_ne!(picture.at(x, y), plain, "a sign on the one at {x}");
+    }
 
     point(&mut session, (120, 14));
     session.step();
@@ -887,11 +904,11 @@ fn a_window_can_be_rolled_up_into_its_titlebar_and_let_down_again() {
     let mut client = session.connect();
     session.open_decorated(&mut client, "first", (200, 100), RED);
     client.take_events();
-    assert_eq!(first_frame(&session).geometry.size.height, 129);
+    assert_eq!(first_frame(&session).geometry.size.height, 148);
 
     choose(&mut session, 5);
     assert!(first_frame(&session).standing.shaded);
-    assert_eq!(first_frame(&session).geometry.size.height, 28);
+    assert_eq!(first_frame(&session).geometry.size.height, 48);
     let picture = session.draw();
     assert_eq!(
         picture.at(190, 14),

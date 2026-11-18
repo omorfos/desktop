@@ -12,8 +12,8 @@ use crate::layers::panel;
 use crate::windows::{BACKGROUND, RED, shaded};
 
 /// The frame of a window 200 by 100, as the default theme makes it, ends
-/// this far down: a titlebar of 28, then the window.
-const BOTTOM: i32 = 128;
+/// this far down: a titlebar of 48, then the window.
+const BOTTOM: i32 = 147;
 
 /// A theme in which a window casts a shadow straight down, darker while it
 /// has focus.
@@ -94,7 +94,7 @@ fn a_theme_without_shadows_casts_none() {
     assert_eq!(shaded_background(&picture), 0);
 
     // Nor do the pictures of arrangements, which are drawn as a menu.
-    let (x, y) = rest_on_the_second_button(&mut session);
+    let (x, y) = rest_on_the_third_button(&mut session);
     let picture = session.draw();
     assert_ne!(picture.at(x + 330, y + 3), BACKGROUND, "the pictures");
     assert_eq!(shaded_background(&picture), 0);
@@ -238,7 +238,7 @@ fn windows_that_cast_the_same_shadow_each_cast_it() {
     let picture = session.draw();
     assert!(darkness(picture.at(160, BOTTOM + 4)) > 0);
     let red = |pixel: u32| (pixel >> 16) & 0xff;
-    let on_the_first = picture.at(80, 32 + 28 + 50 + 2);
+    let on_the_first = picture.at(80, 32 + 48 + 50 + 2);
     assert!(red(on_the_first) < red(RED), "{on_the_first:#x}");
 }
 
@@ -372,7 +372,7 @@ fn the_pictures_of_arrangements_cast_the_shadow_of_a_menu() {
     session.open_decorated(&mut client, "app", (200, 100), RED);
     assert_eq!(shaded_background(&session.draw()), 0, "no shadow yet");
 
-    let (x, y) = rest_on_the_second_button(&mut session);
+    let (x, y) = rest_on_the_third_button(&mut session);
     let picture = session.draw();
     assert_ne!(picture.at(x + 330, y + 3), BACKGROUND, "the pictures");
     assert!(shaded_background(&picture) > 0, "under them");
@@ -380,10 +380,10 @@ fn the_pictures_of_arrangements_cast_the_shadow_of_a_menu() {
     assert!(!session.draw().damaged, "and it is not drawn again");
 }
 
-/// Rests the pointer on the second button of the titlebar of the only
+/// Rests the pointer on the third button of the titlebar of the only
 /// window until the pictures of arrangements are up, under it, past the
 /// window to the right; returns where their top left corner is.
-fn rest_on_the_second_button(session: &mut Session) -> (i32, i32) {
+fn rest_on_the_third_button(session: &mut Session) -> (i32, i32) {
     let frame = session.compositor().desktop().frames().next();
     let button = frame.and_then(|frame| frame.decoration);
     let button = button.map(|decoration| decoration.button(Button::Maximize));

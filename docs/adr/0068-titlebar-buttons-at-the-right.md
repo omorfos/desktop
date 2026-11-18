@@ -1,6 +1,8 @@
 # 68. Titlebar buttons at the right, and programs told so
 
-- Status: accepted
+- Status: accepted; the side and the order changed by
+  [97. A window's frame](0097-a-windows-frame-bulkier-glass-buttons-at-the-left.md),
+  which keeps how programs are told
 - Date: 2026-11-09
 
 ## Context

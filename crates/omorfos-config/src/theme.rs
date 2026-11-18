@@ -267,21 +267,21 @@ impl Theme {
 
     /// The buttons of a titlebar as GNOME's `button-layout` setting writes
     /// them, which programs that draw their own titlebars read to put
-    /// theirs where omorfos puts its own: none at the left, and at the
-    /// right, from the left, those the theme gives a width,
-    /// `:minimize,maximize,close`.
+    /// theirs where omorfos puts its own: at the left, from the left,
+    /// those the theme gives a width, and none at the right,
+    /// `close,minimize,maximize:`.
     #[must_use]
     pub fn button_layout(&self) -> String {
         let buttons = [
+            (Part::ButtonClose, "close"),
             (Part::ButtonMinimize, "minimize"),
             (Part::ButtonMaximize, "maximize"),
-            (Part::ButtonClose, "close"),
         ];
         let shown = buttons
             .into_iter()
             .filter(|(part, _)| self.style(*part, States::NONE).min_width > 0)
             .map(|(_, name)| name);
-        format!(":{}", shown.collect::<Vec<_>>().join(","))
+        format!("{}:", shown.collect::<Vec<_>>().join(","))
     }
 
     /// The font `part` is written in while it is in `states`.
@@ -932,7 +932,13 @@ mod tests {
     const TEXT: Color = Color::rgb(0xe6, 0xea, 0xf5);
     const TEXT_DIM: Color = Color::rgb(0x9a, 0xa4, 0xc7);
     const BORDER: Color = Color::rgb(0x2b, 0x3a, 0x6b);
+    const BORDER_FAINT: Color = Color::rgb(0x22, 0x2e, 0x57);
     const BORDER_STRONG: Color = Color::rgb(0x74, 0x82, 0xb3);
+
+    /// A colour as thick glass is tinted with it: nine tenths of itself.
+    const fn thick(color: Color) -> Color {
+        Color::rgba(color.red, color.green, color.blue, 0xe6)
+    }
     const SURFACE_RAISED: Color = Color::rgb(0x24, 0x33, 0x64);
     const ON_ACCENT: Color = BACKGROUND;
     const DANGER: Color = Color::rgb(0xf8, 0x61, 0x6d);
@@ -1256,10 +1262,10 @@ mod tests {
     }
 
     #[test]
-    fn programs_are_told_the_buttons_of_a_titlebar_stand_at_the_right_as_the_theme_has_them() {
-        assert_eq!(Theme::default().button_layout(), ":minimize,maximize,close");
+    fn programs_are_told_the_buttons_of_a_titlebar_stand_at_the_left_as_the_theme_has_them() {
+        assert_eq!(Theme::default().button_layout(), "close,minimize,maximize:");
         let without = Theme::parse("button-maximize { min-width: 0 }").unwrap();
-        assert_eq!(without.button_layout(), ":minimize,close", "not there");
+        assert_eq!(without.button_layout(), "close,minimize:", "not there");
         let none = "button-close, button-maximize, button-minimize { min-width: 0 }";
         let none = Theme::parse(none).unwrap();
         assert_eq!(none.button_layout(), ":", "none at all");
@@ -1529,8 +1535,11 @@ mod tests {
         vec![
             (style(Part::Titlebar, FOCUSED), None),
             (style(Part::Titlebar, States::NONE), None),
-            (style(Part::Tab, FOCUSED.with(State::Active)), None),
-            (style(Part::Tab, States::NONE), None),
+            (
+                style(Part::Tab, FOCUSED.with(State::Active)),
+                Some(Part::Titlebar),
+            ),
+            (style(Part::Tab, States::NONE), Some(Part::Titlebar)),
             (style(Part::Menu, States::NONE), None),
             (style(Part::MenuItem, States::NONE), Some(Part::Menu)),
             (style(Part::MenuItem, hovered), None),
@@ -1603,6 +1612,19 @@ mod tests {
             let ratio = text.color.contrast(under);
             assert!(ratio >= 4.5, "{which}: text {index}: {ratio:.2} to 1");
         }
+        // A titlebar is glass, and what is written on it is read over the
+        // worst that can be behind it: a white window in the dark scheme
+        // and a black one in the light.
+        let worst = if theme.dark() {
+            Color::rgb(255, 255, 255)
+        } else {
+            Color::rgb(0, 0, 0)
+        };
+        for states in [FOCUSED, States::NONE] {
+            let bar = style(Part::Titlebar, states);
+            let ratio = bar.color.contrast(over(bar.background, worst));
+            assert!(ratio >= 4.5, "{which}: a title on glass: {ratio:.2} to 1");
+        }
         let surface = style(Part::Menu, States::NONE).background;
         let raised = style(Part::MenuItem, hovered).background;
         let background = style(Part::Desktop, States::NONE).background;
@@ -1655,14 +1677,14 @@ mod tests {
     }
 
     #[test]
-    fn a_frame_has_a_hairline_border_with_focus_or_without() {
+    fn a_frame_has_no_edge_with_focus_or_without_until_it_is_given_a_width() {
         let theme = Theme::default();
         let focused = theme.style(Part::Window, FOCUSED);
-        assert_eq!(focused.border, Edges::all(line(BORDER, 1)));
+        assert_eq!(focused.border, Edges::all(line(BORDER_FAINT, 0)));
         assert_eq!(focused.radius, 12);
         assert_eq!(focused.background, CLEAR, "the window fills it itself");
         let other = theme.style(Part::Window, States::NONE);
-        assert_eq!(other.border, Edges::all(line(BORDER, 1)));
+        assert_eq!(other.border, Edges::all(line(BORDER_FAINT, 0)));
         assert_eq!(other.radius, 12);
     }
 
@@ -1703,18 +1725,22 @@ mod tests {
     fn a_titlebar_takes_its_colours_from_its_focus() {
         let theme = Theme::default();
         let focused = theme.style(Part::Titlebar, FOCUSED);
-        assert_eq!((focused.background, focused.color), (SURFACE, TEXT));
-        assert_eq!(focused.height, 28);
+        assert_eq!((focused.background, focused.color), (thick(SURFACE), TEXT));
+        assert_eq!(focused.height, 48);
         let other = theme.style(Part::Titlebar, States::NONE);
-        assert_eq!((other.background, other.color), (SURFACE_DIM, TEXT_DIM));
+        let dim = thick(SURFACE_DIM);
+        assert_eq!((other.background, other.color), (dim, TEXT_DIM));
         assert_eq!(focused.border.widths(), Edges::NONE, "the frame has it");
+        // Thick glass, as the design language has it, with focus or without.
+        assert_eq!((focused.blur, other.blur), (32, 32));
     }
 
     #[test]
     fn the_tab_being_shown_is_underlined_and_the_others_are_dimmed() {
         let theme = Theme::default();
         let shown = theme.style(Part::Tab, FOCUSED.with(State::Active));
-        assert_eq!((shown.background, shown.color), (SURFACE, TEXT));
+        // A tab has no ground of its own: its titlebar's glass is behind it.
+        assert_eq!((shown.background, shown.color), (CLEAR, TEXT));
         assert_eq!(shown.border.bottom, line(ACCENT, 2));
         assert_eq!(shown.border.left, line(BORDER, 1));
         assert_eq!((shown.border.top.width, shown.border.right.width), (0, 0));
@@ -1722,11 +1748,11 @@ mod tests {
 
         // In a frame without focus the line is there but does not stand out.
         let shown = theme.style(Part::Tab, ACTIVE);
-        assert_eq!((shown.background, shown.color), (SURFACE_DIM, TEXT_DIM));
+        assert_eq!((shown.background, shown.color), (CLEAR, TEXT_DIM));
         assert_eq!(shown.border.bottom, line(BORDER, 2));
 
         let behind = theme.style(Part::Tab, FOCUSED);
-        assert_eq!((behind.background, behind.color), (SURFACE_DIM, TEXT_DIM));
+        assert_eq!((behind.background, behind.color), (CLEAR, TEXT_DIM));
         assert_eq!(behind.border.bottom.width, 0);
         assert_eq!(behind.border.left, line(BORDER, 1));
     }
@@ -1977,7 +2003,7 @@ mod tests {
         let frame = theme.style(Part::Window, States::NONE);
         assert_eq!(
             frame.border,
-            Edges::all(line(BORDER, 3)),
+            Edges::all(line(BORDER_FAINT, 3)),
             "its colour is left"
         );
         assert_eq!(frame.radius, 0);
@@ -2018,7 +2044,7 @@ mod tests {
         );
         assert_eq!(theme.style(Part::Task, ACTIVE).border.bottom.color, RED);
         let plain = theme.style(Part::Window, States::NONE);
-        assert_eq!(plain.border.top.color, BORDER);
+        assert_eq!(plain.border.top.color, BORDER_FAINT);
     }
 
     #[test]

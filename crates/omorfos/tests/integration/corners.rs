@@ -5,14 +5,38 @@ use omorfos::Scale;
 use crate::common::Session;
 use crate::windows::{BACKGROUND, BLUE, GREEN, RED, shaded};
 
-/// The default theme's frame around a window 200 by 100: a border of one,
-/// a titlebar of 28 and corners rounded to a radius of twelve.
+/// The default theme's frame around a window 200 by 100, given a border
+/// of one: a titlebar of 48 and corners rounded to a radius of twelve.
 const RIGHT: i32 = 201;
-const BOTTOM: i32 = 128;
+const BOTTOM: i32 = 148;
+
+/// A session whose frames have a hairline round them, which is what
+/// follows a corner round.
+fn edged() -> Session {
+    Session::with_config(&[("theme.css", "window { border-width: 1px; }\n")])
+}
+
+#[test]
+fn without_an_edge_the_window_itself_is_rounded_at_the_bottom_corners() {
+    let mut session = Session::new();
+    let mut client = session.connect();
+    session.open_decorated(&mut client, "app", (200, 100), RED);
+    let picture = session.draw();
+    // The frame is 200 by 148, and the window reaches its sides and foot.
+    for (x, y) in [(0, 147), (1, 146), (199, 147), (198, 146)] {
+        let seen = picture.at(x, y);
+        assert!(shaded(seen, BACKGROUND), "at {x}, {y}: {seen:#x}");
+    }
+    assert_eq!(picture.at(0, 60), RED, "its first column");
+    assert_eq!(picture.at(199, 60), RED, "its last");
+    assert_eq!(picture.at(100, 147), RED, "its last row");
+    assert_eq!(picture.at(6, 141), RED, "just inside the curve");
+    assert_eq!(picture.at(193, 141), RED);
+}
 
 #[test]
 fn the_bottom_corners_of_a_frame_are_rounded_window_and_all() {
-    let mut session = Session::new();
+    let mut session = edged();
     let mut client = session.connect();
     session.open_decorated(&mut client, "app", (200, 100), RED);
     let picture = session.draw();
@@ -55,7 +79,7 @@ fn the_bottom_corners_of_a_frame_are_rounded_window_and_all() {
 
 #[test]
 fn the_border_follows_the_top_corners_round_as_it_does_the_bottom_ones() {
-    let mut session = Session::new();
+    let mut session = edged();
     let mut client = session.connect();
     session.open_decorated(&mut client, "app", (200, 100), RED);
     let picture = session.draw();
@@ -103,7 +127,10 @@ fn what_is_behind_a_frame_shows_past_its_corners() {
 
 #[test]
 fn a_radius_of_nothing_leaves_the_corners_square() {
-    let mut session = Session::with_config(&[("theme.css", "window { border-radius: 0; }\n")]);
+    let mut session = Session::with_config(&[(
+        "theme.css",
+        "window { border: 1px solid; border-radius: 0; }\n",
+    )]);
     let mut client = session.connect();
     session.open_decorated(&mut client, "app", (200, 100), RED);
     let picture = session.draw();
@@ -120,7 +147,7 @@ fn a_radius_of_nothing_leaves_the_corners_square() {
 
 #[test]
 fn a_frame_that_has_not_changed_is_not_drawn_again() {
-    let mut session = Session::new();
+    let mut session = edged();
     let mut client = session.connect();
     let window = session.open_decorated(&mut client, "app", (200, 100), RED);
     session.draw();
@@ -144,13 +171,13 @@ fn a_frame_that_has_not_changed_is_not_drawn_again() {
 
 #[test]
 fn corners_are_rounded_at_the_scale_of_the_screen() {
-    let mut session = Session::new();
+    let mut session = edged();
     session.suggest_scale(Scale::new(2.0));
     let mut client = session.connect();
     session.open_decorated(&mut client, "app", (200, 100), RED);
     let picture = session.draw();
-    // Twice the size in pixels: the frame is 404 by 258 and the radius 24.
-    let (right, bottom) = (403, 257);
+    // Twice the size in pixels: the frame is 404 by 298 and the radius 24.
+    let (right, bottom) = (403, 297);
     for (x, y) in [(0, bottom), (3, bottom - 3), (right - 3, bottom - 3)] {
         let seen = picture.at(x, y);
         assert!(shaded(seen, BACKGROUND), "at {x}, {y}: {seen:#x}");
@@ -158,11 +185,16 @@ fn corners_are_rounded_at_the_scale_of_the_screen() {
     assert_eq!(picture.at(12, bottom - 12), RED, "inside the curve");
     assert_eq!(picture.at(right - 12, bottom - 12), RED);
     assert_eq!(picture.at(200, bottom - 2), RED, "the last row");
+    // The border is one unit wide, so two pixels.
+    let border = picture.at(0, 150);
+    assert_ne!(border, RED);
+    assert_eq!(picture.at(1, 150), border);
+    assert_eq!(picture.at(6, 150), RED);
 }
 
 #[test]
 fn a_pop_up_is_not_cut_to_the_frame() {
-    let mut session = Session::new();
+    let mut session = edged();
     let mut client = session.connect();
     let window = session.open_decorated(&mut client, "app", (200, 100), RED);
     // A menu hanging off the bottom corner of the window.

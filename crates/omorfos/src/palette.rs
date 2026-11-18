@@ -1,5 +1,5 @@
 //! The arrangements a window can be put in, shown as small pictures under
-//! the second button of its titlebar when the pointer rests on it.
+//! the third button of its titlebar when the pointer rests on it.
 //!
 //! A click on a part of a picture makes a workspace cut up that way, with
 //! the window in that part. A click on the button itself still makes the

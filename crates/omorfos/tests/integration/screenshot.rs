@@ -447,7 +447,7 @@ fn told_to_it_takes_the_window_with_focus_in_place_of_the_screens() {
     assert_eq!(paths.len(), 1);
     // As large as the window in its frame with the shadow it casts, and
     // see-through beyond that.
-    assert_eq!(saved(&paths[0], (0, 0)), ((250, 177), 0));
+    assert_eq!(saved(&paths[0], (0, 0)), ((248, 196), 0));
     assert_eq!(saved(&paths[0], (24 + 1 + 100, 16 + 28 + 50)).1, GREEN);
 }
 
@@ -773,8 +773,8 @@ fn a_covered_window_is_shown_by_itself_in_its_frame_with_its_shadow_where_it_is(
     assert!(hidden.0 < right && hidden.1 < bottom - 1);
     // Just under its titlebar, which a picture squeezed into the frame
     // would show there.
-    let high = (hidden.0, corner(front.y) + 2);
-    assert!(high.1 >= top + 28);
+    let high = (hidden.0, top + 48 + 2);
+    assert!(high.1 > corner(front.y));
     let beside = (right + 4, top + 60);
     let tool = picking_windows(&mut session, &ipc);
     point(&mut session, (corner(front.x) + 20, corner(front.y) + 20));

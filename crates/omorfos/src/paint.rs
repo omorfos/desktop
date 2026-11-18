@@ -76,7 +76,9 @@ impl Looks {
     /// How the frame showing the window numbered `shown` looks, with a tab
     /// for each of the windows numbered `tabs`, of which `active` is the
     /// one being shown, and the pointer over the button `hovered`, if over
-    /// any. Whatever has just changed state is as far on its way as
+    /// any, which has all three look as under it, so that each says what
+    /// it does once the pointer is among them (ADR 97). Whatever has just
+    /// changed state is as far on its way as
     /// `motion` has it. The tabs' looks are worked out in the room `room`
     /// has, so that a frame with as many tabs as before costs nothing to
     /// look at again.
@@ -90,8 +92,8 @@ impl Looks {
         focused: bool,
     ) -> Self {
         let states = States::NONE.when(State::Focused, focused);
-        let buttons = BUTTONS.map(|(button, part)| {
-            let states = states.when(State::Hovered, hovered == Some(button));
+        let buttons = BUTTONS.map(|(_, part)| {
+            let states = states.when(State::Hovered, hovered.is_some());
             motion.style(theme, part, shown, states)
         });
         let tabs = tabs.enumerate().map(|(index, window)| {
@@ -178,17 +180,18 @@ pub(crate) fn titlebar(
             style.border = Edges::all(Line::NONE);
         }
         let area = (left, edge, tab.size.width, inner_height);
+        let font = theme.font(Part::Tab, tab_states);
         if tabbed {
             canvas.draw_box(area, &style);
+            let within = inset(area, style.inset());
+            text.draw(&mut canvas, title, within, style.color, font);
+        } else {
+            // A title alone stands in the middle of its titlebar: of what
+            // the buttons leave of it, less as much again at the other end.
+            let clear = tab.size.width.saturating_sub(left.unsigned_abs());
+            let within = inset((left, edge, clear, inner_height), style.inset());
+            text.draw_centered(&mut canvas, title, within, style.color, font);
         }
-        let font = theme.font(Part::Tab, tab_states);
-        text.draw(
-            &mut canvas,
-            title,
-            inset(area, style.inset()),
-            style.color,
-            font,
-        );
     }
 
     // The outline along the top, down each side and round the corners
@@ -1241,6 +1244,10 @@ mod tests {
         raised: Color,
         /// What is wrong.
         danger: Color,
+        /// A menu, and what else floats.
+        surface: Color,
+        /// The hairline round it.
+        edge: Color,
         focused: Tone,
         unfocused: Tone,
     }
@@ -1263,9 +1270,21 @@ mod tests {
                 .style(Part::MenuItem, States::NONE.with(State::Hovered))
                 .background,
             danger: theme.style(Part::NoticeHeading, States::NONE).color,
+            surface: theme.style(Part::Menu, States::NONE).background,
+            edge: theme.style(Part::Menu, States::NONE).border.top.color,
             focused: tone(States::NONE.with(State::Focused)),
             unfocused: tone(States::NONE),
         }
+    }
+
+    /// The built-in theme with a hairline round its frames and its
+    /// titlebars solid, so that an outline is there to be seen and a pixel
+    /// of a titlebar is a colour of the theme's.
+    fn solid() -> Theme {
+        let solid = "window { border-width: 1px; }\n\
+                     titlebar { background: var(--surface-dim); }\n\
+                     titlebar:focus { background: var(--surface); }";
+        Theme::parse(solid).unwrap()
     }
 
     /// A titlebar with nothing on its way anywhere.
@@ -1305,7 +1324,7 @@ mod tests {
 
     #[test]
     fn text_and_corners_grow_with_the_scale() {
-        let theme = Theme::default();
+        let theme = solid();
         let mut text = Text::new();
         let mut paint =
             |scale| titlebar(&mut text, &theme, &frame(1), &["Terminal"], 0, true, scale);
@@ -1317,7 +1336,7 @@ mod tests {
         let background = argb(palette(&theme).focused.titlebar);
         let ink = |canvas: &Canvas, columns| inked(canvas, columns, background);
         assert!(
-            ink(&doubled, 20..240) > ink(&plain, 10..120) * 3,
+            ink(&doubled, 300..500) > ink(&plain, 150..250) * 3,
             "letters twice as tall and twice as wide cover about four times as much"
         );
         assert_eq!(plain.at(1, 1), 0, "inside the rounded corner");
@@ -1332,12 +1351,20 @@ mod tests {
             .count()
     }
 
+    /// The same, below the outline along the top of a titlebar.
+    fn lettered(canvas: &Canvas, columns: std::ops::Range<u32>, background: u32) -> usize {
+        (2..canvas.height())
+            .flat_map(|y| columns.clone().map(move |x| (x, y)))
+            .filter(|(x, y)| canvas.at(*x, *y) != background)
+            .count()
+    }
+
     #[test]
     fn a_row_with_keys_has_them_at_its_end_and_its_label_stops_short_of_them() {
         use omorfos_core::MenuMetrics;
 
         let theme = Theme::default();
-        let background = argb(palette(&theme).focused.titlebar);
+        let background = argb(palette(&theme).surface);
         let entry = |label: &str, keys: Vec<Keycap>| Item::Entry {
             label: label.to_owned(),
             action: (),
@@ -1425,25 +1452,18 @@ mod tests {
         // Rows: Terminal at 4..32, the separator at 32..41, Session at 41..69.
         let plain = menu_panel(&mut text, &theme, &menu);
         assert_eq!((plain.width(), plain.height()), (200, 73));
-        assert_eq!(plain.at(0, 30), argb(colors.unfocused.border), "outlined");
-        assert_eq!(plain.at(190, 10), argb(colors.focused.titlebar));
-        assert_eq!(
-            plain.at(100, 36),
-            argb(colors.unfocused.border),
-            "the separator's line"
-        );
-        assert!(
-            inked(&plain, 10..100, argb(colors.focused.titlebar)) > 40,
-            "labels"
-        );
+        assert_eq!(plain.at(0, 30), argb(colors.edge), "outlined");
+        assert_eq!(plain.at(190, 10), argb(colors.surface));
+        assert_eq!(plain.at(100, 36), argb(colors.edge), "the separator's line");
+        assert!(inked(&plain, 10..100, argb(colors.surface)) > 40, "labels");
         let arrow = (176..190).flat_map(|x| (41..69).map(move |y| (x, y)));
         let arrow_ink = arrow
-            .filter(|(x, y)| plain.at(*x, *y) != argb(colors.focused.titlebar))
+            .filter(|(x, y)| plain.at(*x, *y) != argb(colors.surface))
             .count();
         assert!(arrow_ink > 3, "the submenu row has an arrow");
         // A sign is drawn 16 across, after the border of 1 and the row's
         // padding of 8, and the label 8 after it, in the middle of its row.
-        let background = argb(colors.focused.titlebar);
+        let background = argb(colors.surface);
         let signed = |rows: std::ops::Range<u32>, columns: std::ops::Range<u32>| {
             let place = rows.flat_map(|y| columns.clone().map(move |x| (x, y)));
             place.filter(|&(x, y)| plain.at(x, y) != background).count()
@@ -1468,11 +1488,7 @@ mod tests {
             argb(colors.raised),
             "the hovered row is highlighted"
         );
-        assert_eq!(
-            lit.at(190, 50),
-            argb(colors.focused.titlebar),
-            "the others are not"
-        );
+        assert_eq!(lit.at(190, 50), argb(colors.surface), "the others are not");
     }
 
     #[test]
@@ -1504,7 +1520,7 @@ mod tests {
         // the border and the row's padding, and 6 below the row's top; and
         // round the sign the theme's 3 of padding, at 6..28.
         let panel = menu_panel(&mut text, &theme, &menu);
-        let background = argb(colors.focused.titlebar);
+        let background = argb(colors.surface);
         assert_eq!(panel.at(7, 18), background, "off, it is not pressed in");
         let tint = panel.at(7, 46);
         assert_ne!(tint, background, "on, it is");
@@ -1592,11 +1608,11 @@ mod tests {
             argb(colors.danger),
             "outlined in the colour of danger"
         );
-        assert_eq!(canvas.at(395, 40), argb(colors.focused.titlebar));
+        assert_eq!(canvas.at(395, 40), argb(colors.surface));
         let row = |top: u32| (10..300).flat_map(move |x| (top..top + 22).map(move |y| (x, y)));
         let ink = |top: u32| {
             row(top)
-                .filter(|(x, y)| canvas.at(*x, *y) != argb(colors.focused.titlebar))
+                .filter(|(x, y)| canvas.at(*x, *y) != argb(colors.surface))
                 .count()
         };
         assert!(
@@ -1645,7 +1661,7 @@ mod tests {
 
     #[test]
     fn a_titlebar_spans_the_frame_with_an_outline_and_rounded_corners() {
-        let theme = Theme::default();
+        let theme = solid();
         let mut text = Text::new();
         let canvas = titlebar(
             &mut text,
@@ -1676,15 +1692,69 @@ mod tests {
             argb(palette(&theme).focused.titlebar),
             "no underline"
         );
+        let background = argb(palette(&theme).focused.titlebar);
+        assert!(inked(&canvas, 150..250, background) > 20, "the title");
+        assert_eq!(lettered(&canvas, 10..120, background), 0, "in the middle");
+    }
+
+    #[test]
+    fn a_title_alone_stands_in_the_middle_of_what_is_as_far_from_each_end_as_the_buttons_reach() {
+        let theme = solid();
+        let mut text = Text::new();
+        let background = argb(palette(&theme).focused.titlebar);
+        let mut titled = |title: &str| {
+            let canvas = titlebar(
+                &mut text,
+                &theme,
+                &buttoned(),
+                &[title],
+                0,
+                true,
+                Scale::ONE,
+            );
+            let inked = |x: &u32| lettered(&canvas, *x..*x + 1, background) > 0;
+            // Beyond the buttons, which reach 80 in, and short of the
+            // rounded corner at the right.
+            let first = (80..386).find(inked).unwrap_or_default();
+            let last = (80..386).rev().find(inked).unwrap_or_default();
+            (first, last)
+        };
+        let (first, last) = titled("Terminal");
         assert!(
-            inked(&canvas, 10..120, argb(palette(&theme).focused.titlebar)) > 20,
-            "the title"
+            (197..=203).contains(&u32::midpoint(first, last)),
+            "{first} to {last}"
         );
+        // One too long for it is cut short as far from the right as the
+        // buttons and the title's own room are from the left.
+        let (first, last) = titled(&"A title that goes on and on ".repeat(8));
+        assert!((92..100).contains(&first), "{first}");
+        assert!((290..308).contains(&last), "{last}");
+    }
+
+    #[test]
+    fn the_built_in_titlebar_is_glass_to_its_edge_with_no_outline() {
+        let theme = Theme::default();
+        let mut text = Text::new();
+        let bare = FrameMetrics {
+            border: 0,
+            titlebar: 48,
+            buttons: [0; 3],
+        };
+        let outer = Rect::new(Point::new(300, 200), Size::new(400, 300));
+        let frame = Decoration::new(outer, bare, 1);
+        let alpha = |canvas: &Canvas, x| canvas.at(x, 40) >> 24;
+        for (focused, tint) in [(true, 0xe6), (false, 0xe6)] {
+            let canvas = titlebar(&mut text, &theme, &frame, &[""], 0, focused, Scale::ONE);
+            assert_eq!(canvas.height(), 48);
+            for x in [0, 200, 399] {
+                assert_eq!(alpha(&canvas, x), tint, "nine tenths of it at {x}");
+            }
+        }
     }
 
     #[test]
     fn an_unfocused_titlebar_uses_the_unfocused_colours() {
-        let theme = Theme::default();
+        let theme = solid();
         let mut text = Text::new();
         let canvas = titlebar(
             &mut text,
@@ -1701,8 +1771,9 @@ mod tests {
 
     #[test]
     fn a_titlebar_that_can_be_seen_through_is_so_within_its_outline() {
-        let theme =
-            Theme::parse("titlebar:focus { background: rgba(255, 255, 255, 0.5); }").unwrap();
+        let theme = "window { border-width: 1px; }\n\
+                     titlebar:focus { background: rgba(255, 255, 255, 0.5); }";
+        let theme = Theme::parse(theme).unwrap();
         let mut text = Text::new();
         let canvas = titlebar(
             &mut text,
@@ -1724,56 +1795,60 @@ mod tests {
     }
 
     /// The colours the built-in theme gives the buttons of a frame with
-    /// focus, from the right, and the one it gives them all without.
-    const BUTTON_COLORS: [u32; 3] = [0xfff8_616d, 0xffa3_e635, 0xfffd_e047];
+    /// focus, from the left: close, minimize, maximize; and the one it
+    /// gives them all without.
+    const BUTTON_COLORS: [u32; 3] = [0xfff8_616d, 0xfffd_e047, 0xffa3_e635];
     const BUTTON_PLAIN: u32 = 0xff2b_3a6b;
 
-    /// The middle of each button, from the right, under the built-in
-    /// theme: twelve across with room around them, the outermost further
+    /// The middle of each button, from the left, under the built-in
+    /// theme: sixteen across with room around them, the outermost further
     /// in from the edge than the others are from each other.
-    const BUTTON_MIDDLES: [u32; 3] = [382, 362, 342];
+    const BUTTON_MIDDLES: [u32; 3] = [20, 44, 68];
 
-    /// A frame with room for the buttons the built-in theme has.
+    /// A frame with room for the buttons the built-in theme has, and as
+    /// tall a titlebar.
     fn buttoned() -> Decoration {
         let outer = Rect::new(Point::new(300, 200), Size::new(400, 300));
         let metrics = FrameMetrics {
-            buttons: [28, 20, 20],
+            titlebar: 48,
+            buttons: [32, 24, 24],
             ..METRICS
         };
         Decoration::new(outer, metrics, 1)
     }
 
     #[test]
-    fn a_titlebar_has_three_round_buttons_at_its_right_coloured_when_it_has_focus() {
-        let theme = Theme::default();
+    fn a_titlebar_has_three_round_buttons_at_its_left_coloured_when_it_has_focus() {
+        let theme = solid();
         let mut text = Text::new();
         let frame = buttoned();
         let focused = titlebar(&mut text, &theme, &frame, &["Title"], 0, true, Scale::ONE);
         let other = titlebar(&mut text, &theme, &frame, &["Title"], 0, false, Scale::ONE);
         for (middle, color) in BUTTON_MIDDLES.into_iter().zip(BUTTON_COLORS) {
-            assert_eq!(focused.at(middle, 14), color);
+            assert_eq!(focused.at(middle, 24), color);
             assert_eq!(
-                other.at(middle, 14),
+                other.at(middle, 24),
                 BUTTON_PLAIN,
                 "all alike without focus"
             );
-            // Round, and twelve across: its corner is the titlebar's.
-            assert_eq!(focused.at(middle - 5, 14), color);
-            assert_ne!(focused.at(middle - 6, 9), color);
-            assert_ne!(focused.at(middle + 7, 14), color);
+            // Round, and sixteen across: its corner is the titlebar's.
+            assert_eq!(focused.at(middle - 7, 24), color);
+            assert_ne!(focused.at(middle - 8, 16), color);
+            assert_ne!(focused.at(middle + 9, 24), color);
         }
         // The titlebar shows between them, and no title is written there.
         let background = argb(palette(&theme).focused.titlebar);
-        for between in [350, 370] {
-            assert_eq!(focused.at(between, 14), background);
+        for between in [32, 56] {
+            assert_eq!(focused.at(between, 24), background);
         }
     }
 
     #[test]
-    fn the_button_under_the_pointer_says_what_it_does() {
-        let theme = Theme::default();
+    fn the_buttons_say_what_they_do_while_the_pointer_is_on_any_of_them() {
+        let theme = solid();
         let mut text = Text::new();
-        let ink = argb(theme.style(Part::Desktop, States::NONE).background);
+        let hovered = States::NONE.with(State::Hovered);
+        let ink = argb(theme.style(Part::ButtonClose, hovered).color);
         let mut hovering = |button: Option<Button>, focused: bool| {
             let looks = Looks::of_in(
                 Vec::new(),
@@ -1794,7 +1869,7 @@ mod tests {
             )
         };
         let count = |canvas: &Canvas, middle: u32| {
-            let around = (middle - 6..middle + 6).flat_map(|x| (8..20).map(move |y| (x, y)));
+            let around = (middle - 8..middle + 8).flat_map(|x| (16..32).map(move |y| (x, y)));
             around.filter(|(x, y)| canvas.at(*x, *y) == ink).count()
         };
         let plain = hovering(None, true);
@@ -1802,27 +1877,29 @@ mod tests {
             assert_eq!(count(&plain, middle), 0, "nothing until it is pointed at");
         }
 
-        // A cross of two diagonals six long, a plus of two bars, and a bar.
-        let close = hovering(Some(Button::Close), true);
-        assert_eq!(count(&close, 382), 12);
-        assert_eq!(close.at(379, 11), ink, "from one corner");
-        assert_eq!(close.at(384, 11), ink, "and from the other");
-        assert_eq!(count(&close, 362), 0, "and on no other button");
-        let maximize = hovering(Some(Button::Maximize), true);
-        assert_eq!(count(&maximize, 362), 11);
-        let minimize = hovering(Some(Button::Minimize), true);
-        assert_eq!(count(&minimize, 342), 6);
+        // A cross of two diagonals eight long, a bar, and a plus of two
+        // bars: on all three, whichever the pointer is on.
+        for button in Button::ALL {
+            let over = hovering(Some(button), true);
+            assert_eq!(count(&over, 20), 16, "{button:?}");
+            assert_eq!(over.at(16, 20), ink, "from one corner");
+            assert_eq!(over.at(23, 20), ink, "and from the other");
+            assert_eq!(count(&over, 44), 8, "{button:?}");
+            assert_eq!(count(&over, 68), 15, "{button:?}");
+        }
 
-        // Pointed at, a button has its colour whether or not its frame
-        // has focus.
+        // With the pointer among them the buttons have their colours
+        // whether or not their frame has focus.
         let unfocused = hovering(Some(Button::Close), false);
-        assert_eq!(unfocused.at(377, 14), BUTTON_COLORS[0]);
-        assert_eq!(unfocused.at(362, 14), BUTTON_PLAIN);
+        for (middle, color) in BUTTON_MIDDLES.into_iter().zip(BUTTON_COLORS) {
+            assert_eq!(unfocused.at(middle - 6, 24), color);
+        }
     }
 
     #[test]
     fn a_theme_can_do_without_a_button_and_the_title_takes_its_room() {
-        let theme = "button-close, button-maximize, button-minimize { min-width: 0; }";
+        let theme = "button-close, button-maximize, button-minimize { min-width: 0; }\n\
+                     titlebar:focus { background: var(--surface); }";
         let theme = Theme::parse(theme).unwrap();
         let mut text = Text::new();
         let canvas = titlebar(
@@ -1839,14 +1916,14 @@ mod tests {
         }
         let background = argb(palette(&theme).focused.titlebar);
         assert!(
-            inked(&canvas, 10..66, background) > 10,
+            inked(&canvas, 150..250, background) > 10,
             "the title is there"
         );
     }
 
     #[test]
     fn tabs_are_separated_and_the_shown_one_is_marked() {
-        let theme = Theme::default();
+        let theme = solid();
         let colors = palette(&theme);
         let mut text = Text::new();
         let titles = ["one", "two"];
@@ -1855,13 +1932,13 @@ mod tests {
         // Tab 0 covers columns 0..200, tab 1 covers 200..400.
         assert_eq!(
             focused.at(150, 14),
-            argb(colors.unfocused.titlebar),
-            "the hidden tab is dimmed"
+            argb(colors.focused.titlebar),
+            "a tab has no ground of its own, shown or hidden"
         );
         assert_eq!(focused.at(350, 14), argb(colors.focused.titlebar));
         assert_eq!(
             focused.at(200, 14),
-            argb(colors.focused.border),
+            argb(colors.edge),
             "a line separates the tabs"
         );
         assert_eq!(
@@ -1869,12 +1946,12 @@ mod tests {
             argb(colors.accent),
             "the shown tab is underlined"
         );
-        assert_eq!(focused.at(150, 27), argb(colors.unfocused.titlebar));
+        assert_eq!(focused.at(150, 27), argb(colors.focused.titlebar));
 
         let unfocused = titlebar(&mut text, &theme, &frame(2), &titles, 0, false, Scale::ONE);
         assert_eq!(
             unfocused.at(150, 27),
-            argb(colors.unfocused.border),
+            argb(colors.edge),
             "marked without the accent"
         );
         assert_eq!(unfocused.at(350, 27), argb(colors.unfocused.titlebar));

@@ -8,8 +8,8 @@ suggestion. Tick items as they land and keep the "Next" pointer current.
 what is taken from stage 8 ahead of its turn (below) has been, but for
 packages beyond `.deb` and the AUR; what is left of stages 3 and 4 is
 known gaps, taken as the code beside them is touched, the defaults
-reviewed together, and the redesign of windows (stage 4), which comes
-before the bar and dock wear the same look.
+reviewed together, and what is left of the redesign of windows (stage
+4, ADR 97), whose look the bar and dock are to wear.
 
 Items that came from the wishlist kept outside this repository carry its
 number, as (wish 3), so that nothing asked for is lost track of.
@@ -98,9 +98,9 @@ Small, independent, and each an improvement the day it lands.
       natural way by default and the mouse does not, each with its own
       setting.
 - [x] Pointer speed and acceleration, for the mouse and for the touchpad.
-- [x] Titlebar buttons: close, maximize, minimize, coloured, each a part
-      of the theme (wish 3), at the right since ADR 68. Double-click on a
-      titlebar maximizes.
+- [x] Titlebar buttons: close, minimize, maximize, coloured, each a part
+      of the theme (wish 3), at the right since ADR 68 and at the left
+      since ADR 97. Double-click on a titlebar maximizes.
 - [x] A menu on a right click of the titlebar (wish 3): the same three,
       and shade (roll the window up into its titlebar), keep above the
       others, show on every workspace, send to a workspace (ADR 31). The
@@ -1217,9 +1217,22 @@ the first than on the last.
       theme does not, so it costs nothing until a theme asks for it.
 - [ ] What glass behind titlebars costs, measured with `omorfosctl
       frames` on a modest laptop with a dozen windows, one dragged over
-      the others, and written into ADR 33; until then the built-in theme
-      makes nothing glass, its surfaces solid in the colours glass would
-      be tinted with, but for the session behind the password prompt.
+      the others, and written into ADR 33. The built-in theme's titlebar
+      is glass since ADR 97, ahead of that, as the maintainer asked, and
+      is made solid again if it costs a frame; until it is measured the
+      theme makes nothing else glass, its surfaces solid in the colours
+      glass would be tinted with, but for "About" and the session behind
+      the password prompt.
+- [ ] What a glass titlebar allocates where nothing changes, brought
+      down: 7 times a turn for each, counted by the tests of a quiet
+      session beside the 17 of a window in a solid frame, in laying its
+      sheet out, in looking at what is under it and in cutting it to its
+      corners. Both are to come down to nothing.
+- [ ] Known gaps in a frame without an edge: the window's bottom
+      corners are cut to the curve with nothing drawn along it, where a
+      border was, so they are not smoothed; and a frame at the edge of
+      the screen cannot be held by that side to resize it, the room to
+      hold it by being outside it.
 - [x] Blur for other programs that ask (`ext-background-effect`), under
       windows and panels, as far as `window`'s `backdrop-filter` says, cut
       to the surface, a window's to the window proper and not the shadow
@@ -1507,17 +1520,28 @@ the first than on the last.
       offered it; nothing on the panel says it is on; and on an HDR
       screen (stage 8) it is to warm the picture as it is composed
       instead.
-- [ ] Windows redesigned, so that every program's looks the same: today
-      they are plain, and differ between programs written with Electron,
-      those in a Flatpak sandbox and those of the system, by whether each
-      draws its own titlebar and shadow or has omorfos's, and how. One
-      look across them: what omorfos draws, what it asks of a program
-      that draws its own (the decoration protocols, the portal's settings
-      of colours and buttons), and what it offers the toolkits' themes
-      (GTK's and Qt's, from the design language). Comes before the bar
-      and the dock, which are to wear the same look. With it, the welcome
-      card's close button, which sits oddly in its corner (as the
-      maintainer found on 15 November 2026), drawn as a window's is.
+- [x] Windows redesigned (ADR 97): omorfos's own frame, on the windows
+      that ask for one, at home beside what programs draw for
+      themselves, which are told what every desktop tells them and
+      neither themed nor framed by force. The titlebar 48 tall and thick
+      glass; the buttons 16 across at the left, close, minimize,
+      maximize, red, amber and green in both schemes, all three showing
+      their signs while the pointer is on any; a title alone in the
+      middle; no edge round the window. Settled by the maintainer in a
+      mock, on 18 November 2026.
+- [ ] What is left of the redesign of windows: the closing buttons of
+      "About" and of the welcome card, which sits oddly in its corner
+      (as the maintainer found on 15 November 2026), drawn where and as
+      a window's is; whether Firefox and Chromium put their buttons
+      where they are told, tried by hand; whether the side is a setting
+      (the review of the defaults); and a theme unable to style the
+      button under the pointer apart from the other two.
+- [ ] Titlebars with controls in them, for omorfos's own programs (stage
+      7), as GNOME Files and the Finder have: back and forward, where
+      one is, a field to search in, where a plain window has its title.
+      Each draws its own, in the look of ADR 97 and taller by what a
+      control needs; built with the first of them, and with it what
+      they share to draw it by.
 - [ ] The defaults reviewed together, keys and settings, rather than one
       at a time as each feature came. What has gathered for it: `Super+l`
       to lock; a key for the overview; `Super+c`, `x`, `v` and `z` to copy, cut, paste and undo,

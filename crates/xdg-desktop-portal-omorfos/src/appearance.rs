@@ -74,7 +74,7 @@ mod tests {
         assert!(appearance.dark);
         assert_eq!(appearance.pointer, ("omorfos-dark".to_owned(), 24));
         assert_eq!(appearance.monospace, "JetBrains Mono, monospace 11");
-        assert_eq!(appearance.buttons, ":minimize,maximize,close");
+        assert_eq!(appearance.buttons, "close,minimize,maximize:");
         assert_eq!(appearance.scheme(), 1);
         assert!(!appearance.still, "things move");
         let (red, green, blue) = appearance.accent;

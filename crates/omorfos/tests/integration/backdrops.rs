@@ -264,15 +264,15 @@ fn a_panel_of_a_program_has_what_is_behind_it_blurred_where_it_asks() {
 
 /// A session with a red window 200 by 260 in the top left corner, and over
 /// it, cascaded to 32 across and down, a window that cannot be seen at all
-/// in a frame, 150 by 200 within it, whose bottom is the red window's,
+/// in a frame, 150 by 180 within it, whose bottom is the red window's,
 /// asking for what is behind all of it to be blurred.
 fn a_clear_window_in_a_frame() -> (Session, [(Client, Toplevel); 2]) {
     let mut session = Session::with_config(&[("theme.css", BLURRED)]);
     let mut under = session.connect();
     let red = session.open(&mut under, "red", (200, 260), RED);
     let mut clear = session.connect();
-    let window = session.open_decorated(&mut clear, "clear", (150, 200), 0);
-    let _effect = clear.blur_behind(&window.surface, &[(0, 0, 150, 200)]);
+    let window = session.open_decorated(&mut clear, "clear", (150, 180), 0);
+    let _effect = clear.blur_behind(&window.surface, &[(0, 0, 150, 180)]);
     window.surface.commit();
     session.roundtrip(&mut clear);
     (session, [(under, red), (clear, window)])

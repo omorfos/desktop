@@ -21,4 +21,8 @@
   --glass-thick: rgba(255, 253, 244, 0.9);
   --glass-sealed: rgba(255, 253, 244, 0.95);
   --glass-rim: transparent; /* light on cream is not seen */
+  /* Dim text on the dimmer cream is read over a black window only at
+   * this much of it. */
+  --glass-thick-dim: rgba(246, 240, 218, 0.97);
+  --button-rim: rgba(12, 18, 38, 0.14);
 }

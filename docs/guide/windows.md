@@ -6,11 +6,11 @@ alone; a rule with `decorations: true` forces a frame onto them anyway.
 
 | To | Do this |
 |---|---|
-| Close a window, make it fullscreen, or minimize it | Click the outermost, middle or innermost button at the right of its titlebar |
-| Put two windows side by side | Rest the pointer on the middle button of one's titlebar and click a half of the first picture, then open the other. Or right-click the titlebar and choose Tile |
+| Close a window, minimize it, or make it fullscreen | Click the first, second or third button at the left of its titlebar: red, amber and green. With the pointer on any of them, each shows what it does |
+| Put two windows side by side | Rest the pointer on the third button of one's titlebar and click a half of the first picture, then open the other. Or right-click the titlebar and choose Tile |
 | Put a window in a half or a quarter of the screen | Drag it by its titlebar to an edge of the screen, or to an edge near a corner, and let go |
 | Give one of two windows side by side more room | Drag the line between them; double-click it to halve the screen again |
-| Leave fullscreen | `Super+Ctrl+f`; or rest the pointer against the top of the screen and click the second button of the titlebar that comes back |
+| Leave fullscreen | `Super+Ctrl+f`; or rest the pointer against the top of the screen and click the third button of the titlebar that comes back |
 | Reach the panel from a fullscreen window | Rest the pointer against the edge of the screen the panel is along |
 | Maximize a window, or put it back | Double-click its titlebar |
 | Roll a window up into its titlebar, keep it above the others, show it on every workspace, or send it to one | Right-click its titlebar and choose from the menu |
@@ -158,7 +158,7 @@ on the first screen that is left, which is made if it is not there.
 
 ## Fullscreen and tiles
 
-A window made fullscreen, by the second button of its titlebar, by
+A window made fullscreen, by the third button of its titlebar, by
 `Super+Ctrl+f`, or because its program asked, goes alone to a workspace made
 for it, directly after the one it was on, with no panel over it and no
 titlebar. That workspace has no number: `Super+Right` and `Super+Left` go
@@ -184,7 +184,7 @@ other, one beside two, one above or below two, and four in quarters.
 Asked for a half it cannot take, a window goes to that half instead,
 changing places with what was there.
 
-Rest the pointer on the second button of a window's titlebar and small
+Rest the pointer on the third button of a window's titlebar and small
 pictures of the seven arrangements come up under it, with an arrow to
 the button they belong to and a line of words that says what the part
 under the pointer is. Click a part of one

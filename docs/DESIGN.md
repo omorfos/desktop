@@ -77,14 +77,15 @@ Everything is a multiple of 4 pixels of layout.
 
 | What | Height |
 |---|---|
-| A row: a titlebar, a task | 28 |
+| A titlebar | 48, which has room for a control |
+| A row: a task | 28 |
 | A menu entry, with room round its sign | 32 |
 | A control: a field, a button | 32 |
 | The top bar | 28 |
 | The dock | 56, with icons of 40 |
 
 Nothing that can be clicked is smaller than 24 by 24, however small it is
-drawn: the buttons of a titlebar are 12 across and are hit in 20 by 28.
+drawn: the buttons of a titlebar are 16 across and are hit in 24 by 48.
 
 ## Corners
 
@@ -121,9 +122,10 @@ not white.
 | `--border-strong` | `#7482b3` | `#7a8099` | The edge of something that takes input |
 | `--accent` | `#22d3ee` | `#0e7490` | Focus, and what is picked out |
 | `--on-accent` | `#0c1226` | `#fffdf4` | Text on the accent |
-| `--danger` | `#f8616d` | `#c4303a` | Close, delete, an error |
-| `--warning` | `#fde047` | `#8a5a00` | Minimize; something to look at |
-| `--success` | `#a3e635` | `#2f7a35` | Maximize; something that went well |
+| `--danger` | `#f8616d` | `#c4303a` | Delete, an error |
+| `--warning` | `#fde047` | `#8a5a00` | Something to look at |
+| `--success` | `#a3e635` | `#2f7a35` | Something that went well |
+| `--close`, `--minimize`, `--maximize` | `#f8616d`, `#fde047`, `#a3e635` | the same | A titlebar's buttons, which are never text |
 
 The accent is a setting. The ones that come with omorfos, each with a
 dark and a light value that meets the contrast below. The brand's cyan
@@ -153,8 +155,8 @@ and must hold for anything added:
 - The edge of something that takes input, and anything that says a state
   without words: at least **3 to 1**. `--border-strong` is 4.5 and 3.8 on
   the surface; every accent is at least 4.9 on the background.
-- Colour is never the only sign. A titlebar's buttons show a sign under
-  the pointer; what is urgent has a mark as well as a red edge; what has
+- Colour is never the only sign. A titlebar's buttons show their signs
+  while the pointer is on any of them; what is urgent has a mark as well as a red edge; what has
   focus has a ring as well as a tint.
 
 ### Following the sun
@@ -233,11 +235,14 @@ straight down.
 
 - The window with focus has its titlebar in `--surface` and its text in
   `--text`, its buttons in their colours and its shadow deeper; the
-  others are in `--surface-dim` and `--text-dim`. Every window's edge is
-  the `--border` hairline, with focus or without, as programs that draw
-  their own have it: a brighter edge round the focused window is louder
-  than it need be once there are shadows, and stands out beside a
-  program's own.
+  others are in `--surface-dim` and `--text-dim`. No window has an edge,
+  with focus or without: its shadow says where it ends, and an edge round
+  the focused window is louder than it need be once there are shadows
+  ([ADR 97](adr/0097-a-windows-frame-bulkier-glass-buttons-at-the-left.md)).
+- A titlebar's buttons are at its left: close, minimize, maximize, in
+  red, amber and green, the same in both schemes, with a faint edge on
+  cream. Programs that draw their own titlebars are told the order.
+  A title alone is in the middle of its titlebar.
 - Inside a surface, what the keyboard is on has a ring: 2 pixels of the
   accent, 2 pixels out from the thing. It shows when the keyboard is
   being used and not when the pointer is.

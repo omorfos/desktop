@@ -292,7 +292,7 @@ const ALONG: i32 = 35;
 
 /// A session with `theme`, a red window 200 by 400 in the top left corner,
 /// and over it a blue one 400 by 100 with a titlebar, cascaded from the
-/// corner, whose titlebar runs from 32 down to 60.
+/// corner, whose titlebar runs from 32 down to 80.
 fn a_titlebar_over_a_red_window(theme: &str) -> (Session, [(Client, Toplevel); 2]) {
     let mut session = Session::with_config(&[("theme.css", theme)]);
     let mut red = session.connect();
@@ -329,11 +329,11 @@ fn a_titlebars_glass_is_rounded_above_as_its_window_is_and_square_below() {
     // In the top corner, nothing of the titlebar or its glass: the red
     // window. In the bottom one, the tint over the glass, solid white.
     assert_eq!(picture.at(32, 32), RED, "rounded above");
-    assert_eq!(picture.at(32, 59), 0xffff_ffff, "square below");
-    assert_eq!(picture.at(32, 60), BLUE, "the window under it");
+    assert_eq!(picture.at(32, 79), 0xffff_ffff, "square below");
+    assert_eq!(picture.at(32, 80), BLUE, "the window under it");
     // What is drawn on the titlebar is over its glass: the button that
-    // closes the window, in its colour, at its right-hand end.
-    assert_eq!(picture.at(414, 46), 0xfff8_616d, "the close button over it");
+    // closes the window, in its colour, at its left-hand end.
+    assert_eq!(picture.at(52, 56), 0xfff8_616d, "the close button over it");
 }
 
 #[test]

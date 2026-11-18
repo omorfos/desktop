@@ -699,8 +699,9 @@ impl Glass {
         if let Some(solid) = solid {
             kept.solid.update(logical, color(solid));
         }
-        let mut glass = Vec::new();
-        for (index, strip) in pane.shape.strips(pane.area).into_iter().enumerate() {
+        let strips = pane.shape.strips(pane.area);
+        let mut glass = Vec::with_capacity(strips.len());
+        for (index, strip) in strips.into_iter().enumerate() {
             let frosted = blurred.as_ref().and_then(|blurred| {
                 let whole = Frosted(Rc::clone(blurred));
                 let cut = Strip::of(whole, scale, strip, index, &kept.names);

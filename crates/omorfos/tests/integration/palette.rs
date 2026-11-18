@@ -1,4 +1,4 @@
-//! The arrangements offered under the second button of a titlebar.
+//! The arrangements offered under the third button of a titlebar.
 
 use std::time::Duration;
 
@@ -18,7 +18,7 @@ const PICKED: u32 = 0xff24_3364;
 const REST: Duration = Duration::from_millis(400);
 
 /// A session with one window, 200 by 100 with a titlebar, and where the
-/// pictures of arrangements go: the corner under its second button.
+/// pictures of arrangements go: the corner under its third button.
 fn window() -> (Session, Client, (i32, i32)) {
     let mut session = Session::new();
     let mut client = session.connect();
@@ -55,7 +55,7 @@ fn press(session: &mut Session) {
     session.step();
 }
 
-/// Rests the pointer on the second button of the titlebar until the
+/// Rests the pointer on the third button of the titlebar until the
 /// pictures are up.
 fn rest(session: &mut Session, corner: (i32, i32)) {
     point(session, (corner.0 + 4, corner.1 - 16));
@@ -73,7 +73,7 @@ fn places(session: &Session) -> usize {
 }
 
 #[test]
-fn resting_on_the_second_button_brings_up_pictures_of_the_arrangements() {
+fn resting_on_the_third_button_brings_up_pictures_of_the_arrangements() {
     let (mut session, _client, corner) = window();
     // Far along the pictures, past the window, where nothing else is.
     let far = (corner.0 + 330, corner.1 + 3);
@@ -203,7 +203,7 @@ fn a_window_that_fills_a_workspace_already_is_offered_none() {
         .compositor_mut()
         .perform(&omorfos_config::Action::Fullscreen);
     // Its titlebar is brought back at the top of the screen, and the
-    // pointer rests on the second button of that.
+    // pointer rests on the third button of that.
     point(&mut session, (36, 0));
     session.advance(Duration::from_millis(300));
     point(&mut session, (36, 14));

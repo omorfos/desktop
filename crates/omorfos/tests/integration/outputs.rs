@@ -224,10 +224,10 @@ fn each_output_has_its_own_scale() {
     session.open_decorated(&mut client, "app", (100, 50), RED);
     assert_eq!(client.state.told.buffer_scale, Some(2));
     let picture = session.draw_on(1);
-    assert_eq!(picture.at(100, 100), RED, "under a titlebar 56 pixels tall");
+    assert_eq!(picture.at(100, 100), RED, "under a titlebar 96 pixels tall");
     assert_ne!(picture.at(190, 40), RED);
     assert_ne!(picture.at(190, 40), BACKGROUND);
-    let below = picture.at(100, 170);
+    let below = picture.at(100, 200);
     assert!(shaded(below, BACKGROUND), "below the window: {below:#x}");
 
     // Moved to the first output, it is told that one's.

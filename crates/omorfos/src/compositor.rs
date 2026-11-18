@@ -154,6 +154,10 @@ use crate::x11::{Focus, Placed, Role, X11};
 pub const DESKTOP_NAME: &str = "omorfos";
 
 /// How long the configuration directory must be quiet before it is reloaded.
+/// How many things a screen's picture is given room for before it is known
+/// how many there are.
+const ELEMENTS: usize = 64;
+
 const RELOAD_DELAY: Duration = Duration::from_millis(150);
 
 /// How long something that has happened is said to have.
@@ -3572,9 +3576,11 @@ impl Compositor {
             let chrome = portrait.chrome.as_ref();
             if let Some(chrome) = chrome {
                 // What is behind it is not in a picture of it alone, nor is
-                // its titlebar's glass.
+                // its titlebar's glass, which is solid there, as glass is
+                // wherever there is nothing to blur.
                 let drawn = (&mut elements, &mut Vec::new());
                 Self::chrome_elements(renderer, view, chrome, 1.0, drawn);
+                chrome.grounded(view, &mut elements);
             }
             if !portrait.shaded {
                 self.window_elements(renderer, view, (portrait, false, false), &mut elements);
@@ -3740,7 +3746,10 @@ impl Compositor {
         R: Renderer + ImportAll + ImportMem,
         R::TextureId: Clone + Texture + Send + 'static,
     {
-        let mut elements: Vec<Element<R>> = Vec::new();
+        // With room at once for what a few windows come to, each cut into
+        // strips at its corners, where growing as they are added would
+        // make room four or five times over, every frame.
+        let mut elements: Vec<Element<R>> = Vec::with_capacity(ELEMENTS);
         let mut panes = Vec::new();
         let mut desktop = 0;
         if shown.mark {
@@ -5371,7 +5380,7 @@ pub(crate) struct Hover {
     /// The lines between windows that share a workspace, which it drags.
     pub(crate) lines: Lines,
     /// The arrangements a window can be put in, offered when it rests on
-    /// the second button of a titlebar.
+    /// the third button of a titlebar.
     pub(crate) palette: Palette,
     /// The surface of a program it was last said to be over, and where on
     /// it; and the time it last moved.
@@ -6148,6 +6157,9 @@ struct Chrome {
     appearance: Appearance,
     decoration: Decoration,
     titlebar: Painted,
+    /// The titlebar's ground, solid, for where its glass has nothing
+    /// behind it: in a picture of the window by itself.
+    ground: SolidColorBuffer,
     borders: [SolidColorBuffer; 3],
     /// How far the bottom corners are rounded, in units of layout.
     radius: u32,
@@ -6192,6 +6204,30 @@ struct Appearance {
 }
 
 impl Chrome {
+    /// Adds the titlebar's ground, solid, under it and rounded above as it
+    /// is, as seen through `view`: for a picture of the window by itself,
+    /// where a titlebar that is glass has nothing behind it.
+    fn grounded<R>(&self, view: View, elements: &mut Vec<Element<R>>)
+    where
+        R: Renderer + ImportAll + ImportMem,
+        R::TextureId: Clone + Texture + Send + 'static,
+    {
+        let bar = self.decoration.titlebar();
+        let at = Point::<i32, Logical>::from((bar.origin.x, bar.origin.y));
+        let from = view.pixel(at.to_f64());
+        let to = view.pixel((at + logical_size(bar.size).to_point()).to_f64());
+        let area = Rectangle::new(from, (to - from).to_size());
+        let scale = view.scale.factor();
+        let radius = self.appearance.looks.window.radius.cast_signed();
+        let strips = corners::rounded_above(area, view.scale.pixels(radius));
+        let strips = strips.into_iter().enumerate().filter_map(|(index, strip)| {
+            let kind = Kind::Unspecified;
+            let whole = SolidColorRenderElement::from_buffer(&self.ground, from, scale, 1.0, kind);
+            Strip::of(whole, scale, strip, index, &self.strips)
+        });
+        elements.extend(strips.map(Element::Tinted));
+    }
+
     /// What of its window is drawn, in pixels of the output seen through
     /// `view`: its own area, cut where the frame's bottom corners turn.
     /// Worked out again only when the frame, the window or the radius is
@@ -6280,6 +6316,7 @@ impl Chrome {
                 appearance: appearance.clone(),
                 decoration,
                 titlebar: Painted::new(&titlebar),
+                ground: SolidColorBuffer::default(),
                 borders: <[SolidColorBuffer; 3]>::default(),
                 radius,
                 corners: [corner(false), corner(true)],
@@ -6293,6 +6330,11 @@ impl Chrome {
             // Updating with an unchanged size and colour is not damage.
             buffer.update(logical_size(border.size), color(outline));
         }
+        let ground = omorfos_config::Color {
+            alpha: u8::MAX,
+            ..chrome.appearance.looks.titlebar.ground()
+        };
+        chrome.ground.update(logical_size(size), color(ground));
         chrome.tabs.clone_from(&frame.tabs);
         chrome.decoration = decoration;
         chrome.radius = radius;

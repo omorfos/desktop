@@ -205,19 +205,23 @@ fn a_picture_that_is_destroyed_gives_way_to_the_ordinary_pointer() {
 
 #[test]
 fn the_pointer_shows_which_way_a_border_resizes() {
-    let mut session = themed();
+    // With a hairline round its frames, for there to be a border at the
+    // screen's own edge.
+    let edged = ("theme.css", "window { border-width: 1px; }\n");
+    let mut session = Session::with_config(&[edged]);
+    theme(&mut session);
     let mut client = session.connect();
     session.open_decorated(&mut client, "app", (200, 100), RED);
-    // The frame is 202 by 129: a border of one and a titlebar of 28.
+    // The frame is 202 by 149: a border of one and a titlebar of 48.
     assert_eq!(pointer_at(&mut session, 0, 70), YELLOW, "the left border");
     assert_eq!(
         pointer_at(&mut session, 201, 70),
         YELLOW,
         "the right border"
     );
-    assert_eq!(pointer_at(&mut session, 100, 128), MAGENTA, "the bottom");
-    assert_eq!(pointer_at(&mut session, 0, 128), ORANGE, "bottom left");
-    assert_eq!(pointer_at(&mut session, 201, 128), CYAN, "bottom right");
+    assert_eq!(pointer_at(&mut session, 100, 148), MAGENTA, "the bottom");
+    assert_eq!(pointer_at(&mut session, 0, 148), ORANGE, "bottom left");
+    assert_eq!(pointer_at(&mut session, 201, 148), CYAN, "bottom right");
     assert_eq!(pointer_at(&mut session, 100, 14), GREEN, "the titlebar");
     assert_eq!(pointer_at(&mut session, 100, 70), GREEN, "the window");
 }
@@ -239,9 +243,9 @@ fn the_pointer_shows_a_drag_for_as_long_as_it_lasts() {
     button(&mut session, false);
     assert_eq!(color_at(&mut session, 300, 200), GREEN, "let go");
 
-    // Resizing by the bottom border, wherever the pointer then goes. The
-    // frame was moved by 200 and 186.
-    assert_eq!(pointer_at(&mut session, 300, 314), MAGENTA);
+    // Resizing by its foot, just under it, wherever the pointer then
+    // goes. The frame was moved by 200 and 186, and is 148 tall.
+    assert_eq!(pointer_at(&mut session, 300, 335), MAGENTA);
     button(&mut session, true);
     assert_eq!(
         pointer_at(&mut session, 500, 400),

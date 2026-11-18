@@ -1054,12 +1054,16 @@ fn the_menus_of_a_private_window_to_be_blurred_are_not_in_a_picture() {
     session.roundtrip(&mut app);
     app.fill(&surface, (100, 60), BLUE);
     session.roundtrip(&mut app);
-    assert_eq!(session.draw().at(80, 50), BLUE);
+    assert_eq!(session.draw().at(80, 100), BLUE);
 
     let mut camera = camera(&mut session);
     let taking = camera.capture(0, false);
     let (shot, _) = snap(&mut session, &mut camera, &taking);
-    assert_eq!(shot.at(80, 50), BACKGROUND, "what is under it in its place");
+    assert_eq!(
+        shot.at(80, 100),
+        BACKGROUND,
+        "what is under it in its place"
+    );
 }
 
 #[test]
@@ -1271,18 +1275,19 @@ fn a_picture_of_a_window_has_its_frame_and_the_shadow_it_casts_wherever_it_is() 
     let mut camera = window_camera(&mut session);
     let taking = camera.capture_window("editor");
     session.roundtrip(&mut camera);
-    // Its frame, 202 by 129 with the titlebar and the border, and as far
+    // Its frame, 200 by 148 with the titlebar, and as far
     // round it as the shadow falls with focus or without, so that it is
     // one size whichever.
-    assert_eq!(camera.take_events()[0], Event::CaptureSize(218, 145));
+    assert_eq!(camera.take_events()[0], Event::CaptureSize(216, 164));
 
-    let see_through = ((218, 145), Format::Argb8888);
+    let see_through = ((216, 164), Format::Argb8888);
     let alpha = |shot: &Picture, (x, y)| shot.at(x, y) >> 24;
     let (shot, _) = snap_as(&mut session, &mut camera, &taking, see_through);
-    assert_eq!(shot.at(109, 8 + 28 + 50), RED, "the window");
-    let titlebar = shot.at(109, 8 + 14);
+    assert_eq!(shot.at(109, 8 + 48 + 50), RED, "the window");
+    // Beside its title, which is in the middle.
+    let titlebar = shot.at(180, 8 + 14);
     assert!(
-        titlebar != RED && alpha(&shot, (109, 22)) == 0xff,
+        titlebar != RED && alpha(&shot, (180, 22)) == 0xff,
         "its titlebar"
     );
     assert!(alpha(&shot, (2, 72)) > 0, "the shadow it casts with focus");
@@ -1294,8 +1299,8 @@ fn a_picture_of_a_window_has_its_frame_and_the_shadow_it_casts_wherever_it_is() 
     session.roundtrip(&mut app);
     let (shot, events) = snap_as(&mut session, &mut camera, &taking, see_through);
     assert_eq!(events.last(), Some(&Event::ShotReady), "{events:?}");
-    assert_eq!(shot.at(109, 8 + 28 + 50), RED);
-    assert!(shot.at(109, 22) != RED && alpha(&shot, (109, 22)) == 0xff);
+    assert_eq!(shot.at(109, 8 + 48 + 50), RED);
+    assert!(shot.at(180, 22) != RED && alpha(&shot, (180, 22)) == 0xff);
     assert_eq!(alpha(&shot, (2, 72)), 0, "the shadow it casts without");
     assert!(alpha(&shot, (6, 72)) > 0);
     assert_eq!(alpha(&shot, (0, 0)), 0, "nothing beyond");
@@ -1311,22 +1316,22 @@ fn a_picture_of_a_window_rolled_up_is_of_its_titlebar_and_the_shadow_that_casts(
     let mut camera = window_camera(&mut session);
     let taking = camera.capture_window("editor");
     session.roundtrip(&mut camera);
-    assert_eq!(camera.take_events()[0], Event::CaptureSize(218, 145));
+    assert_eq!(camera.take_events()[0], Event::CaptureSize(216, 164));
 
     session
         .compositor_mut()
         .perform(&omorfos_config::Action::Shade);
     session.step();
     session.roundtrip(&mut camera);
-    // As tall as its titlebar, 28, and the shadow round that.
+    // As tall as its titlebar, 48, and the shadow round that.
     let events = camera.take_events();
-    assert!(events.contains(&Event::CaptureSize(218, 44)), "{events:?}");
-    let see_through = ((218, 44), Format::Argb8888);
+    assert!(events.contains(&Event::CaptureSize(216, 64)), "{events:?}");
+    let see_through = ((216, 64), Format::Argb8888);
     let (shot, events) = snap_as(&mut session, &mut camera, &taking, see_through);
     assert_eq!(events.last(), Some(&Event::ShotReady), "{events:?}");
-    let titlebar = shot.at(109, 8 + 14);
+    let titlebar = shot.at(180, 8 + 14);
     assert!(titlebar != RED && titlebar >> 24 == 0xff, "{titlebar:x}");
-    let under = shot.at(109, 40);
+    let under = shot.at(109, 60);
     assert!(
         under != RED && under >> 24 < 0xff,
         "only its shadow: {under:x}"
@@ -1363,11 +1368,11 @@ fn a_picture_of_one_window_is_of_that_window_and_nothing_else() {
 
     let taking = camera.capture_window("editor");
     session.roundtrip(&mut camera);
-    // As large as the window in its frame, 202 by 129, and the shadow
+    // As large as the window in its frame, 200 by 148, and the shadow
     // the built-in theme gives it, which falls 24 out and 8 down with
     // focus. It may be see-through, as a screen is not.
     let told = [
-        Event::CaptureSize(250, 177),
+        Event::CaptureSize(248, 196),
         Event::CaptureFormat(Format::Argb8888),
         Event::CaptureFormat(Format::Xrgb8888),
         Event::CaptureKnown,
@@ -1380,14 +1385,14 @@ fn a_picture_of_one_window_is_of_that_window_and_nothing_else() {
     );
 
     let before = session.draw();
-    let (shot, events) = snap_sized(&mut session, &mut camera, &taking, (250, 177));
+    let (shot, events) = snap_sized(&mut session, &mut camera, &taking, (248, 196));
     assert_eq!(
         events,
-        [Event::ShotDamage(0, 0, 250, 177), Event::ShotReady]
+        [Event::ShotDamage(0, 0, 248, 196), Event::ShotReady]
     );
-    // The window, under its titlebar and in from its border, but for the
-    // corners the frame rounds at the bottom.
-    let (left, top) = (24 + 1, 16 + 28);
+    // The window, under its titlebar, but for the corners the frame
+    // rounds at the bottom.
+    let (left, top) = (24, 16 + 48);
     let corners = [(0, 0), (199, 0), (10, 89), (189, 89), (100, 50)];
     for (x, y) in corners.map(|(x, y)| (left + x, top + y)) {
         assert_eq!(shot.at(x, y), RED, "at {x}, {y}");

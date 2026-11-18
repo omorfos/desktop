@@ -72,10 +72,14 @@ pub(crate) fn strips(
     let client_right = client.loc.x + client.size.w;
     // Where the curve begins. Above it the window is as wide as it is.
     let curve = (bottom - radius).clamp(client.loc.y, client_bottom);
-    let mut strips = vec![Rectangle::new(
+    // Room for a strip to each row of the curve at once: this is made
+    // anew each time the frame is drawn.
+    let rows = usize::try_from(client_bottom - curve).unwrap_or(0);
+    let mut strips = Vec::with_capacity(rows + 1);
+    strips.push(Rectangle::new(
         client.loc,
         (client.size.w, curve - client.loc.y).into(),
-    )];
+    ));
     for row in curve..client_bottom {
         let cut = cut(
             radius.unsigned_abs(),
@@ -104,7 +108,10 @@ pub(crate) fn rounded(
 ) -> Vec<Rectangle<i32, Physical>> {
     let radius = radius.min(area.size.w / 2).min(area.size.h / 2).max(0);
     let (top, bottom) = (area.loc.y, area.loc.y + area.size.h);
-    let mut strips: Vec<Rectangle<i32, Physical>> = Vec::new();
+    // Room for a strip to each row of the curves and one between them, at
+    // once: this is made anew each time what it cuts is drawn.
+    let rows = usize::try_from(radius).unwrap_or(0) * 2 + 1;
+    let mut strips: Vec<Rectangle<i32, Physical>> = Vec::with_capacity(rows);
     for row in top..bottom {
         // How far into the curve of a top or a bottom corner the row is,
         // from where the curve begins; less than nothing between them.
