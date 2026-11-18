@@ -18,6 +18,6 @@ fpr = "fpr"
 extend-exclude = [
     "Cargo.lock",
     "crates/omorfos-config/src/zone1970.tab",
-    "i18n/*",
-    "!i18n/en",
+    "crates/omorfos-i18n/i18n/*",
+    "!crates/omorfos-i18n/i18n/en",
 ]

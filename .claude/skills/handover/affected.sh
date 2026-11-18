@@ -65,7 +65,6 @@ unread=(
 # as above. The first that fits a path is the one taken.
 only=(
     # Built into the programs: what depends on the crate is reached too.
-    "i18n/ omorfos-i18n"
     "schemas/promised.txt omorfos-ipc"
     "CREDITS.md omorfos-core"
     # Read by a test or two, which hold them to the code.

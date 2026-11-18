@@ -70,9 +70,9 @@ says "a licence, by the beginning of its name, reaches the test of what is packa
 says "the schemas reach their test" omorfos-config:schemas schemas/config.schema.json
 has "what the schemas promise is built into the protocol, and reaches what speaks it" \
     yes omorfosctl schemas/promised.txt
-has "a message is built into the programs that say it" yes omorfos-panel i18n/pl/panel.ftl
-has "a message is not built into the model" no omorfos-core i18n/pl/panel.ftl
-has "a message is not built into the relay" no omorfos-relay i18n/en/compositor.ftl
+has "a message is built into the programs that say it" yes omorfos-panel crates/omorfos-i18n/i18n/pl/panel.ftl
+has "a message is not built into the model" no omorfos-core crates/omorfos-i18n/i18n/pl/panel.ftl
+has "a message is not built into the relay" no omorfos-relay crates/omorfos-i18n/i18n/en/compositor.ftl
 has "the credits are built into the compositor" yes omorfos CREDITS.md
 says "the Makefile reaches the tests that read it" \
     "omorfos-brand:lib omorfos:packaging" Makefile

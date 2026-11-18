@@ -2738,7 +2738,7 @@ Reaching people:
       found some minutes after a push rather than before it (ADR 96,
       "Alternatives").
 - [x] The shell in the user's language, Polish first: the mechanism
-      (ADR 79), Fluent's messages in `i18n/<language>/<program>.ftl`, built
+      (ADR 79), Fluent's messages in `i18n/<language>/<program>.ftl` of the crate, built
       in, the language the environment asks for with English beneath it a
       message at a time, and CI holding every language to the English (no
       message unknown to it, no value it is not given, every plural form

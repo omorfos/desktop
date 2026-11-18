@@ -57,8 +57,9 @@ reads it. `affected.sh` now has two lists, and `commit`, `commits` and
   `clippy.toml` and `rustfmt.toml` among them.
 - **Read by less than everything**: each path with what it reaches. What
   is built into the programs reaches the crate it is built into and what
-  depends on that, as a crate's own file does: the messages of `i18n/`,
-  what the schemas promise, the credits. What one test or two read
+  depends on that, as a crate's own file does: what the schemas promise,
+  the credits. The messages of `i18n/` were listed so until they were
+  moved into the crate they are built into, and needed no listing. What one test or two read
   reaches those tests alone, written `crate:test`, as the guide and the
   manual pages reach the tests that hold them to the code, and the
   packaging, the README, the licences and the Makefile the test of what

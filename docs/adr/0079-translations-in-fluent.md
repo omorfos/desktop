@@ -20,7 +20,8 @@ format, Fluent or gettext, was left to this record.
 `omorfos-i18n`.**
 
 - **A file for each program in each language**: `i18n/en/panel.ftl`, and
-  `i18n/pl/panel.ftl` for the same in Polish. They are built into the
+  `i18n/pl/panel.ftl` for the same in Polish, in `crates/omorfos-i18n`
+  since 19 November 2026, at the top of the repository before. They are built into the
   programs, so nothing is looked for when one starts, and a test fails
   while a file there is not built in, or one built in is not there.
 - **The language is the one the environment asks for**, as the C library

@@ -68,9 +68,9 @@ What is checked, and is not given way on:
 
 ## Translating
 
-Each program's words are in `i18n/en/<program>.ftl`, in
+Each program's words are in `crates/omorfos-i18n/i18n/en/<program>.ftl`, in
 [Fluent](https://projectfluent.org/)'s format, and a translation is the
-same file under the language's code, as `i18n/pl/panel.ftl`, which needs
+same file under the language's code, as `i18n/pl/panel.ftl` beside it, which needs
 no change of code but its line in `crates/omorfos-i18n/src/lib.rs`. A
 message it leaves out is said in English. `cargo test -p omorfos-i18n`
 checks it against the English: no message the English has not, no value

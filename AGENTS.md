@@ -155,7 +155,8 @@ make.
   A commit that takes a line away from that list is a breaking change and
   is marked as one (ADR 73); CI fails one that is not.
 - **What a translated program says is a message** (ADR 79): its English
-  in `i18n/en/<program>.ftl`, said through `omorfos-i18n`, never written
+  in `crates/omorfos-i18n/i18n/en/<program>.ftl`, said through
+  `omorfos-i18n`, never written
   in the code. A message added in English is said in English by every
   other language until it is translated; the tests hold each language to
   the English. The panel, the lock screen, the boxes that ask for

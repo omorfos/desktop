@@ -111,7 +111,7 @@ fn forms(language: &str) -> Result<BTreeSet<String>, String> {
 
 #[test]
 fn every_file_of_words_is_built_in_and_every_one_built_in_is_a_file() {
-    let top = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../i18n");
+    let top = Path::new(env!("CARGO_MANIFEST_DIR")).join("i18n");
     let mut on_disk = BTreeSet::new();
     for language in fs::read_dir(&top).unwrap() {
         let language = language.unwrap();

@@ -1,8 +1,9 @@
 //! The words of the omorfos desktop in the user's language (ADR 79).
 //!
 //! Each program's words are a file of Project Fluent's messages in
-//! English, `i18n/en/<program>.ftl`, and one for each language they are
-//! translated into, `i18n/<language>/<program>.ftl`, all built into the
+//! English, `i18n/en/<program>.ftl` in this crate, and one for each
+//! language they are translated into, `i18n/<language>/<program>.ftl`,
+//! all built into the
 //! program, so that nothing is looked for when it starts. English is loaded
 //! under the user's language, so a message a translation does not have yet
 //! is said in English, a message at a time; and a message nothing has is
@@ -28,58 +29,58 @@ pub struct Program {
 /// The panel's words.
 pub const PANEL: Program = Program {
     name: "panel",
-    english: include_str!("../../../i18n/en/panel.ftl"),
-    translated: &[("pl", include_str!("../../../i18n/pl/panel.ftl"))],
+    english: include_str!("../i18n/en/panel.ftl"),
+    translated: &[("pl", include_str!("../i18n/pl/panel.ftl"))],
 };
 
 /// The lock screen's words.
 pub const LOCK: Program = Program {
     name: "lock",
-    english: include_str!("../../../i18n/en/lock.ftl"),
-    translated: &[("pl", include_str!("../../../i18n/pl/lock.ftl"))],
+    english: include_str!("../i18n/en/lock.ftl"),
+    translated: &[("pl", include_str!("../i18n/pl/lock.ftl"))],
 };
 
 /// The words of the boxes that ask for a password or a passphrase.
 pub const ASK: Program = Program {
     name: "ask",
-    english: include_str!("../../../i18n/en/ask.ftl"),
-    translated: &[("pl", include_str!("../../../i18n/pl/ask.ftl"))],
+    english: include_str!("../i18n/en/ask.ftl"),
+    translated: &[("pl", include_str!("../i18n/pl/ask.ftl"))],
 };
 
 /// The words of the notices `omorfos-session` shows.
 pub const SESSION: Program = Program {
     name: "session",
-    english: include_str!("../../../i18n/en/session.ftl"),
-    translated: &[("pl", include_str!("../../../i18n/pl/session.ftl"))],
+    english: include_str!("../i18n/en/session.ftl"),
+    translated: &[("pl", include_str!("../i18n/pl/session.ftl"))],
 };
 
 /// The compositor's own words.
 pub const COMPOSITOR: Program = Program {
     name: "compositor",
-    english: include_str!("../../../i18n/en/compositor.ftl"),
-    translated: &[("pl", include_str!("../../../i18n/pl/compositor.ftl"))],
+    english: include_str!("../i18n/en/compositor.ftl"),
+    translated: &[("pl", include_str!("../i18n/pl/compositor.ftl"))],
 };
 
 /// The launcher's words.
 pub const LAUNCHER: Program = Program {
     name: "launcher",
-    english: include_str!("../../../i18n/en/launcher.ftl"),
-    translated: &[("pl", include_str!("../../../i18n/pl/launcher.ftl"))],
+    english: include_str!("../i18n/en/launcher.ftl"),
+    translated: &[("pl", include_str!("../i18n/pl/launcher.ftl"))],
 };
 
 /// The welcome card's words.
 pub const WELCOME: Program = Program {
     name: "welcome",
-    english: include_str!("../../../i18n/en/welcome.ftl"),
-    translated: &[("pl", include_str!("../../../i18n/pl/welcome.ftl"))],
+    english: include_str!("../i18n/en/welcome.ftl"),
+    translated: &[("pl", include_str!("../i18n/pl/welcome.ftl"))],
 };
 
 /// The words of `omorfos-screenshot`, whose picker the portal's
 /// pictures are picked with too.
 pub const SCREENSHOT: Program = Program {
     name: "screenshot",
-    english: include_str!("../../../i18n/en/screenshot.ftl"),
-    translated: &[("pl", include_str!("../../../i18n/pl/screenshot.ftl"))],
+    english: include_str!("../i18n/en/screenshot.ftl"),
+    translated: &[("pl", include_str!("../i18n/pl/screenshot.ftl"))],
 };
 
 /// Every program whose words are here, which the tests hold every
