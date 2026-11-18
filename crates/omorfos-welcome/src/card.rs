@@ -963,8 +963,15 @@ mod tests {
 
     /// How many pixels of `area` of `canvas` are not the card's own colour.
     fn inked(canvas: &Canvas, (left, top, width, height): Area) -> usize {
-        let ground = theme().style(Part::Launcher, States::NONE).background;
-        let ground = u32::from_be_bytes([ground.alpha, ground.red, ground.green, ground.blue]);
+        // As a canvas holds it: each of red, green and blue as much of
+        // itself as the colour, which is glass, is there at all.
+        let color = theme().style(Part::Launcher, States::NONE).background;
+        let share = |channel: u8| {
+            let shared = (u16::from(channel) * u16::from(color.alpha) + 127) / 255;
+            u8::try_from(shared).unwrap()
+        };
+        let (red, green, blue) = (share(color.red), share(color.green), share(color.blue));
+        let ground = u32::from_be_bytes([color.alpha, red, green, blue]);
         let (left, top) = (left.unsigned_abs(), top.unsigned_abs());
         (top..top + height)
             .flat_map(|y| (left..left + width).map(move |x| (x, y)))

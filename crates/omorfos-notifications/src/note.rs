@@ -607,7 +607,7 @@ mod tests {
     /// of itself as the colour is there at all.
     fn argb(color: Color) -> u32 {
         let share = |channel: u8| {
-            let shared = u16::from(channel) * u16::from(color.alpha) / 255;
+            let shared = (u16::from(channel) * u16::from(color.alpha) + 127) / 255;
             u8::try_from(shared).unwrap()
         };
         let (red, green, blue) = (share(color.red), share(color.green), share(color.blue));

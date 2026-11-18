@@ -362,6 +362,7 @@ fn a_session_carries_on_with_no_output_until_one_is_plugged_in() {
     // size behind it to blur.
     let glass = "menu { background: rgba(20, 28, 56, 0.9); backdrop-filter: blur(32px); }\n";
     let mut session = Session::with_config(&[("theme.css", glass)]);
+    session.blurring();
     let mut client = session.connect();
     session.open(&mut client, "app", (200, 100), RED);
     let only = session.output();

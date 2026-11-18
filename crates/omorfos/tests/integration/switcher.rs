@@ -1032,9 +1032,16 @@ fn behind_the_switcher_its_screen_is_dimmed_and_blurred_unless_the_theme_says_no
     let diagonal = ("config.yaml", "");
     let cases = [
         ("", true, true, diagonal),
-        (UNBLURRED.1, true, false, FLAT),
         (
-            "switcher-backdrop { background: transparent; backdrop-filter: none; }\n",
+            "switcher-backdrop { backdrop-filter: none; }\n\
+             switcher { backdrop-filter: none; }\n",
+            true,
+            false,
+            FLAT,
+        ),
+        (
+            "switcher-backdrop { background: transparent; backdrop-filter: none; }\n\
+             switcher { backdrop-filter: none; }\n",
             false,
             false,
             diagonal,
@@ -1042,6 +1049,7 @@ fn behind_the_switcher_its_screen_is_dimmed_and_blurred_unless_the_theme_says_no
     ];
     for (theme, dimmed, blurred, style) in cases {
         let (mut session, _client) = three_with(&[style, ("theme.css", theme)]);
+        session.blurring();
         let corner = (crate::common::WIDTH - 3, crate::common::HEIGHT - 3);
         let open = session.draw().at(corner.0, corner.1);
         let before = session.compositor().blurs();
@@ -1121,6 +1129,7 @@ fn a_window_private_by_blur_is_blurred_in_the_switcher_and_one_private_by_blank_
     let rules = "rules:\n  - match: { app_id: one }\n    private: blur\n  - match: { app_id: two }\n    private: true\n";
     for style in [("config.yaml", ""), FLAT] {
         let mut session = Session::with_config(&[style, ("rules.yaml", rules), UNBLURRED]);
+        session.blurring();
         let mut client = session.connect();
         let size = if style == FLAT {
             (200, 100)

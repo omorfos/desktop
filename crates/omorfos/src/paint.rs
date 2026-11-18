@@ -1325,7 +1325,7 @@ mod tests {
     /// of itself as the colour is there at all.
     fn argb(color: Color) -> u32 {
         let share = |channel: u8| {
-            let shared = u16::from(channel) * u16::from(color.alpha) / 255;
+            let shared = (u16::from(channel) * u16::from(color.alpha) + 127) / 255;
             u8::try_from(shared).unwrap()
         };
         let (red, green, blue) = (share(color.red), share(color.green), share(color.blue));
@@ -1618,11 +1618,12 @@ mod tests {
             argb(colors.danger),
             "outlined in the colour of danger"
         );
-        assert_eq!(canvas.at(395, 40), argb(colors.surface));
+        let ground = argb(theme.style(Part::Notice, States::NONE).background);
+        assert_eq!(canvas.at(395, 40), ground);
         let row = |top: u32| (10..300).flat_map(move |x| (top..top + 22).map(move |y| (x, y)));
         let ink = |top: u32| {
             row(top)
-                .filter(|(x, y)| canvas.at(*x, *y) != argb(colors.surface))
+                .filter(|(x, y)| canvas.at(*x, *y) != ground)
                 .count()
         };
         assert!(

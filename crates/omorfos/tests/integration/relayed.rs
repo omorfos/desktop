@@ -776,6 +776,7 @@ fn a_window_that_said_where_its_edges_are_is_shown_again_by_them() {
 fn a_window_that_asked_for_what_is_behind_it_blurred_has_it_so_by_the_next_compositor() {
     let relayed = Relayed::new();
     let (mut first, holder) = relayed.compositor();
+    first.blurring();
     let mut client = first.adopt(UnixStream::connect(&relayed.path).unwrap());
     let _red = first.open(&mut client, "red", (200, 400), RED);
     // Cascaded to 32 across and down, and asking from 172 to 272 across,
@@ -792,6 +793,7 @@ fn a_window_that_asked_for_what_is_behind_it_blurred_has_it_so_by_the_next_compo
     relayed.step();
     relayed.kept();
     let (mut second, _holder) = relayed.compositor();
+    second.blurring();
     second.eventually(blurred);
     second.roundtrip(&mut client);
     relayed.kept();
@@ -801,6 +803,7 @@ fn a_window_that_asked_for_what_is_behind_it_blurred_has_it_so_by_the_next_compo
 fn a_window_that_asked_through_kdes_protocol_for_a_region_blurred_has_it_by_the_next_compositor() {
     let relayed = Relayed::new();
     let (mut first, holder) = relayed.compositor();
+    first.blurring();
     let mut client = first.adopt(UnixStream::connect(&relayed.path).unwrap());
     let _red = first.open(&mut client, "red", (200, 400), RED);
     // As above, and only by its top: blurred at 80 down and not at 200.
@@ -817,6 +820,7 @@ fn a_window_that_asked_through_kdes_protocol_for_a_region_blurred_has_it_by_the_
     relayed.step();
     relayed.kept();
     let (mut second, _holder) = relayed.compositor();
+    second.blurring();
     second.eventually(blurred);
     second.roundtrip(&mut client);
     relayed.kept();
@@ -2228,6 +2232,7 @@ fn where_the_pointer_is_is_told_the_relay_as_the_compositor_steps_down_and_not_a
 fn a_session_kept_by_the_relay_with_nothing_changing_allocates_little() {
     let relayed = Relayed::new();
     let (mut session, _holder) = relayed.compositor();
+    session.blurring();
     let mut client = session.adopt(UnixStream::connect(&relayed.path).unwrap());
     let _window = session.open_decorated(&mut client, "app", (200, 100), RED);
     session.eventually(|session| !session.render());

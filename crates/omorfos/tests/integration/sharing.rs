@@ -327,7 +327,8 @@ fn question() -> u32 {
     let looks = looks
         .style(omorfos_config::Part::Launcher, omorfos_config::States::NONE)
         .background;
-    u32::from_be_bytes([looks.alpha, looks.red, looks.green, looks.blue])
+    // Glass, which is solid in its colour where nothing is blurred.
+    u32::from_be_bytes([u8::MAX, looks.red, looks.green, looks.blue])
 }
 
 /// Draws until the question is on the screen.
@@ -1489,7 +1490,7 @@ fn a_session_that_ends_while_its_screen_is_picked_is_told_no_at_once() {
         let looks = omorfos_config::Theme::default();
         let looks = looks.style(omorfos_config::Part::Launcher, omorfos_config::States::NONE);
         let shown = looks.background;
-        let shown = u32::from_be_bytes([shown.alpha, shown.red, shown.green, shown.blue]);
+        let shown = u32::from_be_bytes([u8::MAX, shown.red, shown.green, shown.blue]);
         // On the screen the pointer is on.
         let up = session.draw_on(1).at(160, 120) == shown;
         up || session.draw().at(WIDTH / 2, HEIGHT / 2) == shown || starting.is_finished()

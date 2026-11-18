@@ -75,12 +75,15 @@ mod tests {
             Scale::ONE,
         );
         let (width, height) = canvas.units();
-        let background = u32::from_be_bytes([
-            style.background.alpha,
-            style.background.red,
-            style.background.green,
-            style.background.blue,
-        ]);
+        // As a canvas holds it: each of red, green and blue as much of
+        // itself as the colour, which is glass, is there at all.
+        let color = style.background;
+        let share = |channel: u8| {
+            let shared = (u16::from(channel) * u16::from(color.alpha) + 127) / 255;
+            u8::try_from(shared).unwrap()
+        };
+        let (red, green, blue) = (share(color.red), share(color.green), share(color.blue));
+        let background = u32::from_be_bytes([color.alpha, red, green, blue]);
         let pixels = (0..width).flat_map(|x| (0..height).map(move |y| (x, y)));
         let all: Vec<u32> = pixels.map(|(x, y)| canvas.at(x, y)).collect();
         assert!(all.contains(&background), "its background");

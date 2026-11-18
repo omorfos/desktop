@@ -210,7 +210,7 @@ fn a_stale_size_still_in_flight_is_not_mistaken_for_a_resize() {
 /// Colours as `0xAARRGGBB`: a hairline some of these tests give a frame,
 /// which the default theme's, being seen through, is not told from what
 /// is under it by; and the default theme's titlebar, which is glass,
-/// over the desktop's ground.
+/// solid in its colour where what is behind is not blurred.
 const HAIRLINE: u32 = 0xff22_2e57;
 
 /// A theme whose frames have that hairline round them.
@@ -224,8 +224,8 @@ fn lit(pixel: u32) -> bool {
     let ground = BACKGROUND.to_be_bytes().into_iter().skip(1);
     channels.zip(ground).all(|(pixel, ground)| pixel > ground)
 }
-const FOCUSED_TITLEBAR: u32 = 0xff13_1b37;
-const UNFOCUSED_TITLEBAR: u32 = 0xff0f_172e;
+const FOCUSED_TITLEBAR: u32 = 0xff14_1c38;
+const UNFOCUSED_TITLEBAR: u32 = 0xff10_172f;
 
 #[test]
 fn a_theme_may_take_the_hairline_from_a_frame() {
@@ -307,7 +307,7 @@ fn the_desktop_and_its_frames_are_drawn_light_when_the_configuration_asks() {
 
     let picture = session.draw();
     assert_eq!(picture.at(600, 400), 0xfffc_f7e3, "a warm cream behind");
-    assert_eq!(picture.at(190, 14), 0xffff_fcf2, "the titlebar with focus");
+    assert_eq!(picture.at(190, 14), 0xffff_fdf4, "the titlebar with focus");
     let hairline = picture.at(0, 60);
     assert!(
         hairline != RED && hairline < 0xfffc_f7e3,

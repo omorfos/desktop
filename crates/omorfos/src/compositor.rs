@@ -4439,7 +4439,20 @@ impl Compositor {
                     let style = theme.style(known.part, States::NONE);
                     let key = glass::key(&known.surface.id());
                     let at = (key, elements.len(), 0);
-                    Pane::of(&style, (place, view), at, share)
+                    // The bar's surface has the room its theme keeps round
+                    // the bar within it, which is not the bar's: one that
+                    // floats clear of the screen's edges has the desktop
+                    // there, not glass.
+                    let room = if known.part == Part::Panel {
+                        style.margin
+                    } else {
+                        omorfos_config::Edges::NONE
+                    };
+                    let corner = (room.left.cast_signed(), room.top.cast_signed());
+                    let less = (room.across().cast_signed(), room.down().cast_signed());
+                    let size = place.size - Size::from(less);
+                    let within = Rectangle::new(place.loc + Point::from(corner), size);
+                    Pane::of(&style, (within, view), at, share)
                 });
                 glass.extend(pane.or_else(|| {
                     let placed = (at, view);

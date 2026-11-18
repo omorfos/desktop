@@ -187,9 +187,13 @@ instant.
   blank and the desktop do: a pixel that is that colour then proves
   nothing. Give one a colour of its own in the test's theme.
 - The software renderer the tests draw with blurs slowly, seconds a frame
-  at the size of the screen. A test not about blur gives the theme
-  `backdrop-filter: none` for what it would blur behind; one test that it
-  is blurred, counted with `compositor().blurs()`, is enough.
+  at the size of the screen, and nearly everything the built-in theme
+  draws is glass. So the tests' screen is one that cannot blur, as a
+  driver's may be: glass is then solid in its colour, which is the
+  colour a test of anything else expects. A test about blur asks for it
+  with `Session::blurring`, and gives the theme `backdrop-filter: none`
+  for what it is not about; one test that a thing is blurred, counted
+  with `compositor().blurs()`, is enough.
 - The software renderer draws nothing of a window's picture made larger
   than the window is; pictures are never made larger, which is the rule
   anyway. Give a window drawn small in a test a size larger than its

@@ -84,9 +84,18 @@ fn argb(color: Color) -> u32 {
     u32::from_be_bytes([color.alpha, color.red, color.green, color.blue])
 }
 
+/// A part's ground on the screen: its glass, which is solid in its
+/// colour where what is behind is not blurred.
+fn solid(glass: Color) -> u32 {
+    argb(Color {
+        alpha: u8::MAX,
+        ..glass
+    })
+}
+
 /// The colour of a notification where nothing is written on it.
 fn surface() -> u32 {
-    argb(
+    solid(
         Theme::default()
             .style(Part::Notification, States::NONE)
             .background,
@@ -478,7 +487,8 @@ fn one_notification_casts_no_shadow_on_another() {
         shaded(between, BACKGROUND) && between != BACKGROUND,
         "{between:#x}"
     );
-    let lower = bottom + 16 + 1 + 1;
+    // Inside its hairline, and under the light along its top.
+    let lower = bottom + 16 + 1 + 2;
     assert_eq!(picture.at(INSIDE.0, lower), surface(), "the one below");
 }
 
@@ -558,13 +568,16 @@ fn a_notification_turns_from_day_to_night_over_a_minute() {
     notify(&daemon.peer(), "Turning", 0, HashMap::new());
     let inside = |session: &mut Session| session.draw().at(INSIDE.0, INSIDE.1);
     let light = Theme::built_in(omorfos_config::Scheme::Light, omorfos_config::Accent::Cyan);
-    let day = argb(light.style(Part::Notification, States::NONE).background);
+    let day = solid(light.style(Part::Notification, States::NONE).background);
     let night = surface();
     until(&mut session, &mut notifier, Duration::ZERO, |session| {
         inside(session) == day
     });
 
     session.write_config("config.yaml", &by_the_sun(false));
+    // The compositor hears of it too: the glass under the notification is
+    // its to draw, and turns with its theme, by its own clock.
+    session.compositor_mut().reload_config();
     // Heard of, as the file changes, and begun as they are next drawn.
     let step = omorfos_config::STEP;
     let heard = (0..5000).any(|_| {
@@ -581,6 +594,7 @@ fn a_notification_turns_from_day_to_night_over_a_minute() {
         Duration::from_secs(30),
         |session| between(inside(session), day, night),
     );
+    session.advance(Duration::from_secs(61));
     until(
         &mut session,
         &mut notifier,

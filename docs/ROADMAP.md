@@ -1219,10 +1219,10 @@ the first than on the last.
       frames` on a modest laptop with a dozen windows, one dragged over
       the others, and written into ADR 33. The built-in theme's titlebar
       is glass since ADR 97, ahead of that, as the maintainer asked, and
-      is made solid again if it costs a frame; until it is measured the
-      theme makes nothing else glass, its surfaces solid in the colours
-      glass would be tinted with, but for "About" and the session behind
-      the password prompt.
+      is made solid again if it costs a frame. Everything that floats
+      and the bar followed it the same day, as asked, so what is to be
+      measured is a desktop of glass: the bar, which is always there,
+      first.
 - [ ] What a glass titlebar allocates where nothing changes, brought
       down: 7 times a turn for each, counted by the tests of a quiet
       session beside the 17 of a window in a solid frame, in laying its
@@ -1233,11 +1233,15 @@ the first than on the last.
       through by default, light in the dark scheme and navy in the
       light, and `--blur` wherever there is glass, each changed in one
       place and by a part's own rule for that part alone.
-- [ ] Glass by default on what else floats, in `--glass-thick` and
-      `--blur` as titlebars have it: menus, tooltips, notifications, the
-      launcher, the switcher and the bar, each of which is its own
-      program's to draw but for the first; asked for by the maintainer
-      on 18 November 2026, to follow the shared variables.
+- [x] Glass by default on what else floats, in `--glass-thick` and
+      `--blur` as titlebars have it (ADR 97): menus, tooltips, the
+      notice, notifications, the launcher and the welcome card drawn as
+      it is, the switcher, the bar and its popovers; asked for by the
+      maintainer on 18 November 2026. Each held to 4.5 to 1 over the
+      worst that can be behind it, which made the light scheme's glass
+      94 in a hundred and the notice's 95. The bar's glass keeps within
+      the room its theme gives it. The tests' screen blurs only where a
+      test asks.
 - [ ] Known gaps in a frame whose theme takes its edge away: the
       window's bottom corners are cut to the curve with nothing drawn
       along it, so they are not smoothed; and a frame at the edge of

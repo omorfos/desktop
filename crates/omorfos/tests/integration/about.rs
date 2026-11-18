@@ -15,11 +15,13 @@ use crate::common::{Event, HEIGHT, Session, WIDTH, key};
 use crate::windows::{BACKGROUND, GREEN};
 
 const LEFT_BUTTON: u32 = 0x110;
-/// What "About" is drawn on in the dark scheme: its glass, the surface at
-/// 90% over the background; and the same over its own shadow, where it is
-/// not blurred.
-const SURFACE: u32 = 0xff13_1b37;
+/// What "About" is drawn on in the dark scheme: its glass, solid in the
+/// surface's colour where what is behind is not blurred.
+const SURFACE: u32 = 0xff14_1c38;
 const UNBLURRED: u32 = 0xff13_1a36;
+/// And where a theme takes both its blur and its shadow away: the surface
+/// at 90% over the background.
+const BARE: u32 = 0xff13_1b37;
 
 /// Where "About" has nothing drawn on it but its ground: a little inside
 /// its left edge, half way down, the screen being 640 wide and it as wide
@@ -172,7 +174,7 @@ fn about_fades_out_as_it_goes_and_a_theme_may_give_it_no_shadow() {
     session.compositor_mut().reload_config();
     about(&mut session);
     // Its shadow under it no longer shows through its glass.
-    assert_eq!(session.draw().at(GROUND.0, GROUND.1), SURFACE);
+    assert_eq!(session.draw().at(GROUND.0, GROUND.1), BARE);
 }
 
 /// The middle of the button that closes "About": what is in the colour of
@@ -261,8 +263,8 @@ fn about_on_a_screen_too_short_for_it_keeps_inside_it_and_scrolls_what_it_lists(
     // From 12 units below the top of the screen to 12 above its foot.
     let side = |y| screen.at(LEFT_SIDE, y);
     assert_eq!(side(20), BACKGROUND, "above it");
-    assert_eq!(side(28), SURFACE, "its top");
-    assert_eq!(side(HEIGHT - 30), SURFACE, "its foot");
+    assert_eq!(side(28), BARE, "its top");
+    assert_eq!(side(HEIGHT - 30), BARE, "its foot");
     assert_eq!(side(HEIGHT - 20), BACKGROUND, "below it");
 
     let top = seen(&mut session);

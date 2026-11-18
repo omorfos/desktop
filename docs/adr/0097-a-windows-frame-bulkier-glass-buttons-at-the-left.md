@@ -116,6 +116,23 @@ it is over what is behind the window; along the top of a titlebar,
 over the titlebar's glass. A theme that wants a hairline of one colour
 gives `--edge` one.
 
+**Everything that floats is glass, and the bar.** Asked for with the
+titlebar's, and built once the hairline and the blur were each said
+once: menus, tooltips, the notice, notifications, the launcher and the
+welcome card drawn as it is, the switcher, the bar and its popovers
+are `--glass-thick` over what is behind them blurred by `--blur`, with
+the light along the top of those that cast a shadow. The compositor
+lays the glass under each, a program's own surface too, by the part it
+is (ADR 33), so no program of omorfos's asks for it. Each is held to
+4.5 to 1 over the worst that can be behind it, by the theme's tests:
+the dark scheme's glass is 90 in a hundred; the light scheme's is 94,
+dim text and the accent as text being read on cream over a black
+window at no less; and the notice's is the prompt's 95, for its red
+heading. The thin glass the design language first gave the bar, on
+which only `--text` might be written, is not built: the bar writes dim
+text. The bar's glass keeps within the room its theme gives it, which
+a bar that floats clear of the screen's edges has the desktop in.
+
 **GTK 3 is told to read the portal.** Outside a sandbox GTK 3 reads
 the desktop's settings from GNOME's own store, where the buttons are
 whatever GNOME was last told, and from the portal only with
@@ -167,6 +184,14 @@ tall as it is: a control of 32 has room in it.
   to the curve and not smoothed, nothing being drawn along it; and a
   frame of its against the edge of the screen cannot be held by that
   side to resize it.
+- A sheet of glass costs a little on each frame that is drawn, and the
+  bar's is always there. What a desktop of glass costs on a modest
+  laptop is still to be measured (ADR 33); `reduce_transparency` and a
+  theme's `backdrop-filter: none` are the ways out of it.
+- The tests' screen cannot blur unless a test asks, as a driver's may
+  not: blurring in software what is behind all that is now glass made
+  them three times as long. Glass is then solid in its colour, which
+  is what a test of anything else expects.
 - A colour that can be seen through and is not black was drawn far too
   strong by the compositor wherever it filled with one, a border's
   straight sides among them: a hairline of light at 8 in a hundred came

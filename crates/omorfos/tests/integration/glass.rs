@@ -48,6 +48,7 @@ fn red(pixel: u32) -> u32 {
 /// and a panel of glass 30 high across the top, over it.
 fn over_a_red_window(theme: &str) -> (Session, (Client, Toplevel), Client) {
     let mut session = Session::with_config(&[("theme.css", theme)]);
+    session.blurring();
     let mut window = session.connect();
     let toplevel = session.open(&mut window, "app", (200, 100), RED);
     let mut panel = session.connect();
@@ -117,6 +118,7 @@ fn glass_over_the_desktop_alone_takes_what_is_behind_it_from_one_blur_of_it() {
     // Along the bottom, and in the middle of the right side: clear of each
     // other and of where windows open, in the top left corner.
     let mut session = Session::with_config(&[("theme.css", GLASS)]);
+    session.blurring();
     let mut bottom = session.connect();
     bottom.layer_name = "panel";
     let low = LayerShape {
@@ -189,6 +191,7 @@ fn glass_is_solid_where_transparency_is_to_be_reduced() {
         ("theme.css", GLASS),
         ("config.yaml", "appearance: { reduce_transparency: true }"),
     ]);
+    session.blurring();
     let mut window = session.connect();
     session.open(&mut window, "app", (200, 100), RED);
     let mut panel = session.connect();
@@ -205,6 +208,7 @@ fn a_menu_of_glass_over_a_red_window_is_red_there_and_not_beside_it() {
                  menu { background: rgba(255, 255, 255, 0.5); \
                  backdrop-filter: blur(8px); box-shadow: none; }\n";
     let mut session = Session::with_config(&[("theme.css", theme)]);
+    session.blurring();
     let mut client = session.connect();
     session.open(&mut client, "app", (200, 400), RED);
     // Its corner at (100, 100), 220 wide: half over the window.
@@ -234,6 +238,7 @@ fn a_menu_fading_out_keeps_its_glass_as_it_goes() {
                  menu { background: rgba(255, 255, 255, 0.5); transition: 100ms linear; \
                  backdrop-filter: blur(8px); box-shadow: none; }\n";
     let mut session = Session::with_config(&[("theme.css", theme)]);
+    session.blurring();
     let mut client = session.connect();
     session.open(&mut client, "app", (200, 400), RED);
     // Its corner at (100, 100), 220 wide: half over the window.
@@ -262,6 +267,7 @@ fn a_menu_fading_out_keeps_its_glass_as_it_goes() {
 fn a_panel_fading_out_keeps_its_glass_as_it_goes() {
     let theme = format!("{GLASS}panel {{ transition: 100ms linear; }}\n");
     let mut session = Session::with_config(&[("theme.css", theme.as_str())]);
+    session.blurring();
     let mut window = session.connect();
     session.open(&mut window, "app", (200, 100), RED);
     let mut panel = session.connect();
@@ -295,6 +301,7 @@ const ALONG: i32 = 35;
 /// corner, whose titlebar runs from 32 down to 80.
 fn a_titlebar_over_a_red_window(theme: &str) -> (Session, [(Client, Toplevel); 2]) {
     let mut session = Session::with_config(&[("theme.css", theme)]);
+    session.blurring();
     let mut red = session.connect();
     let under = session.open(&mut red, "red", (200, 400), RED);
     let mut blue = session.connect();
@@ -371,6 +378,7 @@ fn the_tooltip_of_the_mark_is_glass_if_the_theme_makes_it_so() {
              backdrop-filter: {glass}; box-shadow: none; }}\n"
         );
         let mut session = Session::with_config(&[("theme.css", theme.as_str())]);
+        session.blurring();
         let mut camera = session.connect_as(Roles::CAPTURE);
         let _screen = camera.capture(0, false);
         session.roundtrip(&mut camera);
@@ -401,6 +409,7 @@ fn the_prompt_that_asks_for_a_secret_is_glass_if_the_theme_makes_its_question_so
              sealed {{ backdrop-filter: none; }}\n"
         );
         let mut session = Session::with_config(&[("theme.css", theme.as_str())]);
+        session.blurring();
         let mut app = session.connect_plain();
         session.open(&mut app, "app", (200, 100), RED);
         drop(session.draw());
@@ -487,6 +496,7 @@ fn glass_whose_blur_has_nothing_to_draw_is_solid_in_its_colour() {
 #[test]
 fn a_blur_that_blurs_as_the_software_does_is_kept_for_glass() {
     let mut session = Session::new();
+    session.blurring();
     assert!(session.try_frosting(Ok(Software)).is_ok());
     assert_eq!(
         session.compositor().events().count(),
@@ -498,6 +508,7 @@ fn a_blur_that_blurs_as_the_software_does_is_kept_for_glass() {
 #[test]
 fn a_blur_that_blurs_otherwise_leaves_glass_solid_and_says_by_how_much() {
     let mut session = Session::new();
+    session.blurring();
     let said = session.try_frosting(Ok(Wider)).err().unwrap();
     assert!(said.contains("Glass is drawn solid"), "{said}");
     assert!(said.contains("by as much as"), "{said}");
@@ -508,6 +519,7 @@ fn a_blur_that_blurs_otherwise_leaves_glass_solid_and_says_by_how_much() {
 #[test]
 fn a_blur_that_has_nothing_to_draw_leaves_glass_solid() {
     let mut session = Session::new();
+    session.blurring();
     let said = session.try_frosting(Ok(Blank)).err().unwrap();
     assert!(said.contains("could not blur a picture"), "{said}");
 }
@@ -515,6 +527,7 @@ fn a_blur_that_has_nothing_to_draw_leaves_glass_solid() {
 #[test]
 fn a_blur_that_could_not_be_made_leaves_glass_solid_and_says_why() {
     let mut session = Session::new();
+    session.blurring();
     let said = session
         .try_frosting::<Software>(Err("no shader"))
         .err()

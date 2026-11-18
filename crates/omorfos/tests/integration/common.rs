@@ -177,9 +177,12 @@ pub(crate) struct Session {
     /// What else is stepped each time the compositor is, such as a relay
     /// between it and its clients.
     pub(crate) stepped: Vec<Box<dyn FnMut()>>,
-    /// What blurs what is behind glass: as its specification says, which
-    /// is in software, unless the test says otherwise. Glass is solid
-    /// without it.
+    /// What blurs what is behind glass: nothing, unless the test says
+    /// otherwise, as on a screen whose driver cannot, where glass is solid
+    /// in its colour. Nearly everything the built-in theme draws is
+    /// glass, and blurring in software what is behind all of it made the
+    /// tests take three times as long, to look at what few of them look
+    /// at; those that do ask for [`Session::blurring`].
     pub(crate) frosting: Option<Box<dyn Frosting<PixmanRenderer, Drawn>>>,
 }
 
@@ -272,7 +275,7 @@ impl Session {
             config,
             now: Instant::now(),
             stepped: Vec::new(),
-            frosting: Some(Box::new(Software)),
+            frosting: None,
         };
         session.add_output((WIDTH, HEIGHT));
         session
@@ -633,6 +636,12 @@ impl Session {
         self.roundtrip(client);
         self.roundtrip(client);
         window
+    }
+
+    /// Has what is behind glass blurred from now on, as the blur's
+    /// specification says, which is in software.
+    pub(crate) fn blurring(&mut self) {
+        self.frosting = Some(Box::new(Software));
     }
 
     /// What the compositor makes of `made` as what is to blur glass on the

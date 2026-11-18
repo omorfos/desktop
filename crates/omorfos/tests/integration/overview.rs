@@ -520,6 +520,7 @@ fn a_workspace_in_the_strip_has_the_wallpaper_and_its_windows_cut_at_its_edges()
 fn the_screen_behind_is_blurred_unless_the_theme_says_not() {
     for (files, blurred) in [(&[][..], true), (&[UNBLURRED][..], false)] {
         let mut session = Session::with_config(files);
+        session.blurring();
         drop(session.draw());
         let before = session.compositor().blurs();
         open(&mut session);
@@ -895,6 +896,7 @@ fn a_window_that_asks_for_blur_behind_it_has_it_in_the_overview_too() {
         UNBLURRED.1
     );
     let mut session = Session::with_config(&[(UNBLURRED.0, &theme)]);
+    session.blurring();
     let mut client = session.connect();
     let window = session.open(&mut client, "clear", (200, 150), 0);
     let _effect = client.blur_behind(&window.surface, &[(0, 0, 200, 150)]);

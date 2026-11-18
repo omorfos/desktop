@@ -629,7 +629,8 @@ fn each_entry_has_a_sign_of_what_it_does_or_the_icon_of_the_program_it_starts() 
         "not pressed in while it may sleep"
     );
     assert_eq!(signed(&picture, 4), 0, "and nothing where there is no sign");
-    let gap = (325..333).flat_map(|x| (201..361).map(move |y| (x, y)));
+    // Under the light along the menu's top.
+    let gap = (325..333).flat_map(|x| (202..361).map(move |y| (x, y)));
     let gap: Vec<u32> = gap.map(|(x, y)| picture.at(x, y)).collect();
     assert!(
         gap.iter().all(|&pixel| pixel == PANEL),

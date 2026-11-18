@@ -31,6 +31,7 @@ pub(crate) fn red(pixel: u32) -> u32 {
 /// cascaded from the corner to 32 across and down.
 pub(crate) fn over_a_red_window(theme: &str, width: i32) -> (Session, [(Client, Toplevel); 2]) {
     let mut session = Session::with_config(&[("theme.css", theme)]);
+    session.blurring();
     let mut red = session.connect();
     let under = session.open(&mut red, "red", (200, 400), RED);
     let mut clear = session.connect();
@@ -46,6 +47,7 @@ pub(crate) fn over_a_red_window(theme: &str, width: i32) -> (Session, [(Client, 
 /// surface reaches 20 past it below, to 212 down.
 pub(crate) fn a_window_with_its_own_shadow(theme: &str) -> (Session, [(Client, Toplevel); 2]) {
     let mut session = Session::with_config(&[("theme.css", theme)]);
+    session.blurring();
     let mut red = session.connect();
     let under = session.open(&mut red, "red", (200, 400), RED);
     let mut clear = session.connect();
@@ -88,6 +90,7 @@ fn a_program_is_told_it_may_have_blur_unless_the_theme_or_the_user_says_not() {
     ];
     for (files, flags) in settings {
         let mut session = Session::with_config(&files);
+        session.blurring();
         let mut client = session.connect();
         assert_eq!(told(&mut session, &mut client), [flags], "{files:?}");
     }
@@ -96,6 +99,7 @@ fn a_program_is_told_it_may_have_blur_unless_the_theme_or_the_user_says_not() {
 #[test]
 fn a_program_is_told_again_when_it_may_no_longer_have_blur_and_when_it_may() {
     let mut session = Session::with_config(&[("theme.css", BLURRED)]);
+    session.blurring();
     let mut client = session.connect();
     session.write_config("theme.css", UNBLURRED);
     session.eventually(|session| told(session, &mut client) == [BLUR, 0]);
@@ -206,6 +210,7 @@ fn what_a_program_asked_for_stays_once_it_lets_go_of_the_protocol() {
 #[test]
 fn a_program_that_asks_twice_for_one_surface_is_ended() {
     let mut session = Session::new();
+    session.blurring();
     let mut client = session.connect();
     let surface = client.surface();
     let _effect = client.blur_behind(&surface, &[]);
@@ -217,6 +222,7 @@ fn a_program_that_asks_twice_for_one_surface_is_ended() {
 #[test]
 fn a_program_may_ask_again_for_a_surface_once_it_has_destroyed_what_it_asked_with() {
     let mut session = Session::new();
+    session.blurring();
     let mut client = session.connect();
     let surface = client.surface();
     let effect = client.blur_behind(&surface, &[]);
@@ -228,6 +234,7 @@ fn a_program_may_ask_again_for_a_surface_once_it_has_destroyed_what_it_asked_wit
 #[test]
 fn a_program_that_asks_for_blur_behind_a_surface_it_has_destroyed_is_ended() {
     let mut session = Session::new();
+    session.blurring();
     let mut client = session.connect();
     let surface = client.surface();
     let effect = client.blur_behind(&surface, &[]);
@@ -240,6 +247,7 @@ fn a_program_that_asks_for_blur_behind_a_surface_it_has_destroyed_is_ended() {
 #[test]
 fn a_panel_of_a_program_has_what_is_behind_it_blurred_where_it_asks() {
     let mut session = Session::with_config(&[("theme.css", BLURRED)]);
+    session.blurring();
     let mut under = session.connect();
     let _window = session.open(&mut under, "red", (200, 400), RED);
     let mut panel = session.connect();
@@ -268,6 +276,7 @@ fn a_panel_of_a_program_has_what_is_behind_it_blurred_where_it_asks() {
 /// asking for what is behind all of it to be blurred.
 fn a_clear_window_in_a_frame() -> (Session, [(Client, Toplevel); 2]) {
     let mut session = Session::with_config(&[("theme.css", BLURRED)]);
+    session.blurring();
     let mut under = session.connect();
     let red = session.open(&mut under, "red", (200, 260), RED);
     let mut clear = session.connect();

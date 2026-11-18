@@ -1137,7 +1137,11 @@ mod tests {
             "menu { box-shadow: inset 0 1px white; opacity: 0.5; }",
         );
         assert_eq!(faded.inset.color.alpha, 0x80);
-        assert_eq!(styled(Part::Menu, "").inset, Shadow::NONE, "none built in");
+        assert_eq!(
+            styled(Part::Panel, "").inset,
+            Shadow::NONE,
+            "none on the bar"
+        );
     }
 
     #[test]
@@ -1294,7 +1298,7 @@ mod tests {
         assert_eq!(blur("menu { backdrop-filter: blur(0); }"), 0);
         let none = "menu { backdrop-filter: blur(24px); backdrop-filter: none; }";
         assert_eq!(blur(none), 0);
-        assert_eq!(blur(""), 0, "not unless the theme says");
+        assert_eq!(styled(Part::MenuItem, "").blur, 0, "nor unless it is said");
         // Opacity makes the part fainter, not its blur less.
         assert_eq!(
             blur("menu { backdrop-filter: blur(8px); opacity: 0.5; }"),
@@ -1602,6 +1606,14 @@ mod tests {
     fn meets_contrast(theme: &Theme, which: &str) {
         let style = |part, states| theme.style(part, states);
         let hovered = States::NONE.with(State::Hovered);
+        // What is written on glass is read over the worst that can be
+        // behind it: a white window in the dark scheme and a black one in
+        // the light.
+        let worst = if theme.dark() {
+            Color::rgb(255, 255, 255)
+        } else {
+            Color::rgb(0, 0, 0)
+        };
         for (index, (text, within)) in written(theme).into_iter().enumerate() {
             let under = within.map_or(text.background, |part| {
                 let states = if part == Part::LauncherItem {
@@ -1611,17 +1623,9 @@ mod tests {
                 };
                 style(part, states).background
             });
-            let ratio = text.color.contrast(under);
+            let ratio = text.color.contrast(over(under, worst));
             assert!(ratio >= 4.5, "{which}: text {index}: {ratio:.2} to 1");
         }
-        // A titlebar is glass, and what is written on it is read over the
-        // worst that can be behind it: a white window in the dark scheme
-        // and a black one in the light.
-        let worst = if theme.dark() {
-            Color::rgb(255, 255, 255)
-        } else {
-            Color::rgb(0, 0, 0)
-        };
         for states in [FOCUSED, States::NONE] {
             let bar = style(Part::Titlebar, states);
             let ratio = bar.color.contrast(over(bar.background, worst));
@@ -1691,6 +1695,21 @@ mod tests {
         Part::About,
     ];
 
+    /// What the built-in theme makes glass: a titlebar, the bar, and
+    /// everything that floats.
+    const GLASS: [Part; 10] = [
+        Part::Titlebar,
+        Part::Menu,
+        Part::Notice,
+        Part::Tooltip,
+        Part::Panel,
+        Part::Popover,
+        Part::Launcher,
+        Part::Notification,
+        Part::Switcher,
+        Part::About,
+    ];
+
     #[test]
     fn a_frame_has_a_hairline_seen_through_with_focus_or_without() {
         let theme = Theme::default();
@@ -1733,10 +1752,15 @@ mod tests {
         let blur = |theme: &Theme, part| theme.style(part, States::NONE).blur;
         let built_in = Theme::default();
         let wider = Theme::parse(":root { --blur: 40px; }").unwrap();
-        for part in [Part::Titlebar, Part::About] {
+        for part in GLASS {
             assert_eq!(blur(&built_in, part), 32, "{part:?}");
             assert_eq!(blur(&wider, part), 40, "{part:?}");
+            let ground = built_in.style(part, States::NONE).background;
+            assert!(ground.alpha < u8::MAX, "{part:?} is seen through");
         }
+        // What asks for a password is its own, for safety and not for
+        // looks, and a row within a sheet of glass is not glass again.
+        assert_eq!(blur(&built_in, Part::MenuItem), 0);
         let own = Theme::parse("titlebar { backdrop-filter: blur(20px); }").unwrap();
         assert_eq!(blur(&own, Part::Titlebar), 20);
         assert_eq!(blur(&own, Part::About), 32, "and no other");
@@ -1815,7 +1839,7 @@ mod tests {
     fn the_menu_row_under_the_pointer_is_raised() {
         let theme = Theme::default();
         let menu = theme.style(Part::Menu, States::NONE);
-        assert_eq!((menu.background, menu.color), (SURFACE, TEXT));
+        assert_eq!((menu.background, menu.color), (thick(SURFACE), TEXT));
         assert_eq!(menu.border, Edges::all(line(EDGE, 1)));
         assert_eq!(menu.radius, 10);
         let row = theme.style(Part::MenuItem, States::NONE);
@@ -1875,7 +1899,7 @@ mod tests {
     fn a_tooltip_is_a_rounded_box_of_text_on_the_surface() {
         let theme = Theme::default();
         let tooltip = theme.style(Part::Tooltip, States::NONE);
-        assert_eq!((tooltip.background, tooltip.color), (SURFACE, TEXT));
+        assert_eq!((tooltip.background, tooltip.color), (thick(SURFACE), TEXT));
         assert_eq!(tooltip.border, Edges::all(line(EDGE, 1)));
         assert_eq!(tooltip.radius, 10);
     }
@@ -1884,7 +1908,9 @@ mod tests {
     fn the_notice_of_what_is_wrong_is_outlined_and_headed_in_the_colour_of_danger() {
         let theme = Theme::default();
         let notice = theme.style(Part::Notice, States::NONE);
-        assert_eq!((notice.background, notice.color), (SURFACE, TEXT));
+        // Glass as thick as the prompt's, for its red to be read on.
+        let sealed = Color::rgba(SURFACE.red, SURFACE.green, SURFACE.blue, 242);
+        assert_eq!((notice.background, notice.color), (sealed, TEXT));
         assert_eq!(notice.border, Edges::all(line(DANGER, 1)));
         assert_eq!(notice.padding, Edges::all(12));
         let heading = theme.style(Part::NoticeHeading, States::NONE);
@@ -1981,7 +2007,7 @@ mod tests {
     fn what_is_active_on_the_panel_is_lit_and_underlined() {
         let theme = Theme::default();
         let panel = theme.style(Part::Panel, States::NONE);
-        assert_eq!((panel.background, panel.height), (SURFACE, 28));
+        assert_eq!((panel.background, panel.height), (thick(SURFACE), 28));
         assert_eq!(panel.margin, Edges::NONE);
         for part in [Part::Workspace, Part::Task] {
             let button = theme.style(part, States::NONE);
@@ -2362,7 +2388,8 @@ mod tests {
         )
         .unwrap();
         let panel = theme.style(Part::Panel, States::NONE);
-        assert_eq!(panel.background.alpha, 128);
+        // Of glass, half of the nine tenths it is.
+        assert_eq!(panel.background.alpha, 115);
         assert_eq!(panel.color.alpha, 128);
         assert_eq!(panel.border.top.color, Color::rgba(255, 255, 255, 128));
         assert_eq!(panel.outline.color, Color::rgba(255, 255, 255, 128));

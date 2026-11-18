@@ -36,9 +36,14 @@ fn argb(color: Color) -> u32 {
     u32::from_be_bytes([color.alpha, color.red, color.green, color.blue])
 }
 
-/// The colour of a bar where there is nothing on it.
+/// The colour of a bar where there is nothing on it: its glass, which is
+/// solid in its colour where what is behind is not blurred.
 pub(crate) fn plain() -> u32 {
-    argb(Theme::default().style(Part::Panel, States::NONE).background)
+    let glass = Theme::default().style(Part::Panel, States::NONE).background;
+    argb(Color {
+        alpha: u8::MAX,
+        ..glass
+    })
 }
 
 /// The colour of the line under what is lit.

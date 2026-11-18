@@ -180,9 +180,6 @@ and dark otherwise.
 
 ## Glass
 
-(Stage 4: needs blur. Until then every surface is drawn solid in its
-colour, which is also what "reduce transparency" does for good.)
-
 A surface is glass when what is behind it is worth being reminded of and
 not worth reading: bars, the dock, menus, notifications, the launcher,
 the titlebar of a window. The content of a window is never glass, unless
@@ -191,9 +188,13 @@ choice to make.
 
 | Glass | Tint | Blur | Used for | What may be written on it |
 |---|---|---|---|---|
-| Thin | 70% | 24 px | The top bar, the dock | `--text` only, never `--text-dim` |
-| Thick | 90% | 32 px | A titlebar, a menu, a tooltip, a notification, the launcher | Anything |
-| Sealed | 95%, and everything else dimmed | 40 px | What asks for a password | Anything |
+| Thick | 90% in the dark scheme, 94% in the light | 32 px | A titlebar, the bar, a menu, a tooltip, a notification, the launcher, the switcher, "About" | Anything |
+| Sealed | 95% | 32 px | The notice of what is wrong, whose heading is red; and, with everything else dimmed and blurred 24 px, what asks for a password | Anything |
+
+One tint and one blur for all of them, `--glass-thick` and `--blur`, as
+there is one hairline (ADR 97): a theme changes each once. A thinner
+glass for the bar and the dock, on which only `--text` could be written,
+was the first plan and is not built: the bar writes dim text too.
 
 - The tint is the surface colour at that opacity, and these are floors
   that were worked out, not chosen: the least, rounded up, at which the

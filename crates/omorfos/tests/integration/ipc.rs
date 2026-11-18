@@ -967,6 +967,7 @@ fn how_long_each_screens_last_frame_took_and_how_many_blurs_it_made_is_told() {
     let theme = "panel { background: rgba(255, 255, 255, 0.5); \
                  backdrop-filter: blur(8px); box-shadow: none; }\n";
     let mut session = Session::with_config(&[("theme.css", theme)]);
+    session.blurring();
     let mut client = session.connect();
     let window = session.open(&mut client, "app", (200, 100), RED);
     let mut panel = session.connect();

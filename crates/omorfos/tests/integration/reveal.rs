@@ -14,8 +14,9 @@ use crate::common::{Client, Event, LayerShape, Session, key};
 use crate::windows::{BACKGROUND, BLUE, GREEN, RED};
 
 const LEFT: u32 = 0x110;
-/// A titlebar with focus, which is glass, over the desktop's ground.
-const TITLEBAR: u32 = 0xff13_1b37;
+/// A titlebar with focus, which is glass: solid in its colour where
+/// what is behind is not blurred.
+const TITLEBAR: u32 = 0xff14_1c38;
 /// How long the pointer rests against an edge before what is there comes
 /// back.
 const REST: Duration = Duration::from_millis(600);

@@ -43,13 +43,16 @@ fn argb(color: Color) -> u32 {
     u32::from_be_bytes([color.alpha, color.red, color.green, color.blue])
 }
 
-/// The colour of the launcher where nothing is on it.
+/// The colour of the launcher where nothing is on it: its glass, which
+/// is solid in its colour where what is behind is not blurred.
 fn surface() -> u32 {
-    argb(
-        Theme::default()
-            .style(Part::Launcher, States::NONE)
-            .background,
-    )
+    let glass = Theme::default()
+        .style(Part::Launcher, States::NONE)
+        .background;
+    argb(Color {
+        alpha: u8::MAX,
+        ..glass
+    })
 }
 
 /// The colour of the row of the program that would be started.

@@ -48,14 +48,13 @@ Every part there is:
   \-\-capture: #f8616d;        /* the screen is being captured */
   /* Glass: the surface, at as much of itself as text on it needs to be
    * read over anything, and light along its top as on the rim of a sheet.
-   * Nothing here is glass until what it costs has been measured, but for
-   * a window's titlebar, and "About", which is seldom shown;
+   * Everything that floats is glass, and a titlebar, and the bar:
    *   menu {
-   *     background: var(\-\-glass\-thick);
-   *     backdrop\-filter: blur(var(\-\-blur));
-   *     box\-shadow: 0 12px 32px rgba(0, 0, 0, 0.36), inset 0 1px var(\-\-glass\-rim);
+   *     background: var(\-\-surface);
+   *     backdrop\-filter: none;
    *   }
-   * makes a menu glass. Give the surface another colour, and these too. */
+   * makes a menu solid again. Give the surface another colour, and these
+   * too. */
   \-\-glass\-thin: rgba(20, 28, 56, 0.7);    /* the panel: text on it, never dim */
   \-\-glass\-thick: rgba(20, 28, 56, 0.9);   /* menus, notifications, the launcher */
   \-\-glass\-sealed: rgba(20, 28, 56, 0.95); /* what asks for a password */
@@ -202,11 +201,12 @@ button\-close:hover, button\-minimize:hover, button\-maximize:hover {
 
 /* What floats over windows casts a deeper shadow than they do. */
 menu {
-  background: var(\-\-surface);
+  background: var(\-\-glass\-thick);
+  backdrop\-filter: blur(var(\-\-blur));
   color: var(\-\-text);
   border: var(\-\-edge);
   border\-radius: 10px;
-  box\-shadow: 0 12px 32px rgba(0, 0, 0, 0.36);
+  box\-shadow: 0 12px 32px rgba(0, 0, 0, 0.36), inset 0 1px var(\-\-glass\-rim);
 }
 /* A sign is 8 from the row's start, from its top and bottom, and from its
  * label. */
@@ -240,23 +240,27 @@ menu\-sign:focus { color: var(\-\-on\-accent); }
 menu\-keys:focus { color: var(\-\-on\-accent); }
 
 /* What is wrong with the configuration, when it was last read. */
+/* Its glass is as thick as the prompt's: what is wrong is said in red,
+ * which is read over a white window at no less. */
 notice {
   padding: 12px;
-  background: var(\-\-surface);
+  background: var(\-\-glass\-sealed);
+  backdrop\-filter: blur(var(\-\-blur));
   color: var(\-\-text);
   border: 1px solid var(\-\-danger);
   border\-radius: 10px;
-  box\-shadow: 0 12px 32px rgba(0, 0, 0, 0.36);
+  box\-shadow: 0 12px 32px rgba(0, 0, 0, 0.36), inset 0 1px var(\-\-glass\-rim);
 }
 notice\-heading { color: var(\-\-danger); }
 
 tooltip {
   padding: 4px 8px;
-  background: var(\-\-surface);
+  background: var(\-\-glass\-thick);
+  backdrop\-filter: blur(var(\-\-blur));
   color: var(\-\-text);
   border: var(\-\-edge);
   border\-radius: 10px;
-  box\-shadow: 0 12px 32px rgba(0, 0, 0, 0.36);
+  box\-shadow: 0 12px 32px rgba(0, 0, 0, 0.36), inset 0 1px var(\-\-glass\-rim);
 }
 
 /* The mark shown while a program takes pictures of the screen. */
@@ -276,7 +280,8 @@ capture\-border { border: 2px solid var(\-\-capture); }
  * colour of text, as it is to be when it is thin glass. */
 panel {
   height: 28px;
-  background: var(\-\-surface);
+  background: var(\-\-glass\-thick);
+  backdrop\-filter: blur(var(\-\-blur));
   color: var(\-\-text);
 }
 workspace, task {
@@ -302,7 +307,8 @@ clock {
  * The days of the months beside it, filling its weeks, are faded. */
 popover {
   padding: 8px;
-  background: var(\-\-surface);
+  background: var(\-\-glass\-thick);
+  backdrop\-filter: blur(var(\-\-blur));
   color: var(\-\-text);
   border: var(\-\-edge);
   border\-radius: 10px;
@@ -338,11 +344,12 @@ popover\-day:active:hover { border\-color: var(\-\-text); }
 launcher {
   min\-width: 480px;
   padding: 12px;
-  background: var(\-\-surface);
+  background: var(\-\-glass\-thick);
+  backdrop\-filter: blur(var(\-\-blur));
   color: var(\-\-text);
   border: var(\-\-edge);
   border\-radius: 10px;
-  box\-shadow: 0 12px 32px rgba(0, 0, 0, 0.36);
+  box\-shadow: 0 12px 32px rgba(0, 0, 0, 0.36), inset 0 1px var(\-\-glass\-rim);
 }
 launcher\-input {
   height: 32px;
@@ -383,11 +390,12 @@ notification {
   min\-width: 340px;
   margin: 8px;
   padding: 12px;
-  background: var(\-\-surface);
+  background: var(\-\-glass\-thick);
+  backdrop\-filter: blur(var(\-\-blur));
   color: var(\-\-text);
   border: var(\-\-edge);
   border\-radius: 10px;
-  box\-shadow: 0 12px 32px rgba(0, 0, 0, 0.36);
+  box\-shadow: 0 12px 32px rgba(0, 0, 0, 0.36), inset 0 1px var(\-\-glass\-rim);
 }
 notification:hover { border\-color: var(\-\-border\-strong); }
 notification:urgent { border\-color: var(\-\-danger); }
@@ -457,10 +465,11 @@ question\-input:active {
  * picked is :active. */
 switcher {
   padding: 12px;
-  background: var(\-\-surface);
+  background: var(\-\-glass\-thick);
+  backdrop\-filter: blur(var(\-\-blur));
   border: var(\-\-edge);
   border\-radius: 12px;
-  box\-shadow: 0 12px 32px rgba(0, 0, 0, 0.36);
+  box\-shadow: 0 12px 32px rgba(0, 0, 0, 0.36), inset 0 1px var(\-\-glass\-rim);
 }
 switcher\-item {
   min\-width: 200px;

@@ -38,6 +38,7 @@ const SOLID: &str = "titlebar { background: var(--surface-dim); }\n\
 fn a_session_with_nothing_changing_draws_nothing_wakes_for_nothing_and_allocates_little() {
     for (theme, ceiling) in [(SOLID, CEILING), ("", GLAZED)] {
         let mut session = Session::with_config(&[("theme.css", theme)]);
+        session.blurring();
         let mut client = session.connect();
         let _window = session.open_decorated(&mut client, "app", (200, 100), 0xff00_ff00);
         // In a frame of ours, as most windows are. Whatever was coming in
@@ -67,6 +68,7 @@ fn a_session_with_nothing_changing_draws_nothing_wakes_for_nothing_and_allocates
 #[test]
 fn a_session_with_nothing_changing_allocates_no_more_for_a_peer_that_follows_it() {
     let mut session = Session::new();
+    session.blurring();
     let mut peer = omorfos_ipc::Client::connect(&session.listen()).unwrap();
     let mut client = session.connect();
     let _window = session.open_decorated(&mut client, "app", (200, 100), 0xff00_ff00);

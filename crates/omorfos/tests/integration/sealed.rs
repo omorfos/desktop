@@ -109,6 +109,7 @@ fn the_session_is_blurred_under_the_dim_unless_the_theme_says_not() {
     ];
     for (theme, blurred) in cases {
         let (mut session, _app) = busy_with(&[("theme.css", theme)]);
+        session.blurring();
         drop(session.draw());
         let before = session.compositor().blurs();
         let _asking = ask(&mut session, Roles::ASK);

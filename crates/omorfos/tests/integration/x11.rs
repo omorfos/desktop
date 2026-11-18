@@ -35,8 +35,9 @@ use crate::versions::updated;
 use crate::windows::{BACKGROUND, BLUE, GREEN, RED, shaded};
 
 const LEFT: u32 = 0x110;
-/// A titlebar with focus, which is glass, over the desktop's ground.
-const FOCUSED_TITLEBAR: u32 = 0xff13_1b37;
+/// A titlebar with focus, which is glass: solid in its colour where
+/// what is behind is not blurred.
+const FOCUSED_TITLEBAR: u32 = 0xff14_1c38;
 
 /// Runs `work`, which talks to the X server, while the compositor carries
 /// on.
@@ -308,6 +309,7 @@ fn a_program_written_for_x11_with_nothing_changing_costs_a_turn_nothing_more() {
     // No more than a window of any other program in a frame of ours: what
     // it is told is not worked out again, nor is the X server heard from.
     let (mut session, program) = session();
+    session.blurring();
     open(&mut session, &program, "xapp", (200, 100), 0x00ff_0000);
     // What the X server and the window had to say has been heard and drawn,
     // and the turn after that taken. The X server answers the window

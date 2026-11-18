@@ -116,6 +116,7 @@ fn a_blur_let_go_of_through_kdes_protocol_goes_unless_a_later_one_was_committed_
 fn a_program_that_asks_through_kdes_protocol_after_destroying_its_surface_is_not_ended() {
     // The protocol has no error to end it with.
     let mut session = Session::new();
+    session.blurring();
     let mut client = session.connect();
     let surface = client.surface();
     let blur = client.kde_blur(&surface, None);

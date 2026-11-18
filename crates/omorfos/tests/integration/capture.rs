@@ -1020,6 +1020,7 @@ const BLURRED: [(&str, &str); 2] = [
 #[test]
 fn a_private_window_a_rule_says_to_blur_is_blurred_in_a_picture_and_not_on_the_screen() {
     let mut session = Session::with_config(&BLURRED);
+    session.blurring();
     let mut app = session.connect();
     // Small, so that what is round it is blurred into it.
     session.open(&mut app, "photos", (20, 20), RED);
