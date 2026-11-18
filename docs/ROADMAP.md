@@ -2805,6 +2805,19 @@ specification already says is not said again in a way of omorfos's own.
       and the IPC client, so that another repository's bar or applet
       looks and behaves as omorfos's own, started and kept as they are
       (ADR 28, ADR 60).
+- [ ] Programs that stand alone (ADR 98), the first of them: the lock
+      screen, the wallpaper and `omorfos-clipboard` made to run where
+      omorfos is not, what little they ask of it made optional, each
+      with settings and a theme it finds by itself, tried on one other
+      compositor and packaged apart. The applications of stage 7, the
+      greeter, the dock, Launchpad and the on-screen keyboard are built
+      so from the start; `omorfos-pinentry` stands alone unsealed.
+- [ ] Settings that stand alone and change whatever of omorfos's is on
+      the machine, and nothing else (ADR 98): a page for each program of
+      ours that is installed, made from its schema, and what is not the
+      user's own to change, as the greeter's settings, locked until
+      they unlock it. How, with nothing of ours left running as root,
+      is for an ADR of its own and a review for security first.
 - [ ] The look of windows offered as themes, not code: what stage 4's
       redesign settles is made of the theme's parts, so that another
       project's decorations are a stylesheet laid over the built-in one.
