@@ -491,12 +491,24 @@ impl Asked {
 /// from, and how it would like it done.
 type Shoot = (OwnedObjectPath, String, String, HashMap<String, OwnedValue>);
 
+/// Whether a message is the bus's own signal called `member`. The bus
+/// writes who sent each message, which no program can write for itself;
+/// a signal of the same name and words from any other program, which may
+/// send one straight to this one, is not what the bus says, and would
+/// otherwise make whoever sent it the portal, or end this program.
+fn bus_says(message: &Message, member: &str) -> bool {
+    let header = message.header();
+    let named = header.member().map(ToString::to_string);
+    let sender = header.sender().map(ToString::to_string);
+    header.message_type() == Type::Signal
+        && named.as_deref() == Some(member)
+        && sender.as_deref() == Some("org.freedesktop.DBus")
+}
+
 /// Whether a message says that the name has gone to another program,
 /// which is a copy of this one that has taken over.
 fn lost(message: &Message) -> bool {
-    let header = message.header();
-    let member = header.member().map(ToString::to_string);
-    let lost = header.message_type() == Type::Signal && member.as_deref() == Some("NameLost");
+    let lost = bus_says(message, "NameLost");
     lost && message
         .body()
         .deserialize::<String>()
@@ -549,10 +561,7 @@ fn asked(groups: &[String], ours: &str) -> bool {
 /// The program that a message says has left the bus, by its own name
 /// there, if it says one has.
 fn left_the_bus(message: &Message) -> Option<String> {
-    let header = message.header();
-    let member = header.member().map(ToString::to_string);
-    let changed =
-        header.message_type() == Type::Signal && member.as_deref() == Some("NameOwnerChanged");
+    let changed = bus_says(message, "NameOwnerChanged");
     let said = changed.then(|| {
         message
             .body()
@@ -566,10 +575,7 @@ fn left_the_bus(message: &Message) -> Option<String> {
 /// Who the portal is now, by its own name on the bus, or nothing written if
 /// it is not there, if a message says that has changed.
 fn portal_changed(message: &Message) -> Option<String> {
-    let header = message.header();
-    let member = header.member().map(ToString::to_string);
-    let changed =
-        header.message_type() == Type::Signal && member.as_deref() == Some("NameOwnerChanged");
+    let changed = bus_says(message, "NameOwnerChanged");
     let said = changed.then(|| {
         message
             .body()
@@ -1241,6 +1247,38 @@ pub(crate) mod tests {
             .unwrap_err()
             .to_string();
         assert!(said.contains("InvalidArgs"), "{said}");
+    }
+
+    #[test]
+    fn a_program_that_says_what_the_bus_says_is_not_believed() {
+        let daemon = Daemon::start();
+        let _service = service(&daemon, dark());
+        let _portal = daemon.peer();
+        let stranger = daemon.stranger();
+        let me = stranger.unique_name().unwrap().to_string();
+        // That the portal is now this program: sent straight to the
+        // service, as the bus lets any program send.
+        let said = (PORTAL, "", me.as_str());
+        let forged = "org.example.Forged";
+        stranger
+            .emit_signal(Some(NAME), "/forged", forged, "NameOwnerChanged", &said)
+            .unwrap();
+        let request = "/org/freedesktop/portal/desktop/request/1/x";
+        let reply = stranger.call_method(Some(NAME), request, Some(REQUEST), "Close", &());
+        let said = reply.unwrap_err().to_string();
+        assert!(
+            said.contains("AccessDenied"),
+            "still not the portal: {said}"
+        );
+        // That the service has lost its name, which would end it.
+        stranger
+            .emit_signal(Some(NAME), "/forged", forged, "NameLost", &(NAME,))
+            .unwrap();
+        let read = (INTERFACE, "cursor-size");
+        for _ in 0..3 {
+            let reply = stranger.call_method(Some(NAME), PATH, Some(SETTINGS), "Read", &read);
+            assert!(reply.is_ok(), "the service still answers");
+        }
     }
 
     #[test]

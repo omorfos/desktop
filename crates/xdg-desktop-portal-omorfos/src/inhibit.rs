@@ -300,6 +300,33 @@ mod tests {
     }
 
     #[test]
+    fn a_program_another_says_has_left_the_bus_keeps_what_it_holds() {
+        let daemon = Daemon::start();
+        let (_portal, told) = service(&daemon);
+        let player = daemon.peer();
+        screensaver_inhibit(&player).unwrap();
+        assert_eq!(next(&told), (true, false));
+
+        // In the bus's words, but not from the bus.
+        let liar = daemon.stranger();
+        let who = player.unique_name().unwrap().to_string();
+        let said = (who.as_str(), who.as_str(), "");
+        liar.emit_signal(
+            Some(NAME),
+            "/forged",
+            "org.example.Forged",
+            "NameOwnerChanged",
+            &said,
+        )
+        .unwrap();
+        // Answered after the signal was read, so nothing is still to come.
+        let read = (crate::INTERFACE, "cursor-size");
+        liar.call_method(Some(NAME), PATH, Some(crate::SETTINGS), "Read", &read)
+            .unwrap();
+        assert!(told.try_recv().is_err(), "nothing was let go");
+    }
+
+    #[test]
     fn a_program_cannot_let_go_of_what_another_holds() {
         let daemon = Daemon::start();
         let (_portal, told) = service(&daemon);
