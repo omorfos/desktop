@@ -207,6 +207,37 @@ S=$(ls -d ~/.cargo/registry/src/*/smithay-$(awk '/^name = "smithay"/{getline; pr
   sure, take the `Drop` out and run
   `cargo test -p omorfos --test integration x11::an_x_server_ends_with_its_session`.
 
+### The surfaces of an X server that stopped are kept, and taken for the next one's
+
+- **Wrong:** `XWaylandShellState` keeps the surface of each window of a
+  program written for X11 by the number the X server gave it
+  (`by_serial` in `src/wayland/xwayland_shell.rs`), to pair the two
+  whichever is heard of first, and never lets go of one: not once they
+  are paired, as each later commit puts it back, nor once the surface or
+  the X server has gone. An X server started again in the same
+  compositor numbers its windows from one again. A window of its that
+  says its number over X11 before its surface does over Wayland is then
+  paired with the surface of a window of the X server before, which is
+  gone, and is never shown. It failed
+  `x11::an_x_server_that_dies_is_started_again_where_programs_expect_to_find_it`
+  in four runs of sixty in the nightly stress of 19 November 2026, on
+  both architectures. A session can lose the same race: it takes hearing
+  of the window over X11 first. It also keeps a little for every such
+  window there has ever been, menus and tooltips among them, for as long
+  as the compositor runs.
+- **Meanwhile:** `recover_x11` in `crates/omorfos/src/x11.rs` takes the
+  protocol's global away and makes the state anew whenever an X server
+  has stopped, so the next starts with nothing kept. What is kept while
+  one X server runs is left as it is.
+- **Check:** mended in Smithay by `253c154` of 28 April 2026 ("xwm: clean
+  up by_serial hash map when surface is destroyed"), which was in no
+  release on 19 November 2026, 0.7.0 being the last.
+  `grep -n 'add_destruction_hook' "$S"/src/wayland/xwayland_shell.rs`
+  shows a surface taken out again as it is destroyed. Then take the two
+  lines out of `recover_x11`; the count in
+  `x11::an_x_server_that_dies_is_started_again_where_programs_expect_to_find_it`
+  stays, and says whether it still holds.
+
 ### Xwayland cannot be started when first asked for
 
 - **Wrong:** Smithay makes the X sockets itself, privately, as it starts

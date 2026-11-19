@@ -542,6 +542,14 @@ impl Compositor {
         self.x11.number()
     }
 
+    /// Whether a surface is kept for the window an X server numbered
+    /// `serial`, to pair the two by. None is, of an X server that has
+    /// stopped: the next gives its windows the same numbers.
+    #[must_use]
+    pub fn x11_surface_numbered(&self, serial: u64) -> bool {
+        self.x11.shell.surface_for_serial(serial).is_some()
+    }
+
     /// Starts an X server with the number `display`, or the first that is
     /// free.
     fn spawn_x11(&self, display: Option<u32>) -> io::Result<(XWayland, Client)> {
@@ -783,6 +791,16 @@ impl Compositor {
         }
         self.x11.apart.clear();
         self.x11.told = None;
+        // Nor is anything kept of the surfaces it drew them on. Smithay
+        // keeps each by the number the X server gave it, to pair it with
+        // its window, and goes on keeping it after they are paired and
+        // after the X server has gone (`docs/UPSTREAM.md`). The next X
+        // server numbers its windows from one again, and a window of its
+        // that says its number before its surface does was paired with
+        // the surface of a window of this one, which is gone, and never
+        // shown. So what pairs them is made anew for each X server.
+        self.display.remove_global::<Self>(self.x11.shell.global());
+        self.x11.shell = XWaylandShellState::new::<Self>(&self.display);
 
         if self.x11.restarts.allow(now) {
             let said = self.words.say("x11-restarted", &[]);
