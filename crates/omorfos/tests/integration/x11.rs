@@ -966,6 +966,15 @@ fn an_x_server_that_dies_is_started_again_where_programs_expect_to_find_it() {
 
     kill_and_recover(&mut session);
 
+    // Nothing is kept of what the one that stopped drew its windows on.
+    // The next numbers its windows from one again, and one that said its
+    // number before its surface did was paired with a surface of the last,
+    // which is gone, and never shown: the window opened below, in four
+    // runs of sixty of the nightly stress of 19 November 2026. Here it is
+    // so every time, or not at all.
+    let kept = (1..=64).filter(|serial| session.compositor().x11_surface_numbered(*serial));
+    assert_eq!(kept.count(), 0, "of the X server that stopped");
+
     // The user is told, as of something that has happened and not of
     // something that is wrong: for a while, and then no longer.
     let happened: Vec<String> = session.compositor().events().map(str::to_owned).collect();
