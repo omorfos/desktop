@@ -5,7 +5,9 @@ name: Stress
 # AddressSanitizer, so that what fails only sometimes is seen within a
 # day of the change that made it so, rather than on some later push. A
 # failure is said in an issue labelled `flaky`, one for each architecture,
-# which a later failure adds to. See docs/TESTING.md, "Flaky tests".
+# which a later failure adds to, with the tests that failed and what they
+# said, so that the issue can be read without the logs. A job that is cut
+# short says so there too. See docs/TESTING.md, "Flaky tests".
 on:
   schedule:
     - cron: "17 2 * * *"
@@ -32,7 +34,12 @@ jobs:
   stress:
     name: Stress (${{ matrix.arch }})
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 180
+    # Thirty runs alone took 157 minutes on amd64 on 16 November 2026, and
+    # the job was cut short at 180 in the middle of the coverage gate; on
+    # arm64 it ended with some 13 minutes to spare three nights in a row.
+    # Each run has a limit of its own below, which is what stops a test
+    # that waits for good.
+    timeout-minutes: 300
     permissions:
       contents: read # To check the code out.
       issues: write # To say a failure in an issue.
@@ -65,12 +72,26 @@ jobs:
           failures=0
           # Every binary runs though one before it failed, so that one
           # flake does not hide another; and a binary that crashed, rather
-          # than having a test fail, is named.
+          # than having a test fail, is named. A run not over in twenty
+          # minutes, where five is slow, is stopped and counted as failed,
+          # with the tests it was still waiting on. What failed is kept in
+          # `failed/what.txt` for the issue, each panic with what it said,
+          # which is on the lines after it.
           for run in $(seq "$RUNS"); do
-            if ! cargo test --workspace --all-features --locked --no-fail-fast > run.log 2>&1; then
+            status=0
+            timeout --kill-after=60 20m \
+              cargo test --workspace --all-features --locked --no-fail-fast > run.log 2>&1 || status=$?
+            if [ "$status" -ne 0 ]; then
               failures=$((failures + 1))
               echo "::error::run $run of $RUNS failed"
-              grep -E "^test .* FAILED$|panicked at|process didn't exit successfully" run.log | head -40
+              {
+                echo "tests, run $run of $RUNS (exit $status):"
+                grep -E "^test .* FAILED$|process didn't exit successfully" run.log | head -20
+                grep -E "panicked at" -A3 run.log | grep -vE "RUST_BACKTRACE|^--$" | head -40
+                if [ "$status" -ge 124 ]; then
+                  grep "has been running for over" run.log | tail -5
+                fi
+              } | sed 's/\x1b\[[0-9;]*m//g' | tee -a failed/what.txt
               mv run.log "failed/tests-$run.log"
             fi
           done
@@ -105,9 +126,13 @@ jobs:
           OMORFOS_REAL: required
         run: |
           mkdir -p failed
-          if ! cargo test --workspace --all-features --locked --test integration -- --ignored real:: > run.log 2>&1; then
+          if ! timeout --kill-after=60 20m \
+            cargo test --workspace --all-features --locked --test integration -- --ignored real:: > run.log 2>&1; then
             echo "::error::a real program was not kept through changes of compositor"
-            grep -E "^test .* FAILED$|panicked at" -A3 run.log | head -60
+            {
+              echo "real programs:"
+              grep -E "^test .* FAILED$|panicked at" -A3 run.log | head -60
+            } | sed 's/\x1b\[[0-9;]*m//g' | tee -a failed/what.txt
             mv run.log failed/real.log
             exit 1
           fi
@@ -126,42 +151,66 @@ jobs:
         run: |
           mkdir -p failed
           failures=0
+          # The first run builds everything, instrumented, which is most of
+          # the three quarters of an hour each is given.
           for run in $(seq "$COVERAGE_RUNS"); do
-            if ! cargo coverage --locked > run.log 2>&1; then
+            status=0
+            timeout --kill-after=60 45m cargo coverage --locked > run.log 2>&1 || status=$?
+            if [ "$status" -ne 0 ]; then
               failures=$((failures + 1))
               echo "::error::coverage run $run of $COVERAGE_RUNS failed"
-              grep -E "^test .* FAILED$|panicked at" run.log | head -40
-              awk '$1 ~ /\.rs$/ && ($3 != 0 || $6 != 0 || $9 != 0)' run.log
+              {
+                echo "coverage, run $run of $COVERAGE_RUNS (exit $status):"
+                grep -E "^test .* FAILED$" run.log | head -20
+                grep -E "panicked at" -A3 run.log | grep -vE "RUST_BACKTRACE|^--$" | head -40
+                awk '$1 ~ /\.rs$/ && ($3 != 0 || $6 != 0 || $9 != 0)' run.log
+              } | sed 's/\x1b\[[0-9;]*m//g' | tee -a failed/what.txt
               mv run.log "failed/coverage-$run.log"
             fi
           done
           echo "coverage=$failures of $COVERAGE_RUNS runs failed" >> "$GITHUB_STEP_SUMMARY"
           test "$failures" -eq 0
       - name: Keep the logs of what failed
-        if: ${{ failure() }}
+        if: ${{ failure() || cancelled() }}
         uses: actions/upload-artifact@v7.0.2
         with:
           name: failed-${{ matrix.arch }}
           path: failed/
           retention-days: 30
       # One open issue for each architecture: a new one if there is none,
-      # or a comment on the one there is.
+      # or a comment on the one there is, with what failed, so that it can
+      # be told from the issue which test it was and what it said. A job
+      # cut short, as one out of time is, skips what waits for a failure:
+      # it is said too, or the night would pass for one with nothing wrong.
       - name: Say so in an issue
-        if: ${{ failure() }}
+        if: ${{ failure() || cancelled() }}
         env:
           GH_TOKEN: ${{ github.token }}
           ARCH: ${{ matrix.arch }}
+          STATUS: ${{ job.status }}
         run: |
           title="Nightly stress fails on $ARCH"
           url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          {
+            if [ "$STATUS" = cancelled ]; then
+              echo "The nightly stress run at $GITHUB_SHA was cut short on $ARCH, as one that runs out of time is: $url."
+            else
+              echo "The nightly stress run at $GITHUB_SHA failed on $ARCH: $url."
+            fi
+            echo "The logs of each run that failed are kept with it for 30 days."
+            if [ -s failed/what.txt ]; then
+              printf '\n~~~text\n'
+              head -n 150 failed/what.txt | cut -c 1-400
+              printf '~~~\n'
+            fi
+          } > said.md
+          cat said.md >> "$GITHUB_STEP_SUMMARY"
           open=$(gh issue list --repo "$GITHUB_REPOSITORY" --label flaky --state open \
             --json number,title --jq "map(select(.title == \"$title\")) | .[0].number // empty")
           if [ -n "$open" ]; then
-            gh issue comment "$open" --repo "$GITHUB_REPOSITORY" \
-              --body "It failed again at $GITHUB_SHA: $url"
+            gh issue comment "$open" --repo "$GITHUB_REPOSITORY" --body-file said.md
           else
-            gh issue create --repo "$GITHUB_REPOSITORY" --label flaky --title "$title" \
-              --body "The nightly stress run at $GITHUB_SHA failed on $ARCH: $url. The logs of each run that failed are kept with it for 30 days."
+            gh issue create --repo "$GITHUB_REPOSITORY" --label flaky --title "$title" --body-file said.md
           fi
 
   # Where `unsafe` and C's memory meet, built with AddressSanitizer, which
@@ -219,42 +268,63 @@ jobs:
           mkdir -p failed
           failures=0
           for run in $(seq "$SANITIZED_RUNS"); do
-            if ! { cargo "+$NIGHTLY" test --locked --target "$HOST" --all-features \
+            if ! { timeout --kill-after=60 15m \
+                     cargo "+$NIGHTLY" test --locked --target "$HOST" --all-features \
                      -p omorfos-recording -p omorfos-pipewire -p omorfos-shm --lib --tests \
-                   && cargo "+$NIGHTLY" test --locked --target "$HOST" --all-features \
+                   && timeout --kill-after=60 15m \
+                     cargo "+$NIGHTLY" test --locked --target "$HOST" --all-features \
                      -p omorfos --test integration -- sharing:: portal:: versions::; } \
                  > run.log 2>&1; then
               failures=$((failures + 1))
               echo "::error::sanitized run $run of $SANITIZED_RUNS failed"
-              grep -E "ERROR: AddressSanitizer|^test .* FAILED$|panicked at" -A12 run.log | head -60
+              {
+                echo "sanitized, run $run of $SANITIZED_RUNS:"
+                grep -E "ERROR: AddressSanitizer|^test .* FAILED$|panicked at" -A12 run.log | head -60
+              } | sed 's/\x1b\[[0-9;]*m//g' | tee -a failed/what.txt
               mv run.log "failed/sanitized-$run.log"
             fi
           done
           echo "sanitized=$failures of $SANITIZED_RUNS runs failed" >> "$GITHUB_STEP_SUMMARY"
           test "$failures" -eq 0
       - name: Keep the logs of what failed
-        if: ${{ failure() }}
+        if: ${{ failure() || cancelled() }}
         uses: actions/upload-artifact@v7.0.2
         with:
           name: failed-sanitized-${{ matrix.arch }}
           path: failed/
           retention-days: 30
       # One open issue for each architecture: a new one if there is none,
-      # or a comment on the one there is.
+      # or a comment on the one there is, with what failed, so that it can
+      # be told from the issue which test it was and what it said. A job
+      # cut short, as one out of time is, skips what waits for a failure:
+      # it is said too, or the night would pass for one with nothing wrong.
       - name: Say so in an issue
-        if: ${{ failure() }}
+        if: ${{ failure() || cancelled() }}
         env:
           GH_TOKEN: ${{ github.token }}
           ARCH: ${{ matrix.arch }}
+          STATUS: ${{ job.status }}
         run: |
           title="Nightly stress fails on $ARCH"
           url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          {
+            if [ "$STATUS" = cancelled ]; then
+              echo "The nightly stress run at $GITHUB_SHA was cut short on $ARCH, as one that runs out of time is: $url."
+            else
+              echo "The nightly stress run at $GITHUB_SHA failed on $ARCH: $url."
+            fi
+            echo "The logs of each run that failed are kept with it for 30 days."
+            if [ -s failed/what.txt ]; then
+              printf '\n~~~text\n'
+              head -n 150 failed/what.txt | cut -c 1-400
+              printf '~~~\n'
+            fi
+          } > said.md
+          cat said.md >> "$GITHUB_STEP_SUMMARY"
           open=$(gh issue list --repo "$GITHUB_REPOSITORY" --label flaky --state open \
             --json number,title --jq "map(select(.title == \"$title\")) | .[0].number // empty")
           if [ -n "$open" ]; then
-            gh issue comment "$open" --repo "$GITHUB_REPOSITORY" \
-              --body "It failed again at $GITHUB_SHA: $url"
+            gh issue comment "$open" --repo "$GITHUB_REPOSITORY" --body-file said.md
           else
-            gh issue create --repo "$GITHUB_REPOSITORY" --label flaky --title "$title" \
-              --body "The nightly stress run at $GITHUB_SHA failed on $ARCH: $url. The logs of each run that failed are kept with it for 30 days."
+            gh issue create --repo "$GITHUB_REPOSITORY" --label flaky --title "$title" --body-file said.md
           fi
