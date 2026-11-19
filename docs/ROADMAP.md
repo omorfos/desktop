@@ -502,10 +502,23 @@ calls for them.
       a scale of 2 set for every screen, to put that right, is far too
       large on the monitor then plugged in. A screen read from nearer
       can have things smaller on it. To do, in this order:
-  - [ ] What the market chooses, found out before a rule is settled:
+  - [x] What the market chooses, found out before a rule is settled:
         the scale other systems give by default to the panels there
         are, laptops by size and resolution, monitors on a desk,
-        televisions; written up, with the laptop above as one point.
+        televisions; written up, with the laptop above as one point:
+        done on 19 November 2026, by Fable 5.2, from the other
+        systems' code and documents and with nothing run, and written
+        up in
+        [reviews/2026-11-19-what-scale-other-systems-choose.md](reviews/2026-11-19-what-scale-other-systems-choose.md).
+        The market gives that laptop 2 to 2.5, and 1.75 is nobody's
+        default; and every system that aims at a density aims a laptop
+        denser than a monitor, where omorfos has 120 for both. It says
+        what that leaves to decide for the guess.
+  - [ ] What the survey could not find out, found on the machines
+        themselves: what the laptop's panel says its size is, which
+        for today's 2.5 is 342 mm wide or less where 15.6 inches is
+        345; and what Windows and macOS choose where the survey has
+        only users' word for it, over 250% and on a television.
   - [ ] A screen known by what it is: its maker, model and serial, as
         it says them, and the socket only where it says none. What is
         set for a screen by its socket's name goes on working.
