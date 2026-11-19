@@ -28,6 +28,10 @@
 #
 # Run from the top of the repository. AFFECTED_METADATA names a file of
 # what `cargo metadata` says, in place of asking it.
+#
+# The lines are in the order of their bytes, whatever language the machine
+# is set to: in another, `omorfosctl` comes before `omorfos:manuals` on one
+# machine and after it on the next, as it did in CI.
 set -euo pipefail
 
 # Read by nothing that is built or tested, but the links between documents
@@ -146,4 +150,4 @@ jq -r --arg top "$PWD" \
             | select((split(":")[0]) as $crate | $names | index($crate) | not)] as $more
         | ($names + $more | unique)[]
       end
-    ' <<<"$metadata" | sort
+    ' <<<"$metadata" | LC_ALL=C sort

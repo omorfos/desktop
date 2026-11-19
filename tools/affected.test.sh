@@ -67,7 +67,7 @@ says "the workflows reach the test that reads them, and their own checks" \
 says "the guide reaches the tests that hold it to the code" \
     "omorfos-config:documentation omorfos:packaging" docs/guide/config.yaml.md
 says "a manual page reaches the tests that make it, and the program that keeps its own" \
-    "omorfos-config:documentation omorfosctl omorfos:manuals omorfos:packaging" man/omorfos.1
+    "omorfos-config:documentation omorfos:manuals omorfos:packaging omorfosctl" man/omorfos.1
 says "a licence reaches the test of what is packaged" \
     omorfos:packaging LICENSES/lucide
 says "the schemas reach their test" omorfos-config:schemas schemas/config.schema.json
