@@ -717,6 +717,9 @@ fn a_program_that_places_its_parts_at_the_ends_of_the_numbers_stops_nothing() {
 
     // The session goes on as before for the next program.
     drop((popup, one, window, client));
+    // Once it is seen gone: a window shown while another is still there
+    // is placed a step along from it, and stays there.
+    session.eventually(|session| session.compositor().desktop().frames().count() == 0);
     let mut next = session.connect();
     session.open(&mut next, "next", (200, 100), GREEN);
     session.eventually(|session| session.draw().at(10, 10) == GREEN);

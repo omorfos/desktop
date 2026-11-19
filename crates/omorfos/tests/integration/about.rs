@@ -189,13 +189,10 @@ fn about_has_no_button_that_closes_it_and_a_press_where_one_was_does_nothing() {
         .filter(|&(x, y)| screen.at(x, y) == DANGER)
         .count();
     assert_eq!(red, 0, "nothing in the colour of a button that closes");
-    // In its top right corner, a little in from where it begins, which is
-    // found by going up from its ground.
-    let top = (0..GROUND.1)
-        .rev()
-        .find(|&y| screen.at(GROUND.0, y) == BACKGROUND)
-        .map_or(0, |above| above + 1);
-    click(&mut session, (WIDTH - GROUND.0 - 8, top + 26));
+    // The middle of where it was: 16 across, in the top right corner
+    // inside the border and padding of 21, "About" being 12 from the
+    // screen's edges, as `COPY` has it.
+    click(&mut session, (WIDTH - 12 - 21 - 8, 12 + 21 + 8));
     assert_eq!(
         session.draw().at(GROUND.0, GROUND.1),
         UNBLURRED,
