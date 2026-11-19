@@ -1684,6 +1684,45 @@ mod tests {
         assert_eq!(read, Err(Ended::Broken(wire::ADDED_TOO_MUCH)));
     }
 
+    /// A link whose program has made the object 4, which offers what it
+    /// copied.
+    fn copying() -> (Link, UnixStream, UnixStream) {
+        let (mut link, program, compositor) = linked();
+        let mut setup = get_registry();
+        let mut body = words(&[1]);
+        body.extend(text("wl_data_device_manager"));
+        body.extend(words(&[3, 3]));
+        setup.extend(message(2, 0, &body));
+        setup.extend(message(3, 0, &words(&[4])));
+        send(&program, &setup, &[]);
+        assert_eq!(read_through(&mut link, &compositor), Ok(()));
+        (link, program, compositor)
+    }
+
+    #[test]
+    fn a_program_may_not_offer_what_it_copied_in_more_kinds_than_any_does() {
+        let (mut link, program, compositor) = copying();
+        // Each as long as a kind may be, and as many as may be.
+        let kind = "k".repeat(journal::LONGEST_KIND);
+        for _ in 0..journal::MOST_KINDS {
+            send(&program, &message(4, 0, &text(&kind)), &[]);
+            assert_eq!(read_through(&mut link, &compositor), Ok(()));
+        }
+        // And one more.
+        send(&program, &message(4, 0, &text("text/plain")), &[]);
+        let read = read_through(&mut link, &compositor);
+        assert_eq!(read, Err(Ended::Broken(wire::ADDED_TOO_MUCH)));
+    }
+
+    #[test]
+    fn a_program_may_not_offer_what_it_copied_in_a_kind_longer_than_any_is() {
+        let (mut link, program, compositor) = copying();
+        let kind = "k".repeat(journal::LONGEST_KIND + 1);
+        send(&program, &message(4, 0, &text(&kind)), &[]);
+        let read = read_through(&mut link, &compositor);
+        assert_eq!(read, Err(Ended::Broken(wire::ADDED_TOO_MUCH)));
+    }
+
     #[test]
     fn who_sent_it_is_not_taken_for_a_descriptor() {
         let (program, relayed) = UnixStream::pair().unwrap();

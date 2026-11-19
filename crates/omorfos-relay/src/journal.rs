@@ -50,6 +50,19 @@ pub type Sending = (Vec<u8>, Vec<Rc<OwnedFd>>);
 /// relay with them.
 pub const MOST_ADDED: usize = 4096;
 
+/// The most kinds a program may offer what it copied, selected or dragged
+/// in, and the longest each may be, as long as a media type is: far more
+/// than any program offers. Every one is sent to whichever program is
+/// given the keyboard, or dragged over, and more than its socket holds
+/// would end it, with whatever was not saved in it.
+pub const MOST_KINDS: usize = 256;
+/// The longest a kind may be, in bytes.
+pub const LONGEST_KIND: usize = 255;
+
+/// The longest a request that offers a kind is: its header, how long the
+/// kind is, and the kind with the byte that ends it.
+const LONGEST_OFFER: usize = HEADER + 4 + LONGEST_KIND + 1;
+
 const DISPLAY: u32 = 1;
 
 /// Which of the display's events says a number may be taken again.
@@ -445,7 +458,9 @@ impl Journal {
     /// # Errors
     ///
     /// Returns why the program is to be let go if it has added more to one
-    /// object than any program adds, [`MOST_ADDED`].
+    /// object than any program adds, [`MOST_ADDED`], or offered what it
+    /// copied in more kinds than [`MOST_KINDS`] or one longer than
+    /// [`LONGEST_KIND`].
     pub fn request(
         &mut self,
         header: Header,
@@ -497,8 +512,14 @@ impl Journal {
         } else if rule == Rule::Commit {
             self.commit(object);
         } else if rule != Rule::Passing {
+            // Only the kinds of what is copied are added by offering.
+            let kind = rule == Rule::Adding && described.name == "offer";
+            if kind && bytes.len() > LONGEST_OFFER {
+                return Err(wire::ADDED_TOO_MUCH);
+            }
+            let most = if kind { MOST_KINDS } else { MOST_ADDED };
             let message = Message::kept(bytes, fds, described);
-            return self.keep(object, rule, message);
+            return self.keep(object, rule, message, most);
         }
         Ok(())
     }
@@ -546,13 +567,19 @@ impl Journal {
 
     /// Keeps `message`, to `object`, as `rule` says; or says why the
     /// program is to be let go, as one that has added more to an object
-    /// than any program adds.
-    fn keep(&mut self, object: u32, rule: Rule, message: Message) -> Result<(), Broken> {
+    /// than any program adds, which is `most`.
+    fn keep(
+        &mut self,
+        object: u32,
+        rule: Rule,
+        message: Message,
+        most: usize,
+    ) -> Result<(), Broken> {
         // A request whose rule keeps something is to an object kept.
         let full = self
             .kept
             .get(&object)
-            .is_some_and(|kept| kept.adding.len() >= MOST_ADDED);
+            .is_some_and(|kept| kept.adding.len() >= most);
         if rule == Rule::Adding && full {
             return Err(wire::ADDED_TOO_MUCH);
         }
