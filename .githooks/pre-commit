@@ -13,7 +13,7 @@ set -eu
 marked='\bD[B]G\b'
 if [ "${1:-}" = --tree ]; then
     added=$(git diff HEAD -U0 -- '*.rs' | grep -E "^\+[^+].*$marked" || true)
-    fresh=$(git ls-files --others --exclude-standard -- '*.rs' | xargs -r grep -nHE "$marked" || true)
+    fresh=$(git ls-files -z --others --exclude-standard -- '*.rs' | xargs -0 -r grep -nHE "$marked" || true)
     added="$added$fresh"
 else
     added=$(git diff --cached -U0 -- '*.rs' | grep -E "^\+[^+].*$marked" || true)
