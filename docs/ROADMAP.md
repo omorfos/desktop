@@ -4,12 +4,15 @@ What omorfos is to become, in the order it is to be built. Stages are
 worked top to bottom and one at a time; within a stage the order is a
 suggestion. Tick items as they land and keep the "Next" pointer current.
 
-**Next:** stage 5, the bar and the dock. The relay's steps are done, and
-what is taken from stage 8 ahead of its turn (below) has been, but for
-packages beyond `.deb` and the AUR; what is left of stages 3 and 4 is
-known gaps, taken as the code beside them is touched, the defaults
-reviewed together, and what is left of the redesign of windows (stage
-4, ADR 97), whose look the bar and dock are to wear.
+**Next:** what the review of 19 November 2026 found unsafe (stage 8,
+where its findings are in the order agreed), then what glass costs,
+measured (stage 4), then screens remembered and scaled (stage 3), then
+what closes stage 4: the rest of the redesign of windows (ADR 97) and
+the defaults reviewed together. Stage 5, the bar and the dock, follows,
+wearing that look. What else is left of stages 3 and 4 is known gaps,
+taken as the code beside them is touched. Of what is taken from stage 8
+ahead of its turn, the first release waits, there being no hurry for it,
+as do packages beyond `.deb` and the AUR.
 
 Items that came from the wishlist kept outside this repository carry its
 number, as (wish 3), so that nothing asked for is lost track of.
@@ -1274,7 +1277,9 @@ the first than on the last.
       is made solid again if it costs a frame. Everything that floats
       and the bar followed it the same day, as asked, so what is to be
       measured is a desktop of glass: the bar, which is always there,
-      first.
+      first. What the review of 19 November 2026 found glass doing more
+      than once (findings 6, 7 and 13, in stage 8) is taken as these
+      numbers say.
 - [ ] What a glass titlebar allocates where nothing changes, brought
       down: 7 times a turn for each, counted by the tests of a quiet
       session beside the 17 of a window in a solid frame, in laying its
@@ -2369,6 +2374,109 @@ Security:
       of the graphics card, the hardware backend and what a graphics
       card's renderer does with what it is handed, and the helpers that
       check a secret.
+
+The review of 19 November 2026, of the whole tree after the redesign of
+windows, by eight reviewers at once, is written up in
+[reviews/2026-11-19-after-the-redesign-of-windows.md](reviews/2026-11-19-after-the-redesign-of-windows.md).
+What was fixed the same day is ticked. The rest is in the order agreed with
+the maintainer that day, weighed against what else was open here: what
+is unsafe first, then what glass costs, then screens remembered and
+scaled (stage 3), then what closes stage 4, then stage 5; the first
+release waits, there being no hurry for it.
+
+Fixed with the review:
+
+- [x] Medium: any program on the bus said what the bus says
+      ([finding 1](reviews/2026-11-19-after-the-redesign-of-windows.md#1-any-program-on-the-bus-could-say-what-the-bus-says-and-so-become-the-portal-let-go-what-others-hold-or-end-the-portal-and-the-agent-that-asks-for-passwords)):
+      the portal and the agent that asks for passwords believe only the
+      bus that a name has changed hands or gone.
+- [x] Medium: glass of two blurs made the screen draw for ever
+      ([finding 2](reviews/2026-11-19-after-the-redesign-of-windows.md#2-a-window-that-asked-for-blur-behind-it-beside-glass-of-another-blur-made-the-screen-draw-for-ever)):
+      the desktop is kept blurred once for each amount of blur.
+- [x] Low: the wash under a dragged window faint twice
+      ([finding 10](reviews/2026-11-19-after-the-redesign-of-windows.md#10-the-wash-that-shows-where-a-dragged-window-would-land-was-made-faint-twice)):
+      made faint once. Its colour is left for the review of the defaults.
+- [x] Low: two tests that failed by the order of things, and one that
+      pressed beside where the button was (findings 14 and 15)
+      ([finding 14](reviews/2026-11-19-after-the-redesign-of-windows.md#14-two-tests-failed-by-the-order-of-things-not-by-the-code)).
+
+First, what is unsafe or gives away what is private:
+
+- [ ] Medium: a program that copies in very many kinds ends each program
+      next given the keyboard, and the keeper of the clipboard
+      ([finding 3](reviews/2026-11-19-after-the-redesign-of-windows.md#3-a-program-that-copies-in-very-many-kinds-ends-each-program-next-given-the-keyboard-and-the-keeper-of-the-clipboard)).
+- [ ] Medium: a portal started again leaves every screen it was sharing
+      still shared
+      ([finding 5](reviews/2026-11-19-after-the-redesign-of-windows.md#5-a-portal-started-again-leaves-every-screen-it-was-sharing-still-shared-with-nothing-left-that-can-end-it)).
+- [ ] Medium, high if shown: a private window to be blurred shows sharp
+      what it draws outside its frame
+      ([finding 12](reviews/2026-11-19-after-the-redesign-of-windows.md#12-a-private-window-that-is-to-be-blurred-shows-sharp-in-pictures-of-the-screen-whatever-it-draws-outside-its-frame)):
+      with stage 3's known gaps in a blurred private window, which are of
+      the same drawing.
+- [ ] Medium: the relay's limits hold a connection, not a program, and
+      connections are not counted
+      ([finding 4](reviews/2026-11-19-after-the-redesign-of-windows.md#4-what-the-relay-holds-a-program-to-it-holds-each-connection-to-and-connections-are-not-counted)):
+      with "one program takes every sandbox's place" above, as one change.
+- [ ] Low, taken with these if they are as small as they read: part of a
+      notice in English in the code; "About"'s one button not pressed from
+      the keyboard; a titlebar over a fullscreen window said to be square
+      (findings 21, 22 and 23)
+      ([finding 21](reviews/2026-11-19-after-the-redesign-of-windows.md#21-part-of-a-notice-the-user-reads-is-english-written-in-the-code)).
+
+Then what glass costs. Measured first, as stage 4's item says, with a
+build that has the fix to finding 2, and each of these taken as the
+numbers say:
+
+- [ ] Medium: glass made and blurred again on every drawing while a screen
+      with a private window on it is recorded
+      ([finding 6](reviews/2026-11-19-after-the-redesign-of-windows.md#6-while-a-screen-is-recorded-with-a-private-window-on-it-glass-is-made-and-blurred-again-on-every-drawing)).
+- [ ] Low, medium if measured so: every sheet of glass looks at everything
+      under it on every drawing
+      ([finding 13](reviews/2026-11-19-after-the-redesign-of-windows.md#13-every-sheet-of-glass-looks-at-everything-under-it-on-every-drawing-changed-or-not)).
+- [ ] Medium: a sheet of glass with a window behind it has every texture
+      made anew on each frame its size changes
+      ([finding 7](reviews/2026-11-19-after-the-redesign-of-windows.md#7-a-sheet-of-glass-with-a-window-behind-it-has-every-texture-made-anew-on-each-frame-its-size-changes)).
+- [ ] Low: what is written more than once in the compositor's drawing,
+      which is the same code
+      ([finding 26](reviews/2026-11-19-after-the-redesign-of-windows.md#26-what-is-written-more-than-once-in-the-compositors-drawing)):
+      what of it is not drawing goes with stage 9's "made once".
+
+Then, after screens remembered and scaled (stage 3), with what is left
+of the redesign of windows and the review of the defaults (stage 4):
+
+- [ ] Medium: the welcome card, the bar's popovers and a component's
+      tooltips see-through with nothing blurred behind them, and
+      `reduce_transparency` not making them solid
+      ([finding 8](reviews/2026-11-19-after-the-redesign-of-windows.md#8-the-welcome-card-the-bars-popovers-and-a-components-tooltips-are-see-through-with-nothing-blurred-behind-them-and-reduce_transparency-does-not-make-them-solid)).
+- [ ] Medium: a titlebar's buttons barely seen in the light scheme, and
+      without focus in either scheme
+      ([finding 9](reviews/2026-11-19-after-the-redesign-of-windows.md#9-in-the-light-scheme-two-of-a-titlebars-three-buttons-can-barely-be-seen-and-without-focus-none-can-in-either-scheme)):
+      whether by a stronger rim or deeper fills is decided with the
+      defaults, as is whether `--glass-thin` stays.
+- [ ] Low: who draws a titlebar said by one layer and done by another
+      ([finding 11](reviews/2026-11-19-after-the-redesign-of-windows.md#11-a-program-is-told-who-draws-its-titlebar-by-one-layer-and-framed-or-not-by-another-under-a-rule-or-when-it-asks-late-the-two-disagree)).
+
+Known gaps, each taken when the code beside it is touched:
+
+- [ ] Low: four more tests that say less than their names
+      ([finding 16](reviews/2026-11-19-after-the-redesign-of-windows.md#16-four-more-tests-say-less-than-their-names)).
+- [ ] Low: the portal's backend can wait for ever as it starts
+      ([finding 17](reviews/2026-11-19-after-the-redesign-of-windows.md#17-the-portals-backend-can-wait-for-ever-as-it-starts-holding-its-name-on-a-busy-bus)).
+- [ ] Low: what a starting portal says may not reach programs when it
+      takes its name from a copy still running; to be seen with a real
+      toolkit, which no test can show
+      ([finding 18](reviews/2026-11-19-after-the-redesign-of-windows.md#18-what-a-starting-portal-says-of-every-setting-may-not-reach-programs-when-it-takes-its-name-from-a-copy-still-running)).
+- [ ] Low: "what last loaded" read from the disk a second time
+      ([finding 19](reviews/2026-11-19-after-the-redesign-of-windows.md#19-the-copy-kept-as-what-last-loaded-is-read-from-the-disk-a-second-time)).
+- [ ] Low: a sandbox whose socket is not one
+      ([finding 20](reviews/2026-11-19-after-the-redesign-of-windows.md#20-a-sandbox-whose-socket-is-not-one-has-every-program-let-in-late-and-the-log-say-descriptors-ran-out)).
+- [ ] Low: the side and order of a titlebar's buttons said three times
+      ([finding 24](reviews/2026-11-19-after-the-redesign-of-windows.md#24-the-side-and-order-of-a-titlebars-buttons-are-said-three-times)).
+- [ ] Low: the gates' quick checks listed four times, and `uncovered`
+      blind to failed tests
+      ([finding 25](reviews/2026-11-19-after-the-redesign-of-windows.md#25-the-gates-quick-checks-are-listed-four-times-and-have-drifted-uncovered-by-itself-cannot-see-that-tests-failed)).
+- [ ] Low: documents and comments no longer so, what was more than a line
+      ([finding 27](reviews/2026-11-19-after-the-redesign-of-windows.md#27-documents-and-comments-that-said-what-is-no-longer-so)).
 
 Accessibility:
 
