@@ -173,8 +173,8 @@ and dark otherwise.
 - Where the sun does not rise or does not set that day, the scheme is
   the one that suits: dark through the polar night, light through the
   midnight sun.
-- The change is a transition of two seconds, and it waits until nothing
-  is fullscreen. It is not made at a moment the user is in the middle of.
+- The change that follows the sun is drawn over a minute, too slowly to
+  be seen happening ([ADR 65](adr/0065-a-scheme-by-the-time-of-day.md)).
 - Programs that ask are told when it changes, as they are told the
   scheme.
 
@@ -273,7 +273,8 @@ straight down.
 | A window moving to where it was sent: maximize | 240 ms | ease-in-out |
 | A workspace sliding, by the fingers or a key: a page turned, which the eye follows across the whole screen | 320 ms | ease-in-out |
 
-- Nothing is longer than 300 ms, nothing bounces, nothing loops.
+- Nothing but a workspace sliding is longer than 300 ms, nothing
+  bounces, nothing loops.
 - What the user drags follows the hand with no easing at all.
 - Leaving is quicker than arriving: what has been dismissed should not
   be in the way of what is next.

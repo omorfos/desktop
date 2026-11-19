@@ -168,8 +168,10 @@ jobs:
   # stops at a write to memory that is not to be written, and says where it
   # was freed: what glibc only notices now and then, at a later allocation
   # in whatever test is running (issue #33). The tests of sharing the screen
-  # and of what records, through PipeWire, and of the two crates allowed
-  # `unsafe`. Not the whole suite: under a nightly toolchain the tests are
+  # and of what records, through PipeWire, and of `omorfos-pipewire`,
+  # the one crate allowed `unsafe`, and `omorfos-shm`, which writes into
+  # memory a program shares. Not the whole suite: under a nightly
+  # toolchain the tests are
   # not where the tests that look for our programs beside them look, and
   # waits that are counted run out under the sanitizer with every test at
   # once. Leaks are left out: PipeWire keeps what it sets up for good.

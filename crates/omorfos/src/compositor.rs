@@ -6137,8 +6137,9 @@ enum Veil {
 }
 
 /// How far a private window to be blurred in pictures is blurred, in units
-/// of layout: twice what the thinnest glass is, which leaves nothing that
-/// is written readable, however large.
+/// of layout: as far as the built-in theme blurs glass, and twice the
+/// least any is blurred by, which leaves nothing that is written readable,
+/// however large.
 pub(crate) const PRIVATE_BLUR: u32 = 32;
 
 impl Shown {

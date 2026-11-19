@@ -1,4 +1,6 @@
-//! Drawing the compositor's own pixels: titlebars and, later, menus.
+//! Drawing the compositor's own pixels: titlebars, menus, the notice,
+//! "About", and what the switcher and the overview show round their
+//! pictures.
 //!
 //! Everything is drawn on the CPU into a [`Canvas`], which is then uploaded
 //! as a texture. That keeps drawing independent of the renderer, so the same

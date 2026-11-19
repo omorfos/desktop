@@ -42,5 +42,5 @@ agent, picking up work on it begins.
 | [adr/](adr/) | Each decision someone would later ask "why" about, numbered in the order it was made, with what else was weighed |
 | [reviews/](reviews/) | Each review of the code: what it found, how it was shown, and what to change |
 
-The manual pages are in [man/](../man/), and are made from the programs
-and the guide, not written.
+The manual pages are in [man/](../man/), and are made from each program's
+`About`, the schemas and the guide's examples, not written.

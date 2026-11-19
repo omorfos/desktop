@@ -82,7 +82,7 @@ Crates are created when their first task starts, not before.
   values into domain commands.
 - **Components are processes, not plugins.** Panels, launchers and
   notification daemons are ordinary Wayland clients. They integrate through
-  standard protocols (layer-shell, foreign-toplevel, ext-workspace) and the
+  standard protocols (layer-shell, foreign-toplevel) and the
   IPC socket. Nothing third-party runs inside the compositor.
 - **IPC is least-privilege.** The socket lives in `$XDG_RUNTIME_DIR` with
   mode `0600`, and the peer's credentials are checked. Peers may act as the

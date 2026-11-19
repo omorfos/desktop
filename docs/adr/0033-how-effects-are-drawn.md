@@ -1,6 +1,8 @@
 # 33. How effects are drawn
 
-- Status: accepted
+- Status: accepted; the built-in theme made glass before its cost was
+  measured, by
+  [97. A window's frame](0097-a-windows-frame-bulkier-glass-buttons-at-the-left.md)
 - Date: 2026-10-13
 
 ## Context

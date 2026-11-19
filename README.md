@@ -43,8 +43,9 @@ agree one.
 - **Secure.** No `unsafe` in our own code but for the buffers of
   PipeWire's streams, kept in a crate of their own; every program, every peer on
   the socket and every configuration file is treated as untrusted.
-- **Correct.** Every line is covered by a test, outside the two files
-  that need a real screen to run. The compositor is tested through a
+- **Correct.** Every line is covered by a test, outside the few files
+  that cannot run in CI, each listed with its reason in
+  [ADR 2](docs/adr/0002-coverage-policy.md). The compositor is tested through a
   real Wayland client, looking at the pixels it draws.
 - **Fast.** Nothing is drawn when nothing changes.
 - **Lean.** The compositor manages windows. What can be a program of its

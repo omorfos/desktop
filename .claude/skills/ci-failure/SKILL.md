@@ -71,8 +71,8 @@ call them by their ids:
 
 ## 3. Reproduce what the runner has
 
-The runners are Ubuntu 26.04 with only what the workflow installs. The
-script beside this file runs a command in that, with `podman`, as an
+The runners are Ubuntu 26.04 with only what the workflow installs.
+`tools/reproduce-ci.sh` runs a command in that, with `podman`, as an
 ordinary user as the runner does, reading the release and the packages
 from `.github/workflows/test.yml`:
 
