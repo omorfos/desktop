@@ -29,7 +29,7 @@ the changelog by hand.
 | only others (`docs`, `ci`, `build`, ...) | no release | no release |
 
 The first release is 0.1.0, which `initial-version` in
-`release-please-config.json` says: without it release-please makes a
+`.github/release-please-config.json` says: without it release-please makes a
 first release 1.0.0, whatever `bump-minor-pre-major` says. To force a
 version, add a commit whose body contains `Release-As: 1.0.0`.
 

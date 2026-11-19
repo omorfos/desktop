@@ -58,8 +58,8 @@ unread=(
     rustfmt.toml
     .editorconfig
     .gitignore
-    .release-please-manifest.json
-    release-please-config.json
+    .github/release-please-config.json
+    .github/release-please-manifest.json
 )
 
 # Read by less than everything: each path, and after it what it reaches,
@@ -78,8 +78,6 @@ only=(
     "README.md omorfos-config:documentation omorfos:packaging"
     "LICENSE omorfos:packaging"
     "LICENSES/ omorfos:packaging"
-    "about.hbs omorfos:packaging"
-    "about.toml omorfos:packaging"
     "deny.toml omorfos:packaging"
     ".github/ omorfos:packaging workflows"
     # Built into nothing: their own tests, and shellcheck.

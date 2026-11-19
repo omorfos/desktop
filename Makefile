@@ -58,8 +58,8 @@ build:
 	$(MAKE) $(PICTURES).drawn $(CRATES)
 
 # Gathered again only when the crates, or what is said of them, change.
-$(CRATES): Cargo.lock about.toml about.hbs
-	cargo about generate --workspace --all-features --frozen about.hbs -o "$@"
+$(CRATES): Cargo.lock packaging/about.toml packaging/about.hbs
+	cargo about generate --workspace --all-features --frozen -c packaging/about.toml packaging/about.hbs -o "$@"
 
 # Drawn again only when the program that draws them has changed.
 $(PICTURES).drawn: $(BUILT)/omorfos-brand

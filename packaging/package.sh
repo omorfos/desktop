@@ -7,8 +7,8 @@
 #
 # Expects `cargo build --release -p omorfos-brand -p omorfos -p omorfos-hold -p omorfos-relay -p omorfosctl -p omorfos-panel -p omorfos-launcher -p omorfos-welcome -p omorfos-notifications -p omorfos-screenshot -p omorfos-clipboard -p omorfos-recording -p omorfos-session -p omorfos-ask -p omorfos-wallpaper -p omorfos-lock -p xdg-desktop-portal-omorfos` and
 # `target/release/omorfos-brand target/release/share` and `cargo about
-# generate --workspace --all-features --frozen about.hbs -o
-# target/release/LICENSE-crates` to have run, and cargo-deb to be
+# generate --workspace --all-features --frozen -c packaging/about.toml
+# packaging/about.hbs -o target/release/LICENSE-crates` to have run, and cargo-deb to be
 # installed. OUT must not exist yet.
 set -euo pipefail
 

@@ -38,8 +38,8 @@ jobs:
           # workflows, so the release pull request would have no checks. A
           # personal access token in this secret makes them run.
           token: ${{ secrets.RELEASE_PLEASE_TOKEN || github.token }}
-          config-file: release-please-config.json
-          manifest-file: .release-please-manifest.json
+          config-file: .github/release-please-config.json
+          manifest-file: .github/release-please-manifest.json
 
   packages:
     name: Packages (${{ matrix.arch }})
@@ -79,7 +79,7 @@ jobs:
       - name: Draw the icon and the wallpapers
         run: target/release/omorfos-brand target/release/share
       - name: Gather the licences of the crates
-        run: cargo about generate --workspace --all-features --frozen about.hbs -o target/release/LICENSE-crates
+        run: cargo about generate --workspace --all-features --frozen -c packaging/about.toml packaging/about.hbs -o target/release/LICENSE-crates
       - name: Package
         run: packaging/package.sh dist
       # Attestations need a public repository unless the organisation is on

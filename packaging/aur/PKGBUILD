@@ -47,7 +47,8 @@ build() {
   # The licences of the crates it is built from, for this machine's, as
   # only those were fetched.
   cargo about generate --workspace --all-features --frozen \
-    --target "$(rustc -vV | sed -n 's/host: //p')" about.hbs -o target/release/LICENSE-crates
+    --target "$(rustc -vV | sed -n 's/host: //p')" \
+    -c packaging/about.toml packaging/about.hbs -o target/release/LICENSE-crates
 }
 
 package() {

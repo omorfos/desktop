@@ -186,4 +186,5 @@ checked by `committed` in CI.
   passes the checks on its own.
 - Releases are derived from these messages; see
   [docs/RELEASING.md](docs/RELEASING.md). A new workspace crate must be added
-  to `release-please-config.json` so its `Cargo.lock` version is bumped.
+  to `.github/release-please-config.json` so its `Cargo.lock` version is
+  bumped.

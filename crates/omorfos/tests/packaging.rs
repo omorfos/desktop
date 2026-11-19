@@ -27,7 +27,7 @@ fn listed(file: &str, key: &str) -> Vec<String> {
 
 #[test]
 fn the_crates_licences_are_gathered_as_those_cargo_deny_allows() {
-    let accepted = listed("about.toml", "accepted");
+    let accepted = listed("packaging/about.toml", "accepted");
     assert!(accepted.contains(&"MIT".to_owned()), "{accepted:?}");
     assert_eq!(accepted, listed("deny.toml", "allow"));
 }
