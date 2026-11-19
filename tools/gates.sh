@@ -78,7 +78,7 @@ tree_now() {
 # Writes down that `tier` passed on `tree`, for the hook that checks a
 # push and for `rest`, which need not run again what `handover` ran.
 passed() {
-    echo "$1 $2" >> "$top/target/gates/passed"
+    echo "$1 $2" >>"$top/target/gates/passed"
 }
 
 # Whether `tier` has passed on `tree`.
@@ -128,7 +128,10 @@ uncovered() {
 commits() {
     local base=${1:-main} tip=${2:-HEAD} tree commit list
     list=$(git rev-list --reverse "$base".."$tip")
-    [ -n "$list" ] || { echo "nothing after $base"; return; }
+    [ -n "$list" ] || {
+        echo "nothing after $base"
+        return
+    }
     # Outside the repository: cargo reads the configuration of every folder
     # above the one it runs in, and would take the coverage alias twice.
     tree="$(mktemp -d)/commit"
@@ -283,7 +286,6 @@ card() {
     fi
 }
 
-
 area() {
     local crates=() tests=()
     while [ $# -gt 0 ]; do
@@ -358,7 +360,8 @@ reaching() {
     [ ${#crates[@]} -eq 0 ] || step tested cargo test --all-features --locked "${crates[@]}"
 }
 
-# The scripts of the gates and the hooks, by shellcheck. Where it is not
+# The scripts of the gates, the hooks and the packaging, by shellcheck,
+# and by shfmt as .editorconfig says they are written. Where either is not
 # installed, it is said, so that it is not taken for their having passed.
 scripts() {
     local found=() each
@@ -372,6 +375,11 @@ scripts() {
         step shellcheck "${found[@]}"
     else
         echo "=== shellcheck is not installed: the scripts are not checked by it." | tee -a "$log"
+    fi
+    if command -v shfmt >/dev/null; then
+        step shfmt -d "${found[@]}"
+    else
+        echo "=== shfmt is not installed: how the scripts are written is not checked." | tee -a "$log"
     fi
 }
 
@@ -431,17 +439,26 @@ case "$tier" in
         ;;
 esac
 log="$top/target/gates/${tier:-none}.log"
-: > "$log"
+: >"$log"
 # What the tier runs on. A tier whose tree changes while it runs has
 # passed on neither, and is not written down as passed.
 tree=$(tree_now)
 case "$tier" in
-    area) shift; area "$@" ;;
+    area)
+        shift
+        area "$@"
+        ;;
     commit) commit ;;
     handover) handover ;;
     rest) rest ;;
-    all) handover; rest ;;
-    commits) shift; commits "$@" ;;
+    all)
+        handover
+        rest
+        ;;
+    commits)
+        shift
+        commits "$@"
+        ;;
     push) push ;;
     uncovered) uncovered | tee -a "$log" ;;
     *)

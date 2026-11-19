@@ -58,7 +58,6 @@ unread=(
     committed.toml
     clippy.toml
     rustfmt.toml
-    .editorconfig
     .gitignore
     .github/release-please-config.json
     .github/release-please-manifest.json
@@ -85,6 +84,8 @@ only=(
     # Built into nothing: their own tests, and shellcheck.
     "tools/ scripts"
     ".githooks/ scripts"
+    # How they are to be written, which shfmt reads.
+    ".editorconfig scripts"
 )
 
 if [ "${1:-}" = --unread ]; then

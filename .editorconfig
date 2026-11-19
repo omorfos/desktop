@@ -22,8 +22,20 @@ trim_trailing_whitespace = false
 [{Makefile,*.mk}]
 indent_style = tab
 
-[{PKGBUILD,*.install,*.sh,*.fish}]
+# Arch's own convention for what makes a package.
+[{PKGBUILD,*.install}]
 indent_size = 2
+
+# Shell is indented as the rest is. shfmt reads this file, and the gates
+# and CI hold every script to it; the hooks have no extension to be told
+# by, so they are named by where they are.
+[*.sh]
+indent_size = 4
+switch_case_indent = true
+
+[.githooks/*]
+indent_size = 4
+switch_case_indent = true
 
 # Generated; never reformat by hand.
 [Cargo.lock]

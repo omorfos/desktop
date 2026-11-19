@@ -6,14 +6,17 @@ here=${0%/*}
 failed=0
 metadata=$(mktemp)
 trap 'rm -f "$metadata"' EXIT
-cargo metadata --format-version 1 --all-features --locked --offline > "$metadata" || exit 1
+cargo metadata --format-version 1 --all-features --locked --offline >"$metadata" || exit 1
 export AFFECTED_METADATA=$metadata
 
 # What is reached from `paths`, one to a line, as a line of names; or
 # that it could not be said, which is never taken for nothing.
 reached() {
     local said
-    said=$(printf '%s\n' "$@" | "$here/affected.sh" 2>/dev/null) || { echo "(failed)"; return; }
+    said=$(printf '%s\n' "$@" | "$here/affected.sh" 2>/dev/null) || {
+        echo "(failed)"
+        return
+    }
     # Unquoted, so that the lines come out as one line of names.
     # shellcheck disable=SC2086
     echo $said
@@ -82,6 +85,8 @@ says "the gates and the hooks reach their own checks" scripts \
     tools/gates.sh .githooks/pre-push
 says "what is packaged by a script reaches its test and the scripts' checks" \
     "omorfos:packaging scripts" packaging/package.sh
+says "how files are to be written reaches the scripts, which are held to it" scripts \
+    .editorconfig
 says "a skill, which is words for an agent, reaches nothing" "" \
     .claude/skills/handover/SKILL.md
 says "a decision reaches nothing" "" docs/adr/0001-fresh-implementation-on-smithay.md
@@ -103,10 +108,16 @@ there() {
     esac
 }
 while read -r path; do
-    there "$path" || { echo "FAILED: $path is listed as read by nothing, but is not there"; failed=1; }
+    there "$path" || {
+        echo "FAILED: $path is listed as read by nothing, but is not there"
+        failed=1
+    }
 done < <("$here/affected.sh" --unread)
 while read -r path to; do
-    there "$path" || { echo "FAILED: $path is listed as read by $to, but is not there"; failed=1; }
+    there "$path" || {
+        echo "FAILED: $path is listed as read by $to, but is not there"
+        failed=1
+    }
     # And each test it is said to reach is one there is.
     for word in $to; do
         case "$word" in
@@ -114,7 +125,10 @@ while read -r path to; do
             *:*) [ -e "crates/${word%%:*}/tests/${word#*:}.rs" ] ;;
             scripts | workflows) true ;;
             *) [ -d "crates/$word" ] ;;
-        esac || { echo "FAILED: $path is said to reach $word, which is not there"; failed=1; }
+        esac || {
+            echo "FAILED: $path is said to reach $word, which is not there"
+            failed=1
+        }
     done
 done < <("$here/affected.sh" --only)
 

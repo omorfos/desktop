@@ -40,6 +40,13 @@ slowest are run while the maintainer tries a change rather than before.
 | `push` | Before every push | `handover` but the build, and `rest`, on the last commit, checked out in a worktree of its own, so the working copy may change while it runs; and `commits` for each other commit not yet pushed. Where the last commit has built nothing new since one on which everything passed, only what it reaches is run, without the coverage gate ([ADR 96](adr/0096-the-coverage-gate-is-the-last-commits.md)) | 6 min, or two where nothing is built, and what `commits` takes |
 | `uncovered` | When the coverage gate has failed | Each line of the last run's regions not reached, by file, line and column | seconds |
 
+Where a change reaches the scripts, of the gates, the hooks or the
+packaging, they are checked by `shellcheck`, and by `shfmt` against
+`.editorconfig`, which says shell is indented by four; a tier says so
+where either is not installed, and CI runs both, with the gates' own
+test and a search for a line left in from debugging, for a change made
+without the hooks.
+
 A failed coverage gate lists what it did not reach in the tier itself.
 `handover` also refuses a line of Rust with the word `DBG` in it, which
 is how a line put in only to find something out is marked, as does the

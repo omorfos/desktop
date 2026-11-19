@@ -32,6 +32,33 @@ jobs:
       - run: cargo doc --workspace --no-deps --all-features --locked
         env:
           RUSTDOCFLAGS: -D warnings
+      # What the gates take a change to reach, held to what the tests are
+      # found to read. Here, where the crates are already fetched: it asks
+      # cargo what depends on what without the network.
+      - name: The gates' list of what reads what
+        run: tools/affected.test.sh
+
+  # The scripts of the gates, the hooks and the packaging, as the gates
+  # check them where shellcheck and shfmt are installed; and what the
+  # commit hook refuses, for a commit made without it.
+  scripts:
+    name: Scripts
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install shellcheck and shfmt
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends shellcheck shfmt
+      - run: shellcheck tools/*.sh .githooks/pre-commit .githooks/pre-push packaging/package.sh packaging/aur/*.sh
+      # As .editorconfig says, which shfmt reads.
+      - run: shfmt -d tools/*.sh .githooks/pre-commit .githooks/pre-push packaging/package.sh packaging/aur/*.sh
+      - name: No line left in from debugging
+        run: |
+          if git grep -nE '\bD[B]G\b' -- '*.rs'; then
+            echo "Lines left in from debugging, to take out."
+            exit 1
+          fi
 
   dependencies:
     name: Dependency audit
