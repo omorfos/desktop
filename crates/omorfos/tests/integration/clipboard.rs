@@ -29,6 +29,65 @@ fn text_copied_in_one_application_can_be_pasted_in_another() {
 }
 
 #[test]
+fn a_program_that_copies_in_very_many_kinds_does_not_end_the_program_next_given_the_keyboard() {
+    let mut session = Session::new();
+    let mut flood = session.connect();
+    session.open(&mut flood, "flood", (200, 100), RED);
+    // It copies as any program does, and only then says the rest: 400
+    // kinds of 4000 bytes, more than a program's socket holds, a few at a
+    // time as it is read.
+    let source = flood.copy_as("too much", &["text/plain"]);
+    session.roundtrip(&mut flood);
+    for kind in 0..400 {
+        source.offer(format!("flood/{kind:0>3994}"));
+        if kind % 16 == 15 {
+            session.roundtrip(&mut flood);
+        }
+    }
+
+    // The program the user goes to next is not told of them, and so is
+    // still there: it is offered nothing.
+    let mut editor = session.connect();
+    session.open(&mut editor, "editor", (200, 100), BLUE);
+    assert_eq!(editor.state.formats.len(), 0);
+    session.roundtrip(&mut editor);
+}
+
+#[test]
+fn a_program_may_copy_in_as_many_kinds_as_any_does_and_each_as_long() {
+    let mut session = Session::new();
+    let mut editor = session.connect();
+    session.open(&mut editor, "editor", (200, 100), RED);
+    let source = editor.copy_as("much", &[]);
+    for kind in 0..256 {
+        source.offer(format!("much/{kind:0>250}"));
+    }
+    session.roundtrip(&mut editor);
+
+    let mut terminal = session.connect();
+    session.open(&mut terminal, "terminal", (200, 100), BLUE);
+    assert_eq!(terminal.state.formats.len(), 256);
+    assert_eq!(terminal.state.formats[255].len(), 255);
+}
+
+#[test]
+fn text_selected_in_a_kind_longer_than_any_is_not_offered_with_the_middle_button() {
+    let mut session = Session::new();
+    let mut flood = session.connect();
+    session.open(&mut flood, "flood", (200, 100), RED);
+    // What it copied, in a kind as kinds are, is none the worse for it.
+    flood.copy("copied");
+    let source = flood.select("selected");
+    source.offer(format!("flood/{:0>250}", 0));
+    session.roundtrip(&mut flood);
+
+    let mut editor = session.connect();
+    session.open(&mut editor, "editor", (200, 100), BLUE);
+    assert!(editor.paste_selection().is_none());
+    assert_eq!(editor.state.formats, ["text/plain;charset=utf-8"]);
+}
+
+#[test]
 fn a_program_that_pastes_through_a_pipe_already_full_does_not_stop_the_compositor() {
     use std::io::Write;
     use std::os::fd::AsFd;

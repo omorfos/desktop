@@ -433,6 +433,27 @@ fn differ(one: &[u32], other: &[u32]) -> usize {
 }
 
 #[test]
+fn what_about_copies_is_kept_though_a_program_had_copied_in_too_many_kinds_before() {
+    let mut session = unblurred();
+    let mut client = session.connect();
+    session.open(&mut client, "app", (100, 50), GREEN);
+    let source = client.copy_as("too much", &[]);
+    for kind in 0..300 {
+        source.offer(format!("flood/{kind}"));
+    }
+    session.roundtrip(&mut client);
+
+    // What "About" copies takes its place, and is what the program is
+    // offered when the keyboard is its own again.
+    about(&mut session);
+    click(&mut session, COPY);
+    tap(&mut session, key::ESCAPE);
+    session.roundtrip(&mut client);
+    let text = pasted(&mut session, &mut client);
+    assert!(text.starts_with("omorfos "), "{text}");
+}
+
+#[test]
 fn the_button_that_copies_turns_green_draws_a_tick_and_is_as_it_was_a_moment_later() {
     let mut session = unblurred();
     let mut client = session.connect();

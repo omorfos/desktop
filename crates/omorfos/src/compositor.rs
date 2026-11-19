@@ -88,6 +88,7 @@ use smithay::wayland::keyboard_shortcuts_inhibit::KeyboardShortcutsInhibitState;
 use smithay::wayland::output::OutputManagerState;
 use smithay::wayland::presentation::PresentationState;
 use smithay::wayland::security_context::SecurityContextState;
+use smithay::wayland::selection::SelectionSource;
 use smithay::wayland::selection::SelectionTarget;
 use smithay::wayland::selection::data_device::{DataDeviceState, set_data_device_selection};
 use smithay::wayland::selection::ext_data_control::DataControlState;
@@ -336,6 +337,10 @@ pub struct Compositor {
     pub(crate) screens: Vec<Screen>,
     pub(crate) layer_shell: WlrLayerShellState,
     pub(crate) data_device: DataDeviceState,
+    /// What a program last copied, and what it last selected, each as it
+    /// offers it: a program may go on adding kinds once it has, so they
+    /// are counted when another is about to be told of them.
+    pub(crate) copied: [Option<SelectionSource>; 2],
     /// The clipboard as given to a program that may read and set it at
     /// any time.
     pub(crate) clipboards: DataControlState,
@@ -557,6 +562,7 @@ impl Compositor {
                     screens: Vec::new(),
                     layer_shell,
                     data_device,
+                    copied: [None, None],
                     foreign_toplevels,
                     desktop: Desktop::new(omorfos_core::Settings::default(), 1),
                     desktop_before: Desktop::new(omorfos_core::Settings::default(), 1),

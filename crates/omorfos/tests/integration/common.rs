@@ -1967,7 +1967,10 @@ impl Client {
 
     /// Makes `text` the primary selection, as selecting it with the mouse
     /// does.
-    pub(crate) fn select(&mut self, text: &str) {
+    pub(crate) fn select(
+        &mut self,
+        text: &str,
+    ) -> wayland_protocols::wp::primary_selection::zv1::client::zwp_primary_selection_source_v1::ZwpPrimarySelectionSourceV1{
         text.clone_into(&mut self.state.selected);
         let source = self
             .state
@@ -1981,6 +1984,7 @@ impl Client {
             .as_ref()
             .unwrap()
             .set_selection(Some(&source), self.state.serial);
+        source
     }
 
     /// Asks for the primary selection, as a middle click does. Returns
@@ -2023,8 +2027,9 @@ impl Client {
         self.copy_as(text, &[TEXT]);
     }
 
-    /// Puts `text` on the clipboard, offered in each of `formats`.
-    pub(crate) fn copy_as(&mut self, text: &str, formats: &[&str]) {
+    /// Puts `text` on the clipboard, offered in each of `formats`, and
+    /// gives what offers it, of which more may be offered yet.
+    pub(crate) fn copy_as(&mut self, text: &str, formats: &[&str]) -> wl_data_source::WlDataSource {
         text.clone_into(&mut self.state.copied);
         self.state.replaced = false;
         let source = self
@@ -2041,6 +2046,7 @@ impl Client {
             .as_ref()
             .unwrap()
             .set_selection(Some(&source), self.state.serial);
+        source
     }
 
     /// Whether whatever asked for what was copied while this client was

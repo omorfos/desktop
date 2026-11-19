@@ -35,10 +35,12 @@ use smithay::wayland::selection::{SelectionHandler, SelectionSource, SelectionTa
 use std::os::fd::OwnedFd;
 use std::sync::Arc;
 use smithay::wayland::selection::primary_selection::{
-    PrimarySelectionHandler, PrimarySelectionState, set_primary_focus,
+    PrimarySelectionHandler, PrimarySelectionState, clear_primary_selection,
+    current_primary_selection_userdata, set_primary_focus,
 };
 use smithay::wayland::selection::data_device::{
-    ClientDndGrabHandler, DataDeviceHandler, DataDeviceState, ServerDndGrabHandler, set_data_device_focus,
+    ClientDndGrabHandler, DataDeviceHandler, DataDeviceState, ServerDndGrabHandler,
+    clear_data_device_selection, current_data_device_selection_userdata, set_data_device_focus,
 };
 use smithay::reexports::wayland_protocols::xdg::decoration::zv1::server::zxdg_toplevel_decoration_v1::Mode as DecorationMode;
 use smithay::wayland::shell::wlr_layer::{Layer, LayerSurface as WlrLayerSurface, WlrLayerShellHandler, WlrLayerShellState};
@@ -607,6 +609,7 @@ impl SeatHandler for Compositor {
         let client = surface
             .as_ref()
             .and_then(|surface| self.display.get_client(surface.id()).ok());
+        self.hold_what_is_offered();
         set_data_device_focus(&self.display, seat, client.clone());
         set_primary_focus(&self.display, seat, client);
         // A program holds the pointer only while its window has the keyboard.
@@ -637,6 +640,51 @@ pub enum Offer {
     X11,
     /// Text of the compositor's own, as "About" copies what the computer is.
     Text(Arc<str>),
+}
+
+/// The most kinds a program may offer what it copied in, and the longest
+/// each may be, as long as a media type is: far more than any program
+/// offers. Whoever is given the keyboard is sent every one, and more than
+/// its socket holds would end it, with whatever was not saved in it.
+const MOST_KINDS: usize = 256;
+const LONGEST_KIND: usize = 255;
+
+impl Compositor {
+    /// Takes off the clipboard, and out of the selection, what a program
+    /// offers in more or longer kinds than any does, before the program
+    /// that is given the keyboard is told of them. Smithay keeps every
+    /// kind a program names, whenever it names it, and has nowhere to
+    /// refuse one ([UPSTREAM.md](../../../docs/UPSTREAM.md)).
+    fn hold_what_is_offered(&mut self) {
+        for which in [SelectionTarget::Clipboard, SelectionTarget::Primary] {
+            // What the compositor offers itself, or for the X server, has
+            // taken the place of what the program did, and is bounded.
+            let ours = match which {
+                SelectionTarget::Clipboard => {
+                    current_data_device_selection_userdata::<Self>(&self.seat).is_some()
+                }
+                SelectionTarget::Primary => {
+                    current_primary_selection_userdata(&self.seat).is_some()
+                }
+            };
+            let kinds = self.copied[which as usize]
+                .as_ref()
+                .map_or_else(Vec::new, SelectionSource::mime_types);
+            let within =
+                kinds.len() <= MOST_KINDS && kinds.iter().all(|kind| kind.len() <= LONGEST_KIND);
+            if ours || within {
+                continue;
+            }
+            self.copied[which as usize] = None;
+            match which {
+                SelectionTarget::Clipboard => {
+                    clear_data_device_selection(&self.display, &self.seat);
+                }
+                SelectionTarget::Primary => clear_primary_selection(&self.display, &self.seat),
+            }
+            self.offer_to_x11(which, None);
+        }
+    }
 }
 
 /// The forms text of the compositor's own is offered in: those programs
@@ -676,7 +724,8 @@ impl SelectionHandler for Compositor {
     ) {
         // What a program written for Wayland has copied or selected is
         // there for programs written for X11 as well.
-        self.offer_to_x11(which, source.map(|source| source.mime_types()));
+        self.offer_to_x11(which, source.as_ref().map(SelectionSource::mime_types));
+        self.copied[which as usize] = source;
     }
 
     fn send_selection(

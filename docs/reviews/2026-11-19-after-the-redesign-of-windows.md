@@ -110,7 +110,10 @@ it depends on whether a program there asks for blur.
 
 ### 3. A program that copies in very many kinds ends each program next given the keyboard, and the keeper of the clipboard
 
-**Medium. By reading; to be shown.**
+**Medium. By reading, then shown by a test. Fixed, but for the keeper of
+the clipboard and a drag where there is no relay.** The test showed more:
+kinds named after the selection is set are sent on as well, so a count
+made as it is set would have been got past.
 
 Smithay keeps every kind a `wl_data_source` offers
 (`wayland/selection/data_device/source.rs:68`) and sends all of them to

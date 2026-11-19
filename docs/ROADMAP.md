@@ -2402,9 +2402,16 @@ Fixed with the review:
 
 First, what is unsafe or gives away what is private:
 
-- [ ] Medium: a program that copies in very many kinds ends each program
+- [x] Medium: a program that copies in very many kinds ends each program
       next given the keyboard, and the keeper of the clipboard
-      ([finding 3](reviews/2026-11-19-after-the-redesign-of-windows.md#3-a-program-that-copies-in-very-many-kinds-ends-each-program-next-given-the-keyboard-and-the-keeper-of-the-clipboard)).
+      ([finding 3](reviews/2026-11-19-after-the-redesign-of-windows.md#3-a-program-that-copies-in-very-many-kinds-ends-each-program-next-given-the-keyboard-and-the-keeper-of-the-clipboard)):
+      the relay ends a program that offers more than 256 kinds from one
+      source, or one longer than 255 bytes. Without the relay the
+      compositor takes what is offered so off the clipboard before
+      another program has the keyboard, kinds named after it was copied
+      among them, which a test showed get past a count made as it is;
+      the keeper of the clipboard, and a program dragged over, wait on
+      Smithay there (`UPSTREAM.md`).
 - [ ] Medium: a portal started again leaves every screen it was sharing
       still shared
       ([finding 5](reviews/2026-11-19-after-the-redesign-of-windows.md#5-a-portal-started-again-leaves-every-screen-it-was-sharing-still-shared-with-nothing-left-that-can-end-it)).

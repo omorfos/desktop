@@ -37,6 +37,30 @@ S=$(ls -d ~/.cargo/registry/src/*/smithay-$(awk '/^name = "smithay"/{getline; pr
 - **Check:** `grep -n 'rects.push\|fn add' "$S"/src/wayland/compositor/handlers.rs "$S"/src/wayland/selection/*/source.rs`
   shows whether anything counts them first.
 
+### Every kind a program offers is sent on, however many and however long
+
+- **Wrong:** every kind a source of the clipboard, of the selection or of
+  a drag is given, when it is made or at any time after, is sent to the
+  program next given the keyboard or dragged over, and to every program
+  that may read the clipboard at any time. A few hundred kinds of four
+  thousand bytes are more than a socket holds beside what the compositor
+  keeps for a program that is not reading (ADR 45), so that program is
+  ended, with whatever was not saved in it (finding 3 of
+  `docs/reviews/2026-11-19-after-the-redesign-of-windows.md`). A
+  compositor is told of a selection only before it is set
+  (`SelectionHandler::new_selection`), cannot refuse it there, and is not
+  told of a kind at all.
+- **Meanwhile:** the relay ends a program that offers more than 256 kinds
+  from one source, or one longer than 255 bytes (`journal::MOST_KINDS`,
+  `LONGEST_KIND`), whatever the source is for. For a program connected
+  without the relay, the compositor takes off the clipboard, and out of
+  the selection, what is offered in more or longer, just before another
+  program is given the keyboard (`Compositor::hold_what_is_offered`);
+  such a program can still end the keeper of the clipboard, which is told
+  as soon as it is set, and a program it drags over.
+- **Check:** `grep -n 'mime_types.push' -B8 "$S"/src/wayland/selection/*/source.rs`
+  shows whether a kind is counted or measured before it is kept.
+
 ### Nothing holds a program to a number of descriptors
 
 - **Wrong:** every pool of shared memory a program makes keeps its
