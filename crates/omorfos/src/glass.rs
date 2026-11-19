@@ -332,8 +332,8 @@ fn tried((width, height): (u32, u32)) -> Vec<u8> {
 /// asks: glass is never see-through and not blurred (DESIGN.md). Less
 /// leaves what is behind sharp enough to be read, and a bright line in a
 /// wallpaper along the edge of the screen, under a panel, a line still;
-/// this much spreads it over about a panel's height, a glow. It is two
-/// thirds of the blur of the thinnest glass DESIGN.md gives.
+/// this much spreads it over about a panel's height, a glow. It is half
+/// of what the built-in theme blurs glass by.
 const LEAST_BLUR: u32 = 16;
 
 /// A sheet of glass in a scene being laid out.
@@ -546,8 +546,12 @@ pub(crate) type Screen<'a> = (&'a str, Size<i32, Physical>, f64);
 pub(crate) struct Glass {
     /// What each sheet keeps, by the screen it is on and its key.
     kept: HashMap<(String, u64), Kept>,
-    /// The desktop of each screen, blurred, by the screen's name.
-    desktops: HashMap<String, Option<Picture>>,
+    /// The desktop of each screen, blurred, by the screen's name and by
+    /// how far it is blurred, in pixels: one kept for the screen alone was
+    /// thrown away by each of two sheets that blur by other amounts, on
+    /// every drawing, each blurring the whole screen again and so damaging
+    /// it, without end.
+    desktops: HashMap<(String, u32), Option<Picture>>,
     /// How many blurs have been made.
     blurs: u64,
 }
@@ -609,6 +613,8 @@ impl Glass {
         let (name, ..) = screen;
         self.kept
             .retain(|(on, key), _| on != name || panes.iter().any(|pane| pane.key == *key));
+        self.desktops
+            .retain(|(on, blur), _| on != name || panes.iter().any(|pane| pane.blur == *blur));
         // The deepest first, so that what is put in leaves what is above it
         // where it was.
         panes.sort_by_key(|pane| std::cmp::Reverse(pane.at));
@@ -672,7 +678,10 @@ impl Glass {
             let (slot, area, under) = if covered {
                 (&mut kept.behind, around, under)
             } else {
-                let slot = self.desktops.entry(name.to_owned()).or_default();
+                let slot = self
+                    .desktops
+                    .entry((name.to_owned(), pane.blur))
+                    .or_default();
                 let desktop = elements.get(desktop..).unwrap_or_default();
                 (slot, Rectangle::from_size(size), desktop)
             };

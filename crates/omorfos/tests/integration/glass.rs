@@ -58,6 +58,41 @@ fn over_a_red_window(theme: &str) -> (Session, (Client, Toplevel), Client) {
 }
 
 #[test]
+fn glass_of_two_blurs_over_the_desktop_alone_is_not_blurred_again_while_nothing_changes() {
+    // A window that asks for what is behind it to be blurred, which the
+    // theme here does by 24, and a panel that blurs by 8, each with
+    // nothing but the desktop behind it, and too far apart for either to
+    // reach the other.
+    let theme = format!(
+        "{GLASS}window, window:focus {{ box-shadow: none; backdrop-filter: blur(24px); }}\n"
+    );
+    let mut session = Session::with_config(&[("theme.css", &theme)]);
+    session.blurring();
+    let mut window = session.connect();
+    let toplevel = session.open(&mut window, "app", (200, 100), 0);
+    let _effect = window.blur_behind(&toplevel.surface, &[(0, 0, 200, 100)]);
+    toplevel.surface.commit();
+    session.roundtrip(&mut window);
+    let mut panel = session.connect();
+    panel.layer_name = "panel";
+    let low = LayerShape {
+        anchor: Anchor::Bottom | Anchor::Left | Anchor::Right,
+        ..across(30)
+    };
+    session.open_layer(&mut panel, &low, (WIDTH, 30), TINT);
+    session.settle();
+    drop(session.draw());
+    let blurs = session.compositor().blurs();
+    assert_eq!(blurs, 2, "the desktop, blurred once for each");
+    for _ in 0..3 {
+        session.step();
+        let drawn = session.draw();
+        assert!(!drawn.damaged, "nothing to draw again");
+    }
+    assert_eq!(session.compositor().blurs(), blurs, "nor blurred again");
+}
+
+#[test]
 fn a_panel_of_glass_is_redder_over_a_red_window_and_only_there() {
     let (mut session, _window, _panel) = over_a_red_window(GLASS);
     let picture = session.draw();
