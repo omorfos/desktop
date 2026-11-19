@@ -15,6 +15,8 @@ by, needs cargo-about as well, for the licences of the crates.
 It is a fresh implementation, not a port: see
 [docs/adr/0001-fresh-implementation-on-smithay.md](docs/adr/0001-fresh-implementation-on-smithay.md).
 
+- Every document, by who it is for: [docs/README.md](docs/README.md);
+  what each crate is: [crates/README.md](crates/README.md)
 - Current state and next task: [docs/ROADMAP.md](docs/ROADMAP.md)
 - Layering and crate responsibilities: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 - The IPC protocol, a compatibility surface: [docs/IPC.md](docs/IPC.md)

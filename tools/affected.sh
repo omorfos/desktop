@@ -37,6 +37,8 @@ unread=(
     .claude/
     docs/adr/
     docs/reviews/
+    docs/README.md
+    crates/README.md
     docs/ARCHITECTURE.md
     docs/BRAND.md
     docs/DESIGN.md

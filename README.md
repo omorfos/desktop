@@ -160,6 +160,8 @@ Flatpak) that are installed, and pass over the rest (docs/TESTING.md).
 | [docs/DESIGN.md](docs/DESIGN.md) | What it is to look like, and the rules a part is drawn by |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | How the code is laid out |
 | [docs/adr/](docs/adr/) | Each decision that shaped it, and why |
+| [docs/](docs/README.md) | Every document there is, by who it is for |
+| [crates/](crates/README.md) | What each program and library is |
 | [CREDITS.md](docs/CREDITS.md) | Whose work it is drawn with |
 | [ACCESSIBILITY.md](docs/ACCESSIBILITY.md) | What there is for those who see, move or read differently, what is not there yet, and how to say |
 | [SECURITY.md](docs/SECURITY.md) | How to report a vulnerability, privately |
