@@ -41,7 +41,7 @@ const GRIP: i32 = 4;
 const CORNER: i32 = 64;
 /// How strong the wash is that shows where a frame being dragged would be
 /// put, out of 255.
-const WASH: u32 = 80;
+const WASH: u8 = 80;
 
 /// The lines being drawn, and what the pointer last did with one.
 #[derive(Debug, Default)]
@@ -293,13 +293,11 @@ impl Compositor {
         // were let go: a wash of the colour of a focused window's border.
         let focused = States::NONE.with(State::Focused);
         let wash = self.config().theme.style(Part::Window, focused);
-        let wash = wash.border.top.color;
-        let faint = |channel: u8| u8::try_from(u32::from(channel) * WASH / 255).unwrap_or(0);
+        // Its colour as it is, at the wash's share: what draws it makes
+        // each channel as faint as that share says, once.
         let wash = Color {
-            red: faint(wash.red),
-            green: faint(wash.green),
-            blue: faint(wash.blue),
-            alpha: faint(255),
+            alpha: WASH,
+            ..wash.border.top.color
         };
         let offered = self.offered().map(|(_, at, ..)| at);
         let offered = offered.or_else(|| self.carried_to()).map(|at| (at, wash));

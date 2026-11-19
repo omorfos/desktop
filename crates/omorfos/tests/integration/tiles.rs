@@ -392,7 +392,14 @@ fn a_window_dragged_to_an_edge_is_shown_the_half_it_would_take() {
     // Against the left of the screen, the left half is washed over.
     point(&mut session, 0, 240);
     let picture = session.draw();
-    assert_ne!(picture.at(250, 400), BACKGROUND, "the half it would have");
+    let washed = picture.at(250, 400);
+    // Plainly lighter, not by a shade: the wash is its colour at about a
+    // third, and was once made fainter twice over, to a twelfth.
+    let red = |pixel: u32| (pixel >> 16) & 0xff;
+    assert!(
+        red(washed) >= red(BACKGROUND) + 48,
+        "the half it would have: {washed:#x}"
+    );
     assert_eq!(picture.at(400, 400), BACKGROUND, "and not the other");
     session.step();
     assert!(
