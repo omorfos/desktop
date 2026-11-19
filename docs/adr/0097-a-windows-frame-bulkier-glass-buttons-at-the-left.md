@@ -223,6 +223,8 @@ tall as it is: a control of 32 has room in it.
   have their buttons at the left in the same order, and GTK 3's, Firefox
   among them, and Google Chrome's, as the maintainer found on
   18 November 2026.
-- "About" still has its closing button at the right; it is to follow.
-  The welcome card had one too, which looked out of place there and
-  did what Skip does, and has none now.
+- "About" and the welcome card each had a window's closing button, at
+  the right. Neither is a window, and both have none now: the card has
+  Skip, and "About" is put away as a menu or the launcher is, by Escape
+  or a press beside it. A titlebar for either would have had one button
+  that worked and two that could not.

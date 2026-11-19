@@ -128,7 +128,7 @@ use crate::kept::Parts;
 use crate::lock::{Awake, Lock, Presence};
 use crate::night::Night;
 use crate::outputs::{Aside, Head};
-use crate::paint::{self, AboutButton, Motion, Text};
+use crate::paint::{self, Motion, Text};
 use crate::palette::{self, Palette};
 use crate::presentation::Feedback;
 use crate::recording::Recorded;
@@ -2880,8 +2880,7 @@ impl Compositor {
         let had = self.cards.about.shown.take();
         let scrolled = had.as_ref().map_or(0.0, |about| about.scrolled);
         let pointer = self.pointer_position();
-        let under = had.as_ref().and_then(|about| about.button_at(pointer));
-        let hovered = under == Some(AboutButton::Close);
+        let copying = had.as_ref().is_some_and(|about| about.copies_at(pointer));
         let (had, closed) = if wanted { (had, None) } else { (None, had) };
         let closed = closed.map(|about| {
             self.animation
@@ -2893,14 +2892,13 @@ impl Compositor {
                 && about.scheme == scheme
                 && about.within == within
                 && about.scale == scale
-                && about.hovered == hovered
         });
         self.cards.about.shown = match (current, wanted) {
             (Some(about), _) => Some(about),
             (None, true) => {
                 let tools = (&mut self.text, &mut self.animation.shades, &self.words);
                 let what = (theme, scheme, &self.cards.about.system);
-                let mut about = About::paint(tools, what, within, (scale, hovered));
+                let mut about = About::paint(tools, what, within, scale);
                 about.scroll(scrolled);
                 Some(about)
             }
@@ -2914,7 +2912,7 @@ impl Compositor {
         self.cards.about.copied = self.cards.about.copied.filter(|_| since.is_some());
         let tick = since.map(|since| (since.as_secs_f64() / TICK_DRAWN.as_secs_f64()).min(1.0));
         let states = States::NONE
-            .when(State::Hovered, under == Some(AboutButton::Copy))
+            .when(State::Hovered, copying)
             .when(State::Active, tick.is_some());
         if let Some(about) = self.cards.about.shown.as_mut() {
             let style = self
@@ -4925,14 +4923,9 @@ pub(crate) struct About {
     /// The output it is in the middle of.
     within: Rectangle<i32, Logical>,
     scale: Scale,
-    /// Where it is, and its buttons: the one that closes it and the one
-    /// that copies what the computer is.
+    /// Where it is, and its button, which copies what the computer is.
     pub(crate) area: Rect,
-    close: Rect,
     copy: Rect,
-    /// Whether the pointer was on the button that closes it as it was
-    /// painted.
-    hovered: bool,
     pixels: Painted,
     shadow: Option<Shadowing>,
     /// The button that copies, drawn apart, as it changes: how it looked,
@@ -4950,7 +4943,7 @@ impl About {
         (text, shades, words): (&mut Text, &mut Shades, &Words),
         (theme, scheme, system): (&Theme, Scheme, &System),
         within: Rectangle<i32, Logical>,
-        (scale, hovered): (Scale, bool),
+        scale: Scale,
     ) -> Self {
         let (wide, high) = (within.size.w.unsigned_abs(), within.size.h.unsigned_abs());
         let width = ABOUT_WIDTH.min(wide.saturating_sub(NOTICE_MARGIN * 2));
@@ -4973,10 +4966,10 @@ impl About {
         let length = list.units().1.min(room);
         let version = env!("CARGO_PKG_VERSION");
         let said = (mark.as_slice(), version);
-        let looks = (width, length, scale, hovered.then_some(AboutButton::Close));
+        let looks = (width, length, scale);
         let says = (words.say("copy", &[]), words.say("copied", &[]));
         let copy = paint::about_copy_size(text, theme, (&says.0, &says.1));
-        let (canvas, (close, copy), shown) = paint::about((text, words), theme, said, looks, copy);
+        let (canvas, copy, shown) = paint::about((text, words), theme, said, looks, copy);
         let (across, down) = canvas.units();
         let left = wide.saturating_sub(across) / 2;
         let top = high.saturating_sub(down) / 2;
@@ -5000,9 +4993,7 @@ impl About {
             within,
             scale,
             area,
-            close: on(close),
             copy: on(copy),
-            hovered,
             pixels: Painted::new(&canvas),
             shadow: shades.cast(&style, scale, placed, None),
             button: None,
@@ -5031,14 +5022,9 @@ impl About {
         self.button = Some((style, tick, Painted::new(&canvas)));
     }
 
-    /// The button of it at `point`, if there is one there.
-    pub(crate) fn button_at(&self, point: DomainPoint) -> Option<AboutButton> {
-        let buttons = [
-            (AboutButton::Close, self.close),
-            (AboutButton::Copy, self.copy),
-        ];
-        let mut under = buttons.into_iter().filter(|(_, at)| at.contains(point));
-        under.next().map(|(button, _)| button)
+    /// Whether `point` is on its button, which copies.
+    pub(crate) fn copies_at(&self, point: DomainPoint) -> bool {
+        self.copy.contains(point)
     }
 
     /// Scrolls what it lists `by` units of layout further down, or up if

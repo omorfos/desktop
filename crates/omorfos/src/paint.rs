@@ -472,15 +472,6 @@ pub(crate) const ABOUT_MARK: u32 = 56;
 /// The room after the mark, and after each list of what is someone else's.
 const ABOUT_GAP: u32 = 12;
 
-/// A button of "About".
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum AboutButton {
-    /// Puts it away.
-    Close,
-    /// Copies what the computer is, as text.
-    Copy,
-}
-
 /// How tall "About" is but for what it lists: its padding and border, and
 /// the mark with the room below it.
 pub(crate) fn about_head(theme: &Theme) -> u32 {
@@ -604,16 +595,16 @@ pub(crate) fn about_list(
 /// Paints "About omorfos", `width` across, with room `list` tall below the
 /// mark for what it lists, which is drawn on it apart: `mark`, which is
 /// empty if it could not be drawn, and beside it the name, `version` and
-/// the licence; and its buttons, the one `hovered` under the pointer. Says
-/// where on it the button that closes it is and the one that copies, and
-/// where what it lists goes.
+/// the licence. Says where on it the button that copies is, and where
+/// what it lists goes. It has no button that closes it, as no card that
+/// is not a window has: Escape puts it away, and a press beside it.
 pub(crate) fn about(
     (text, words): (&mut Text, &Words),
     theme: &Theme,
     (mark, version): (&[Image], &str),
-    (width, list, scale, hovered): (u32, u32, Scale, Option<AboutButton>),
+    (width, list, scale): (u32, u32, Scale),
     copy: (u32, u32),
-) -> (Canvas, (Area, Area), Area) {
+) -> (Canvas, Area, Area) {
     let style = theme.style(Part::About, States::NONE);
     let height = about_head(theme) + list;
     let whole = (0, 0, width, height);
@@ -625,21 +616,7 @@ pub(crate) fn about(
     for mark in mark {
         canvas.draw_image((left, top, ABOUT_MARK, ABOUT_MARK), mark);
     }
-    // A window's button that closes it, as it is on a window with focus,
-    // in the top right corner.
-    let under = |button| States::NONE.when(State::Hovered, hovered == Some(button));
-    let states = under(AboutButton::Close).with(State::Focused);
-    let button = theme.style(Part::ButtonClose, states);
-    let across = button.min_width;
-    let close = (
-        left + room.saturating_sub(across).cast_signed(),
-        top,
-        across,
-        across,
-    );
-    canvas.draw_box(close, &button);
-    sign(&mut canvas, Button::Close, close, button.color);
-    // The place of the one that copies, `copy` large, at the foot of the
+    // The place of the button that copies, `copy` large, at the foot of the
     // mark, under it. It is drawn apart, as it changes.
     let (wide, high) = copy;
     let copy = (
@@ -673,7 +650,7 @@ pub(crate) fn about(
         at += ABOUT_ROW.cast_signed();
     }
     let below = (left, top + size + ABOUT_GAP.cast_signed(), room, list);
-    (canvas, (close, copy), below)
+    (canvas, copy, below)
 }
 
 /// How large the tick it shows once it has copied is, and the room after

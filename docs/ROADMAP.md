@@ -1450,8 +1450,9 @@ the first than on the last.
       panel in the middle of the screen with the mark, the version and
       the licence, and each thing of someone else's with its licence and
       whose it is, as `CREDITS.md` was when omorfos was built; glass, and
-      put away by a window's close button, Escape, a click beside it, or
-      `about` again.
+      put away by Escape, a click beside it, or `about` again. It had a
+      window's close button too, taken out on 19 November 2026 as the
+      welcome card's was: neither is a window.
 - [x] "About" on a screen too short for it: no taller than the screen
       within its margins, what it lists scrolled by the wheel, the
       touchpad, the arrows, the keys of a page, space, Home and End,
@@ -1604,9 +1605,10 @@ the first than on the last.
       it draws its own titlebar is left to, and GTK 3 is told to read
       the portal. Settled by the maintainer in a mock and on real
       hardware, on 18 November 2026.
-- [ ] What is left of the redesign of windows: the closing button of
-      "About", drawn where and as a window's is (the welcome card's,
-      which sat oddly in its corner, is gone); whether the switcher's
+- [ ] What is left of the redesign of windows: whether "About" and the
+      welcome card, which had a window's close button each and now have
+      none, are to say on themselves how they are put away; whether the
+      switcher's
       pictures show a window's frame, which they do not; whether the
       side is a setting (the review of the defaults); and a theme unable
       to style the button under the pointer apart from the other two.

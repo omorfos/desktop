@@ -17,7 +17,7 @@ use smithay::wayland::shell::xdg::PopupSurface;
 use crate::bridge::{self, Chord};
 use crate::compositor::{About, Compositor, Look};
 use crate::holding::Held;
-use crate::paint::{self, AboutButton};
+use crate::paint;
 use crate::reveal::Placing;
 use crate::surfaces;
 use crate::x11::Focus;
@@ -921,10 +921,10 @@ impl Compositor {
             None => {}
         }
         let about = self.cards.about.asked.is_some();
-        // The buttons of "About" are pointed at with a hand.
+        // The button of "About" is pointed at with a hand.
         let shown = self.cards.about.shown.as_ref().filter(|_| about);
         let position = self.pointer_position();
-        if shown.and_then(|about| about.button_at(position)).is_some() {
+        if shown.is_some_and(|about| about.copies_at(position)) {
             return Look::Icon(CursorIcon::Pointer);
         }
         // So are those of the question whether to leave.
@@ -982,16 +982,15 @@ impl Compositor {
         by.is_some()
     }
 
-    /// A press while "About" is shown: on the button that closes it, or
-    /// beside it, it puts it away; on the one that copies, it copies what
-    /// the computer is. None is any window's.
+    /// A press while "About" is shown: beside it, it puts it away; on its
+    /// button, it copies what the computer is; anywhere else on it does
+    /// nothing. None is any window's.
     fn press_about(&mut self, position: DomainPoint) {
         let about = self.cards.about.shown.as_ref();
-        match about.and_then(|about| about.button_at(position)) {
-            Some(AboutButton::Copy) => self.copy_about(),
-            Some(AboutButton::Close) => self.cards.about.asked = None,
-            None if !self.over_about() => self.cards.about.asked = None,
-            None => {}
+        if about.is_some_and(|about| about.copies_at(position)) {
+            self.copy_about();
+        } else if !self.over_about() {
+            self.cards.about.asked = None;
         }
     }
 

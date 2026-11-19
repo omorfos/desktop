@@ -177,45 +177,30 @@ fn about_fades_out_as_it_goes_and_a_theme_may_give_it_no_shadow() {
     assert_eq!(session.draw().at(GROUND.0, GROUND.1), BARE);
 }
 
-/// The middle of the button that closes "About": what is in the colour of
-/// danger at its top right, as a window's button is with focus.
-fn close_button(session: &mut Session) -> (i32, i32) {
-    const DANGER: u32 = 0xfff8_616d;
-    let screen = session.draw();
-    let red: Vec<(i32, i32)> = (0..HEIGHT / 2)
-        .flat_map(|y| (WIDTH / 2..WIDTH).map(move |x| (x, y)))
-        .filter(|&(x, y)| screen.at(x, y) == DANGER)
-        .collect();
-    // Nothing found is the corner, which the test then finds wanting.
-    let across = red.iter().map(|&(x, _)| x);
-    let down = red.iter().map(|&(_, y)| y);
-    let middle = |from: Option<i32>, to: Option<i32>| {
-        i32::midpoint(from.unwrap_or_default(), to.unwrap_or_default())
-    };
-    (
-        middle(across.clone().min(), across.max()),
-        middle(down.clone().min(), down.max()),
-    )
-}
-
 #[test]
-fn the_button_that_closes_about_shows_its_cross_under_the_pointer_and_closes_it() {
+fn about_has_no_button_that_closes_it_and_a_press_where_one_was_does_nothing() {
+    // A window's button that closes it, as "About" once had in its corner.
+    const DANGER: u32 = 0xfff8_616d;
     let mut session = unblurred();
     about(&mut session);
-    let (x, y) = close_button(&mut session);
-    let red = session.draw().at(x, y);
-    assert_ne!(red, UNBLURRED, "the button: {red:#x}");
-    // Under the pointer, its cross is drawn in the middle of it.
-    let position = Input::Motion {
-        x: f64::from(x),
-        y: f64::from(y),
-    };
-    session.compositor_mut().input(position, 0);
-    session.settle();
-    let crossed = session.draw().at(x, y);
-    assert_ne!(crossed, red, "its cross: {crossed:#x}");
-    click(&mut session, (x, y));
-    assert_eq!(session.draw().at(GROUND.0, GROUND.1), BACKGROUND, "closed");
+    let screen = session.draw();
+    let red = (0..HEIGHT)
+        .flat_map(|y| (0..WIDTH).map(move |x| (x, y)))
+        .filter(|&(x, y)| screen.at(x, y) == DANGER)
+        .count();
+    assert_eq!(red, 0, "nothing in the colour of a button that closes");
+    // In its top right corner, a little in from where it begins, which is
+    // found by going up from its ground.
+    let top = (0..GROUND.1)
+        .rev()
+        .find(|&y| screen.at(GROUND.0, y) == BACKGROUND)
+        .map_or(0, |above| above + 1);
+    click(&mut session, (WIDTH - GROUND.0 - 8, top + 26));
+    assert_eq!(
+        session.draw().at(GROUND.0, GROUND.1),
+        UNBLURRED,
+        "still shown: a press on it is not one beside it"
+    );
 }
 
 /// A session whose screen is half as large in units of layout, its scale
