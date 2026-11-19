@@ -307,6 +307,12 @@ impl Portal {
                 Failure::from(message)
             };
             named.map_err(taken).map(|_| {
+                // A portal started again may say other than the one before
+                // it did, as after a new version whose built-in theme puts
+                // a titlebar's buttons elsewhere; a program already running
+                // read the old, and is told nothing changed unless it is
+                // told now. So each setting is said as it is, once.
+                announce(&connection, &look());
                 let answering = connection.clone();
                 let (sender, asked) = mpsc::channel();
                 let _ = omorfos_ipc::threads::start("xdg-desktop-portal-omorfos: bus", move || {
@@ -423,6 +429,14 @@ impl Portal {
                         .emit_signal(nobody, PATH, SETTINGS, "SettingChanged", &body);
             }
         }
+    }
+}
+
+/// Tells applications every setting of the desktop's look, as it is.
+fn announce(connection: &Connection, look: &Appearance) {
+    for body in settings(look) {
+        let nobody = None::<&str>;
+        let _ = connection.emit_signal(nobody, PATH, SETTINGS, "SettingChanged", &body);
     }
 }
 
@@ -882,6 +896,29 @@ pub(crate) mod tests {
             keeper().0,
         )
         .unwrap()
+    }
+
+    #[test]
+    fn a_portal_that_starts_says_every_setting_to_programs_already_running() {
+        let daemon = Daemon::start();
+        // A program that was there before it, and read what the portal
+        // before it said.
+        let peer = daemon.peer();
+        let mut heard = listen_for_changes(&peer);
+        let _portal = service(&daemon, dark());
+        let said: Vec<(String, String, OwnedValue)> =
+            (0..11).map(|_| next_change(&mut heard)).collect();
+        let named = |group: &str, key: &str| {
+            let mut found = said
+                .iter()
+                .filter(|(of, name, _)| of == group && name == key);
+            found.next().map(|(_, _, value)| value.try_clone().unwrap())
+        };
+        let buttons: String = named(WINDOWS, "button-layout").unwrap().try_into().unwrap();
+        assert_eq!(buttons, "close,minimize,maximize:");
+        let scheme = named(LOOKS, "color-scheme").unwrap();
+        assert_eq!(scheme.downcast_ref::<u32>().unwrap(), 1, "dark");
+        assert!(named(INTERFACE, "font-name").is_some());
     }
 
     #[test]

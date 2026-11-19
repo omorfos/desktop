@@ -1301,11 +1301,11 @@ the first than on the last.
       along it, so they are not smoothed; and a frame at the edge of
       the screen cannot be held by that side to resize it, the room to
       hold it by being outside it.
-- [ ] Known gap in what programs are told: a portal started again with
-      other settings than it had, as after an upgrade that changes the
-      built-in theme, does not say that they changed, so a program
-      already running keeps what it read, the side of a titlebar's
-      buttons among it, until it is started again.
+- [x] A portal that starts says every setting, once, to the programs
+      already running: one started again with other settings than the
+      one before it had, as after an upgrade that changes the built-in
+      theme, left them with what they had read, the side of a titlebar's
+      buttons among it, until they were started again.
 - [x] Blur for other programs that ask (`ext-background-effect`), under
       windows and panels, as far as `window`'s `backdrop-filter` says, cut
       to the surface, a window's to the window proper and not the shadow
