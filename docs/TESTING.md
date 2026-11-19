@@ -522,7 +522,11 @@ tool that retries.
   allowed `unsafe`, 10 times built with AddressSanitizer. A failure
   opens an issue labelled `flaky` for that architecture, or adds to the one
   that is open, and the logs of each run that failed are kept with it for
-  30 days. One seen on a push gets an issue of its own, with the run.
+  30 days. The issue says which tests failed and what each said, so that
+  it can be read without the logs; a run that does not end in twenty
+  minutes is stopped and counted as failed, with the tests it was waiting
+  on; and a job cut short, as one out of time is, is said there too. One
+  seen on a push gets an issue of its own, with the run.
 - **Fixed, then closed.** The commit that fixes a flake says `Fixes #N` in
   its body, which closes the issue once it is on `main`.
 - **Memory spoilt shows late.** A run ended by the C library, as
