@@ -2498,15 +2498,22 @@ Programs written for X11:
       manager takes up only windows made after it starts. Waits on:
       Smithay.
 - [ ] Known gap in what goes with the X server, found on 18 November
-      2026: the X server on the maintainer's machine was not kept but
-      started anew with each compositor, and a program that only holds
-      a connection to it goes when it does, though its windows are
-      Wayland's and the relay keeps them. Visual Studio Code is one,
-      and says "X connection to :0 broken" as it goes. Such a program
-      has no window written for X11, so the wait for a quiet moment
-      before a new version is taken up does not see it: to count what
-      is connected to the X server, not its windows alone; and to find
-      why the server was not kept.
+      2026: the X server is the compositor's and is started anew with
+      each (ADR 61 has a program written for X11 close with it, and a
+      new version wait for such a program's windows to be closed). A
+      program that only holds a connection to it goes when it does,
+      though its windows are Wayland's and the relay keeps them. Visual
+      Studio Code is one, and says "X connection to :0 broken" as it
+      goes. Such a program has no window written for X11, so the wait
+      for a quiet moment before a new version is taken up does not see
+      it. To count what is connected to the X server, not its windows
+      alone: the X server says who is connected, and whose process each
+      is, through its X-Resource extension, but the compositor cannot
+      ask and wait for the answer, as the server may be waiting on the
+      compositor at the time (as asking which screen is primary froze,
+      above). So it is to be asked from a thread of its own, as any
+      program would ask, while a new version waits, and what it last
+      said is what the wait goes by.
 - [ ] Dialogs kept with the window they belong to, and docks, splash
       screens and the like treated as such.
 - [ ] The X server started when first asked for. Waits on: a change in
