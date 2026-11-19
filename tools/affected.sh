@@ -16,7 +16,7 @@
 # there is one list. See
 # docs/adr/0094-the-commit-tier-tests-what-a-change-can-reach.md.
 #
-#   git diff --no-renames --name-only HEAD | .claude/skills/handover/affected.sh
+#   git diff --no-renames --name-only HEAD | tools/affected.sh
 #
 # A path inside a crate is the crate's. A path outside the crates reaches
 # everything, unless it is one of those below: a path left off these lists
@@ -34,6 +34,7 @@ set -euo pipefail
 # and the tools every tier runs. A directory ends in a slash; a name that
 # ends in a star is every path that begins so.
 unread=(
+    .claude/
     docs/adr/
     docs/reviews/
     docs/ARCHITECTURE.md
@@ -73,7 +74,7 @@ only=(
     "man/ omorfos-config:documentation omorfos:manuals omorfos:packaging omorfosctl"
     "docs/brand/ omorfos-brand:docs"
     "Makefile omorfos-brand:lib omorfos:packaging"
-    "packaging/ omorfos:packaging"
+    "packaging/ omorfos:packaging scripts"
     "README.md omorfos-config:documentation omorfos:packaging"
     "LICENSE omorfos:packaging"
     "LICENSES/ omorfos:packaging"
@@ -82,7 +83,7 @@ only=(
     "deny.toml omorfos:packaging"
     ".github/ omorfos:packaging workflows"
     # Built into nothing: their own tests, and shellcheck.
-    ".claude/ scripts"
+    "tools/ scripts"
     ".githooks/ scripts"
 )
 

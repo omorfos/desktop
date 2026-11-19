@@ -7,13 +7,13 @@
 # kept in a podman volume for that release, `omorfos-ci-<release>`, so that
 # a second run takes minutes.
 #
-#   .claude/skills/ci-failure/reproduce.sh [command...]
+#   tools/reproduce-ci.sh [command...]
 #
 # Run from the top of the repository. The command runs in a copy of it,
 # without `target`; it is `cargo coverage --locked` if none is given. What
 # it leaves in `/cache` is kept, such as a report:
 #
-#   reproduce.sh cargo llvm-cov --locked -p omorfos-recording --text --output-path /cache/report.txt
+#   tools/reproduce-ci.sh cargo llvm-cov --locked -p omorfos-recording --text --output-path /cache/report.txt
 #   podman run --rm -v omorfos-ci-26.04:/cache ubuntu:26.04 grep -n -B3 '\^0' /cache/report.txt
 set -euo pipefail
 

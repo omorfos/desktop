@@ -24,7 +24,7 @@ is the order things are done in, and what the maintainer expects to be told.
   is being changed, which take a second or two, not the whole suite:
 
   ```sh
-  .claude/skills/handover/gates.sh area -p omorfos-core tiles::
+  tools/gates.sh area -p omorfos-core tiles::
   ```
 
 - After changing configuration types, regenerate the schemas and
@@ -85,7 +85,7 @@ coverage gate, with the tests that need a graphics card where this user
 may use one, and the nightly build.
 
 ```sh
-.claude/skills/handover/gates.sh handover
+tools/gates.sh handover
 ```
 
 The `rest` tier, clippy without features, the doctests, `cargo deny`,

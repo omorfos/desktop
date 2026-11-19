@@ -28,7 +28,7 @@ Running every test takes about five minutes under the coverage gate;
 one module of tests takes a second.
 So the gates come in tiers, each stopping at the first failure, and the
 slowest are run while the maintainer tries a change rather than before.
-`.claude/skills/handover/gates.sh` runs each.
+`tools/gates.sh` runs each.
 
 | Tier | When | What | About |
 |---|---|---|---|
@@ -66,7 +66,7 @@ The tests run on the machine itself. Where the directory X servers keep
 their sockets in cannot be written to, as under WSL, the tiers give the
 tests one of their own through bubblewrap (`bwrap`), which they then
 need installed; nothing else about the machine changes for them. The
-container of `.claude/skills/ci-failure/reproduce.sh` is for what CI
+container of `tools/reproduce-ci.sh` is for what CI
 does differently, not for every run. `rest` does not run the coverage
 gate again where `handover` ran it on the same tree, as the two runs
 would be the same.

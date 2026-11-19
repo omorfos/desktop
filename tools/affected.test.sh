@@ -79,7 +79,11 @@ says "the Makefile reaches the tests that read it" \
 says "a test of a crate that is reached whole is not named beside it" \
     "omorfos omorfos-config:documentation" docs/guide/windows.md crates/omorfos/src/paint.rs
 says "the gates and the hooks reach their own checks" scripts \
-    .claude/skills/handover/gates.sh .githooks/pre-push
+    tools/gates.sh .githooks/pre-push
+says "what is packaged by a script reaches its test and the scripts' checks" \
+    "omorfos:packaging scripts" packaging/package.sh
+says "a skill, which is words for an agent, reaches nothing" "" \
+    .claude/skills/handover/SKILL.md
 says "a decision reaches nothing" "" docs/adr/0001-fresh-implementation-on-smithay.md
 says "the roadmap, the agent guide and what tools are set by reach nothing" "" \
     docs/ROADMAP.md AGENTS.md docs/STANDARDS.md clippy.toml rustfmt.toml .gitignore

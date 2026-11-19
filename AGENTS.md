@@ -68,7 +68,7 @@ cargo deny check
 All five must pass on the last commit that is pushed, and each commit
 before it must build and pass the tests of what it reaches, alone
 (ADR 96). CI runs the same commands on what is pushed.
-`.claude/skills/handover/gates.sh push` runs them on the last commit, in
+`tools/gates.sh push` runs them on the last commit, in
 a worktree of its own so that work can go on meanwhile, and checks each
 before it that is not yet pushed, and writes down what passed; the push
 hook refuses a commit it has not written down. A commit that changes

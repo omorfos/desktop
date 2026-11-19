@@ -18,7 +18,7 @@ minutes each and more, a commit of documents among them.
 
 **`commit` runs the tests of each crate a change can reach, and nothing
 more; `commits` passes a commit that reaches none as the one before it.**
-`.claude/skills/handover/affected.sh` says which, from the paths changed:
+`tools/affected.sh` says which, from the paths changed:
 
 - A path in a crate's directory reaches that crate, and each crate that
   depends on it, as a dependency of any kind, through any number of

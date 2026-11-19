@@ -77,8 +77,8 @@ ordinary user as the runner does, reading the release and the packages
 from `.github/workflows/test.yml`:
 
 ```sh
-.claude/skills/ci-failure/reproduce.sh                      # cargo coverage --locked
-.claude/skills/ci-failure/reproduce.sh cargo llvm-cov --locked -p <crate> \
+tools/reproduce-ci.sh                      # cargo coverage --locked
+tools/reproduce-ci.sh cargo llvm-cov --locked -p <crate> \
   --text --output-path /cache/report.txt
 podman run --rm -v omorfos-ci-26.04:/cache ubuntu:26.04 grep -n -B3 '\^0' /cache/report.txt
 ```

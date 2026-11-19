@@ -2,16 +2,16 @@
 # The gates, in tiers that each stop at the first failure. See
 # docs/TESTING.md, "Tiers".
 #
-#   .claude/skills/handover/gates.sh area <filter>...  the tests of what is being changed
-#   .claude/skills/handover/gates.sh commit            what every commit needs: the tests of what it reaches, no coverage
-#   .claude/skills/handover/gates.sh handover          what a build for trying by hand needs
-#   .claude/skills/handover/gates.sh rest              the rest, run while it is tried
-#   .claude/skills/handover/gates.sh all               handover, then rest
-#   .claude/skills/handover/gates.sh commits [base [tip]]  each commit after base (main) alone, to tip (HEAD)
-#   .claude/skills/handover/gates.sh push              all on the last commit, in a worktree of its own,
+#   tools/gates.sh area <filter>...  the tests of what is being changed
+#   tools/gates.sh commit            what every commit needs: the tests of what it reaches, no coverage
+#   tools/gates.sh handover          what a build for trying by hand needs
+#   tools/gates.sh rest              the rest, run while it is tried
+#   tools/gates.sh all               handover, then rest
+#   tools/gates.sh commits [base [tip]]  each commit after base (main) alone, to tip (HEAD)
+#   tools/gates.sh push              all on the last commit, in a worktree of its own,
 #                                                      or what it reaches alone if it has built nothing new,
 #                                                      then commits for each other commit not yet pushed
-#   .claude/skills/handover/gates.sh uncovered         what the last coverage run missed
+#   tools/gates.sh uncovered         what the last coverage run missed
 #
 # What passed is written down by the tree it passed on, in
 # target/gates/passed, and `.githooks/pre-push` refuses to push a commit
@@ -225,7 +225,7 @@ light() {
     step .githooks/pre-commit --tree
     step cargo fmt --all --check
     step cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
-    step .claude/skills/handover/affected.test.sh
+    step tools/affected.test.sh
     step cargo test -p omorfos-config --all-features --locked --test links
     # The workflows are checked below whether or not they changed.
     reaching "${1//workflows/}"
@@ -305,7 +305,7 @@ area() {
 # tier if that cannot be said, rather than take it for nothing.
 reached() {
     local said
-    said=$(git diff --no-renames --name-only "$1" "$2" | "$top/.claude/skills/handover/affected.sh") || {
+    said=$(git diff --no-renames --name-only "$1" "$2" | "$top/tools/affected.sh") || {
         echo "FAILED: what the change reaches could not be said" | tee -a "$log"
         exit 1
     }
@@ -323,7 +323,7 @@ commit() {
     step .githooks/pre-commit --tree
     step cargo fmt --all --check
     step cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
-    step .claude/skills/handover/affected.test.sh
+    step tools/affected.test.sh
     step cargo test -p omorfos-config --all-features --locked --test links
     crates=$(reached HEAD "$tree") || exit 1
     reaching "$crates"
@@ -361,9 +361,15 @@ reaching() {
 # The scripts of the gates and the hooks, by shellcheck. Where it is not
 # installed, it is said, so that it is not taken for their having passed.
 scripts() {
+    local found=() each
+    # Those there are in the commit being checked: one made before a
+    # script was moved or written has it elsewhere, or not at all.
+    for each in tools/*.sh .githooks/pre-commit .githooks/pre-push \
+        packaging/package.sh packaging/aur/*.sh; do
+        [ -e "$each" ] && found+=("$each")
+    done
     if command -v shellcheck >/dev/null; then
-        step shellcheck .claude/skills/handover/gates.sh .claude/skills/handover/affected.sh \
-            .claude/skills/handover/affected.test.sh .githooks/pre-commit .githooks/pre-push
+        step shellcheck "${found[@]}"
     else
         echo "=== shellcheck is not installed: the scripts are not checked by it." | tee -a "$log"
     fi
