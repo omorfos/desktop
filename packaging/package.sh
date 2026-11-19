@@ -24,9 +24,13 @@ cargo deb -p omorfos --no-build --output "${out}/"
 name="omorfos-${VERSION}-${TARGET}"
 stage="$(mktemp -d)"
 mkdir "${stage}/${name}"
-cp target/release/omorfos target/release/omorfos-hold target/release/omorfos-relay target/release/omorfosctl target/release/omorfos-panel target/release/omorfos-launcher target/release/omorfos-welcome target/release/omorfos-notifications target/release/omorfos-screenshot target/release/omorfos-clipboard target/release/omorfos-recording target/release/omorfos-session target/release/omorfos-ask target/release/omorfos-pinentry target/release/omorfos-wallpaper target/release/omorfos-lock target/release/xdg-desktop-portal-omorfos LICENSE LICENSE-pictures LICENSE-space-grotesk LICENSE-lucide target/release/LICENSE-crates README.md \
+cp target/release/omorfos target/release/omorfos-hold target/release/omorfos-relay target/release/omorfosctl target/release/omorfos-panel target/release/omorfos-launcher target/release/omorfos-welcome target/release/omorfos-notifications target/release/omorfos-screenshot target/release/omorfos-clipboard target/release/omorfos-recording target/release/omorfos-session target/release/omorfos-ask target/release/omorfos-pinentry target/release/omorfos-wallpaper target/release/omorfos-lock target/release/xdg-desktop-portal-omorfos LICENSE target/release/LICENSE-crates README.md \
   packaging/omorfos.desktop packaging/omorfos.portal packaging/omorfos-portals.conf packaging/omorfos-session.target \
   "${stage}/${name}/"
+# Each licence kept under the name of what it is the licence of.
+cp LICENSES/pictures "${stage}/${name}/LICENSE-pictures"
+cp LICENSES/space-grotesk "${stage}/${name}/LICENSE-space-grotesk"
+cp LICENSES/lucide "${stage}/${name}/LICENSE-lucide"
 # The PAM services the locker asks, for /etc/pam.d: in a folder of their
 # own, as one is named as the program that asks it is.
 mkdir "${stage}/${name}/pam.d"

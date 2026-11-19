@@ -59,9 +59,9 @@ fn every_package_carries_the_licences_credits_names_and_the_crates() {
     // as omorfos is built.
     let files = [
         "LICENSE",
-        "LICENSE-pictures",
-        "LICENSE-space-grotesk",
-        "LICENSE-lucide",
+        "LICENSES/pictures",
+        "LICENSES/space-grotesk",
+        "LICENSES/lucide",
     ];
     for licence in files {
         assert!(!read(licence).is_empty(), "{licence}");

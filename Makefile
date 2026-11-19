@@ -39,9 +39,11 @@ PICTURES = $(BUILT)/share
 WALLPAPERS = prism spill horizon facets ground
 # The pointer it draws, as a cursor theme dark and another light.
 POINTERS = omorfos-dark omorfos-light
-# The licences CREDITS.md names, which go with every package; and those of
-# the crates omorfos is built from, gathered by cargo-about.
-LICENSES = LICENSE LICENSE-pictures LICENSE-space-grotesk LICENSE-lucide
+# The licences CREDITS.md names, which go with every package: each is
+# kept in LICENSES/ under the name of what it is the licence of, and is
+# installed as LICENSE-pictures, LICENSE-space-grotesk and LICENSE-lucide.
+# And those of the crates omorfos is built from, gathered by cargo-about.
+LICENSED = pictures space-grotesk lucide
 CRATES = $(BUILT)/LICENSE-crates
 
 .PHONY: all nightly build install uninstall
@@ -85,7 +87,8 @@ install:
 	install -Dm644 crates/omorfos-config/src/default.css "$(DESTDIR)$(DOC_DIR)/theme.css"
 	install -Dm644 man/*.1 -t "$(DESTDIR)$(MAN_DIR)/man1/"
 	install -Dm644 man/*.5 -t "$(DESTDIR)$(MAN_DIR)/man5/"
-	install -Dm644 $(LICENSES) $(CRATES) -t "$(DESTDIR)$(DOC_DIR)/"
+	install -Dm644 LICENSE $(CRATES) -t "$(DESTDIR)$(DOC_DIR)/"
+	for of in $(LICENSED); do install -Dm644 "LICENSES/$$of" "$(DESTDIR)$(DOC_DIR)/LICENSE-$$of"; done
 	cd "$(PICTURES)" && find icons backgrounds -type f -exec install -Dm644 {} "$(DESTDIR)$(SHARE_DIR)/{}" \;
 	@# The older names of the pointer's shapes, which are links to them.
 	cd "$(PICTURES)" && find icons -type l -exec sh -c 'ln -sfn "$$(readlink "$$1")" "$$2/$$1"' link {} "$(DESTDIR)$(SHARE_DIR)" \;
@@ -108,7 +111,8 @@ uninstall:
 	rm -f "$(DESTDIR)$(SYSTEMD_USER_DIR)/omorfos-session.target"
 	rm -f "$(DESTDIR)$(DOC_DIR)/README.md" "$(DESTDIR)$(DOC_DIR)/theme.css"
 	rm -f $(foreach page,$(notdir $(wildcard docs/guide/*.md)),"$(DESTDIR)$(DOC_DIR)/guide/$(page)")
-	rm -f $(foreach l,$(LICENSES) LICENSE-crates,"$(DESTDIR)$(DOC_DIR)/$(l)")
+	rm -f "$(DESTDIR)$(DOC_DIR)/LICENSE" "$(DESTDIR)$(DOC_DIR)/LICENSE-crates"
+	rm -f $(foreach of,$(LICENSED),"$(DESTDIR)$(DOC_DIR)/LICENSE-$(of)")
 	rm -f $(foreach page,$(notdir $(wildcard man/*.1)),"$(DESTDIR)$(MAN_DIR)/man1/$(page)")
 	rm -f $(foreach page,$(notdir $(wildcard man/*.5)),"$(DESTDIR)$(MAN_DIR)/man5/$(page)")
 	rm -f "$(DESTDIR)$(SHARE_DIR)"/icons/hicolor/*/apps/omorfos.png "$(DESTDIR)$(SHARE_DIR)"/icons/hicolor/*/apps/omorfos.svg "$(DESTDIR)$(SHARE_DIR)"/icons/hicolor/*/apps/omorfos-symbolic.svg

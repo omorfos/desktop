@@ -104,4 +104,4 @@ above, and it is your own or yours to give under the project's licence.
 
 By contributing, you agree that your code is under the
 [MIT licence](../LICENSE), and pictures of the brand under
-[CC BY-SA 4.0](../LICENSE-pictures), as the rest of omorfos is.
+[CC BY-SA 4.0](../LICENSES/pictures), as the rest of omorfos is.

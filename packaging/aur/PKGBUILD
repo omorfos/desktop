@@ -53,7 +53,11 @@ build() {
 package() {
   cd "desktop-$pkgver"
   install -Dm755 target/release/omorfos target/release/omorfos-hold target/release/omorfos-relay target/release/omorfosctl target/release/omorfos-panel target/release/omorfos-launcher target/release/omorfos-welcome target/release/omorfos-notifications target/release/omorfos-screenshot target/release/omorfos-clipboard target/release/omorfos-recording target/release/omorfos-session target/release/omorfos-ask target/release/omorfos-pinentry target/release/omorfos-wallpaper target/release/omorfos-lock target/release/xdg-desktop-portal-omorfos -t "$pkgdir/usr/bin/"
-  install -Dm644 LICENSE LICENSE-pictures LICENSE-space-grotesk LICENSE-lucide target/release/LICENSE-crates -t "$pkgdir/usr/share/licenses/$pkgname/"
+  install -Dm644 LICENSE target/release/LICENSE-crates -t "$pkgdir/usr/share/licenses/$pkgname/"
+  # Each kept under the name of what it is the licence of.
+  install -Dm644 LICENSES/pictures "$pkgdir/usr/share/licenses/$pkgname/LICENSE-pictures"
+  install -Dm644 LICENSES/space-grotesk "$pkgdir/usr/share/licenses/$pkgname/LICENSE-space-grotesk"
+  install -Dm644 LICENSES/lucide "$pkgdir/usr/share/licenses/$pkgname/LICENSE-lucide"
   cp -r target/release/share/icons target/release/share/backgrounds "$pkgdir/usr/share/"
   install -Dm644 README.md -t "$pkgdir/usr/share/doc/$pkgname/"
   install -Dm644 docs/guide/*.md -t "$pkgdir/usr/share/doc/$pkgname/guide/"

@@ -9,24 +9,27 @@ The Rust crates omorfos is built from are listed, with their licences,
 by `cargo deny list`, and are checked against the licences allowed in
 [deny.toml](../deny.toml). As it is packaged, `cargo about` gathers the text
 of each into `LICENSE-crates`, with the crates under it, which the
-packages carry beside the others.
+packages carry beside the others. Those are in [LICENSES](../LICENSES/),
+each under the name of what it is the licence of, and are packaged as
+`LICENSE-` and that name.
 
 ## Built in
 
 | What | By | Licence | Used for |
 |---|---|---|---|
 | The [time zone database](https://www.iana.org/time-zones)'s `zone1970.tab`, from tzdata 2026f | Paul Eggert and the tz contributors | Public domain | Where the principal city of each time zone is, for `appearance.location` to name a time zone and for the system's to be where the sun is watched |
-| [Lucide](https://lucide.dev) icons, from lucide-static 1.61.0 | The Lucide contributors; parts derive from [Feather](https://feathericons.com) by Cole Bemis | ISC; the parts from Feather, MIT; both in [LICENSE-lucide](../LICENSE-lucide) | The signs of the interface: only the ones used, in [crates/omorfos-icons/signs](../crates/omorfos-icons/signs) as Lucide gives them, drawn with thinner lines. Chosen in [ADR 32](adr/0032-the-design-language.md), built in as [ADR 70](adr/0070-signs-and-pictures-in-menus.md) says. |
+| [Lucide](https://lucide.dev) icons, from lucide-static 1.61.0 | The Lucide contributors; parts derive from [Feather](https://feathericons.com) by Cole Bemis | ISC; the parts from Feather, MIT; both in [LICENSE-lucide](../LICENSES/lucide) | The signs of the interface: only the ones used, in [crates/omorfos-icons/signs](../crates/omorfos-icons/signs) as Lucide gives them, drawn with thinner lines. Chosen in [ADR 32](adr/0032-the-design-language.md), built in as [ADR 70](adr/0070-signs-and-pictures-in-menus.md) says. |
 
 ## Used to make what is shipped
 
 | What | By | Licence | Used for |
 |---|---|---|---|
-| [Space Grotesk](https://github.com/floriankarsten/space-grotesk) | Florian Karsten and the Space Grotesk project authors | SIL Open Font Licence 1.1, in [LICENSE-space-grotesk](../LICENSE-space-grotesk) | The name beside the mark, drawn once as outlines; the font itself is neither shipped nor needed |
+| [Space Grotesk](https://github.com/floriankarsten/space-grotesk) | Florian Karsten and the Space Grotesk project authors | SIL Open Font Licence 1.1, in [LICENSE-space-grotesk](../LICENSES/space-grotesk) | The name beside the mark, drawn once as outlines; the font itself is neither shipped nor needed |
 
 omorfos's own pictures, its mark, its name as drawn, its icon and its
-wallpapers, are under [CC BY-SA 4.0](../LICENSE-pictures), and the
-[brand](BRAND.md) says how they are made.
+wallpapers, are under [CC BY-SA 4.0](../LICENSES/pictures), which the
+packages carry as `LICENSE-pictures`, and the [brand](BRAND.md) says how
+they are made.
 
 ## Recommended by the packages, not shipped
 

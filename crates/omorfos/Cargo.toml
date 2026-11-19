@@ -64,10 +64,10 @@ assets = [
     # built, under the licence of the pictures.
     ["target/release/share/icons/**/*", "usr/share/icons/", "644"],
     ["target/release/share/backgrounds/**/*", "usr/share/backgrounds/", "644"],
-    ["../../LICENSE-pictures", "usr/share/doc/omorfos/", "644"],
+    ["../../LICENSES/pictures", "usr/share/doc/omorfos/LICENSE-pictures", "644"],
     # What CREDITS.md names that is someone else's, and the crates'.
-    ["../../LICENSE-space-grotesk", "usr/share/doc/omorfos/", "644"],
-    ["../../LICENSE-lucide", "usr/share/doc/omorfos/", "644"],
+    ["../../LICENSES/space-grotesk", "usr/share/doc/omorfos/LICENSE-space-grotesk", "644"],
+    ["../../LICENSES/lucide", "usr/share/doc/omorfos/LICENSE-lucide", "644"],
     ["target/release/LICENSE-crates", "usr/share/doc/omorfos/", "644"],
     ["../../packaging/omorfos-portals.conf", "usr/share/xdg-desktop-portal/", "644"],
     ["../../packaging/omorfos-session.target", "usr/lib/systemd/user/", "644"],
