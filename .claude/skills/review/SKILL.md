@@ -47,6 +47,11 @@ how to work and how to answer. They read; none runs the gates or the
 whole suite, which share the machine with whatever else is running. A
 reviewer may run one test by name to show a finding.
 
+If a tier of the gates is running, say so in each prompt: a test run
+beside a coverage run times out the tests that wait on a clock, in both.
+The reviewers then run nothing and hand back what would show each
+finding, and those are run once the tier has ended.
+
 While they run, do nothing that changes the working copy.
 
 ## 3. Check what comes back
@@ -58,6 +63,10 @@ A reviewer's finding is a claim. Before it is written up:
   as it is, and see it fail;
 - drop what is not so, and say in the write-up what was dropped and why
   if a reader would otherwise look for it;
+- where a finding is small and safe, as its reviewer says under "Size",
+  and is shown, it may be put right at once, by a test written first,
+  as a change of its own; the write-up keeps it, marked as fixed, for
+  how it was shown;
 - merge what two reviewers found from two sides into one finding;
 - rank: **high** stops or ends the session, or gives away what is
   private; **medium** costs without bound, or breaks a promise;
