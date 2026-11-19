@@ -496,6 +496,34 @@ fn only_polkit_is_heard() {
 }
 
 #[test]
+fn the_agent_does_not_believe_another_program_that_polkit_has_gone() {
+    let mut session = Session::new();
+    let asker = start(&mut session);
+    // Any user may send a signal on the system's bus, straight to the
+    // agent, in the bus's words.
+    let liar = Builder::address(asker.daemon.address.as_str())
+        .unwrap()
+        .build()
+        .unwrap();
+    let said = ("org.freedesktop.PolicyKit1", ":1.1", "");
+    liar.emit_signal(
+        Some(asker.agent.as_str()),
+        "/forged",
+        "org.example.Forged",
+        "NameOwnerChanged",
+        &said,
+    )
+    .unwrap();
+    for _ in 0..50 {
+        session.step();
+    }
+    assert!(!asker.running.is_finished(), "it goes on");
+    // Polkit going in truth still ends it.
+    drop(asker.polkit);
+    session.eventually(|_| asker.running.is_finished());
+}
+
+#[test]
 fn the_agent_ends_once_polkit_has_gone() {
     let mut session = Session::new();
     let asker = start(&mut session);

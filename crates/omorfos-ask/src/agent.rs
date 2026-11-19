@@ -187,11 +187,17 @@ fn register(connection: &Connection, session: &str, locale: &str) -> zbus::Resul
 }
 
 /// Whether `message` says polkit has gone, or come anew, which forgets
-/// every agent.
+/// every agent. Only the bus is believed: it writes who sent each message,
+/// which no program can write for itself, and any user may send a signal
+/// in the bus's words straight to this agent, which would otherwise end
+/// it, and with it the user's way to be asked for a password.
 fn lost(message: &Message) -> bool {
     let header = message.header();
     let member = header.member().map(MemberName::as_str);
-    let signal = message.message_type() == Type::Signal && member == Some("NameOwnerChanged");
+    let sender = header.sender().map(UniqueName::as_str);
+    let signal = message.message_type() == Type::Signal
+        && member == Some("NameOwnerChanged")
+        && sender == Some("org.freedesktop.DBus");
     signal
         && message
             .body()
