@@ -2506,6 +2506,24 @@ Known gaps, each taken when the code beside it is touched:
 - [ ] Low: documents and comments no longer so, what was more than a line
       ([finding 27](reviews/2026-11-19-after-the-redesign-of-windows.md#27-documents-and-comments-that-said-what-is-no-longer-so)).
 
+The review of pull requests 44 to 48, of 20 November 2026, found in
+`main`:
+
+- [ ] High: any program written for X11 ends the compositor at will
+      ([finding 1](reviews/2026-11-20-pull-requests-44-to-48.md#1-any-program-written-for-x11-can-end-the-compositor-at-will)):
+      it closes the window manager's connection (`KillClient`), and the
+      next commit of a surface the X server named asks for a manager that
+      is gone.
+- [ ] To be looked at: any program written for X11 may freeze the
+      compositor with `GrabServer`, as asking which screen is primary
+      did; Xwayland listens on the abstract socket with no `-auth`, so a
+      sandbox with the network may reach every program written for X11
+      ([seen in passing](reviews/2026-11-20-pull-requests-44-to-48.md#seen-in-passing-for-later)).
+- [ ] Low: the welcome card says `Super+C` copies whatever
+      `keyboard.super_as_ctrl` is; `omorfos-ask` takes an empty `LC_ALL`
+      as set and never reads `LC_MESSAGES`
+      ([seen in passing](reviews/2026-11-20-pull-requests-44-to-48.md#seen-in-passing-for-later)).
+
 Accessibility:
 
 - [ ] Everything in the shell reachable from the keyboard.
