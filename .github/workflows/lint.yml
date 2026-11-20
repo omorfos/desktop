@@ -33,8 +33,13 @@ jobs:
         env:
           RUSTDOCFLAGS: -D warnings
       # What the gates take a change to reach, held to what the tests are
-      # found to read. Here, where the crates are already fetched: it asks
-      # cargo what depends on what without the network.
+      # found to read. It asks cargo what depends on what without the
+      # network, which needs every crate of the lockfile, for every
+      # platform: what was built has only Linux's, and the cache only what
+      # an older lockfile had, so an update that brings a crate only another
+      # platform builds, as jiff's brought `jiff-static`, failed here.
+      - name: Fetch every crate of the lockfile
+        run: cargo fetch --locked
       - name: The gates' list of what reads what
         run: tools/affected.test.sh
 
