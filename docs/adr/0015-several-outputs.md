@@ -138,3 +138,9 @@ come back when a screen does.
   scale it is told is the compositor's choice of one of them.
 - The hardware side has no tests, as before. The compositor's side is
   tested with two software screens.
+- A screen taken away stops being offered at once, but what programs
+  were told of it stays there to be bound for five seconds before it goes
+  for good. A program told of a screen just before it went may bind it
+  still, and binding what is gone is a protocol error that ends the
+  program's connection: a screen that came and went at once ended the
+  portal's, and with it every screen being shared.

@@ -1300,6 +1300,7 @@ impl Compositor {
     pub fn refresh(&mut self, now: Instant) {
         self.events
             .retain(|(_, at)| now.saturating_duration_since(*at) < EVENT_LASTS);
+        self.forget_withdrawn(now);
         for refused in self.refused.take() {
             self.happened(&refused, now);
         }

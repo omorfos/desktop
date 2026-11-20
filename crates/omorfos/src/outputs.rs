@@ -14,6 +14,7 @@
 //! See `docs/adr/0015-several-outputs.md`.
 
 use std::cell::Cell;
+use std::time::{Duration, Instant};
 
 use omorfos_config::{Align, OfferedMode, Offset, Place, Rotation};
 use omorfos_core::Screen;
@@ -115,7 +116,18 @@ impl Head {
 pub(crate) struct Aside {
     pub(crate) mirrors: Vec<Mirror>,
     pub(crate) dark: Vec<Head>,
+    /// What programs were told of outputs taken out of the space: no
+    /// longer offered, but still there to be bound, until when it goes for
+    /// good, once a turn has said when that is.
+    withdrawn: Vec<(GlobalId, Option<Instant>)>,
 }
+
+/// How long what programs were told of an output is kept after the output
+/// is taken out. One told of it just before may bind it still, and binding
+/// what is gone is a protocol error that ends the program's connection:
+/// the portal's, and with it every screen being shared, where a screen
+/// came and went at once.
+const WITHDRAWN: Duration = Duration::from_secs(5);
 
 /// An output that shows what another shows.
 #[derive(Debug)]
@@ -219,13 +231,25 @@ impl Compositor {
         // know of it, and only then is it gone.
         self.space.refresh();
         if let Some(global) = head.global.take() {
-            self.display.remove_global::<Self>(global);
+            self.display.disable_global::<Self>(global.clone());
+            self.aside.withdrawn.push((global, None));
         }
         self.forget_lock_surface(&head.output);
         // The pointer does not stay behind where there is no screen.
         let at = self.moved_by(0.0, 0.0);
         self.pointer_location = at;
         head
+    }
+
+    /// Takes away for good what programs were told of outputs withdrawn a
+    /// while ago, and starts the wait for those withdrawn since.
+    pub(crate) fn forget_withdrawn(&mut self, now: Instant) {
+        let due = |(_, until): &mut (GlobalId, Option<Instant>)| {
+            *until.get_or_insert(now + WITHDRAWN) <= now
+        };
+        for (global, _) in self.aside.withdrawn.extract_if(.., due) {
+            self.display.remove_global::<Self>(global);
+        }
     }
 
     /// Every output: those that stand in the space, those that mirror one
