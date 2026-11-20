@@ -841,10 +841,14 @@ what only games and touchpads need last.
       compositor's host says nothing of it, so there it is the time it is
       heard of.
 - [ ] Smaller protocols that programs complain of lacking, each waiting
-      on something different. `keyboard-shortcuts-inhibit`, which Smithay
-      has: a program that inhibits the shortcuts, as a virtual machine
-      does, needs a key that always gets back out, and waits on that
-      decision. Content type, which Smithay has: it says what a window
+      on something different, gone through on 20 November 2026 against
+      what the others offer ([the review](reviews/2026-11-20-the-protocols-programs-lack.md)),
+      with an order: `xdg-dialog`, `xdg-system-bell` and
+      `xdg-toplevel-tag` first, then `xwayland-keyboard-grab`, then
+      `fifo` and `commit-timing` once a held commit can be let go, then
+      `linux-drm-syncobj` and `tablet-v2`, which need the relay and real
+      hardware. A pen gets nothing today, not even a pointer. `keyboard-shortcuts-inhibit` is offered, by
+      ADR 78's rule. Content type, which Smithay has: it says what a window
       shows, for a screen to be driven to suit it or its refresh to
       follow a game's, and waits on omorfos doing one of those, rather
       than being offered to quiet a program's log. Tearing control waits
