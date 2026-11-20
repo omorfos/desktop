@@ -92,6 +92,29 @@ fn clients_are_offered_each_output() {
 }
 
 #[test]
+fn a_program_told_of_an_output_just_before_it_went_may_still_bind_it() {
+    let mut session = Session::new();
+    let mut client = session.connect();
+    assert_eq!(client.state.outputs, 1);
+
+    // The program is told of a screen, and binds it only once the screen
+    // has gone, as one slower than the compositor does when a screen
+    // comes and goes at once.
+    let brief = session.add_output((320, 240));
+    session.step();
+    session.compositor_mut().remove_output(&brief);
+    session.roundtrip(&mut client);
+    session.roundtrip(&mut client);
+    assert_eq!(client.state.outputs, 2, "bound, and still connected");
+
+    // A while later it is gone for good, and the program is unharmed.
+    session.advance(Duration::from_secs(5));
+    session.roundtrip(&mut client);
+    let late = session.connect();
+    assert_eq!(late.state.outputs, 1, "nor offered to one that comes after");
+}
+
+#[test]
 fn a_window_opens_on_the_output_the_pointer_is_on_and_is_drawn_there() {
     let (mut session, _second) = two_screens();
     pointer_to(&mut session, WIDTH + 300, 200);
