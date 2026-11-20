@@ -529,6 +529,14 @@ calls for them.
         screen that says nothing of its size, or what cannot be so, as
         televisions and projectors do, is guessed from its resolution
         alone, and never so small or so large that it cannot be used.
+        The rule is settled, in
+        [ADR 100](adr/0100-a-screens-scale-by-how-near-it-is-read.md),
+        from what the survey found: 135 to the inch under 20 inches
+        and 110 from there, told by size and not by socket; quarters
+        up to 2 and halves beyond; a television, and a screen that
+        says nothing true, by resolution alone. It gives the laptop
+        above 2. What it gives each of the survey's screens is there,
+        to be its tests; it is still to be built.
   - [ ] Everything of a screen remembered once it has been plugged in:
         its mode and how often it is drawn, its scale, where it stands
         among the others, which way up it is, and whether it shows what
