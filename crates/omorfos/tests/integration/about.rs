@@ -2,7 +2,7 @@
 //! everything, and put away by Escape, a click beside it, or asking again;
 //! no taller than its screen, what it lists scrolled by the wheel and the
 //! keys, which no window sees while it is shown; what the computer is,
-//! which its button copies for any program to paste.
+//! which its button, or Enter, copies for any program to paste.
 
 use std::io::Read;
 use std::time::Duration;
@@ -401,6 +401,32 @@ fn about_says_what_the_computer_is_and_its_button_copies_it_for_a_window_to_past
         let screen = format!("\nScreens: {name} \u{b7} 640\u{d7}480 at 60 Hz \u{b7} scale 1\n");
         assert!(text.contains(&screen), "{text}");
     }
+    drop(window);
+}
+
+#[test]
+fn enter_presses_the_button_of_about_and_copies_what_it_says_with_no_window_seeing_it() {
+    let mut session = unblurred();
+    let mut client = session.connect();
+    let window = session.open(&mut client, "app", (100, 50), GREEN);
+    session.roundtrip(&mut client);
+    client.take_events();
+    about(&mut session);
+
+    tap(&mut session, key::RETURN);
+    assert_eq!(
+        session.draw().at(GROUND.0, GROUND.1),
+        UNBLURRED,
+        "still shown"
+    );
+    session.roundtrip(&mut client);
+    let typed = client
+        .take_events()
+        .iter()
+        .any(|event| matches!(event, Event::Key { .. }));
+    assert!(!typed, "the window did not see Enter");
+    let text = pasted(&mut session, &mut client);
+    assert!(text.starts_with("omorfos "), "{text}");
     drop(window);
 }
 
