@@ -777,6 +777,22 @@ fn above_the_bar(session: &mut Session, x: i32, up: i32) -> bool {
 }
 
 #[test]
+fn the_month_begins_its_weeks_on_the_day_the_panel_is_told() {
+    let (wide, tall) = MONTH;
+    let month_from = |first| {
+        let (mut session, mut panel) = dated();
+        panel.weeks_from(first);
+        open_month(&mut session, &mut panel);
+        let shot = session.draw();
+        let place = |(x, up)| shot.at(WIDTH - wide + x, HEIGHT - BAR - up);
+        let places = (1..tall).flat_map(|up| (0..wide).map(move |x| (x, up)));
+        places.map(place).collect::<Vec<u32>>()
+    };
+    let monday = month_from(omorfos_shell::month::Weekday::Monday);
+    assert_ne!(month_from(omorfos_shell::month::Weekday::Sunday), monday);
+}
+
+#[test]
 fn a_click_on_the_clock_opens_the_month_above_it_and_a_click_elsewhere_closes_it() {
     let (mut session, mut panel) = dated();
     assert!(!above_the_bar(&mut session, WIDTH - 100, 20));

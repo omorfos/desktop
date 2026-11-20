@@ -1,6 +1,6 @@
-//! A month, as the clock opens it: six weeks from Monday, the days of the
-//! month among those of the months beside it, a day of the one before at
-//! least, today marked, and arrows to the month before and the month
+//! A month, as the clock opens it: six weeks from the day the locale
+//! begins them on, the days of the month among those of the months beside
+//! it, a day of the one before at least, today marked, and arrows to the month before and the month
 //! after, a month at a time. Always six weeks, so that it is as large
 //! whichever month it shows and the arrows stay where they are. Drawn as a
 //! popover's content.
@@ -8,19 +8,55 @@
 //! Nothing here knows of Wayland.
 
 use jiff::ToSpan;
-pub use jiff::civil::Date;
+pub use jiff::civil::{Date, Weekday};
 use omorfos_config::{Edges, Part, State, States, Theme};
 use omorfos_ui::{Area, Canvas, Scale, Text, inset};
 
 /// How many weeks a month is shown in: as many as any month touches.
 const WEEKS: u32 = 6;
 
+/// The territories whose weeks begin on Sunday, by their locales in glibc
+/// 2.39 (`first_weekday` in `LC_TIME`), each as most of its locales have it.
+const SUNDAY: &[&str] = &[
+    "AG", "AR", "BR", "BT", "BW", "CA", "CO", "DO", "ET", "FJ", "GT", "HK", "HN", "ID", "IL", "IN",
+    "JP", "KE", "KH", "KR", "LA", "MM", "MT", "MU", "MX", "NI", "NP", "PA", "PE", "PG", "PH", "PK",
+    "PR", "PY", "SA", "SG", "SV", "TH", "TN", "TO", "TW", "US", "VE", "VU", "WS", "YE", "ZA", "ZW",
+];
+/// Those whose weeks begin on Saturday, as above.
+const SATURDAY: &[&str] = &[
+    "AE", "AF", "BH", "DJ", "DZ", "EG", "IQ", "IR", "JO", "KW", "LY", "MA", "OM", "QA", "SD", "SY",
+];
+/// Those whose weeks begin on Friday, as above.
+const FRIDAY: &[&str] = &["BD", "MV"];
+
+/// The day a week begins on where time is told as the environment asks:
+/// by the territory of the first of `LC_ALL`, `LC_TIME` and `LANG` that is
+/// set, as the C library reads them, and Monday where none names one. `get`
+/// looks a variable up.
+#[must_use]
+pub fn first_weekday(get: &dyn Fn(&str) -> Option<String>) -> Weekday {
+    let locale = ["LC_ALL", "LC_TIME", "LANG"]
+        .into_iter()
+        .find_map(|name| get(name).filter(|value| !value.is_empty()));
+    let territory = locale.as_deref().and_then(|locale| {
+        let name = locale.split(['.', '@']).next().unwrap_or(locale);
+        name.split_once('_').map(|(_, territory)| territory)
+    });
+    match territory {
+        Some(territory) if SUNDAY.contains(&territory) => Weekday::Sunday,
+        Some(territory) if SATURDAY.contains(&territory) => Weekday::Saturday,
+        Some(territory) if FRIDAY.contains(&territory) => Weekday::Friday,
+        _ => Weekday::Monday,
+    }
+}
+
 /// What a month says, in the user's language.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Said {
     /// The months' names, January first.
     pub months: [String; 12],
-    /// The days of the week, short, Monday first.
+    /// The days of the week, short, Monday first, whichever the week
+    /// begins on.
     pub weekdays: [String; 7],
 }
 
@@ -47,6 +83,8 @@ enum Over {
 pub struct Month {
     said: Said,
     today: Date,
+    /// The day each week begins on.
+    first_weekday: Weekday,
     /// The first day of the month shown.
     shown: Date,
     /// What the pointer is on.
@@ -124,12 +162,14 @@ impl Layout {
 }
 
 impl Month {
-    /// The month `today` is in, saying `said`.
+    /// The month `today` is in, saying `said`, its weeks beginning on
+    /// `first_weekday`.
     #[must_use]
-    pub fn new(said: Said, today: Date) -> Self {
+    pub fn new(said: Said, today: Date, first_weekday: Weekday) -> Self {
         Self {
             said,
             today,
+            first_weekday,
             shown: today.first_of_month(),
             hovered: None,
         }
@@ -178,18 +218,25 @@ impl Month {
     }
 
     /// The days shown, each with how many days across and weeks down it
-    /// is: six weeks, from the Monday of the week the month begins in, or
-    /// of the week before if it begins on a Monday.
+    /// is: six weeks, from the first day of the week the month begins in,
+    /// or of the week before if it begins on that day.
     fn days(&self) -> impl Iterator<Item = (u32, u32, Date)> {
         // At least a day of the month before, so that the first row always
-        // ends it: a week of it before a month that begins on a Monday,
-        // which leaves February's four weeks between two others.
-        let monday = self.shown.weekday().to_monday_zero_offset();
-        let before = i64::from(if monday == 0 { 7 } else { monday });
-        let first = self.shown.checked_sub(before.days()).unwrap_or(self.shown);
+        // ends it: a week of it before a month that begins on the first day
+        // of a week, which leaves February's four weeks between two others.
+        let into = self.shown.weekday().since(self.first_weekday);
+        let before = i64::from(if into == 0 { 7 } else { into });
+        let from = self.shown.checked_sub(before.days()).unwrap_or(self.shown);
         (0..WEEKS * 7)
-            .zip(first.series(1.day()))
+            .zip(from.series(1.day()))
             .map(|(place, date)| (place % 7, place / 7, date))
+    }
+
+    /// The days of the week, short, in the order the weeks are shown in.
+    fn weekdays(&self) -> impl Iterator<Item = &String> {
+        let monday_to_first = self.first_weekday.to_monday_zero_offset().unsigned_abs();
+        let skipped = usize::from(monday_to_first);
+        self.said.weekdays.iter().cycle().skip(skipped).take(7)
     }
 
     /// What a day is drawn as: a part, a day of the month shown or of one
@@ -248,7 +295,7 @@ impl Month {
             (Part::PopoverItem, States::NONE),
         );
 
-        for (across, weekday) in (0..).zip(&self.said.weekdays) {
+        for (across, weekday) in (0..).zip(self.weekdays()) {
             let plain = (Part::PopoverItem, States::NONE);
             write(&mut canvas, weekday, layout.cell(across, 1), plain);
         }
@@ -303,7 +350,7 @@ mod tests {
     #[test]
     fn a_month_is_six_weeks_from_monday_filled_with_the_days_of_the_months_beside_it() {
         let shown = |today| {
-            let month = Month::new(said(), today);
+            let month = Month::new(said(), today, Weekday::Monday);
             let days: Vec<(u32, u32, Date, Part)> = month
                 .days()
                 .map(|(across, week, date)| (across, week, date, month.day(across, week, date).0))
@@ -346,7 +393,7 @@ mod tests {
     fn the_arrows_turn_a_month_at_a_time_across_the_years_and_stay_where_they_are() {
         let theme = theme();
         let size = Month::size(&theme);
-        let mut month = Month::new(said(), date(2026, 12, 25));
+        let mut month = Month::new(said(), date(2026, 12, 25), Weekday::Monday);
         assert_eq!(month.shown(), date(2026, 12, 1));
         let layout = Layout::new(&theme);
         let (x, y) = middle(layout.cell(6, 0));
@@ -370,7 +417,7 @@ mod tests {
     #[test]
     fn the_pointer_on_an_arrow_and_off_it_changes_how_it_looks() {
         let theme = theme();
-        let mut month = Month::new(said(), date(2026, 11, 14));
+        let mut month = Month::new(said(), date(2026, 11, 14), Weekday::Monday);
         let (x, y) = middle(Layout::new(&theme).cell(6, 0));
         assert!(month.point(x, y, &theme));
         assert!(!month.point(x + 1, y, &theme), "still on it");
@@ -386,7 +433,7 @@ mod tests {
     fn the_day_under_the_pointer_stands_out_most_and_its_week_and_weekday_more_than_the_rest() {
         let theme = theme();
         let layout = Layout::new(&theme);
-        let mut month = Month::new(said(), date(2026, 11, 14));
+        let mut month = Month::new(said(), date(2026, 11, 14), Weekday::Monday);
         // The nineteenth, a Thursday in the fourth week; the room between
         // it and the next day is still its own.
         let (left, top, side, _) = layout.cell(3, 5);
@@ -416,13 +463,109 @@ mod tests {
     }
 
     #[test]
+    fn a_week_begins_on_the_day_given_and_the_names_of_the_days_follow_it() {
+        let shown = |first| {
+            let month = Month::new(said(), date(2026, 11, 14), first);
+            let days: Vec<(u32, u32, Date)> = month.days().collect();
+            let weekdays: Vec<String> = month.weekdays().cloned().collect();
+            (days, weekdays)
+        };
+        // November 2026 begins on a Sunday: begun on Sunday, its weeks have
+        // a week of October before it, and begun on Saturday, a day.
+        let (days, weekdays) = shown(Weekday::Sunday);
+        assert_eq!(days[0], (0, 0, date(2026, 10, 25)));
+        assert_eq!(days[7], (0, 1, date(2026, 11, 1)));
+        assert_eq!(days[20], (6, 2, date(2026, 11, 14)));
+        assert_eq!(weekdays, ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"]);
+        let (days, weekdays) = shown(Weekday::Saturday);
+        assert_eq!(days[0], (0, 0, date(2026, 10, 31)));
+        assert_eq!(days[1], (1, 0, date(2026, 11, 1)));
+        assert_eq!(weekdays, ["Sa", "Su", "Mo", "Tu", "We", "Th", "Fr"]);
+        let (days, weekdays) = shown(Weekday::Monday);
+        assert_eq!(days[6], (6, 0, date(2026, 11, 1)));
+        assert_eq!(weekdays, ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"]);
+    }
+
+    #[test]
+    fn the_names_of_the_days_are_drawn_over_the_weeks_from_the_day_they_begin_on() {
+        let theme = theme();
+        let layout = Layout::new(&theme);
+        // Only Sunday is named, so its ink says where it is drawn, in any
+        // font.
+        let only_sunday = |name: &str| Said {
+            weekdays: ["", "", "", "", "", "", name].map(str::to_owned),
+            ..said()
+        };
+        let sunday_at = |first| {
+            let paint = |said| {
+                let month = Month::new(said, date(2026, 11, 14), first);
+                month.paint(&mut Text::new(), &theme, Scale::ONE)
+            };
+            let (unnamed, named) = (paint(only_sunday("")), paint(only_sunday("Su")));
+            let inked = |across: &u32| {
+                let (left, top, side, _) = layout.cell(*across, 1);
+                let (left, top) = (left.unsigned_abs(), top.unsigned_abs());
+                (top..top + side)
+                    .any(|y| (left..left + side).any(|x| unnamed.at(x, y) != named.at(x, y)))
+            };
+            (0..7).filter(inked).collect::<Vec<u32>>()
+        };
+        assert_eq!(sunday_at(Weekday::Monday), [6]);
+        assert_eq!(sunday_at(Weekday::Sunday), [0]);
+        assert_eq!(sunday_at(Weekday::Saturday), [1]);
+    }
+
+    #[test]
+    fn a_week_begins_on_the_day_the_locale_of_the_time_begins_it_on() {
+        let first = |variables: &[(&str, &str)]| {
+            first_weekday(&|name| {
+                variables
+                    .iter()
+                    .find(|(variable, _)| *variable == name)
+                    .map(|(_, value)| (*value).to_owned())
+            })
+        };
+        assert_eq!(first(&[("LANG", "en_US.UTF-8")]), Weekday::Sunday);
+        assert_eq!(first(&[("LANG", "pl_PL.UTF-8")]), Weekday::Monday);
+        assert_eq!(first(&[("LANG", "ar_EG.UTF-8")]), Weekday::Saturday);
+        assert_eq!(first(&[("LANG", "bn_BD")]), Weekday::Friday);
+        assert_eq!(first(&[("LANG", "sr_RS@latin")]), Weekday::Monday);
+        assert_eq!(first(&[("LANG", "he_IL@euro")]), Weekday::Sunday);
+        assert_eq!(
+            first(&[("LANG", "C.UTF-8")]),
+            Weekday::Monday,
+            "no territory"
+        );
+        assert_eq!(first(&[]), Weekday::Monday, "nothing set");
+        assert_eq!(
+            first(&[("LANG", "pl_PL.UTF-8"), ("LC_TIME", "en_US.UTF-8")]),
+            Weekday::Sunday,
+            "LC_TIME before LANG"
+        );
+        assert_eq!(
+            first(&[
+                ("LANG", "en_US.UTF-8"),
+                ("LC_TIME", "en_US.UTF-8"),
+                ("LC_ALL", "en_GB.UTF-8")
+            ]),
+            Weekday::Monday,
+            "LC_ALL before both"
+        );
+        assert_eq!(
+            first(&[("LC_ALL", ""), ("LANG", "en_CA.UTF-8")]),
+            Weekday::Sunday,
+            "one empty is not set"
+        );
+    }
+
+    #[test]
     fn today_is_drawn_in_the_accent_and_no_other_day() {
         let theme = theme();
         let accent = theme
             .style(Part::PopoverDay, States::NONE.with(State::Active))
             .background;
         let layout = Layout::new(&theme);
-        let mut month = Month::new(said(), date(2026, 11, 14));
+        let mut month = Month::new(said(), date(2026, 11, 14), Weekday::Monday);
         // The fourteenth of November 2026 is a Saturday, in the third week,
         // the first being the one the month begins in, on a Sunday.
         let cells = |month: &Month| {

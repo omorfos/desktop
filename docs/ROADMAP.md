@@ -1746,12 +1746,14 @@ a setting.
       false (ADR 88). To come: the menu hanging from a bar it is opened
       from, and `omorfos-bar` with its button.
 - [ ] The clock, by default as "Wed Apr 1 9:41 AM", its format a setting.
-      A click opens a month, walked a month at a time: done in the panel
+      A click opens a month, walked a month at a time, its weeks from
+      the day the locale of the time begins them on, by its territory
+      as glibc's locales have it: done in the panel
       (`omorfos_shell::month`, in English and Polish), to move to the bar
       with the clock.
-- [ ] Known gaps in the month: its weeks begin on Monday, where the
-      locale may begin them on Sunday or Saturday; it has no week
-      numbers, and no events; and a theme saved while it is open closes
+- [ ] Known gaps in the month: a locale whose first day differs from
+      most of its territory's (`bo_IN`, `rif_MA`, `ug_CN@latin`) is
+      taken as its territory; it has no week numbers, and no events; and a theme saved while it is open closes
       it, rather than its being drawn anew as the bar is.
 - [ ] The system tray (`StatusNotifierItem`), for the programs that put
       an icon there.
