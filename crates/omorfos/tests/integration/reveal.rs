@@ -11,7 +11,7 @@ use wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_surface_v1::{
 };
 
 use crate::common::{Client, Event, LayerShape, Session, key};
-use crate::windows::{BACKGROUND, BLUE, GREEN, RED};
+use crate::windows::{BACKGROUND, BLUE, GREEN, RED, shaded};
 
 const LEFT: u32 = 0x110;
 /// A titlebar with focus, which is glass: solid in its colour where
@@ -207,6 +207,23 @@ fn windows_that_share_a_workspace_keep_their_titlebars_and_only_the_panel_hides(
     click(&mut session, THIRD_BUTTON, 254);
     assert_eq!(session.compositor().desktop().active_workspace(), 0);
     assert_eq!(session.compositor().desktop().frames().count(), 1);
+}
+
+#[test]
+fn the_titlebar_that_is_brought_back_is_square_at_the_top_as_at_the_bottom() {
+    let (mut session, _client) = fullscreen();
+    point(&mut session, 600, 0);
+    session.advance(REST);
+    let picture = session.draw();
+    // Its top right corner, under the panel 20 high: two units inside its
+    // edge, where a corner rounded by the theme's twelve would have left
+    // the background showing.
+    let corner = picture.at(637, 22);
+    assert!(
+        !shaded(corner, BACKGROUND),
+        "square at the top: {corner:#x}"
+    );
+    assert_eq!(picture.at(400, 34), TITLEBAR, "and the titlebar is there");
 }
 
 #[test]
