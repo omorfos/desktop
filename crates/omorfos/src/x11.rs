@@ -26,6 +26,7 @@ use smithay::input::Seat;
 use smithay::input::keyboard::{KeyboardTarget, KeysymHandle, ModifiersState};
 use smithay::reexports::calloop::RegistrationToken;
 use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel::State as ToplevelState;
+use smithay::reexports::wayland_server::backend::DisconnectReason;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::reexports::wayland_server::{Client, DisplayHandle};
 use smithay::utils::{IsAlive, Logical, Rectangle, Serial, Size};
@@ -407,6 +408,12 @@ pub(crate) struct X11 {
     held: Option<u32>,
     /// The window manager, once the X server is ready for one.
     wm: Option<X11Wm>,
+    /// The window manager last let go of, when its X server's connection
+    /// to it closed. Smithay goes on asking for the manager by its id for
+    /// what it left behind: a copy or paste under way, and each commit of
+    /// a surface that X server named. It is answered with this one until
+    /// another is let go of, and is never the one an X server waits for.
+    lost: Option<X11Wm>,
     /// Windows that are to be shown and are not part of the desktop, the
     /// last to come last: those that manage themselves, which menus and
     /// tooltips are, and any that have yet to draw anything.
@@ -475,6 +482,7 @@ impl X11 {
             again: None,
             held: None,
             wm: None,
+            lost: None,
             apart: Vec::new(),
             clipboard: Holding::default(),
             primary: Holding::default(),
@@ -948,12 +956,19 @@ impl XWaylandShellHandler for Compositor {
 }
 
 impl XwmHandler for Compositor {
-    fn xwm_state(&mut self, _: XwmId) -> &mut X11Wm {
+    fn xwm_state(&mut self, id: XwmId) -> &mut X11Wm {
+        // The one asked for, the current one first: Smithay names an X
+        // server's client for its manager only as it starts one, and each
+        // started is kept, as the current one or the one last let go of.
+        let x11 = &mut self.x11;
+        let managers = x11.wm.iter_mut().chain(x11.lost.iter_mut());
         #[expect(
             clippy::expect_used,
-            reason = "only the window manager calls this, so there is one"
+            reason = "a manager once started is kept, current or let go of"
         )]
-        let manager = self.x11.wm.as_mut().expect("no X11 window manager");
+        let manager = managers
+            .min_by_key(|manager| manager.id() != id)
+            .expect("no X11 window manager");
         manager
     }
 
@@ -1131,8 +1146,21 @@ impl XwmHandler for Compositor {
     }
 
     fn disconnected(&mut self, _: XwmId) {
-        // The X server it was for has gone, and has no more to say.
-        self.x11.wm = None;
+        // The X server it was for has no more to say to it. It is kept for
+        // what Smithay may still ask of it, and there is room for another.
+        self.x11.lost = self.x11.wm.take().or(self.x11.lost.take());
+        // An X server can go on without it, where a program closed the
+        // manager's connection, as X11 lets any program do to any other.
+        // Its windows would be shown unmanaged, and nothing would ever
+        // start another manager for it, so it is ended, and started again
+        // as one that stops is: its connection to us is cut, which the
+        // session lets go of before the turn is out, and Xwayland ends as
+        // it is closed.
+        let backend = self.display.backend_handle();
+        let ended = |server: &Server| {
+            backend.kill_client(server.client.id(), DisconnectReason::ConnectionClosed);
+        };
+        self.x11.server.iter().for_each(ended);
     }
 }
 

@@ -22,7 +22,7 @@
 
 ### 1. Any program written for X11 can end the compositor at will
 
-High. Of `main`; #48 writes it up as a race at an X server's end, which
+High. Of `main`, and fixed in the commit after this write-up. #48 writes it up as a race at an X server's end, which
 is less than it is.
 
 - **Where:** `crates/omorfos/src/x11.rs`: `disconnected` lets the manager

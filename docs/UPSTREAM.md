@@ -238,6 +238,30 @@ S=$(ls -d ~/.cargo/registry/src/*/smithay-$(awk '/^name = "smithay"/{getline; pr
   `x11::an_x_server_that_dies_is_started_again_where_programs_expect_to_find_it`
   stays, and says whether it still holds.
 
+### The X11 window manager is asked for after it has gone
+
+- **Wrong:** a window manager's `XwmId` is written into its X server's
+  client data as it starts (`insert_if_missing` in `X11Wm::start_wm`,
+  `src/xwayland/xwm/mod.rs`) and never taken out, and the commit hook
+  (`serial_commit_hook`, `src/wayland/xwayland_shell.rs`) asks the
+  handler for that manager on every commit of a surface that ever had a
+  serial, which `Cacheable::commit` keeps. A compositor that drops its
+  manager when the X connection closes, as a program can make it do,
+  is then asked for one it no longer has; cosmic-comp's `unwrap`s it too.
+- **Meanwhile:** `disconnected` in `crates/omorfos/src/x11.rs` keeps the
+  manager let go of, `xwm_state` answers by id, and an X server whose
+  manager has gone is ended by cutting its connection. wayland-backend
+  lets go of a connection cut from this side only as clients are next
+  read, and `kill_client` called again before then, as dropping
+  `XWayland` does, tells `XWaylandClientData` a second time, which
+  `unwrap`s the process it took the first; so the session reads its
+  clients every turn, and the X server is dropped only once its
+  connection is gone.
+- **Check:** `grep -n -A20 'fn serial_commit_hook' "$S"/src/wayland/xwayland_shell.rs`
+  shows whether the hook still asks for a manager whose id it has not
+  checked; `xwm_state` returning an `Option`, or `X11Wm`'s `Drop` taking
+  the id out of the client data, would mend it.
+
 ### Xwayland cannot be started when first asked for
 
 - **Wrong:** Smithay makes the X sockets itself, privately, as it starts

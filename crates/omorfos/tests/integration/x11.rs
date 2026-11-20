@@ -1004,6 +1004,60 @@ fn an_x_server_that_dies_is_started_again_where_programs_expect_to_find_it() {
 }
 
 #[test]
+fn a_program_that_closes_the_window_managers_connection_ends_only_its_x_server() {
+    let (mut session, program, _alone) = session_alone();
+    open(&mut session, &program, "xapp", (200, 100), 0x00ff_0000);
+    let mut other = session.connect();
+    session.open(&mut other, "app", (50, 50), GREEN);
+    let before = server(&session);
+    let number = display(&session);
+    let manager = atom(&mut session, &program, "WM_S0");
+
+    // X11 lets any program close any other's connection, the window
+    // manager's among them; and it goes on drawing, as programs do. Once
+    // the X server has been ended this fails, which is not the test's.
+    meanwhile(&mut session, || {
+        let owner = program.get_selection_owner(manager).unwrap();
+        let owner = owner.reply().unwrap().owner;
+        program.kill_client(owner).unwrap();
+        program.flush().unwrap();
+        let screen = &program.setup().roots[0];
+        let window = program.generate_id().unwrap();
+        let look = CreateWindowAux::new().background_pixel(0x0000_00ff);
+        let (depth, class) = (screen.root_depth, WindowClass::INPUT_OUTPUT);
+        let _ = program.create_window(
+            depth,
+            window,
+            screen.root,
+            0,
+            0,
+            100,
+            100,
+            0,
+            class,
+            screen.root_visual,
+            &look,
+        );
+        let _ = program.map_window(window);
+        let _ = program.flush();
+    });
+
+    // That X server is ended, and another started where it was; the
+    // compositor goes on, and the program written for Wayland with it.
+    wait(&mut session, |session| {
+        let now = server(session);
+        now.is_some() && now != before
+    });
+    session.eventually(|session| windows(session).len() == 1);
+    assert_eq!(windows(&session)[0].0, "app");
+    session.roundtrip(&mut other);
+    assert_eq!(display(&session), number);
+    let again = connect(&mut session);
+    open(&mut session, &again, "back", (200, 100), 0x0000_00ff);
+    assert_eq!(windows(&session).len(), 2);
+}
+
+#[test]
 fn an_x_server_that_dies_before_it_is_ready_is_started_again_too() {
     let _alone = alone();
     let mut session = Session::new();
