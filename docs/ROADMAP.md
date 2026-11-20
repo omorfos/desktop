@@ -867,8 +867,11 @@ what only games and touchpads need last.
 - [x] Nothing sliding with `appearance.reduce_motion`: the keys change
       the workspace at once, and three fingers carry nothing, changing it
       as they lift if they went far enough or fast enough (ADR 71).
-- [ ] Whether three fingers or four, which is for the review of the
-      defaults.
+- [ ] Whether four fingers as well as three, which is for the review of
+      the defaults: three or four, as a Mac, is proposed in ADR 101, with
+      down for the program's windows, a pinch for every program and a
+      spread for the desktop, and a page of settings that shows each
+      gesture and changes it.
 - [x] The session outliving the compositor (ADR 60), the holder first,
       `omorfos-hold`: a small program that binds the socket and starts
       the compositor with it, and again when it ends, with a new version
@@ -1659,7 +1662,15 @@ the first than on the last.
       both, with the keys to copy and paste; whether `clipboard.forget`
       forgets by default, and after how long; the launcher's icons and
       descriptions, shown by default since 15 November 2026, as asked; and
-      the theme's parts made along the way.
+      the theme's parts made along the way. Reviewed on 20 November 2026,
+      against GNOME, KDE, macOS and Windows
+      ([the review](reviews/2026-11-20-the-defaults.md)), with a proposal,
+      the Mac's keys first with Super for Command, for what it went
+      through in [ADR 101](adr/0101-super-drives-the-desktop-and-the-ordinary-way-is-a-setting.md),
+      for the maintainer to decide; the theme's parts are left to the
+      design review, and what was not gone through (the titlebar's side,
+      the question's minute, the tooltip's delay, the other built-in
+      bindings) is listed there.
 - [ ] Super as the key omorfos is driven by, everywhere, and a way back to
       Ctrl and Alt as Windows, GNOME and KDE have them (asked on
       15 November 2026). ADR 78 gave Super to the desktop, and hands a
