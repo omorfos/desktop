@@ -6280,7 +6280,7 @@ impl Chrome {
             .as_mut()
             .map(|chrome| std::mem::take(&mut chrome.spare));
         let room = room.unwrap_or_default();
-        let looks = paint::Looks::of_in(room, theme, motion, shown, tabs, state, frame.focused);
+        let mut looks = paint::Looks::of_in(room, theme, motion, shown, tabs, state, frame.focused);
         let outline = looks.window.border.top.color;
         // A titlebar laid over a fullscreen window is as square as the
         // screen, and the window under it is not cut to any shape.
@@ -6293,6 +6293,9 @@ impl Chrome {
         let size = decoration.titlebar().size;
         let straight = corners::straight_borders(&decoration, radius);
         let shade = shades.of(looks.window.shadow, looks.window.radius, scale);
+        // The titlebar rounds its top corners by the frame's radius, which
+        // over a fullscreen window is none, as its bottom corners are.
+        looks.window.radius = rounded;
         // Everything painted is kept for as long as it would look the same,
         // which is asked of what it was painted as, part by part.
         let same = |chrome: &Self| {

@@ -2478,8 +2478,8 @@ First, what is unsafe or gives away what is private:
       ([finding 21](reviews/2026-11-19-after-the-redesign-of-windows.md#21-part-of-a-notice-the-user-reads-is-english-written-in-the-code)).
 - [x] Low: "About"'s one button not pressed from the keyboard
       ([finding 22](reviews/2026-11-19-after-the-redesign-of-windows.md#22-about-has-the-keyboard-and-its-one-button-cannot-be-pressed-with-it)): Enter presses Copy, and the guide says so.
-- [ ] Low: a titlebar over a fullscreen window said to be square
-      ([finding 23](reviews/2026-11-19-after-the-redesign-of-windows.md#23-a-titlebar-over-a-fullscreen-window-is-said-to-be-square-and-only-its-bottom-is)).
+- [x] Low: a titlebar over a fullscreen window said to be square
+      ([finding 23](reviews/2026-11-19-after-the-redesign-of-windows.md#23-a-titlebar-over-a-fullscreen-window-is-said-to-be-square-and-only-its-bottom-is)): it is square at the top as at the bottom, its glass with it.
 
 Then what glass costs. Measured first, as stage 4's item says, with a
 build that has the fix to finding 2, and each of these taken as the
