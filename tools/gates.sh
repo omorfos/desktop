@@ -363,6 +363,7 @@ reaching() {
 # The scripts of the gates, the hooks and the packaging, by shellcheck,
 # and by shfmt as .editorconfig says they are written. Where either is not
 # installed, it is said, so that it is not taken for their having passed.
+# And the two documents a script worked out, by that script.
 scripts() {
     local found=() each
     # Those there are in the commit being checked: one made before a
@@ -381,6 +382,8 @@ scripts() {
     else
         echo "=== shfmt is not installed: how the scripts are written is not checked." | tee -a "$log"
     fi
+    # A commit made before the script was written has none to be held to.
+    [ ! -e tools/scale-survey.sh ] || step tools/scale-survey.sh check
 }
 
 # The workflows, as CI checks them but for what needs the network: each

@@ -79,6 +79,16 @@ by a test at the top of the repository, and fails where such a path is
 not said to reach the crate that reads it. It finds what is written as
 a path; a path made up as the test runs it would not be found.
 
+**A file the second list names is read, though the first has its
+folder** (added on 20 November 2026).
+[The survey of what scale other systems choose](../reviews/2026-11-19-what-scale-other-systems-choose.md)
+and [ADR 100](0100-a-screens-scale-by-how-near-it-is-read.md) are a
+review and a decision, and those folders are read by nothing. But their
+tables were worked out by
+[`tools/scale-survey.sh`](../../tools/scale-survey.sh), which holds both
+documents to itself: the two are named on the second list, and reach
+`scripts`, where it is run.
+
 **The coverage gate is not narrowed, anywhere.** A change to one crate
 can leave a line of another unreached: of one it depends on, whose code
 its tests were what ran, as well as of one that depends on it. Showing

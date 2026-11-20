@@ -47,6 +47,12 @@ where either is not installed, and CI runs both, with the gates' own
 test and a search for a line left in from debugging, for a change made
 without the hooks.
 
+[The survey of what scale other systems choose](reviews/2026-11-19-what-scale-other-systems-choose.md)
+and [ADR 100](adr/0100-a-screens-scale-by-how-near-it-is-read.md) reach
+the scripts as well: `tools/scale-survey.sh` worked their tables out,
+and its `check` holds both to it there, by the machine's awk. CI holds
+them by `mawk` and by `gawk`.
+
 A failed coverage gate lists what it did not reach in the tier itself.
 `handover` also refuses a line of Rust with the word `DBG` in it, which
 is how a line put in only to find something out is marked, as does the

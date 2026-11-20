@@ -17,9 +17,10 @@
 # themselves.
 #
 # The sums are awk's, as the shell has no fractions, and holding the
-# documents to them is the shell's. Nothing of omorfos needs this, to build,
-# to test or to run; it needs bash and awk, as the gates do. Run from the
-# top of the repository.
+# documents to them is the shell's. AWK names the awk to do them with, where
+# it is not to be the machine's own: CI runs `check` with each of two.
+# Nothing of omorfos needs this, to build, to test or to run; it needs bash
+# and awk, as the gates do. Run from the top of the repository.
 set -euo pipefail
 # A decimal point is a point and a letter is its bytes, whatever language
 # the machine is set to.
@@ -34,7 +35,7 @@ tab=$(printf '\t')
 # between. Says nothing, and fails, if a rule is not as its own project
 # has it.
 sums() {
-    awk -v survey="$survey" -v decision="$decision" -f /dev/stdin <<'AWK'
+    "${AWK:-awk}" -v survey="$survey" -v decision="$decision" -f /dev/stdin <<'AWK'
 function abs(number) {
     return number < 0 ? -number : number
 }
