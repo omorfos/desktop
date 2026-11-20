@@ -2471,11 +2471,12 @@ First, what is unsafe or gives away what is private:
       connections are not counted
       ([finding 4](reviews/2026-11-19-after-the-redesign-of-windows.md#4-what-the-relay-holds-a-program-to-it-holds-each-connection-to-and-connections-are-not-counted)):
       with "one program takes every sandbox's place" above, as one change.
-- [ ] Low, taken with these if they are as small as they read: part of a
-      notice in English in the code; "About"'s one button not pressed from
-      the keyboard; a titlebar over a fullscreen window said to be square
-      (findings 21, 22 and 23)
+- [ ] Low: part of a notice in English in the code
       ([finding 21](reviews/2026-11-19-after-the-redesign-of-windows.md#21-part-of-a-notice-the-user-reads-is-english-written-in-the-code)).
+- [x] Low: "About"'s one button not pressed from the keyboard
+      ([finding 22](reviews/2026-11-19-after-the-redesign-of-windows.md#22-about-has-the-keyboard-and-its-one-button-cannot-be-pressed-with-it)): Enter presses Copy, and the guide says so.
+- [ ] Low: a titlebar over a fullscreen window said to be square
+      ([finding 23](reviews/2026-11-19-after-the-redesign-of-windows.md#23-a-titlebar-over-a-fullscreen-window-is-said-to-be-square-and-only-its-bottom-is)).
 
 Then what glass costs. Measured first, as stage 4's item says, with a
 build that has the fix to finding 2, and each of these taken as the

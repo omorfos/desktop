@@ -507,9 +507,9 @@ impl Compositor {
                 return FilterResult::Intercept(None);
             }
             // "About" has the keyboard while it is shown: Escape puts it
-            // away, and the arrows, the keys of a page, space, Home and
-            // End scroll it. Nothing else of it reaches a window; a
-            // binding still does what it is bound to.
+            // away, Enter copies what it says, and the arrows, the keys of
+            // a page, space, Home and End scroll it. Nothing else of it
+            // reaches a window; a binding still does what it is bound to.
             let about = compositor.cards.about.asked.is_some();
             if about && compositor.about_key(keysym) {
                 compositor.taken.suppressed.push(code);
@@ -968,12 +968,20 @@ impl Compositor {
     }
 
     /// What a key does to "About" while it is shown, and whether it did
-    /// anything: Escape puts it away, and the keys `about_scroll` knows
+    /// anything: Escape puts it away, Enter presses its one button, which
+    /// copies what the computer is, and the keys `about_scroll` knows
     /// scroll it.
     fn about_key(&mut self, keysym: Keysym) -> bool {
-        if keysym == Keysym::Escape {
-            self.cards.about.asked = None;
-            return true;
+        match keysym {
+            Keysym::Escape => {
+                self.cards.about.asked = None;
+                return true;
+            }
+            Keysym::Return | Keysym::KP_Enter => {
+                self.copy_about();
+                return true;
+            }
+            _ => {}
         }
         let shown = self.cards.about.shown.as_mut();
         let page = shown.as_deref().map_or(0.0, About::page);
