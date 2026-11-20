@@ -2509,11 +2509,13 @@ Known gaps, each taken when the code beside it is touched:
 The review of pull requests 44 to 48, of 20 November 2026, found in
 `main`:
 
-- [ ] High: any program written for X11 ends the compositor at will
+- [x] High: any program written for X11 ends the compositor at will
       ([finding 1](reviews/2026-11-20-pull-requests-44-to-48.md#1-any-program-written-for-x11-can-end-the-compositor-at-will)):
       it closes the window manager's connection (`KillClient`), and the
       next commit of a surface the X server named asks for a manager that
-      is gone.
+      is gone. The manager let go of is kept, and Smithay is answered by
+      its id; an X server that loses its manager is ended, and started
+      again as one that stops is.
 - [ ] To be looked at: any program written for X11 may freeze the
       compositor with `GrabServer`, as asking which screen is primary
       did; Xwayland listens on the abstract socket with no `-auth`, so a
