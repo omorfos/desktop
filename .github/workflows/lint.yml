@@ -39,8 +39,9 @@ jobs:
         run: tools/affected.test.sh
 
   # The scripts of the gates, the hooks and the packaging, as the gates
-  # check them where shellcheck and shfmt are installed; and what the
-  # commit hook refuses, for a commit made without it.
+  # check them where shellcheck and shfmt are installed; the documents a
+  # script worked out, held to it; and what the commit hook refuses, for a
+  # commit made without it.
   scripts:
     name: Scripts
     runs-on: ubuntu-26.04
@@ -48,11 +49,16 @@ jobs:
       - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
-      - name: Install shellcheck and shfmt
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends shellcheck shfmt
+      - name: Install shellcheck and shfmt, and each awk
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends shellcheck shfmt gawk mawk
       - run: shellcheck tools/*.sh .githooks/pre-commit .githooks/pre-push packaging/package.sh packaging/aur/*.sh
       # As .editorconfig says, which shfmt reads.
       - run: shfmt -d tools/*.sh .githooks/pre-commit .githooks/pre-push packaging/package.sh packaging/aur/*.sh
+      # The survey of what scale other systems choose and ADR 100, held to
+      # the script that worked their tables out: by each awk a machine is
+      # likely to have, where the gates try the one that is there.
+      - run: AWK=mawk tools/scale-survey.sh check
+      - run: AWK=gawk tools/scale-survey.sh check
       - name: No line left in from debugging
         run: |
           if git grep -nE '\bD[B]G\b' -- '*.rs'; then

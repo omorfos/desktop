@@ -68,7 +68,8 @@ unread=(
 )
 
 # Read by less than everything: each path, and after it what it reaches,
-# as above. The first that fits a path is the one taken.
+# as above. The first that fits a path is the one taken. A file named here
+# is read by what it says, though the list above has its folder.
 only=(
     # Built into the programs: what depends on the crate is reached too.
     "schemas/promised.txt omorfos-ipc"
@@ -90,6 +91,9 @@ only=(
     ".githooks/ scripts"
     # How they are to be written, which shfmt reads.
     ".editorconfig scripts"
+    # Worked out by scale-survey.sh, which the scripts' checks hold them to.
+    "docs/reviews/2026-11-19-what-scale-other-systems-choose.md scripts"
+    "docs/adr/0100-a-screens-scale-by-how-near-it-is-read.md scripts"
 )
 
 if [ "${1:-}" = --unread ]; then
@@ -122,7 +126,9 @@ jq -r --arg top "$PWD" \
         if $it | endswith("/") then $path | startswith($it)
         elif $it | endswith("*") then $path | startswith($it | rtrimstr("*"))
         else $path == $it end;
-    def read($path): $unread | any(. as $it | fits($path; $it)) | not;
+    # A file the second list names is read, though the first has its folder.
+    def read($path): ($only | any(.path == $path))
+        or ($unread | any(. as $it | fits($path; $it)) | not);
     # A crate by its name, as the lists have it; one that is not there, as
     # a crate taken out is not, reaches everything.
     def named($name): first($crates[] | select(.name == $name) | .id) // "everything";
