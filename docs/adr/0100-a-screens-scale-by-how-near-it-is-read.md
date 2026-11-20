@@ -1,6 +1,6 @@
 # 100. A screen's scale, by how near it is read
 
-- Status: accepted; still to be built
+- Status: accepted
 - Date: 2026-11-19
 
 ## Context
@@ -127,13 +127,14 @@ which has the rule above beside the other systems' that the survey's
 tables came from. Run with `check`, it holds this document to itself:
 every row below, and each figure in the text that was worked out. A
 size is as the nominal diagonal makes it, to the nearest millimetre.
-"Today" is what `Scale::for_screen` gives the same screen. Each row
+"Before" is what `Scale::for_screen` gave the same screen before this
+rule was built, by how dense it is across alone. Each row
 is to be a test of the rule where it is built, by its name and at the
 size it says here.
 
 ### Screens under 20 inches
 
-| Screen | Says it is | To the inch | The sum | Scale | Today |
+| Screen | Says it is | To the inch | The sum | Scale | Before |
 |---|---|---:|---:|---:|---:|
 | 13.3 in, 1920 by 1080 | 294 by 166 mm | 166 | 1.23 | 1.25 | 1.5 |
 | 14 in, 1920 by 1080 | 310 by 174 mm | 157 | 1.17 | 1.25 | 1.25 |
@@ -156,7 +157,7 @@ size it says here.
 
 ### Screens of 20 inches and more
 
-| Screen | Says it is | To the inch | The sum | Scale | Today |
+| Screen | Says it is | To the inch | The sum | Scale | Before |
 |---|---|---:|---:|---:|---:|
 | 21.5 in, 1920 by 1080 | 476 by 268 mm | 102 | 0.93 | 1 | 1 |
 | 23.8 in, 1920 by 1080 | 527 by 296 mm | 93 | 0.84 | 1 | 1 |
@@ -175,7 +176,7 @@ size it says here.
 
 ### Televisions, and screens that say nothing true
 
-| Screen | Says it is | Taken for | Scale | Today |
+| Screen | Says it is | Taken for | Scale | Before |
 |---|---|---|---:|---:|
 | 32 in, 1920 by 1080 | 708 by 398 mm | a monitor | 1 | 1 |
 | 42 in, 3840 by 2160 | 930 by 523 mm | a monitor | 1 | 1 |

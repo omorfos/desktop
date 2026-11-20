@@ -91,8 +91,9 @@ says "a skill, which is words for an agent, reaches nothing" "" \
     .claude/skills/handover/SKILL.md
 says "a decision reaches nothing" "" docs/adr/0001-fresh-implementation-on-smithay.md
 says "what a script worked out reaches the scripts' checks, though its folder reaches nothing" \
-    scripts docs/reviews/2026-11-19-what-scale-other-systems-choose.md \
-    docs/adr/0100-a-screens-scale-by-how-near-it-is-read.md
+    scripts docs/reviews/2026-11-19-what-scale-other-systems-choose.md
+says "a decision a test holds the code to reaches that test and the script it was worked out by" \
+    "omorfos-ui:adr_100 scripts" docs/adr/0100-a-screens-scale-by-how-near-it-is-read.md
 says "the roadmap, the agent guide and what tools are set by reach nothing" "" \
     docs/ROADMAP.md AGENTS.md docs/STANDARDS.md clippy.toml rustfmt.toml .gitignore
 says "what reaches nothing adds nothing to what does" \

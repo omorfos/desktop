@@ -93,7 +93,7 @@ only=(
     ".editorconfig scripts"
     # Worked out by scale-survey.sh, which the scripts' checks hold them to.
     "docs/reviews/2026-11-19-what-scale-other-systems-choose.md scripts"
-    "docs/adr/0100-a-screens-scale-by-how-near-it-is-read.md scripts"
+    "docs/adr/0100-a-screens-scale-by-how-near-it-is-read.md omorfos-ui:adr_100 scripts"
 )
 
 if [ "${1:-}" = --unread ]; then

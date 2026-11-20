@@ -164,7 +164,7 @@ function a_shape(wide, tall) {
         (wide == 16 && (tall == 9 || tall == 10))
 }
 
-# --- omorfos as it is: `Scale::for_screen`, crates/omorfos-ui/src/scale.rs ---
+# --- omorfos before ADR 100: `Scale::for_screen` as it was ------------------
 function omorfos_today(s,    quarters) {
     if (width[s] == 0) return 1
     quarters = nearest(across[s] * mm_to_the_inch / width[s] / 120 * 4)
@@ -445,7 +445,8 @@ function expect(what, got, want, give_or_take) {
     }
 }
 
-# omorfos's own tests of today's rule: pixels across, millimetres across.
+# omorfos's own tests of the rule before ADR 100: pixels across, millimetres
+# across, as they were.
 function omorfos_has(pixels_across, wide, want) {
     expect("omorfos " pixels_across " " wide, omorfos_today(sized(pixels_across, 1, wide, 1)), want)
 }
