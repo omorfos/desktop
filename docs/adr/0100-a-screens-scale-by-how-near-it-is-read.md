@@ -122,9 +122,11 @@ Why these numbers:
 
 ## What it gives, and is to be tested by
 
-Worked out, by the rule above written as a small program beside the
-ports the survey's tables came from, which is not in the tree. A size
-is as the nominal diagonal makes it, to the nearest millimetre.
+Worked out by [`tools/scale-survey.sh`](../../tools/scale-survey.sh),
+which has the rule above beside the other systems' that the survey's
+tables came from. Run with `check`, it holds this document to itself:
+every row below, and each figure in the text that was worked out. A
+size is as the nominal diagonal makes it, to the nearest millimetre.
 "Today" is what `Scale::for_screen` gives the same screen. Each row
 is to be a test of the rule where it is built, by its name and at the
 size it says here.
