@@ -2650,6 +2650,20 @@ Programs written for X11:
       above). So it is to be asked from a thread of its own, as any
       program would ask, while a new version waits, and what it last
       said is what the wait goes by.
+- [ ] Known gap, found on 20 November 2026 and not yet seen happen: a
+      paste from a program written for X11 into one written for Wayland
+      that is under way as its X server ends. Smithay leaves the
+      transfer's pipe in the event loop when the window manager is
+      dropped, held open while its source waits, so the Wayland program
+      reading it waits for an end that does not come; and cannot be asked
+      whether a transfer is under way, so the compositor cannot tell when
+      a manager it let go of may go. What once made this end the
+      compositor, `xwm_state` asked for a manager that was gone, is the
+      high finding of the review of pull requests 44 to 48. To do: once
+      Smithay closes a dropped transfer's pipe, or says whether one is
+      under way, drop the manager let go of when nothing of it is left,
+      and have a test end an X server in the middle of a paste. What
+      Smithay leaves in the loop is in `docs/UPSTREAM.md`.
 - [ ] Dialogs kept with the window they belong to, and docks, splash
       screens and the like treated as such.
 - [ ] The X server started when first asked for. Waits on: a change in

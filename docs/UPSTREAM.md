@@ -184,6 +184,26 @@ S=$(ls -d ~/.cargo/registry/src/*/smithay-$(awk '/^name = "smithay"/{getline; pr
 - **Check:** `grep -n 'randr\|primary' "$S"/src/xwayland/xwm/mod.rs` for
   a request that does not wait for its answer.
 
+### A window manager dropped leaves its transfers in the event loop
+
+- **Wrong:** each copy or paste between a program written for X11 and one
+  written for Wayland puts the Wayland program's pipe in the event loop,
+  with a callback that asks the handler for the window manager
+  (`xwm_state`) by its id. When the `X11Wm` is dropped, its transfers
+  only log that they were "freed before being removed from EventLoop"
+  (`impl Drop for IncomingTransfer` and `OutgoingTransfer` in
+  `src/xwayland/xwm/mod.rs`), and the callbacks stay. An incoming
+  transfer still waiting, its source disabled, holds the pipe open, so
+  the Wayland program reading the paste waits for an end that does not
+  come; and nothing in `X11Wm` says whether a transfer is under way, so
+  a compositor cannot tell when a manager it let go of may be dropped.
+- **Meanwhile:** the compositor keeps the manager it let go of, and
+  answers `xwm_state` by id from it, until another is let go of; a paste
+  cut short by its X server ending is left to the program reading it.
+- **Check:** `grep -n -A10 'impl Drop for IncomingTransfer' "$S"/src/xwayland/xwm/mod.rs`
+  shows whether a dropped transfer takes its source out of the loop and
+  closes its pipe.
+
 ### The X11 window manager keeps its event loop, and with it the X server
 
 - **Wrong:** `X11Wm::start_wm` (`src/xwayland/xwm/mod.rs`) puts in the
