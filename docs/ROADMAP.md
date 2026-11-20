@@ -494,10 +494,10 @@ calls for them.
       chosen for it (asked on 18 November 2026). Today a screen is told
       from another by the socket it is on (`name: HDMI-A-1`), so that
       another monitor on the same socket has the last one's settings;
-      nothing chosen while running is kept; and `output.scale: auto`
-      takes how dense a screen is, over 120 to the inch, whatever kind
-      of screen it is. On the maintainer's laptop, 3840 by 2160 and
-      some 280 to the inch, that chooses 2.5, which is too large: 1.75
+      and nothing chosen while running is kept. `output.scale: auto`
+      took how dense a screen is, over 120 to the inch, whatever kind
+      of screen it is, until ADR 100. On the maintainer's laptop, 3840
+      by 2160 and some 280 to the inch, that chose 2.5, which is too large: 1.75
       is what suits, and 2 will do, which is some 150 to the inch; and
       a scale of 2 set for every screen, to put that right, is far too
       large on the monitor then plugged in. A screen read from nearer
@@ -516,15 +516,15 @@ calls for them.
         what that leaves to decide for the guess.
   - [ ] What the survey could not find out, found on the machines
         themselves: what the laptop's panel says its size is, which
-        for today's 2.5 is 342 mm wide or less where 15.6 inches is
+        for the old rule's 2.5 is 342 mm wide or less where 15.6 inches is
         345; and what Windows and macOS choose where the survey has
         only users' word for it, over 250% and on a television.
   - [ ] A screen known by what it is: its maker, model and serial, as
         it says them, and the socket only where it says none. What is
         set for a screen by its socket's name goes on working.
-  - [ ] A better guess: from how dense a screen is and how far it is
+  - [x] A better guess: from how dense a screen is and how far it is
         read from, by the kind it is (a laptop's own, a monitor, a
-        television, told by its socket and its size), rounded to a
+        television, told by its size), rounded to a
         whole scale where one is near, those being the sharpest. A
         screen that says nothing of its size, or what cannot be so, as
         televisions and projectors do, is guessed from its resolution
@@ -535,8 +535,17 @@ calls for them.
         and 110 from there, told by size and not by socket; quarters
         up to 2 and halves beyond; a television, and a screen that
         says nothing true, by resolution alone. It gives the laptop
-        above 2. What it gives each of the survey's screens is there,
-        to be its tests; it is still to be built.
+        above 2. Built in `Scale::for_screen`, with what it gives each of
+        the survey's screens as its tests, and guessed again when a
+        screen is driven in another mode; not yet seen on a screen, as
+        the hardware backend that asks it is run by no test. Known gap:
+        when this rule is first taken up by a change of compositor
+        under the relay, a screen beside one whose scale changed moves,
+        and windows come back at their places in the old layout, on
+        the next screen or off every screen, as they would with any
+        change of layout between compositors
+        (finding 2 of the review of pull requests 44 to 48):
+        a kept window not on its screen is to be put back on it.
   - [ ] Everything of a screen remembered once it has been plugged in:
         its mode and how often it is drawn, its scale, where it stands
         among the others, which way up it is, and whether it shows what

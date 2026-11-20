@@ -102,7 +102,23 @@ the modes each screen offers, written as `mode` takes them. A screen's name is t
 
 `output.scale` is how large everything is drawn, on every screen that
 `outputs` does not give a scale of its own. With `auto`, omorfos
-chooses for each screen from how dense it is, so that a laptop with a sharp panel
-is as readable as a desktop monitor. If the choice does not suit you, give
-a number: `1` is one pixel to a pixel, `1.5` half as large again, `2`
-twice the size.
+chooses for each screen from how dense it is and how near it is read,
+by the size the screen says it is (ADR 100). A screen under 20 inches
+along the diagonal, as a laptop's own, is read from near, so things on
+it are drawn a little smaller than on one as dense of 20 inches or more
+on a desk. A television, over 56 cm on its shorter side, and a screen that
+does not say its size, are drawn by their resolution alone: 2 at 3840
+by 2160. The scale is a quarter up to 2 and a half beyond, and 1 or 2
+where it is near them, those being the sharpest; it is guessed again
+when a screen is driven in another `mode`. If the choice does not
+suit you, give a number: `1` is one pixel to a pixel, `1.5` half as
+large again, `2` twice the size.
+
+`auto` once went by how dense a screen is alone, and by this rule most
+laptops' own screens come out a step smaller than they did then: a
+15.6-inch 3840 by 2160 at 2 where it was 2.25, and a 13.3-inch 1920 by
+1080 at 1.25 where it was 1.5; dense monitors come out a step larger.
+To have the old size back, give the number it was, as `output.scale`,
+or for that screen in `outputs`. It was how many pixels the screen has
+to the inch across, over 120, to the nearest quarter: 25.4 times its
+pixels across, over its width in millimetres, over 120.

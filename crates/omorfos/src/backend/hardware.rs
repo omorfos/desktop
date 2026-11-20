@@ -113,6 +113,9 @@ struct Screen {
     modes: Vec<Mode>,
     mode: Mode,
     wanted: Option<ScreenMode>,
+    /// How wide and tall it says it is, in millimetres, which a scale is
+    /// guessed from for each mode it is driven in.
+    millimetres: (u32, u32),
     surface: GbmBufferedSurface<GbmAllocator<DrmDeviceFd>, Feedback>,
     tracker: OutputDamageTracker,
     /// How long it shows one frame.
@@ -854,8 +857,9 @@ fn open_card(seat: &mut Taken, keep: bool) -> Result<Card, Box<dyn Error>> {
 }
 
 /// A screen found plugged in: its socket, the name of that socket, the
-/// ways it can be driven and how wide it says it is in millimetres.
-type Found = (connector::Handle, String, Vec<Mode>, u32);
+/// ways it can be driven and how wide and tall it says it is in
+/// millimetres.
+type Found = (connector::Handle, String, Vec<Mode>, (u32, u32));
 
 /// A way a screen can be driven, as the configuration weighs it.
 fn offered(mode: &Mode) -> OfferedMode {
@@ -993,7 +997,7 @@ impl Hardware {
                         | connector::Interface::LVDS
                         | connector::Interface::DSI
                 );
-                let (millimetres, _) = socket.size().unwrap_or_default();
+                let millimetres = socket.size().unwrap_or_default();
                 Some((!built_in, (*handle, name, modes, millimetres)))
             })
             .collect();
@@ -1008,7 +1012,7 @@ impl Hardware {
         connector: connector::Handle,
         (name, modes, wanted): (&str, &[Mode], Option<ScreenMode>),
         mode: Mode,
-        millimetres: u32,
+        millimetres: (u32, u32),
     ) -> Result<Screen, Box<dyn Error>> {
         let crtc = self
             .free_crtc(connector)
@@ -1034,7 +1038,8 @@ impl Hardware {
         }
         let offers: Vec<OfferedMode> = modes.iter().map(offered).collect();
         compositor.offer_modes(&output, &offers, offered(&mode));
-        compositor.suggest_scale(&output, Scale::for_screen(u32::from(width), millimetres));
+        let pixels = (u32::from(width), u32::from(height));
+        compositor.suggest_scale(&output, Scale::for_screen(pixels, millimetres));
         Ok(Screen {
             connector,
             crtc,
@@ -1044,6 +1049,7 @@ impl Hardware {
             modes: modes.to_vec(),
             mode,
             wanted,
+            millimetres,
             surface,
             frame: Duration::from_secs(1) / mode.vrefresh().max(1),
             picture: Picture::Stale,
@@ -1200,6 +1206,10 @@ impl Hardware {
             compositor.offer_modes(&screen.output, &offers, offered(&mode));
             let (width, height) = mode.size();
             compositor.resize_output(&screen.output, (i32::from(width), i32::from(height)));
+            // The guess goes by the pixels it is driven with (ADR 100).
+            let pixels = (u32::from(width), u32::from(height));
+            let guess = Scale::for_screen(pixels, screen.millimetres);
+            compositor.suggest_scale(&screen.output, guess);
             screen.tracker = OutputDamageTracker::from_output(&screen.output);
             screen.frame = Duration::from_secs(1) / mode.vrefresh().max(1);
             screen.picture = Picture::Stale;

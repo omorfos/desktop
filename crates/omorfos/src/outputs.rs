@@ -330,7 +330,7 @@ impl Compositor {
     }
 
     /// Says what scale suits an output, which a backend knows from how
-    /// dense the screen is. It is used unless the configuration names one.
+    /// dense the screen is and how near it is read (ADR 100). It is used unless the configuration names one.
     pub fn suggest_scale(&mut self, output: &Output, scale: Scale) {
         let known = self.every_head_mut().find(|head| head.output == *output);
         if let Some(head) = known {
