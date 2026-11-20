@@ -43,22 +43,13 @@ const KEPT_FOR_A_PROGRAM: usize = 1 << 20;
 pub struct Session {
     event_loop: EventLoop<'static, Compositor>,
     compositor: Compositor,
-    /// The event source that holds the display, which holds every
-    /// program's connection.
-    clients: RegistrationToken,
-}
-
-/// Ending a session ends the connections of the programs it served.
-///
-/// The event loop does not let go of what is in it when it is dropped,
-/// and Smithay's window manager for X11 puts in it a source that holds
-/// the loop itself, so nothing in it would ever be dropped: the display,
-/// with every program's connection, the X server's among them, which runs
-/// on until the process ends. Its source is taken out first.
-impl Drop for Session {
-    fn drop(&mut self) {
-        self.event_loop.handle().remove(self.clients);
-    }
+    /// The display, which holds every program's connection. It is kept
+    /// here rather than in an event source of the loop: the loop does not
+    /// let go of what is in it when it is dropped, as Smithay's window
+    /// manager for X11 puts in it a source that holds the loop itself, and
+    /// a session ended is to end the connections of the programs it
+    /// served. Dropped last, after the compositor, which speaks to it.
+    display: Display<Compositor>,
 }
 
 impl Session {
@@ -90,10 +81,11 @@ impl Session {
                     .map(|compositor| (event_loop, display, compositor))
             })
             .and_then(|(event_loop, mut display, compositor)| {
-                // The display is moved into its own event source, which is
-                // the one place that needs all of it. The descriptor that
-                // says when clients have something to say is duplicated to
-                // wake the loop.
+                // The descriptor that says when clients have something to
+                // say is duplicated only to wake the loop. What they said is
+                // read each turn, once the loop's sources have been heard,
+                // so that a connection one of them cut is let go of in the
+                // same turn, not when a program next speaks.
                 let clients = display.backend().poll_fd().try_clone_to_owned();
                 clients
                     .map(|clients| Generic::new(clients, Interest::READ, Mode::Level))
@@ -101,17 +93,15 @@ impl Session {
                     .and_then(|clients| {
                         let handle = event_loop.handle();
                         handle
-                            .insert_source(clients, move |_, _, compositor: &mut Compositor| {
-                                display
-                                    .dispatch_clients(compositor)
-                                    .map(|_| PostAction::Continue)
+                            .insert_source(clients, |_, _, _: &mut Compositor| {
+                                Ok(PostAction::Continue)
                             })
                             .map_err(Box::from)
                     })
-                    .map(|clients| Self {
+                    .map(|_| Self {
                         event_loop,
                         compositor,
-                        clients,
+                        display,
                     })
             })
     }
@@ -242,8 +232,9 @@ impl Session {
     }
 
     /// Takes one turn: waits up to `timeout` for something to happen (for
-    /// ever if `None`), handles it, brings the compositor up to date as of
-    /// `now` and sends clients what they are owed.
+    /// ever if `None`), handles it, reads what clients have said, brings
+    /// the compositor up to date as of `now` and sends clients what they
+    /// are owed.
     ///
     /// # Errors
     ///
@@ -258,6 +249,10 @@ impl Session {
             .dispatch(timeout, &mut self.compositor)
             .map_err(Box::from)
             .and_then(|()| {
+                let read = self.display.dispatch_clients(&mut self.compositor);
+                read.map_err(Box::from)
+            })
+            .and_then(|_| {
                 self.compositor.refresh(now);
                 self.compositor.display.flush_clients().map_err(Box::from)
             })

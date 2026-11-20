@@ -36,10 +36,13 @@ after every turn. The nested backend is now only that.
 their own timers need the loop to hand them the type that handles their
 protocol, which is the compositor.
 
-**Still no `unsafe`.** The display is moved into the closure of its own
-event source, which is the only place that needs the whole of it; a
-duplicate of its descriptor wakes the loop. Everything else flushes through
-the `DisplayHandle` the compositor already holds.
+**Still no `unsafe`.** The session keeps the display, and reads what
+clients have said each turn, after the loop's other sources; a duplicate of
+its descriptor only wakes the loop. Everything else flushes through the
+`DisplayHandle` the compositor already holds. (It was first moved into the
+closure of its own event source, which read clients only when one had
+something to say: a connection the compositor cut stayed until a program
+next spoke, as an X server whose window manager was closed did.)
 
 **The compositor is woken, never polled.** It holds a handle to the loop
 and registers what it waits for: the configuration watcher, the IPC
