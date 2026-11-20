@@ -8,8 +8,12 @@ minimized window's title is in brackets. The time is the local time, in
 24 hours.
 
 Click the time to open the month above it, today in the accent: six weeks
-from Monday, the days of the months before and after it faded, so that it
-is as large whichever month it shows and its arrows stay where they are.
+from the day your locale begins a week on, the days of the months before
+and after it faded, so that it is as large whichever month it shows and
+its arrows stay where they are. The day is the one the territory of the
+first of `LC_ALL`, `LC_TIME` and `LANG` that is set begins its weeks on,
+as they were when the panel started: Sunday for `en_US`, Monday for
+`pl_PL` or `en_GB`, and Monday where the locale names no territory.
 The week and the weekday of the day under the pointer stand out, that day
 the most. The arrows at its top, or Left and Right on the keyboard, go a
 month back or on; Escape, a click anywhere else or on the time again puts

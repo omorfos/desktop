@@ -147,10 +147,17 @@ impl Panel {
         self.shell.today = today;
     }
 
+    /// Says which day the month's weeks begin on: Monday until it is told.
+    pub fn weeks_from(&mut self, first_weekday: month::Weekday) {
+        self.shell.first_weekday = first_weekday;
+    }
+
     /// Runs the panel, asleep until there is something to do, until it
     /// cannot go on. Returns why.
     pub fn serve(&mut self) -> Failure {
         let started = Instant::now();
+        // As the locale of the time asks, as the panel was started.
+        self.weeks_from(month::first_weekday(&|name| std::env::var(name).ok()));
         loop {
             let (time, changes) = omorfos_shell::clock::now();
             self.date(omorfos_shell::clock::today());
@@ -284,6 +291,8 @@ struct Shell {
     time: String,
     /// What day it is, which the month opens on.
     today: month::Date,
+    /// The day the month's weeks begin on, as the locale has it.
+    first_weekday: month::Weekday,
     /// What it says, in the user's language (ADR 79).
     words: Words,
     store: Store,
@@ -417,6 +426,7 @@ impl Shell {
             state: State::default(),
             time: String::new(),
             today: month::Date::default(),
+            first_weekday: month::Weekday::Monday,
             words: Words::of(&PANEL),
             store,
             text: Text::new(),
@@ -538,7 +548,7 @@ impl Shell {
             return;
         }
         let theme = &self.store.current().theme;
-        let month = Month::new(said(&self.words), self.today);
+        let month = Month::new(said(&self.words), self.today, self.first_weekday);
         let screens = self.screens.iter();
         let face = screens
             .filter(|screen| screen.global == global)
