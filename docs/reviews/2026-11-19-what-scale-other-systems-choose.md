@@ -39,7 +39,9 @@ tests. All agree. No test of the rule was found in KWin, sway or
 Hyprland, so theirs are held by reading alone. The tables below are
 what those programs answer, **worked out** and not seen: nothing was
 run on the systems themselves, and no screen was looked at. The
-program is not in the tree.
+program is [`tools/scale-survey.sh`](../../tools/scale-survey.sh).
+Run with `check`, it holds this document to itself: every row of
+every table, and each figure in the text that was worked out.
 
 A panel in the tables is as wide and tall in millimetres as its
 nominal diagonal makes it, to the nearest. A real one says a few
