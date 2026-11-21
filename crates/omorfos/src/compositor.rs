@@ -1466,11 +1466,12 @@ impl Compositor {
             ..XkbConfig::default()
         };
         if keyboard.set_xkb_config(self, layout).is_err() {
-            problems.push(format!(
-                "config.yaml: keyboard layout `{}` (variant `{}`, options `{}`) is not valid; \
-                 keeping the previous layout",
-                settings.layout, settings.variant, settings.options
-            ));
+            let given = [
+                ("layout", Value::Words(&settings.layout)),
+                ("variant", Value::Words(&settings.variant)),
+                ("options", Value::Words(&settings.options)),
+            ];
+            problems.push(self.words.say("keyboard-layout-invalid", &given));
         }
         keyboard.change_repeat_info(settings.repeat_rate.into(), settings.repeat_delay.into());
 
@@ -2078,16 +2079,32 @@ impl Compositor {
         R::TextureId: Clone + Texture + Send + 'static,
         F: Frosting<R, P>,
     {
+        // Nothing is chosen here, where each kind of blur makes a copy of
+        // its own that the coverage gate counts by itself, but in
+        // `glass_solid`, which is one for all of them.
         let tried = made
-            .map_err(|error| format!("could not be made ({error})"))
+            .map_err(|error| glass::Unlike::Unmade(error.to_string()))
             .and_then(|mut frosting| glass::check(renderer, &mut frosting).map(|()| frosting));
-        tried.map_err(|why| {
-            let said = self
-                .words
-                .say("glass-solid", &[("why", Value::Words(&why))]);
+        tried.map_err(|unlike| {
+            let said = self.glass_solid(&unlike);
             self.happened(&said, now);
             said
         })
+    }
+
+    /// What the user is told when glass is drawn solid, for why.
+    fn glass_solid(&self, unlike: &glass::Unlike) -> String {
+        match unlike {
+            glass::Unlike::Unmade(why) => {
+                let why = [("why", Value::Words(why))];
+                self.words.say("glass-solid-unmade", &why)
+            }
+            glass::Unlike::Untried => self.words.say("glass-solid-untried", &[]),
+            glass::Unlike::Otherwise(most) => {
+                let most = [("most", Value::Number(i64::from(*most)))];
+                self.words.say("glass-solid-otherwise", &most)
+            }
+        }
     }
 
     /// How many times what is behind glass has been blurred since the
