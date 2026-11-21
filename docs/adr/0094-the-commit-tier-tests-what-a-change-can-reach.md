@@ -64,8 +64,9 @@ reads it. `affected.sh` now has two lists, and `commit`, `commits` and
   manual pages reach the tests that hold them to the code, and the
   packaging, the README, the licences and the Makefile the test of what
   is packaged. The gates' scripts and the hooks reach `scripts`, which
-  is shellcheck where it is installed, and the workflows `workflows`,
-  the two checks of them.
+  is shellcheck and shfmt where they are installed, and the check of
+  the scale survey's tables, and the workflows `workflows`, the two
+  checks of them.
 
 The built-in theme needed nothing: it is a file of the crate that reads
 it, and reaches what draws with it, as it must, a tint changed having

@@ -35,8 +35,9 @@ pub enum Part {
     /// the two after it, it is a box in its share of the titlebar: its
     /// width is its `min-width` and its margin is the room around it, and
     /// its text colour is that of the sign drawn on it. It is
-    /// [`State::Focused`] with its frame and [`State::Hovered`] under the
-    /// pointer. One with no width is not there.
+    /// [`State::Focused`] with its frame, and [`State::Hovered`] while the
+    /// pointer is on any of the three, as they all show their signs then.
+    /// One with no width is not there.
     ButtonClose,
     /// The button that makes the frame fill its screen, or puts it back.
     ButtonMaximize,
