@@ -176,6 +176,14 @@ impl Compositor {
             return;
         };
         let (app_id, title) = names(surface);
+        // A rule decides over what a program prefers, by the names it has
+        // now, which may have come after it asked; and it is told what the
+        // rule says, if it asked at all.
+        let ruled = self.desktop.framed_by_rule(&app_id, &title);
+        self.unmapped[index].with_pending_state(|state| {
+            let asked = state.decoration_mode;
+            state.decoration_mode = asked.map(|asked| ruled.map_or(asked, told));
+        });
         // The window expects us to decorate it if it negotiated that.
         let wants_decoration = self.unmapped[index]
             .with_pending_state(|state| state.decoration_mode == Some(DecorationMode::ServerSide));
@@ -501,28 +509,37 @@ impl Compositor {
         window.or_else(|| self.surface_origin(surface))
     }
 
-    /// Tells a toplevel who draws its decoration: the compositor, unless
-    /// its program says, before the window is shown, that it prefers its
-    /// `own`, as one that draws a titlebar of its own making does, which
-    /// would otherwise have two (ADR 97). A window that is shown keeps
-    /// the frame it was shown in, or none, whatever it asks then. Programs
-    /// that never ask are left undecorated.
+    /// Tells a toplevel who draws its decoration, as the desktop has it:
+    /// for a window that is shown, whether it is framed, which it keeps
+    /// whatever it asks then; for one not yet shown, what a rule says, and
+    /// failing a rule the compositor, unless its program prefers its `own`,
+    /// as one that draws a titlebar of its own making does, which would
+    /// otherwise have two (ADR 97). Programs that never ask are told
+    /// nothing, and left undecorated unless a rule frames them.
     fn decorate(&self, toplevel: &ToplevelSurface, own: bool) {
-        let asked = if own {
-            DecorationMode::ClientSide
-        } else {
-            DecorationMode::ServerSide
-        };
         let surface = toplevel.wl_surface();
-        let mut waiting = self.unmapped.iter();
-        let waiting = waiting.any(|unmapped| unmapped.wl_surface() == surface);
-        toplevel.with_pending_state(|state| {
-            let kept = state.decoration_mode.filter(|_| !waiting);
-            state.decoration_mode = Some(kept.unwrap_or(asked));
+        let shown = self
+            .window_id(surface)
+            .and_then(|id| self.desktop.window(id));
+        let framed = shown.map(|window| window.decorated).or_else(|| {
+            let (app_id, title) = names(surface);
+            self.desktop.framed_by_rule(&app_id, &title)
         });
+        let ours = framed.unwrap_or(!own);
+        toplevel.with_pending_state(|state| state.decoration_mode = Some(told(ours)));
         if toplevel.is_initial_configure_sent() {
             toplevel.send_configure();
         }
+    }
+}
+
+/// What a program is told of who draws its window's titlebar, when it is
+/// `ours`.
+const fn told(ours: bool) -> DecorationMode {
+    if ours {
+        DecorationMode::ServerSide
+    } else {
+        DecorationMode::ClientSide
     }
 }
 

@@ -2512,8 +2512,10 @@ of the redesign of windows and the review of the defaults (stage 4):
       ([finding 9](reviews/2026-11-19-after-the-redesign-of-windows.md#9-in-the-light-scheme-two-of-a-titlebars-three-buttons-can-barely-be-seen-and-without-focus-none-can-in-either-scheme)):
       whether by a stronger rim or deeper fills is decided with the
       defaults, as is whether `--glass-thin` stays.
-- [ ] Low: who draws a titlebar said by one layer and done by another
-      ([finding 11](reviews/2026-11-19-after-the-redesign-of-windows.md#11-a-program-is-told-who-draws-its-titlebar-by-one-layer-and-framed-or-not-by-another-under-a-rule-or-when-it-asks-late-the-two-disagree)).
+- [x] Low: who draws a titlebar said by one layer and done by another
+      ([finding 11](reviews/2026-11-19-after-the-redesign-of-windows.md#11-a-program-is-told-who-draws-its-titlebar-by-one-layer-and-framed-or-not-by-another-under-a-rule-or-when-it-asks-late-the-two-disagree)):
+      what a program is told is decided once, as the desktop has it: by a
+      rule before its window is shown, and by its frame once it is.
 
 Known gaps, each taken when the code beside it is touched:
 

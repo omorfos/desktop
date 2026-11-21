@@ -1920,6 +1920,15 @@ impl Desktop {
         self.current = desk.current.min(self.sets.len() - 1);
     }
 
+    /// Whether the rules say windows of `app_id` with `title` are framed,
+    /// whatever their programs prefer: what a program is told of who draws
+    /// its titlebar, before its window is shown, so that it is told what
+    /// it will have.
+    #[must_use]
+    pub fn framed_by_rule(&self, app_id: &str, title: &str) -> Option<bool> {
+        resolve(&self.rules, app_id, title).decorations
+    }
+
     /// Says how a window about to be added should first draw itself, if
     /// rules open it maximized or fullscreen; `None` if it may choose its
     /// own size.
