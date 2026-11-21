@@ -2533,8 +2533,10 @@ Known gaps, each taken when the code beside it is touched:
 - [x] Low: "what last loaded" read from the disk a second time
       ([finding 19](reviews/2026-11-19-after-the-redesign-of-windows.md#19-the-copy-kept-as-what-last-loaded-is-read-from-the-disk-a-second-time)):
       what is kept is the text that was parsed, not the file read again.
-- [ ] Low: a sandbox whose socket is not one
-      ([finding 20](reviews/2026-11-19-after-the-redesign-of-windows.md#20-a-sandbox-whose-socket-is-not-one-has-every-program-let-in-late-and-the-log-say-descriptors-ran-out)).
+- [x] Low: a sandbox whose socket is not one
+      ([finding 20](reviews/2026-11-19-after-the-redesign-of-windows.md#20-a-sandbox-whose-socket-is-not-one-has-every-program-let-in-late-and-the-log-say-descriptors-ran-out)):
+      its thread listens no more on an error that is not one of running
+      out, and the relay is neither paused nor told of it.
 - [x] Low: the side and order of a titlebar's buttons said three times
       ([finding 24](reviews/2026-11-19-after-the-redesign-of-windows.md#24-the-side-and-order-of-a-titlebars-buttons-are-said-three-times)):
       the buttons are drawn in the domain's order, `Button::ALL`, and a test
