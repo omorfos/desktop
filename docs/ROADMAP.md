@@ -32,6 +32,14 @@ a known gap.
   was not this login's, which is a fault of its own (stage 8).
 - A screen that changes size while it is shared (stage 3), with a
   screen that has modes of more than one size.
+- omorfos run in a window under WSLg, with what it prints kept
+  (`cargo run -p omorfos 2>&1 | tee omorfos-wsl.log`, and
+  `findmnt /tmp/.X11-unix`): whether the one error it said was the X
+  server's, now said as WSL's read-only `/tmp/.X11-unix`, or glass drawn
+  solid on Direct3D 12's Mesa. If the first, Smithay is to be asked to
+  listen on the abstract socket alone where the directory cannot be
+  written to (docs/UPSTREAM.md), and the guide to say what runs under
+  WSL.
 
 ## Where this is going
 
