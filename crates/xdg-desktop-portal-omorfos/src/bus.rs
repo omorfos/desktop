@@ -24,6 +24,7 @@ use std::collections::HashMap;
 use std::io::Write;
 use std::os::fd::{AsFd, BorrowedFd, OwnedFd};
 use std::sync::mpsc::{self, Receiver, Sender};
+use std::time::Duration;
 
 use rustix::pipe::{PipeFlags, pipe_with};
 use zbus::blocking::connection::Builder;
@@ -69,6 +70,16 @@ pub(crate) const PORTAL: &str = "org.freedesktop.portal.Desktop";
 
 /// The longest an application's identifier is, as D-Bus has a name.
 const LONGEST_APP: usize = 255;
+
+/// How many messages the bus may hold for the portal before it reads them:
+/// more than a burst, as the bus says of every program that comes and goes
+/// once the portal listens for that, before its thread reads anything.
+const QUEUED: usize = 1024;
+
+/// How long the bus is given to answer what the portal asks of it as it
+/// starts: one that does not answer has the start fail, and the portal
+/// started again, rather than hold its name and answer nothing.
+const PATIENCE: Duration = Duration::from_secs(10);
 
 /// What can be read of each interface: which version of it is spoken,
 /// and, of sharing the screen, that screens and windows can be shared,
@@ -268,10 +279,11 @@ impl Portal {
     ///
     /// # Errors
     ///
-    /// Returns an error if the bus cannot be joined, or if another program
-    /// already has the name.
+    /// Returns an error if the bus cannot be joined, if another program
+    /// already has the name, or if the bus does not answer in time.
     pub fn open(address: Option<&str>, look: Look, keep: Keep) -> Result<Self, Failure> {
         let builder = address.map_or_else(Builder::session, Builder::address);
+        let builder = builder.map(|builder| builder.max_queued(QUEUED).method_timeout(PATIENCE));
         let connection = builder.and_then(Builder::build).map_err(Failure::from);
         let pipe = || pipe_with(PipeFlags::CLOEXEC | PipeFlags::NONBLOCK).map_err(Failure::from);
         let pipes = pipe().and_then(|gone| pipe().map(|asking| (gone, asking)));
@@ -306,7 +318,7 @@ impl Portal {
             let taken = |error: zbus::Error| {
                 let message = format!(
                     "cannot take the name the portals speak to omorfos by ({error}); another \
-                     program has it and will not give it up"
+                     program has it and will not give it up, or the bus did not answer in time"
                 );
                 Failure::from(message)
             };
@@ -780,7 +792,6 @@ pub(crate) mod tests {
     use std::io::{BufRead, BufReader};
     use std::process::{Child, Command, Stdio};
     use std::thread;
-    use std::time::Duration;
 
     use zbus::zvariant::{ObjectPath, OwnedValue};
 
@@ -1528,6 +1539,34 @@ pub(crate) mod tests {
         let refused = Portal::open(Some(&other.address), Box::new(dark), keeper().0);
         let said = refused.unwrap_err().to_string();
         assert!(said.contains("will not give it up"), "{said}");
+    }
+
+    #[test]
+    fn a_portal_that_starts_on_a_busy_bus_starts_or_fails_and_does_not_wait_for_ever() {
+        let daemon = Daemon::start();
+        // A program that comes and goes, as far as the bus says, as fast
+        // as it can: the portal hears of each, from before it asks the bus
+        // anything until its thread reads what it heard.
+        let flooding = daemon.peer();
+        let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let stopped = std::sync::Arc::clone(&stop);
+        let flood = thread::spawn(move || {
+            while !stopped.load(std::sync::atomic::Ordering::Relaxed) {
+                flooding.request_name("org.example.Flood").unwrap();
+                flooding.release_name("org.example.Flood").unwrap();
+            }
+        });
+        thread::sleep(Duration::from_millis(100));
+        let address = daemon.address.clone();
+        let (done, started) = mpsc::channel();
+        thread::spawn(move || {
+            let opened = Portal::open(Some(&address), Box::new(dark), keeper().0);
+            let _ = done.send(opened.is_ok());
+        });
+        let started = started.recv_timeout(Duration::from_secs(30));
+        stop.store(true, std::sync::atomic::Ordering::Relaxed);
+        flood.join().unwrap();
+        assert!(started.is_ok(), "the portal is still starting");
     }
 
     #[test]

@@ -2524,8 +2524,11 @@ Known gaps, each taken when the code beside it is touched:
       the service says is waited for ten seconds at most, and every
       setting counted from the list of them; and the question refused
       while another is up is joined, and seen to have failed for that.
-- [ ] Low: the portal's backend can wait for ever as it starts
-      ([finding 17](reviews/2026-11-19-after-the-redesign-of-windows.md#17-the-portals-backend-can-wait-for-ever-as-it-starts-holding-its-name-on-a-busy-bus)).
+- [x] Low: the portal's backend can wait for ever as it starts
+      ([finding 17](reviews/2026-11-19-after-the-redesign-of-windows.md#17-the-portals-backend-can-wait-for-ever-as-it-starts-holding-its-name-on-a-busy-bus)):
+      the bus may hold a thousand messages for the portal before it reads
+      them, and what it asks as it starts is waited for ten seconds at
+      most, so that the worst is a start that fails and is made again.
 - [ ] Low: what a starting portal says may not reach programs when it
       takes its name from a copy still running; to be seen with a real
       toolkit, which no test can show
