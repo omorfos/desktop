@@ -58,13 +58,16 @@ not-starting = nowa wersja omorfos, `{ $program }`, nie uruchamia się ({ $why }
 keeps-stopping = `{ $program }` ciągle się zatrzymuje i nie zostanie ponownie uruchomiony aż do ponownego zalogowania
 locker-keeps-stopping = Program blokujący ekran ciągle się zatrzymuje przy zablokowanej sesji: z innego terminala wirtualnego `omorfosctl action lock` uruchomi go ponownie
 no-locker = nic nie jest ustawione do blokowania sesji: wskaż program blokujący ekran jako `locker` w config.yaml, na przykład `locker: [swaylock, -f]`
+keyboard-layout-invalid = config.yaml: układ klawiatury `{ $layout }` (wariant `{ $variant }`, opcje `{ $options }`) jest nieprawidłowy; zostaje poprzedni układ
 cannot-start = nie można uruchomić `{ $program }`: { $why }
 cannot-find = nie można uruchomić `{ $program }`, bo nie jest zainstalowany: zainstaluj go albo wskaż w konfiguracji inny w jego miejsce
 x11-cannot-run = nie można uruchamiać programów napisanych dla X11: { $why }
 x11-cannot-manage = nie można zarządzać programami napisanymi dla X11: { $why }
 x11-restarted = serwer X zatrzymał się i został uruchomiony ponownie; działające programy napisane dla X11 zostały zamknięte
 x11-keeps-stopping = serwer X ciągle się zatrzymuje; programy napisane dla X11 nie będą działać aż do ponownego zalogowania
-glass-solid = Szkło jest rysowane jako pełne: rozmycie tej karty graficznej { $why }
+glass-solid-unmade = Szkło jest rysowane jako pełne: nie udało się utworzyć rozmycia tej karty graficznej ({ $why })
+glass-solid-untried = Szkło jest rysowane jako pełne: rozmycie tej karty graficznej nie zdołało rozmyć obrazu próbnego
+glass-solid-otherwise = Szkło jest rysowane jako pełne: rozmycie tej karty graficznej rozmywa inaczej, niż powinno, nawet o { $most } na 255
 
 a-program = Program
 every-key = { $program } ma wszystkie klawisze, gdy ma klawiaturę, także te pulpitu: Super+Escape je odbiera

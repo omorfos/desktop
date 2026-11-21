@@ -220,10 +220,23 @@ const ROUNDING: u8 = 4;
 const TRIED: (i32, i32) = (48, 32);
 const TRIED_BLUR: u32 = 6;
 
+/// Why a blur is not kept for glass, for the user to be told in their
+/// language.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum Unlike {
+    /// It could not be made, for this, in the words of what failed.
+    Unmade(String),
+    /// It could not blur a picture to be tried.
+    Untried,
+    /// It blurred the picture otherwise than it should, by as much as this
+    /// in 255.
+    Otherwise(u8),
+}
+
 /// Whether `frosting` blurs as [`Software`] does, within rounding: a small
 /// picture with sharp edges, of colours and of what can be seen through, is
-/// blurred by it, drawn, and read back. If not, why not, for the user.
-pub(crate) fn check<R, P>(renderer: &mut R, frosting: &mut dyn Frosting<R, P>) -> Result<(), String>
+/// blurred by it, drawn, and read back. If not, why not.
+pub(crate) fn check<R, P>(renderer: &mut R, frosting: &mut dyn Frosting<R, P>) -> Result<(), Unlike>
 where
     R: Renderer + ImportAll + ImportMem + ExportMem + Offscreen<P> + Bind<P>,
     R::TextureId: Clone + Texture + Send + 'static,
@@ -262,7 +275,7 @@ where
         read.map(|read| (blur.apply(&bytes, (width, height)), read))
     });
     let Some((expected, made)) = tried else {
-        return Err("could not blur a picture to be tried".to_owned());
+        return Err(Unlike::Untried);
     };
     let most = expected
         .iter()
@@ -273,9 +286,7 @@ where
     if made.len() == expected.len() && most <= ROUNDING {
         Ok(())
     } else {
-        Err(format!(
-            "blurs otherwise than it should, by as much as {most} in 255"
-        ))
+        Err(Unlike::Otherwise(most))
     }
 }
 
