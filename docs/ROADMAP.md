@@ -2548,7 +2548,13 @@ Known gaps, each taken when the code beside it is touched:
       blind to failed tests
       ([finding 25](reviews/2026-11-19-after-the-redesign-of-windows.md#25-the-gates-quick-checks-are-listed-four-times-and-have-drifted-uncovered-by-itself-cannot-see-that-tests-failed)).
 - [ ] Low: documents and comments no longer so, what was more than a line
-      ([finding 27](reviews/2026-11-19-after-the-redesign-of-windows.md#27-documents-and-comments-that-said-what-is-no-longer-so)).
+      ([finding 27](reviews/2026-11-19-after-the-redesign-of-windows.md#27-documents-and-comments-that-said-what-is-no-longer-so)):
+      ACCESSIBILITY.md's four passages, `Part::ButtonClose`'s doc, the
+      `all` tier in TESTING.md, ADR 94 on `scripts` and ADR 99 on how an
+      entry is checked are put right. Left: `--glass-thin` and the bar's
+      dim text, to decide; DESIGN.md's "Following the sun" and "over any
+      wallpaper"; and TESTING.md's times, to be measured where the gates
+      are run.
 
 The review of pull requests 44 to 48, of 20 November 2026, found in
 `main`:

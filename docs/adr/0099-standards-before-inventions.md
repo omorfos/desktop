@@ -85,6 +85,7 @@ agreed with.
   goes out is in the first person, and theirs.
 - Some of what is in STANDARDS.md was written from what is known in
   this repository and not checked against each project as it stands.
-  Each entry says how to check, and is checked before it is raised.
+  Each is checked against what the project it would go to says of it
+  now before it is raised, as the head of STANDARDS.md asks.
 - What omorfos does meanwhile is what programs read today, so that
   nothing waits on an agreement to work.

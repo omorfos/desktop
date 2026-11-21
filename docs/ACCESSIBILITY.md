@@ -22,11 +22,16 @@ is, what is not there yet, and how to tell us what stands in your way.
   (`cursor.size` and `cursor.theme`).
 - The colours of the design language are measured as WCAG 2 does: text at
   least 4.5 to 1 on what it is on, and the edge of what takes input at
-  least 3 to 1. The built-in theme is to be redrawn in them; until then a
-  theme of your own can set any colour.
+  least 3 to 1. The built-in theme is drawn in them, in both schemes,
+  and a theme of your own can set any colour.
+- Glass, and what is blurred behind it, is made solid with
+  `appearance.reduce_transparency` in `config.yaml`.
 
 **Movement**
 
+- `appearance.reduce_motion` in `config.yaml` has nothing move: what
+  comes and goes only fades. Applications that ask are told of it,
+  through the settings portal, so that they can do the same.
 - Every change of colour, fade and movement of the desktop's parts is
   turned off with `* { transition: none; }` in `theme.css`, and one
   picture of the wallpaper changes into the next at once with
@@ -35,8 +40,12 @@ is, what is not there yet, and how to tell us what stands in your way.
 **The keyboard**
 
 - Every action of the desktop can be bound to a key, and chains of keys,
-  in `config.yaml`. Keys repeat as fast and as soon as you set
-  (`keyboard.repeat_rate` and `keyboard.repeat_delay`), or not at all.
+  in `keys.yaml`. Keys repeat as fast and as soon as you set
+  (`keyboard.repeat_rate` and `keyboard.repeat_delay` in `config.yaml`),
+  or not at all.
+- In the boxes that ask, for a password or about what a program wants,
+  the button the keyboard is on has a ring of the accent round it as
+  well as its colour.
 - The root menu and a window's menu are steered with the arrows, Enter
   and Escape; windows are switched with Alt and Tab; the launcher is
   typed into.
@@ -67,17 +76,17 @@ others:
   such as Orca, but that has not been tried, and Orca's own keys are not
   yet given to it. This is the largest gap, and it waits on how the
   desktop's parts are to be written.
-- **Settings for those who need them**: high contrast, larger text and
-  reduced motion as settings of their own, which applications are told
-  of, rather than by writing a theme.
+- **Settings for those who need them**: high contrast and larger text as
+  settings of their own, which applications are told of, rather than by
+  writing a theme, as reduced motion is.
 - **A magnifier**, **sticky keys** and **slow keys**.
 - **An on-screen keyboard.**
 - **Everything from the keyboard**: notifications are dismissed with the
   pointer alone so far.
-- **Focus shown by more than colour.** The window with focus has its
-  border and its titlebar in other colours, and nothing else yet; the
-  design language asks for a ring as well, which comes with the
-  built-in theme's redrawing.
+- **A window's focus shown by more than colour and shadow.** The window
+  with focus has its titlebar, its text and its buttons in other colours,
+  and its shadow deeper; its edge is the same as every window's. A ring
+  round it comes with high contrast, which is not there yet.
 
 ## Telling us
 
