@@ -77,6 +77,11 @@ cannot-start = cannot start `{ $program }`: { $why }
 # starts with no configuration.
 cannot-find = cannot start `{ $program }`, which is not installed: install it, or name another in its place in the configuration
 x11-cannot-run = cannot run programs written for X11: { $why }
+# /tmp/.X11-unix is there and cannot be written to, so no X server can
+# put its socket there; $why is what the X server said. Under WSL, which
+# keeps it read-only for its own X server, the second is said.
+x11-sockets-read-only = cannot run programs written for X11: /tmp/.X11-unix, where X servers put their sockets, cannot be written to ({ $why })
+x11-sockets-read-only-wsl = cannot run programs written for X11 inside omorfos: WSL keeps /tmp/.X11-unix read-only, for its own X server ({ $why }); programs written for Wayland are not affected
 x11-cannot-manage = cannot manage programs written for X11: { $why }
 x11-restarted = the X server stopped and has been started again; programs written for X11 that were running have closed
 x11-keeps-stopping = the X server keeps stopping; programs written for X11 will not run until you log in again
