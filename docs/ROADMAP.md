@@ -2517,8 +2517,13 @@ of the redesign of windows and the review of the defaults (stage 4):
 
 Known gaps, each taken when the code beside it is touched:
 
-- [ ] Low: four more tests that say less than their names
-      ([finding 16](reviews/2026-11-19-after-the-redesign-of-windows.md#16-four-more-tests-say-less-than-their-names)).
+- [x] Low: four more tests that say less than their names
+      ([finding 16](reviews/2026-11-19-after-the-redesign-of-windows.md#16-four-more-tests-say-less-than-their-names)):
+      the hairline is compared by channel with no shadow under it; the
+      question after a withdrawn picture is asked until it goes up; what
+      the service says is waited for ten seconds at most, and every
+      setting counted from the list of them; and the question refused
+      while another is up is joined, and seen to have failed for that.
 - [ ] Low: the portal's backend can wait for ever as it starts
       ([finding 17](reviews/2026-11-19-after-the-redesign-of-windows.md#17-the-portals-backend-can-wait-for-ever-as-it-starts-holding-its-name-on-a-busy-bus)).
 - [ ] Low: what a starting portal says may not reach programs when it

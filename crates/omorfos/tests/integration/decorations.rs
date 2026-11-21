@@ -301,18 +301,23 @@ fn the_title_is_written_on_the_titlebar() {
 #[test]
 fn the_desktop_and_its_frames_are_drawn_light_when_the_configuration_asks() {
     let light = "appearance: { scheme: light }\n";
-    let mut session = Session::with_config(&[("config.yaml", light)]);
+    // With no shadow, which would darken the cream by itself.
+    let unshaded = "window { box-shadow: none; }\n";
+    let mut session = Session::with_config(&[("config.yaml", light), ("theme.css", unshaded)]);
     let mut client = session.connect();
     session.open_decorated(&mut client, "foot", (200, 100), RED);
 
     let picture = session.draw();
-    assert_eq!(picture.at(600, 400), 0xfffc_f7e3, "a warm cream behind");
+    let cream = 0xfffc_f7e3;
+    assert_eq!(picture.at(600, 400), cream, "a warm cream behind");
     assert_eq!(picture.at(190, 14), 0xffff_fdf4, "the titlebar with focus");
+    // Darker than the cream in red, green and blue, as navy seen through
+    // it is, and not the window's red.
     let hairline = picture.at(0, 60);
-    assert!(
-        hairline != RED && hairline < 0xfffc_f7e3,
-        "its hairline, navy seen through: {hairline:#x}"
-    );
+    let channels = hairline.to_be_bytes().into_iter().skip(1);
+    let under = u32::to_be_bytes(cream).into_iter().skip(1);
+    let darker = channels.zip(under).all(|(pixel, cream)| pixel < cream);
+    assert!(darker, "its hairline, navy seen through: {hairline:#x}");
 }
 
 /// `config.yaml` going by the sun on the equator, as far round as it is

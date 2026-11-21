@@ -780,6 +780,7 @@ pub(crate) mod tests {
     use std::io::{BufRead, BufReader};
     use std::process::{Child, Command, Stdio};
     use std::thread;
+    use std::time::Duration;
 
     use zbus::zvariant::{ObjectPath, OwnedValue};
 
@@ -867,8 +868,9 @@ pub(crate) mod tests {
         value.downcast_ref::<u32>().unwrap()
     }
 
-    /// Has a peer hear the signals of the service from now on.
-    pub(crate) fn listen_for_changes(peer: &Connection) -> MessageIterator {
+    /// Has a peer hear the signals of the service from now on: each
+    /// setting it says has changed, its group, and what to, as it comes.
+    pub(crate) fn listen_for_changes(peer: &Connection) -> Receiver<Change> {
         let rule = format!("type='signal',interface='{SETTINGS}'");
         let bus = "org.freedesktop.DBus";
         peer.call_method(
@@ -879,19 +881,28 @@ pub(crate) mod tests {
             &(rule,),
         )
         .unwrap();
-        MessageIterator::from(peer)
+        let heard = MessageIterator::from(peer);
+        let (said, changes) = mpsc::channel();
+        // Until the test that listens has done, and no longer hears.
+        thread::spawn(move || {
+            let signals = heard.map_while(Result::ok);
+            let settings_changed = signals.filter(|message| {
+                let member = message.header().member().map(ToString::to_string);
+                member.as_deref() == Some("SettingChanged")
+            });
+            let mut each = settings_changed.map(|change| change.body().deserialize().unwrap());
+            let _ = each.try_for_each(|change| said.send(change));
+        });
+        changes
     }
 
-    /// The next setting the service says has changed, its group, and what
-    /// to.
-    pub(crate) fn next_change(heard: &mut MessageIterator) -> (String, String, OwnedValue) {
-        let signals = heard.map_while(Result::ok);
-        let mut changes = signals.filter(|message| {
-            let member = message.header().member().map(ToString::to_string);
-            member.as_deref() == Some("SettingChanged")
-        });
-        let change = changes.next().unwrap();
-        change.body().deserialize().unwrap()
+    /// A setting said to have changed: its group, its name, and what to.
+    pub(crate) type Change = (String, String, OwnedValue);
+
+    /// The next setting the service says has changed, which fails the test
+    /// if none is said in ten seconds rather than wait for ever.
+    pub(crate) fn next_change(heard: &Receiver<Change>) -> Change {
+        heard.recv_timeout(Duration::from_secs(10)).unwrap()
     }
 
     /// A dark desktop, its pointer as it is by default.
@@ -924,10 +935,11 @@ pub(crate) mod tests {
         // A program that was there before it, and read what the portal
         // before it said.
         let peer = daemon.peer();
-        let mut heard = listen_for_changes(&peer);
+        let heard = listen_for_changes(&peer);
         let _portal = service(&daemon, dark());
-        let said: Vec<(String, String, OwnedValue)> =
-            (0..11).map(|_| next_change(&mut heard)).collect();
+        // Every setting there is.
+        let every = settings(&dark()).len();
+        let said: Vec<Change> = (0..every).map(|_| next_change(&heard)).collect();
         let named = |group: &str, key: &str| {
             let mut found = said
                 .iter()
@@ -1434,7 +1446,7 @@ pub(crate) mod tests {
         let daemon = Daemon::start();
         let portal = service(&daemon, dark());
         let peer = daemon.peer();
-        let mut heard = listen_for_changes(&peer);
+        let heard = listen_for_changes(&peer);
 
         let light = Appearance {
             dark: false,
@@ -1443,7 +1455,7 @@ pub(crate) mod tests {
         // Nothing changed, nothing said; then light, which is all that is.
         portal.changed(&dark(), &dark());
         portal.changed(&dark(), &light);
-        let (group, key, value) = next_change(&mut heard);
+        let (group, key, value) = next_change(&heard);
         assert_eq!(
             (
                 group.as_str(),
@@ -1458,7 +1470,7 @@ pub(crate) mod tests {
             ..light.clone()
         };
         portal.changed(&light, &red);
-        let (_, key, value) = next_change(&mut heard);
+        let (_, key, value) = next_change(&heard);
         assert_eq!(key, "accent-color");
         let accent: (f64, f64, f64) = value.try_into().unwrap();
         assert_eq!(accent, (1.0, 0.0, 0.0));
@@ -1469,7 +1481,7 @@ pub(crate) mod tests {
             ..red.clone()
         };
         portal.changed(&red, &larger);
-        let (group, key, value) = next_change(&mut heard);
+        let (group, key, value) = next_change(&heard);
         assert_eq!((group.as_str(), key.as_str()), (INTERFACE, "cursor-size"));
         assert_eq!(value.downcast_ref::<i32>().unwrap(), 32);
 
@@ -1479,10 +1491,10 @@ pub(crate) mod tests {
             ..larger.clone()
         };
         portal.changed(&larger, &still);
-        let (group, key, value) = next_change(&mut heard);
+        let (group, key, value) = next_change(&heard);
         assert_eq!((group.as_str(), key.as_str()), (LOOKS, "reduced-motion"));
         assert_eq!(value.downcast_ref::<u32>().unwrap(), 1);
-        let (group, key, value) = next_change(&mut heard);
+        let (group, key, value) = next_change(&heard);
         assert_eq!(
             (group.as_str(), key.as_str()),
             (INTERFACE, "enable-animations")
