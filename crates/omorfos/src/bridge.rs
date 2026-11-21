@@ -51,10 +51,10 @@ pub fn settings(config: &Config) -> Settings {
         decoration: Metrics {
             border: theme.style(Part::Window, States::NONE).border.top.width,
             titlebar: theme.style(Part::Titlebar, States::NONE).height,
-            buttons: BUTTONS.map(|(_, part)| {
+            buttons: Button::ALL.map(|button| {
                 // A button is as wide as it says, with its margin around
                 // it. One with no width is not there, margin and all.
-                let style = theme.style(part, States::NONE);
+                let style = theme.style(button_part(button), States::NONE);
                 let wide = Some(style.min_width).filter(|wide| *wide > 0);
                 wide.map_or(0, |wide| wide.saturating_add(style.margin.across()))
             }),
@@ -62,13 +62,16 @@ pub fn settings(config: &Config) -> Settings {
     }
 }
 
-/// The buttons of a titlebar, from the left, and the part of the theme
-/// that says how each looks.
-pub(crate) const BUTTONS: [(Button, Part); 3] = [
-    (Button::Close, Part::ButtonClose),
-    (Button::Minimize, Part::ButtonMinimize),
-    (Button::Maximize, Part::ButtonMaximize),
-];
+/// The part of the theme that says how `button` looks. The buttons are
+/// drawn, and programs told of them, in the order the domain has them,
+/// [`Button::ALL`].
+pub(crate) const fn button_part(button: Button) -> Part {
+    match button {
+        Button::Close => Part::ButtonClose,
+        Button::Minimize => Part::ButtonMinimize,
+        Button::Maximize => Part::ButtonMaximize,
+    }
+}
 
 /// How a window a rule calls private is hidden, as the domain has it.
 const fn private(private: omorfos_config::Private) -> Private {
@@ -388,6 +391,31 @@ mod tests {
     use smithay::input::keyboard::Keysym;
 
     use super::*;
+
+    #[test]
+    fn programs_are_told_the_buttons_in_the_order_and_on_the_side_they_are_drawn() {
+        // What each button is called where programs are told of it.
+        let name = |button| match button {
+            Button::Close => "close",
+            Button::Minimize => "minimize",
+            Button::Maximize => "maximize",
+        };
+        // At the left, from the left, those drawn, and none at the right.
+        let drawn = |config: &Config| {
+            let shown = Button::ALL.into_iter().filter(|button| {
+                let part = button_part(*button);
+                config.theme.style(part, States::NONE).min_width > 0
+            });
+            let names: Vec<&str> = shown.map(name).collect();
+            format!("{}:", names.join(","))
+        };
+        let built_in = Config::default();
+        assert_eq!(built_in.theme.button_layout(), drawn(&built_in));
+        assert_eq!(drawn(&built_in), "close,minimize,maximize:");
+        let without = config("theme.css", "button-minimize { min-width: 0 }\n");
+        assert_eq!(without.theme.button_layout(), drawn(&without));
+        assert_eq!(drawn(&without), "close,maximize:");
+    }
 
     /// Loads a configuration made of one file.
     fn config(file: &str, yaml: &str) -> Config {

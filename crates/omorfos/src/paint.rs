@@ -14,7 +14,7 @@ use omorfos_ui::{Area, Image, inset};
 pub(crate) use omorfos_ui::{Canvas, Motion, Text};
 
 use crate::Scale;
-use crate::bridge::BUTTONS;
+use crate::bridge::button_part;
 use crate::icons::{WindowIcons, icon_pixels};
 
 /// The width set aside on a menu row for the arrow that marks a submenu.
@@ -94,9 +94,9 @@ impl Looks {
         focused: bool,
     ) -> Self {
         let states = States::NONE.when(State::Focused, focused);
-        let buttons = BUTTONS.map(|(_, part)| {
+        let buttons = Button::ALL.map(|button| {
             let states = states.when(State::Hovered, hovered.is_some());
-            motion.style(theme, part, shown, states)
+            motion.style(theme, button_part(button), shown, states)
         });
         let tabs = tabs.enumerate().map(|(index, window)| {
             let states = Self::tab_states(focused, index == active);
@@ -158,7 +158,7 @@ pub(crate) fn titlebar(
         (inside, radius.saturating_sub(border)),
     );
 
-    for ((button, _), style) in BUTTONS.into_iter().zip(&looks.buttons) {
+    for (button, style) in Button::ALL.into_iter().zip(&looks.buttons) {
         let share = decoration.button(button);
         let left = share.origin.x - bar.origin.x;
         let area = inset((left, 0, share.size.width, share.size.height), style.margin);

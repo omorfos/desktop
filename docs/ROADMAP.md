@@ -2530,8 +2530,10 @@ Known gaps, each taken when the code beside it is touched:
       what is kept is the text that was parsed, not the file read again.
 - [ ] Low: a sandbox whose socket is not one
       ([finding 20](reviews/2026-11-19-after-the-redesign-of-windows.md#20-a-sandbox-whose-socket-is-not-one-has-every-program-let-in-late-and-the-log-say-descriptors-ran-out)).
-- [ ] Low: the side and order of a titlebar's buttons said three times
-      ([finding 24](reviews/2026-11-19-after-the-redesign-of-windows.md#24-the-side-and-order-of-a-titlebars-buttons-are-said-three-times)).
+- [x] Low: the side and order of a titlebar's buttons said three times
+      ([finding 24](reviews/2026-11-19-after-the-redesign-of-windows.md#24-the-side-and-order-of-a-titlebars-buttons-are-said-three-times)):
+      the buttons are drawn in the domain's order, `Button::ALL`, and a test
+      holds what programs are told to it.
 - [ ] Low: the gates' quick checks listed four times, and `uncovered`
       blind to failed tests
       ([finding 25](reviews/2026-11-19-after-the-redesign-of-windows.md#25-the-gates-quick-checks-are-listed-four-times-and-have-drifted-uncovered-by-itself-cannot-see-that-tests-failed)).
