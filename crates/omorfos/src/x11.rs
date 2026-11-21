@@ -567,9 +567,11 @@ impl Compositor {
     }
 
     /// Takes up an X server that has been started, or tells the user that
-    /// it could not be.
+    /// it could not be, and why where that is known.
     fn started_x11(&mut self, started: io::Result<(XWayland, Client)>) {
-        let started = self.or_problem("x11-cannot-run", started);
+        let release = std::fs::read_to_string(KERNEL).unwrap_or_default();
+        let said = cannot_run(std::path::Path::new(SOCKETS), &release);
+        let started = self.or_problem(said, started);
         self.x11.server = started.map(|(process, client)| Server {
             // The loop is woken when the X server says it is ready, which
             // is noticed the next time round.
@@ -1166,12 +1168,60 @@ impl XwmHandler for Compositor {
 
 smithay::delegate_xwayland_shell!(Compositor);
 
+/// Where X servers put the sockets programs reach them by.
+const SOCKETS: &str = "/tmp/.X11-unix";
+
+/// What the kernel says it is, which under WSL names Microsoft.
+const KERNEL: &str = "/proc/sys/kernel/osrelease";
+
+/// What the user is told when an X server cannot be started: that
+/// `sockets` is there and cannot be written to, where it is, as under WSL,
+/// which keeps it for its own X server, read-only, and is named by the
+/// kernel's `release`; or, failing that, why the server said it could not.
+/// The X server's own reason, that no number was free, says nothing of
+/// the directory.
+fn cannot_run(sockets: &std::path::Path, release: &str) -> &'static str {
+    use rustix::fs::{Access, access};
+    let there = sockets.is_dir();
+    let unwritable = there && access(sockets, Access::WRITE_OK).is_err();
+    let wsl = release.to_ascii_lowercase().contains("microsoft");
+    match (unwritable, wsl) {
+        (false, _) => "x11-cannot-run",
+        (true, false) => "x11-sockets-read-only",
+        (true, true) => "x11-sockets-read-only-wsl",
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use omorfos_ipc::protocols::{OFFERED, X_SERVER};
     use smithay::reexports::wayland_server::Display;
 
     use super::*;
+
+    #[test]
+    fn an_x_server_that_cannot_put_its_socket_where_they_go_is_said_to_be_so_and_wsl_by_name() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let wsl = "5.15.167.4-microsoft-standard-WSL2\n";
+        let elsewhere = "6.12.0-1-amd64\n";
+        let sockets = tempfile::TempDir::new().unwrap();
+        // Where it can be written to, the X server's own reason is said.
+        assert_eq!(cannot_run(sockets.path(), wsl), "x11-cannot-run");
+        // And where it is not there at all, which the X server says.
+        let missing = sockets.path().join("missing");
+        assert_eq!(cannot_run(&missing, elsewhere), "x11-cannot-run");
+        // Where it cannot, that is said, and that WSL keeps it.
+        let read_only = std::fs::Permissions::from_mode(0o555);
+        std::fs::set_permissions(sockets.path(), read_only).unwrap();
+        assert_eq!(
+            cannot_run(sockets.path(), elsewhere),
+            "x11-sockets-read-only"
+        );
+        assert_eq!(cannot_run(sockets.path(), wsl), "x11-sockets-read-only-wsl");
+        let writable = std::fs::Permissions::from_mode(0o755);
+        std::fs::set_permissions(sockets.path(), writable).unwrap();
+    }
 
     #[test]
     fn programs_of_the_other_kind_are_offered_a_few_kinds_of_what_was_copied_each_as_a_kind_is() {
