@@ -113,6 +113,72 @@ fn a_program_that_takes_back_what_it_said_before_it_is_shown_is_decorated() {
 }
 
 #[test]
+fn a_program_a_rule_frames_is_told_the_compositor_decorates_it_whatever_it_prefers() {
+    let rule = "rules:\n  - match: { app_id: code }\n    decorations: true\n";
+    let mut session = Session::with_config(&[("rules.yaml", rule)]);
+    let mut client = session.connect();
+    let window = client.toplevel_uncommitted("code", "");
+    let decoration = client.decoration(&window);
+    decoration.set_mode(Mode::ClientSide);
+    window.surface.commit();
+    session.roundtrip(&mut client);
+    let events = client.take_events();
+    assert!(
+        events.contains(&Event::Decoration { server_side: true }),
+        "{events:?}"
+    );
+    assert!(
+        !events.contains(&Event::Decoration { server_side: false }),
+        "and not that it draws its own: {events:?}"
+    );
+    client.fill(&window.surface, (200, 100), RED);
+    session.roundtrip(&mut client);
+    let frame = session.compositor().desktop().frames().next().unwrap();
+    assert!(frame.decoration.is_some(), "framed, as it was told");
+}
+
+#[test]
+fn a_program_a_rule_leaves_bare_is_told_it_draws_its_own_titlebar() {
+    let rule = "rules:\n  - match: { app_id: foot }\n    decorations: false\n";
+    let mut session = Session::with_config(&[("rules.yaml", rule)]);
+    let mut client = session.connect();
+    session.open_decorated(&mut client, "foot", (200, 100), RED);
+    let events = client.take_events();
+    assert!(
+        events.contains(&Event::Decoration { server_side: false }),
+        "{events:?}"
+    );
+    assert!(
+        !events.contains(&Event::Decoration { server_side: true }),
+        "{events:?}"
+    );
+    let frame = session.compositor().desktop().frames().next().unwrap();
+    assert_eq!(frame.decoration, None, "bare, as it was told");
+}
+
+#[test]
+fn a_window_shown_without_a_frame_that_asks_then_is_told_it_draws_its_own() {
+    let mut session = Session::new();
+    let mut client = session.connect();
+    let window = session.open(&mut client, "late", (200, 100), RED);
+    client.take_events();
+    // Asking only once it is up, it is told what it has, which is no frame.
+    let _decoration = client.decoration(&window);
+    session.roundtrip(&mut client);
+    let events = client.take_events();
+    assert!(
+        events.contains(&Event::Decoration { server_side: false }),
+        "{events:?}"
+    );
+    assert!(
+        !events.contains(&Event::Decoration { server_side: true }),
+        "{events:?}"
+    );
+    let frame = session.compositor().desktop().frames().next().unwrap();
+    assert_eq!(frame.decoration, None);
+}
+
+#[test]
 fn a_window_that_is_shown_keeps_the_frame_it_was_shown_in_whatever_it_asks_then() {
     let mut session = Session::new();
     let mut client = session.connect();

@@ -26,7 +26,10 @@ that are not) and `sticky` (on every workspace of its screen), which are
 what the titlebar's menu changes too. A window without a titlebar is not
 rolled up.
 Without a `decorations` rule, a window is framed if it asks omorfos to
-decorate it.
+decorate it. A program is told what it has: one a rule frames that
+would draw its own titlebar is told omorfos draws it, one a rule leaves
+bare that it draws its own, and one that asks only once its window is
+up, whatever it was shown with.
 
 The others are looked at when a window opens. `private` holds for as
 long as the window matches: a window whose title comes to match is
