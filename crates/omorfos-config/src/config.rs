@@ -74,36 +74,58 @@ impl Config {
     /// `appearance.scheme` is `auto`.
     #[must_use]
     pub fn load_at(directory: &Path, fallback: &Self, now: &Zoned) -> (Self, Vec<Diagnostic>) {
-        let mut diagnostics = Vec::new();
-        let general: General = section(directory, GENERAL, &fallback.general, &mut diagnostics);
+        let (config, loaded) = Self::loaded(directory, fallback, now);
+        (config, loaded.diagnostics)
+    }
+
+    /// Loads the configuration in `directory` as [`Config::load_at`] does,
+    /// with the text of each file that loaded, as it was parsed.
+    #[must_use]
+    pub(crate) fn loaded(directory: &Path, fallback: &Self, now: &Zoned) -> (Self, Loaded) {
+        let mut loaded = Loaded::default();
+        let general: General = section(directory, GENERAL, &fallback.general, &mut loaded);
         // The theme is built in the scheme and with the accent `config.yaml`
         // says, so it is read after it.
         let appearance = general.appearance;
         let (scheme, changes) = appearance.scheme_at(now);
         let config = Self {
-            keys: section(directory, KEYS, &fallback.keys, &mut diagnostics),
-            rules: section(directory, RULES, &fallback.rules, &mut diagnostics),
-            theme: theme(directory, (scheme, appearance), fallback, &mut diagnostics),
-            menu: section(directory, MENU, &fallback.menu, &mut diagnostics),
+            keys: section(directory, KEYS, &fallback.keys, &mut loaded),
+            rules: section(directory, RULES, &fallback.rules, &mut loaded),
+            theme: theme(directory, (scheme, appearance), fallback, &mut loaded),
+            menu: section(directory, MENU, &fallback.menu, &mut loaded),
             general,
             scheme,
             changes,
         };
-        (config, diagnostics)
+        (config, loaded)
     }
 }
 
-fn section<T>(directory: &Path, name: &str, fallback: &T, diagnostics: &mut Vec<Diagnostic>) -> T
+/// What a load found besides the configuration: what was wrong, and the
+/// text of each file that loaded, by its name, as it was read and parsed,
+/// which is what is kept of it, as the file may have changed since.
+#[derive(Debug, Default)]
+pub(crate) struct Loaded {
+    pub(crate) diagnostics: Vec<Diagnostic>,
+    pub(crate) texts: Vec<(&'static str, String)>,
+}
+
+fn section<T>(directory: &Path, name: &'static str, fallback: &T, loaded: &mut Loaded) -> T
 where
     T: DeserializeOwned + Default + Clone,
 {
     let path = directory.join(name);
-    read(&path)
-        .and_then(|text| parse(&path, &text))
-        .unwrap_or_else(|diagnostic| {
-            diagnostics.push(diagnostic);
+    let parsed = read(&path).and_then(|text| parse(&path, &text).map(|value| (value, text)));
+    match parsed {
+        Ok((value, text)) => {
+            loaded.texts.push((name, text));
+            value
+        }
+        Err(diagnostic) => {
+            loaded.diagnostics.push(diagnostic);
             fallback.clone()
-        })
+        }
+    }
 }
 
 /// Loads the theme, which is a stylesheet and not YAML like the rest, laid
@@ -118,11 +140,11 @@ fn theme(
     directory: &Path,
     (scheme, appearance): (Scheme, Appearance),
     fallback: &Config,
-    diagnostics: &mut Vec<Diagnostic>,
+    loaded: &mut Loaded,
 ) -> Theme {
     let accent = appearance.accent;
-    let loaded = laid(directory, (scheme, accent), fallback, diagnostics);
-    as_moving(loaded, appearance)
+    let laid = laid(directory, (scheme, accent), fallback, loaded);
+    as_moving(laid, appearance)
 }
 
 /// `theme` as `appearance` has it move: still, if it says motion is to be
@@ -141,33 +163,40 @@ fn laid(
     directory: &Path,
     (scheme, accent): (Scheme, Accent),
     fallback: &Config,
-    diagnostics: &mut Vec<Diagnostic>,
+    loaded: &mut Loaded,
 ) -> Theme {
     let old = directory.join(OLD_THEME);
     if old.exists() {
         // Left where it is, it would look as though it were in use.
         let message = format!("this file is no longer read: themes are written in `{THEME}` now");
-        diagnostics.push(Diagnostic::new(&old, message));
+        loaded.diagnostics.push(Diagnostic::new(&old, message));
     }
     let path = directory.join(THEME);
-    let loaded = read(&path).and_then(|text| {
+    let parsed = read(&path).and_then(|text| {
         let parsed = Theme::parse_in(&text, scheme, accent);
-        parsed.map_err(|error| Diagnostic {
+        let parsed = parsed.map_err(|error| Diagnostic {
             file: path.clone(),
             position: error.position,
             message: error.message,
-        })
+        });
+        parsed.map(|theme| (theme, text))
     });
-    loaded.unwrap_or_else(|diagnostic| {
-        diagnostics.push(diagnostic);
-        let kept = fallback.general.appearance;
-        let built_in = Theme::built_in(fallback.scheme, kept.accent);
-        if fallback.theme == as_moving(built_in, kept) {
-            Theme::built_in(scheme, accent)
-        } else {
-            fallback.theme.clone()
+    match parsed {
+        Ok((theme, text)) => {
+            loaded.texts.push((THEME, text));
+            theme
         }
-    })
+        Err(diagnostic) => {
+            loaded.diagnostics.push(diagnostic);
+            let kept = fallback.general.appearance;
+            let built_in = Theme::built_in(fallback.scheme, kept.accent);
+            if fallback.theme == as_moving(built_in, kept) {
+                Theme::built_in(scheme, accent)
+            } else {
+                fallback.theme.clone()
+            }
+        }
+    }
 }
 
 /// Reads a file, treating one that does not exist as empty.
