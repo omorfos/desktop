@@ -3,6 +3,12 @@
 Releases are cut by merging a pull request. Nobody edits version numbers or
 the changelog by hand.
 
+This is how the session is released, which is every program until one is
+packaged by itself. From then, each program that stands alone has a
+version, a changelog, a tag and a release of its own, made the same way
+([ADR 102](adr/0102-a-version-for-the-session-and-one-for-each-program-that-stands-alone.md)),
+and this page says so once the first is.
+
 ## How a release happens
 
 1. Commits land on `main` following

@@ -2,6 +2,7 @@
 
 - Status: accepted
 - Date: 2026-10-09
+- Taken up by: [ADR 102](0102-a-version-for-the-session-and-one-for-each-program-that-stands-alone.md), for the programs that stand alone
 
 ## Context
 

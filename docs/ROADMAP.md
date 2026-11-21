@@ -3131,7 +3131,12 @@ specification already says is not said again in a way of omorfos's own.
       with settings and a theme it finds by itself, tried on one other
       compositor and packaged apart. The applications of stage 7, the
       greeter, the dock, Launchpad and the on-screen keyboard are built
-      so from the start; `omorfos-pinentry` stands alone unsealed.
+      so from the start; `omorfos-pinentry` stands alone unsealed. Each
+      with a version, a changelog, a tag and a release of its own, the
+      licences of what is in it and no more, its licence and credits in
+      its manual page, a README for whoever finds it without the rest,
+      the release workflow building only what it releases, and CI only
+      what a change reaches (ADR 102).
 - [ ] Settings that stand alone and change whatever of omorfos's is on
       the machine, and nothing else (ADR 98): a page for each program of
       ours that is installed, made from its schema, and what is not the
