@@ -139,6 +139,10 @@ pub enum Asked {
     /// The session known by this object has ended, and whatever it shares
     /// is to stop.
     Ended(OwnedObjectPath),
+    /// The portal has gone, or another has taken its place: no question it
+    /// put is wanted any more, and every session it made has ended, as the
+    /// one there is now knows none of them and cannot end them.
+    Replaced,
 }
 
 /// What the service says of itself to a program that asks how to use it.
@@ -325,10 +329,19 @@ impl Portal {
                         if let Some(left) = left_the_bus(&message) {
                             holds.gone(&left);
                         }
-                        // A portal started anew has made no sessions yet.
+                        // A portal started anew has made no sessions yet, and
+                        // what the one before it asked for is wanted no more:
+                        // shared, it would stay shared with nothing left that
+                        // could end it.
+                        // The portal coming for the first time had asked
+                        // nothing before.
                         if let Some(now) = portal_changed(&message) {
+                            let was = owner.take();
                             owner = Some(now).filter(|now| !now.is_empty());
                             sessions.clear();
+                            if was.is_some() && was != owner {
+                                waiting.tell(Asked::Replaced);
+                            }
                         }
                         let held = (&waiting, &mut sessions, &mut holds);
                         answer(&answering, &message, (&look, owner.as_deref()), held);
@@ -462,15 +475,16 @@ impl Waiting {
 }
 
 impl Asked {
-    /// The object the request is known by.
+    /// The object the request is known by, if it is of one.
     #[must_use]
-    pub const fn request(&self) -> &OwnedObjectPath {
+    pub const fn request(&self) -> Option<&OwnedObjectPath> {
         match self {
             Self::Screenshot { request, .. }
             | Self::Pick { request, .. }
             | Self::Share { request, .. }
             | Self::Withdrawn(request)
-            | Self::Ended(request) => request,
+            | Self::Ended(request) => Some(request),
+            Self::Replaced => None,
         }
     }
 
@@ -481,7 +495,7 @@ impl Asked {
             Self::Screenshot { call, .. } | Self::Pick { call, .. } | Self::Share { call, .. } => {
                 Some(call)
             }
-            Self::Withdrawn(_) | Self::Ended(_) => None,
+            Self::Withdrawn(_) | Self::Ended(_) | Self::Replaced => None,
         }
     }
 }
@@ -1177,7 +1191,7 @@ pub(crate) mod tests {
         let request = "/org/freedesktop/portal/desktop/request/1/colour";
         let asking = ask_for(&peer, request, "PickColor");
         let asked = heard(&portal).pop().unwrap();
-        assert_eq!(asked.request().as_str(), request);
+        assert_eq!(asked.request().unwrap().as_str(), request);
         assert!(matches!(&asked, Asked::Pick { app, .. } if app == "org.example.App"));
         portal.respond_colour(asked.call().unwrap(), Response::Given, Some([255, 51, 0]));
         let (response, results) = asking.join().unwrap();
@@ -1194,7 +1208,7 @@ pub(crate) mod tests {
 
         let asked = heard(&portal).pop().unwrap();
         let call = asked.call().unwrap();
-        let request = asked.request();
+        let request = asked.request().unwrap();
         assert_eq!(
             request.as_str(),
             "/org/freedesktop/portal/desktop/request/1/a"
@@ -1230,7 +1244,7 @@ pub(crate) mod tests {
         peer.call_method(Some(NAME), request, Some(REQUEST), "Close", &())
             .unwrap();
         let withdrawn = heard(&portal).pop().unwrap();
-        assert_eq!(withdrawn.request().as_str(), request);
+        assert_eq!(withdrawn.request().unwrap().as_str(), request);
         assert!(
             withdrawn.call().is_none(),
             "nothing waits for an answer to it"
@@ -1379,7 +1393,7 @@ pub(crate) mod tests {
         });
         let asked = heard(&portal).pop().unwrap();
         assert_eq!(
-            asked.request().as_str(),
+            asked.request().unwrap().as_str(),
             "/org/freedesktop/portal/desktop/request/1/s"
         );
         portal.respond_shared(asked.call().unwrap(), 7, Some((0, 0)), (640, 480));
@@ -1388,8 +1402,31 @@ pub(crate) mod tests {
         peer.call_method(Some(NAME), session.as_str(), Some(SESSION), "Close", &())
             .unwrap();
         let ended = heard(&portal).pop().unwrap();
-        assert_eq!(ended.request().as_str(), session.as_str());
+        assert_eq!(ended.request().unwrap().as_str(), session.as_str());
         assert!(ended.call().is_none());
+    }
+
+    #[test]
+    fn a_portal_started_anew_is_heard_of_and_what_the_one_before_made_is_forgotten() {
+        let daemon = Daemon::start();
+        let portal = service(&daemon, dark());
+        let first = daemon.peer();
+        let none: HashMap<&str, Value<'_>> = HashMap::new();
+        let request = ObjectPath::try_from("/org/freedesktop/portal/desktop/request/1/a").unwrap();
+        let session = ObjectPath::try_from("/org/freedesktop/portal/desktop/session/1/a").unwrap();
+        let made = (request, session, "org.example.Call", none);
+        first
+            .call_method(Some(NAME), PATH, Some(SCREENCAST), "CreateSession", &made)
+            .unwrap();
+        assert!(portal.asked().is_empty(), "nothing waits on the user");
+
+        // Another program takes the portal's name, as a portal started
+        // again does: the backend is told, so that what was shared stops.
+        let second = daemon.peer();
+        let told = heard(&portal);
+        assert!(matches!(told.as_slice(), [Asked::Replaced]), "{told:?}");
+        assert!(told[0].request().is_none() && told[0].call().is_none());
+        drop((first, second));
     }
 
     #[test]

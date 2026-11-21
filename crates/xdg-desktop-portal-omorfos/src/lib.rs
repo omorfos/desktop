@@ -779,6 +779,23 @@ impl Backend<'_> {
                     self.portal.respond(&picking.call, Response::Refused, None);
                 }
             }
+            Asked::Replaced => self.replaced(),
+        }
+    }
+
+    /// The portal there is now knows nothing the one before it asked for,
+    /// and could end none of it: it is all taken as withdrawn and ended, as
+    /// the one before would have had it.
+    fn replaced(&mut self) {
+        let pending = self.pending.as_ref().map(|pending| pending.request.clone());
+        let picking = self.picking.as_ref().map(|picking| picking.request.clone());
+        let shared = self.shares.iter().map(|sharing| sharing.session.clone());
+        let shared: Vec<OwnedObjectPath> = shared.collect();
+        for request in pending.into_iter().chain(picking) {
+            self.heard(Asked::Withdrawn(request));
+        }
+        for session in shared {
+            self.heard(Asked::Ended(session));
         }
     }
 

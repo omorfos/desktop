@@ -2459,9 +2459,12 @@ First, what is unsafe or gives away what is private:
       among them, which a test showed get past a count made as it is;
       the keeper of the clipboard, and a program dragged over, wait on
       Smithay there (`UPSTREAM.md`).
-- [ ] Medium: a portal started again leaves every screen it was sharing
+- [x] Medium: a portal started again leaves every screen it was sharing
       still shared
-      ([finding 5](reviews/2026-11-19-after-the-redesign-of-windows.md#5-a-portal-started-again-leaves-every-screen-it-was-sharing-still-shared-with-nothing-left-that-can-end-it)).
+      ([finding 5](reviews/2026-11-19-after-the-redesign-of-windows.md#5-a-portal-started-again-leaves-every-screen-it-was-sharing-still-shared-with-nothing-left-that-can-end-it)):
+      when the portal's name changes hands or goes, the backend is told,
+      and takes down the question or picker the one before put up, as
+      withdrawn, and ends every share of its sessions.
 - [ ] Medium, high if shown: a private window to be blurred shows sharp
       what it draws outside its frame
       ([finding 12](reviews/2026-11-19-after-the-redesign-of-windows.md#12-a-private-window-that-is-to-be-blurred-shows-sharp-in-pictures-of-the-screen-whatever-it-draws-outside-its-frame)):
