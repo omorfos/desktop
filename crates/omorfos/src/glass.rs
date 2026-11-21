@@ -384,14 +384,13 @@ impl Pane {
         opacity: f32,
     ) -> Option<Self> {
         let glass = style.blur > 0 && style.see_through();
-        let from = view.pixel(area.loc.to_f64());
-        let to = view.pixel((area.loc + area.size.to_point()).to_f64());
+        let area = view.pixels(area);
         let pixels = |units: u32| view.scale.pixels(units.cast_signed()).unsigned_abs();
         glass.then(|| Self {
             key,
             at,
             under,
-            area: Rectangle::new(from, (to - from).to_size()),
+            area,
             shape: Shape::Rounded {
                 radius: view.scale.pixels(style.radius.cast_signed()),
                 below: true,
@@ -434,13 +433,12 @@ impl Pane {
         (blur, color): (u32, Color),
         (key, at): (u64, usize),
     ) -> Self {
-        let from = view.pixel(area.loc.to_f64());
-        let to = view.pixel((area.loc + area.size.to_point()).to_f64());
+        let area = view.pixels(area);
         Self {
             key,
             at,
             under: at,
-            area: Rectangle::new(from, (to - from).to_size()),
+            area,
             shape: Shape::Rounded {
                 radius: 0,
                 below: true,

@@ -23,7 +23,7 @@ use smithay::backend::renderer::{ImportAll, ImportMem, Renderer, Texture};
 use smithay::input::keyboard::{Keysym, ModifiersState};
 use smithay::output::Output;
 use smithay::reexports::wayland_server::DisplayHandle;
-use smithay::utils::{Logical, Point, Rectangle};
+use smithay::utils::{Logical, Point};
 use smithay::reexports::wayland_protocols::xdg::toplevel_icon::v1::server::xdg_toplevel_icon_manager_v1::XdgToplevelIconManagerV1;
 use smithay::reexports::wayland_server::backend::ObjectId;
 
@@ -865,12 +865,7 @@ impl Compositor {
         let head = self
             .head(output)
             .filter(|_| backdrop.blur > 0 && backdrop.see_through());
-        let whole = head.map(|head| {
-            let area = head.area();
-            let from = view.pixel(area.loc.to_f64());
-            let to = view.pixel((area.loc + area.size.to_point()).to_f64());
-            Rectangle::new(from, (to - from).to_size())
-        });
+        let whole = head.map(|head| view.pixels(head.area()));
         let key = glass::key(&("the switcher's backdrop", output.name()));
         let under = elements.len();
         let blurred = whole.and_then(|whole| {

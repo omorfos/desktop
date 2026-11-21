@@ -2498,7 +2498,9 @@ numbers say:
 - [ ] Low: what is written more than once in the compositor's drawing,
       which is the same code
       ([finding 26](reviews/2026-11-19-after-the-redesign-of-windows.md#26-what-is-written-more-than-once-in-the-compositors-drawing)):
-      what of it is not drawing goes with stage 9's "made once".
+      what of it is not drawing goes with stage 9's "made once". An area
+      turned into pixels by hand is `View::pixels` in each place now; the
+      rest is left.
 
 Then, after screens remembered and scaled (stage 3), with what is left
 of the redesign of windows and the review of the defaults (stage 4):

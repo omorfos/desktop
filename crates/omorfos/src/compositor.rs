@@ -6243,15 +6243,14 @@ impl Chrome {
     {
         let bar = self.decoration.titlebar();
         let at = Point::<i32, Logical>::from((bar.origin.x, bar.origin.y));
-        let from = view.pixel(at.to_f64());
-        let to = view.pixel((at + logical_size(bar.size).to_point()).to_f64());
-        let area = Rectangle::new(from, (to - from).to_size());
+        let area = view.pixels(Rectangle::new(at, logical_size(bar.size)));
         let scale = view.scale.factor();
         let radius = self.appearance.looks.window.radius.cast_signed();
         let strips = corners::rounded_above(area, view.scale.pixels(radius));
         let strips = strips.into_iter().enumerate().filter_map(|(index, strip)| {
             let kind = Kind::Unspecified;
-            let whole = SolidColorRenderElement::from_buffer(&self.ground, from, scale, 1.0, kind);
+            let whole =
+                SolidColorRenderElement::from_buffer(&self.ground, area.loc, scale, 1.0, kind);
             Strip::of(whole, scale, strip, index, &self.strips)
         });
         elements.extend(strips.map(Element::Tinted));
