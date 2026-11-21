@@ -121,7 +121,7 @@ pub fn start(variable: &dyn Fn(&str) -> Option<OsString>, first: bool) -> Result
     let mut icons = omorfos_icons::Icons::new(omorfos_icons::icon_directories(&places));
     let shown = Shown {
         mark: the_mark(),
-        rows: rows(&loaded.keys, &words),
+        rows: rows(&loaded.keys, loaded.general.keyboard.super_as_ctrl, &words),
         schemes: schemes(loaded.general.appearance.accent),
         wallpapers: pictures,
         openers: openers((&configured, &places), &locales, &words, &mut icons),
@@ -281,9 +281,10 @@ pub fn openers(
 /// The keys that matter as `keys` has them, and what each does in
 /// `words`: one that is not bound to anything is left out, and of two
 /// ways to the same the one with Super is said. Copying, cutting, pasting
-/// and undoing with Super is the desktop's own (ADR 78), not a binding.
+/// and undoing with Super is the desktop's own (ADR 78), not a binding,
+/// and said only where it is so, `super_as_ctrl`.
 #[must_use]
-pub fn rows(keys: &Keys, words: &Words) -> Vec<(String, String)> {
+pub fn rows(keys: &Keys, super_as_ctrl: bool, words: &Words) -> Vec<(String, String)> {
     let wanted = [
         (Action::Spawn(Command::terminal().into()), "terminal"),
         (Action::ShowLauncher, "launcher"),
@@ -301,9 +302,9 @@ pub fn rows(keys: &Keys, words: &Words) -> Vec<(String, String)> {
         let keys = written.min_by_key(|keys| !keys.starts_with("Super"))?;
         Some((keys, words.say(name, &[])))
     });
-    bound
-        .chain([("Super+c, x, v, z".to_owned(), words.say("copy-paste", &[]))])
-        .collect()
+    let copying =
+        super_as_ctrl.then(|| ("Super+c, x, v, z".to_owned(), words.say("copy-paste", &[])));
+    bound.chain(copying).collect()
 }
 
 /// The wallpapers that come with omorfos, by design, with where each is
@@ -422,7 +423,7 @@ mod tests {
 
     #[test]
     fn the_keys_that_matter_are_said_as_they_are_bound_and_one_not_bound_is_left_out() {
-        let rows = rows(&Keys::default(), &english());
+        let rows = rows(&Keys::default(), true, &english());
         let keys: Vec<&str> = rows.iter().map(|(keys, _)| keys.as_str()).collect();
         assert_eq!(
             keys,
@@ -444,7 +445,7 @@ mod tests {
             fs::write(there.path().join("keys.yaml"), written).unwrap();
             let (config, problems) = Config::load(there.path(), &Config::default());
             assert_eq!(problems, []);
-            let rows = super::rows(&config.keys, &english());
+            let rows = super::rows(&config.keys, true, &english());
             rows.into_iter().map(|(keys, _)| keys).collect::<Vec<_>>()
         };
         assert_eq!(
@@ -460,6 +461,13 @@ mod tests {
         assert_eq!(
             bound("Super+Tab, Alt+Tab"),
             ["Super+t", "Super+space", "Super+Escape", "Super+c, x, v, z"]
+        );
+        // Where Super is not Ctrl, Super+C does not copy, and is not said to.
+        let without = super::rows(&Keys::default(), false, &english());
+        let keys: Vec<&str> = without.iter().map(|(keys, _)| keys.as_str()).collect();
+        assert_eq!(
+            keys,
+            ["Super+Return", "Super+space", "Super+Escape", "Super+Tab"]
         );
     }
 
