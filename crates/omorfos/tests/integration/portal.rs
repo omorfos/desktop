@@ -789,6 +789,49 @@ fn a_picture_withdrawn_while_it_is_picked_is_refused_at_once() {
     assert!(!folder.exists(), "no picture saved that nobody wanted");
 }
 
+/// Another program takes the portal's name, as `xdg-desktop-portal` started
+/// again does, and is returned: the one before is no longer the portal.
+fn another_portal(daemon: &Daemon) -> Connection {
+    use zbus::fdo::RequestNameFlags;
+    let portal = Builder::address(daemon.address.as_str())
+        .unwrap()
+        .build()
+        .unwrap();
+    let flags = RequestNameFlags::ReplaceExisting | RequestNameFlags::AllowReplacement;
+    portal
+        .request_name_with_flags("org.freedesktop.portal.Desktop", flags)
+        .unwrap();
+    portal
+}
+
+#[test]
+fn a_portal_started_again_takes_down_the_question_the_one_before_put_up() {
+    let daemon = Daemon::start();
+    let mut session = Session::new();
+    let _running = start(&mut session, &daemon, ITS_OWN);
+    let asking = ask(&daemon, "before");
+    asked(&mut session);
+    let _portal = another_portal(&daemon);
+    assert_eq!(answered(&mut session, asking), (1, HashMap::new()));
+    session.eventually(|session| session.draw().at(WIDTH / 2, HEIGHT / 2) == BACKGROUND);
+}
+
+#[test]
+fn a_portal_started_again_while_a_picture_is_picked_wants_it_no_more() {
+    let daemon = Daemon::start();
+    let mut session = Session::new();
+    let _running = start(&mut session, &daemon, ITS_OWN);
+    let asking = ask(&daemon, "picked_before");
+    asked(&mut session);
+    yes_and_picking(&mut session);
+    let _portal = another_portal(&daemon);
+    assert_eq!(answered(&mut session, asking), (1, HashMap::new()));
+    // As when it is withdrawn, what it would have been picked from is up
+    // until the user is done with it.
+    press(&mut session, key::RETURN);
+    session.eventually(|session| session.draw().at(WIDTH - 5, HEIGHT - 5) == BACKGROUND);
+}
+
 #[test]
 fn a_picture_picked_that_cannot_be_saved_is_a_failure() {
     let daemon = Daemon::start();

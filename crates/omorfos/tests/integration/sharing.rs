@@ -1342,6 +1342,47 @@ fn a_screen_that_goes_ends_its_sharing_and_the_session_is_closed() {
     assert_eq!(path.as_deref(), Some(call_session));
 }
 
+#[test]
+fn a_portal_started_again_leaves_nothing_shared_that_the_one_before_shared() {
+    let daemon = Daemon::start();
+    let pipewire = Pipewire::start();
+    let mut session = Session::new();
+    let remote = pipewire.socket();
+    let _running = start(&mut session, &daemon, ITS_OWN, remote.to_str().unwrap());
+    let call_session = "/org/freedesktop/portal/desktop/session/1_1/before";
+    let (_before, node) = sharing(&mut session, &daemon, call_session);
+    let output = session.output();
+    let mut viewer = Viewer::new(&remote);
+    session.eventually(|session| {
+        session.draw();
+        viewer.turn(node);
+        session.compositor().captured(&output)
+    });
+
+    // Another program takes the portal's name, as the portal does when it
+    // is started again: it knows nothing of the session, and could not end
+    // it, so the screen is no longer shared.
+    let portal = Builder::address(daemon.address.as_str())
+        .unwrap()
+        .build()
+        .unwrap();
+    let flags = zbus::fdo::RequestNameFlags::ReplaceExisting
+        | zbus::fdo::RequestNameFlags::AllowReplacement;
+    portal
+        .request_name_with_flags("org.freedesktop.portal.Desktop", flags)
+        .unwrap();
+    session.eventually(|session| {
+        session.draw();
+        viewer.turn(node);
+        !session.compositor().captured(&output)
+    });
+    assert_eq!(
+        session.draw().at(0, HEIGHT / 2),
+        BACKGROUND,
+        "and the line has gone"
+    );
+}
+
 /// Starts the portal with two screens, the second 320 by 240, asks to
 /// share in a new session, says yes, and returns the session's path, the
 /// call and what it waits for.
