@@ -2525,8 +2525,9 @@ Known gaps, each taken when the code beside it is touched:
       takes its name from a copy still running; to be seen with a real
       toolkit, which no test can show
       ([finding 18](reviews/2026-11-19-after-the-redesign-of-windows.md#18-what-a-starting-portal-says-of-every-setting-may-not-reach-programs-when-it-takes-its-name-from-a-copy-still-running)).
-- [ ] Low: "what last loaded" read from the disk a second time
-      ([finding 19](reviews/2026-11-19-after-the-redesign-of-windows.md#19-the-copy-kept-as-what-last-loaded-is-read-from-the-disk-a-second-time)).
+- [x] Low: "what last loaded" read from the disk a second time
+      ([finding 19](reviews/2026-11-19-after-the-redesign-of-windows.md#19-the-copy-kept-as-what-last-loaded-is-read-from-the-disk-a-second-time)):
+      what is kept is the text that was parsed, not the file read again.
 - [ ] Low: a sandbox whose socket is not one
       ([finding 20](reviews/2026-11-19-after-the-redesign-of-windows.md#20-a-sandbox-whose-socket-is-not-one-has-every-program-let-in-late-and-the-log-say-descriptors-ran-out)).
 - [ ] Low: the side and order of a titlebar's buttons said three times

@@ -7,8 +7,9 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
-use crate::config::read;
-use crate::{Config, Diagnostic, FILES, SchemeChoice, Theme};
+use jiff::Zoned;
+
+use crate::{Config, Diagnostic, SchemeChoice, Theme};
 
 /// How long day takes to turn into night, or night into day: how long a
 /// change of scheme that `scheme: auto` makes is drawn over.
@@ -37,6 +38,9 @@ pub struct Store {
     /// What was loaded.
     loaded: Arc<Config>,
     diagnostics: Vec<Diagnostic>,
+    /// The text of each file that loaded, by its name, as it was parsed:
+    /// what is kept of it.
+    parsed: Vec<(&'static str, String)>,
     turning: Option<Turning>,
 }
 
@@ -59,14 +63,15 @@ impl Store {
     #[must_use]
     pub fn open(directory: impl Into<PathBuf>) -> Self {
         let directory = directory.into();
-        let (config, diagnostics) = Config::load(&directory, &Config::default());
+        let (config, loaded) = Config::loaded(&directory, &Config::default(), &Zoned::now());
         let config = Arc::new(config);
         Self {
             directory,
             kept: None,
             current: Arc::clone(&config),
             loaded: config,
-            diagnostics,
+            diagnostics: loaded.diagnostics,
+            parsed: loaded.texts,
             turning: None,
         }
     }
@@ -113,29 +118,26 @@ impl Store {
             return;
         }
         let (fallback, _) = Config::load(kept, &Config::default());
-        let (config, diagnostics) = Config::load(&self.directory, &fallback);
+        let (config, loaded) = Config::loaded(&self.directory, &fallback, &Zoned::now());
         let config = Arc::new(config);
         self.current = Arc::clone(&config);
         self.loaded = config;
-        self.diagnostics = diagnostics;
+        self.diagnostics = loaded.diagnostics;
+        self.parsed = loaded.texts;
     }
 
-    /// Copies each file that loaded, as it is on disk, to where they are
-    /// kept, if they are: one that is not there is kept as empty, which
-    /// loads as it does. A copy that cannot be written leaves the one
-    /// before; what is in effect is not changed by it.
+    /// Copies each file that loaded, as it was parsed, not as it is on
+    /// disk now, which may have changed since, to where they are kept, if
+    /// they are: one that is not there is kept as empty, which loads as it
+    /// does. A copy that cannot be written leaves the one before; what is
+    /// in effect is not changed by it.
     fn keep(&self) {
         let Some(kept) = &self.kept else {
             return;
         };
         let made = DirBuilder::new().recursive(true).mode(0o700).create(kept);
-        let loaded = FILES.iter().filter(|name| {
-            let path = self.directory.join(name);
-            !self.diagnostics.iter().any(|said| said.file == path)
-        });
-        for name in made.iter().flat_map(|()| loaded.clone()) {
-            let text = read(&self.directory.join(name));
-            let _ = text.map(|text| copy(&text, kept, name));
+        for (name, text) in made.iter().flat_map(|()| &self.parsed) {
+            let _ = copy(text, kept, name);
         }
     }
 
@@ -179,8 +181,9 @@ impl Store {
     /// kept as day turning into night, or night into day, for whoever
     /// draws to show over a minute: see [`Store::at`].
     pub fn reload(&mut self) -> bool {
-        let (config, diagnostics) = Config::load(&self.directory, &self.loaded);
-        self.diagnostics = diagnostics;
+        let (config, loaded) = Config::loaded(&self.directory, &self.loaded, &Zoned::now());
+        self.diagnostics = loaded.diagnostics;
+        self.parsed = loaded.texts;
         self.keep();
         let changed = config != *self.loaded;
         if changed {
@@ -323,6 +326,24 @@ mod tests {
         assert_eq!(again.diagnostics().len(), 1, "and what is wrong");
         // What is kept is still what loaded, and is so for the next.
         assert_eq!(keeping(&directory, &kept).current().keys, good.keys);
+    }
+
+    #[test]
+    fn what_is_kept_is_the_text_that_loaded_not_what_was_saved_after_it() {
+        let (directory, runtime) = (TempDir::new().unwrap(), TempDir::new().unwrap());
+        let kept = runtime.path().join("last-good");
+        write(&directory, "keys.yaml", GOOD_KEYS);
+        let mut store = Store::open(directory.path());
+
+        // Saved between the load and the keeping, and never parsed: what
+        // is kept is still what loaded, which the next one comes up with.
+        write(&directory, "keys.yaml", "bindings: [\n");
+        store.keep_in(&kept);
+        let kept_keys = fs::read_to_string(kept.join("keys.yaml")).unwrap();
+        assert_eq!(kept_keys, GOOD_KEYS);
+        let next = Store::open(directory.path()).starting_from(Some(&kept));
+        assert_eq!(next.current().keys, store.current().keys);
+        assert_ne!(next.current().keys, Config::default().keys);
     }
 
     #[test]
