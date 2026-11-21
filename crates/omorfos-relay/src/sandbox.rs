@@ -112,6 +112,14 @@ fn listen(listening: &OwnedFd, woken: &OwnedFd, came: &SyncSender<Came>) {
         // the relay shuts the socket.
         let taken = accept_with(listening, SocketFlags::CLOEXEC | SocketFlags::NONBLOCK);
         let failed = taken.as_ref().err().copied();
+        // What is no socket to take programs from, or not one listened on,
+        // will never give one: it is listened to no more, and the relay is
+        // not told of it, as it is not running out of anything, until the
+        // relay hangs up.
+        if failed.is_some_and(|error| !passing(error)) {
+            let _ = retry_on_intr(|| poll(&mut [PollFd::new(woken, PollFlags::IN)], None));
+            continue;
+        }
         // One that could not be taken, as when no descriptor is left, is
         // still there: tried again at once, it would be again and again.
         let _ = failed.map(|_| thread::sleep(AGAIN));
@@ -122,6 +130,22 @@ fn listen(listening: &OwnedFd, woken: &OwnedFd, came: &SyncSender<Came>) {
         // will be woken without another.
         let _ = came.map(|()| write(woken, &[0]));
     }
+}
+
+/// Whether taking a program failed for now, and may not next time: as
+/// none was there, the program that made the socket having taken it
+/// first, or as no descriptor or memory was left for it.
+const fn passing(error: Errno) -> bool {
+    matches!(
+        error,
+        Errno::AGAIN
+            | Errno::INTR
+            | Errno::CONNABORTED
+            | Errno::MFILE
+            | Errno::NFILE
+            | Errno::NOBUFS
+            | Errno::NOMEM
+    )
 }
 
 /// A sandbox listened on, by a thread that stops when it is let go of.

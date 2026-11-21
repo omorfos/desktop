@@ -1002,13 +1002,36 @@ fn a_program_that_adds_more_to_an_object_than_any_adds_is_let_go_and_said_to_be(
 /// Has `program` make a sandbox whose programs connect at `listening`, and
 /// which ends once `closing` closes: the manager bound as the object 3, the
 /// sandbox made as the object 4 and committed.
-fn make_sandbox(program: &UnixStream, listening: &UnixListener, closing: &UnixStream) {
+fn make_sandbox(program: &UnixStream, listening: &impl AsFd, closing: &UnixStream) {
     let mut setup = get_registry();
     setup.extend(bind(1, "wp_security_context_manager_v1", 1, 3));
     (&*program).write_all(&setup).unwrap();
     let fds = [listening.as_fd(), closing.as_fd()];
     send_fds(program, &message(3, 1, &[4]), &fds);
     (&*program).write_all(&message(4, 4, &[])).unwrap();
+}
+
+#[test]
+fn a_sandbox_whose_socket_is_not_one_lets_no_one_in_and_holds_no_one_up() {
+    let mut held = Held::new();
+    let compositor = held.compositor();
+    let (program, _connection, _) = held.connect(&compositor);
+    // Readable at all times, as a socket with a program waiting is.
+    let not_a_socket = std::fs::File::open("/dev/null").unwrap();
+    let (_open, closing) = UnixStream::pair().unwrap();
+    make_sandbox(&program, &not_a_socket, &closing);
+    for _ in 0..5 {
+        held.step();
+    }
+    // Programs come in as they did, and nothing is said of descriptors
+    // running out, which they are not.
+    let (_another, _, _) = held.connect(&compositor);
+    for _ in 0..5 {
+        held.step();
+    }
+    let said = String::from_utf8_lossy(&held.said);
+    assert!(said.is_empty(), "{said}");
+    assert_eq!(held.relay.programs(), 2);
 }
 
 #[test]
