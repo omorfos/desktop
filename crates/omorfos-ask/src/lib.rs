@@ -128,7 +128,10 @@ impl Places {
                 .map(OsString::into_string)
                 .and_then(Result::ok)
         };
-        let locale = text("LC_ALL").or_else(|| text("LANG"));
+        // The first of these that is set, and not to nothing, which is as
+        // not set, as the C library has it for what is said in words.
+        let set = |name| text(name).filter(|value| !value.is_empty());
+        let locale = ["LC_ALL", "LC_MESSAGES", "LANG"].into_iter().find_map(set);
         let helper = HELPERS
             .iter()
             .map(PathBuf::from)
@@ -633,6 +636,15 @@ mod tests {
         );
         let lang = Places::from(&|name| (name == "LANG").then(|| OsString::from("pl_PL.UTF-8")));
         assert_eq!(lang.locale, "pl_PL.UTF-8");
+        // An empty `LC_ALL` is as none, and `LC_MESSAGES` is before `LANG`.
+        let set = [
+            ("LC_ALL", ""),
+            ("LC_MESSAGES", "pl_PL.UTF-8"),
+            ("LANG", "de_DE.UTF-8"),
+        ];
+        let found = |name: &str| set.iter().find(|(variable, _)| *variable == name);
+        let messages = Places::from(&|name| found(name).map(|(_, to)| OsString::from(to)));
+        assert_eq!(messages.locale, "pl_PL.UTF-8");
     }
 
     #[test]

@@ -2552,10 +2552,12 @@ The review of pull requests 44 to 48, of 20 November 2026, found in
       did; Xwayland listens on the abstract socket with no `-auth`, so a
       sandbox with the network may reach every program written for X11
       ([seen in passing](reviews/2026-11-20-pull-requests-44-to-48.md#seen-in-passing-for-later)).
-- [ ] Low: the welcome card says `Super+C` copies whatever
+- [x] Low: the welcome card says `Super+C` copies whatever
       `keyboard.super_as_ctrl` is; `omorfos-ask` takes an empty `LC_ALL`
       as set and never reads `LC_MESSAGES`
-      ([seen in passing](reviews/2026-11-20-pull-requests-44-to-48.md#seen-in-passing-for-later)).
+      ([seen in passing](reviews/2026-11-20-pull-requests-44-to-48.md#seen-in-passing-for-later)):
+      the card says it only where Super is Ctrl, and `omorfos-ask` takes
+      the first of `LC_ALL`, `LC_MESSAGES` and `LANG` set to something.
 
 Accessibility:
 
