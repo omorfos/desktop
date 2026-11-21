@@ -21,14 +21,29 @@ agree one.
 
 ## What there is
 
-- **Windows** with titlebars drawn by omorfos: close, fullscreen and
-  minimize buttons, a menu on a right click, tabs, rounded corners,
-  shading, keeping above, and showing on every workspace.
+- **Windows** with titlebars drawn by omorfos: close, minimize and
+  fullscreen buttons at the left, a menu on a right click, tabs, rounded
+  corners, shading, keeping above, and showing on every workspace; or
+  left to draw their own, for programs that do.
+- **A look of glass**: bars, menus and titlebars blur what is behind
+  them, in a light and a dark scheme that can follow the sun, with one
+  accent colour. `reduce_transparency` makes it all solid.
+- **Arranging windows**: drag one to an edge for a half or a quarter of
+  the screen, or pick a layout from its titlebar; an overview of every
+  window, and a switcher on `Super+Tab`.
 - **Workspaces made as you need them**, per screen, and gone when they
   are empty. A fullscreen window gets one to itself; rest the pointer
   against the top of the screen to get its titlebar back.
 - **A panel, a launcher and notifications**, each a small program of its
   own, started again if it stops, and replaceable by any other.
+- **A lock screen**, a box that asks for passwords that no other program
+  can imitate, and the session locked before the machine sleeps.
+- **Screenshots and screen sharing**: of every screen, a window or a
+  region, and shared in a browser or a call through the portal, with a
+  line round what is shared.
+- **A session that outlives its compositor**: programs stay open while
+  omorfos is started again, and a new version is taken up without
+  logging out.
 - **Programs written for X11**, through Xwayland, with the clipboard
   shared both ways.
 - **Text files for everything**, in `~/.config/omorfos/`: settings and
@@ -50,6 +65,10 @@ agree one.
 - **Fast.** Nothing is drawn when nothing changes.
 - **Lean.** The compositor manages windows. What can be a program of its
   own is one.
+- **Not only for omorfos.** The lock screen, the wallpaper, the
+  clipboard keeper and the applications to come are to run on other
+  compositors too, each packaged and versioned by itself
+  ([ADR 98](docs/adr/0098-which-programs-stand-alone.md)).
 
 Linux on `x86_64` and `aarch64`.
 
@@ -91,9 +110,12 @@ A few keys to begin with:
 | `Super+Return` | A terminal (`foot`) |
 | `Super+Space` | The launcher |
 | `Super+Escape` | The menu |
+| `Super+Tab` | The window before, or hold Super to choose one |
 | `Super+q` | Close the window |
-| `Super+f` | Fullscreen, and back |
-| `Super+n` | A new workspace |
+| `Super+m` | Maximize the window, and back |
+| `Super+h` | Hide the window |
+| `Super+Ctrl+f` | Fullscreen, and back |
+| `Super+Ctrl+n` | A new workspace |
 | `Super+1` to `Super+9` | Go to a workspace |
 | `Print` | A picture of every screen, saved in `Pictures/Screenshots` |
 | `Shift+Print` | Pick a window, a screen or a region, on the clipboard |
@@ -173,19 +195,8 @@ Flatpak) that are installed, and pass over the rest (docs/TESTING.md).
 held to, and everyone taking part follows the
 [code of conduct](docs/CODE_OF_CONDUCT.md). [AGENTS.md](AGENTS.md) is the
 place to start on the code, for people as much as for agents, and
-[docs/TESTING.md](docs/TESTING.md) says how things are tested. Before a change goes in, all of these pass:
-
-```sh
-cargo fmt --all --check
-cargo clippy --workspace --all-targets --all-features -- -D warnings
-cargo coverage
-cargo test --workspace --all-features --doc
-cargo deny check
-```
-
-`cargo coverage` is the coverage gate, an alias in `.cargo/config.toml`.
-The tests also need `dbus-daemon`, `Xwayland` and `pam_wrapper`, and
-`Xwayland` needs `libEGL`. Commits follow
+[docs/TESTING.md](docs/TESTING.md) says how things are tested, and
+the gates every change passes before it goes in. Commits follow
 [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/),
 and releases are made from them: see
 [docs/RELEASING.md](docs/RELEASING.md).
