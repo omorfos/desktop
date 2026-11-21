@@ -225,12 +225,7 @@ impl Compositor {
         // the session was ever blurred, and not a screen of solid colour.
         let sealed = self.config().theme.style(Part::Sealed, States::NONE);
         let head = self.heads.iter().find(|head| head.output == *output);
-        let whole = head.map(|head| {
-            let area = head.area();
-            let from = view.pixel(area.loc.to_f64());
-            let to = view.pixel((area.loc + area.size.to_point()).to_f64());
-            Rectangle::new(from, (to - from).to_size())
-        });
+        let whole = head.map(|head| view.pixels(head.area()));
         let key = glass::key(&("the sealed dim", output.name()));
         let under = elements.len();
         let blurred = whole.filter(|_| sealed.blur > 0 && sealed.see_through());

@@ -813,12 +813,9 @@ impl Compositor {
         elements.push(Element::Solid(dim));
         let backdrop = theme.style(Part::OverviewBackdrop, States::NONE);
         let blurred = backdrop.blur > 0 && backdrop.see_through();
-        let area = here.filter(|_| blurred).map(|screen| {
-            let area = crate::compositor::logical(screen);
-            let from = view.pixel(area.loc.to_f64());
-            let to = view.pixel((area.loc + area.size.to_point()).to_f64());
-            Rectangle::new(from, (to - from).to_size())
-        });
+        let area = here
+            .filter(|_| blurred)
+            .map(|screen| view.pixels(crate::compositor::logical(screen)));
         let key = glass::key(&("the overview's backdrop", output.name()));
         let under = elements.len();
         let blur = area.and_then(|area| {
