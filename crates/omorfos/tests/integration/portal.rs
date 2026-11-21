@@ -250,11 +250,16 @@ fn picked(results: &HashMap<String, OwnedValue>) -> u32 {
 
 /// Draws until the question is on the screen.
 fn asked(session: &mut Session) {
+    session.eventually(question_up);
+}
+
+/// Whether the question is on the screen.
+fn question_up(session: &mut Session) -> bool {
     let looks = Theme::default()
         .style(Part::Question, States::NONE)
         .background;
     let shown = u32::from_be_bytes([looks.alpha, looks.red, looks.green, looks.blue]);
-    session.eventually(|session| session.draw().at(WIDTH / 2, HEIGHT / 2) == shown);
+    session.draw().at(WIDTH / 2, HEIGHT / 2) == shown
 }
 
 /// Draws until the application has been answered, and returns how.
@@ -775,14 +780,22 @@ fn a_picture_withdrawn_while_it_is_picked_is_refused_at_once() {
     session.eventually(|session| session.draw().at(WIDTH - 5, HEIGHT - 5) == BACKGROUND);
     // The portal hears what was picked a moment after the picker has gone,
     // on its own time: until then, what is asked is taken for asked while
-    // it is still picked, as a person could not ask so soon.
-    let until = Instant::now() + Duration::from_millis(300);
-    while Instant::now() < until {
-        session.step();
-        std::thread::sleep(Duration::from_millis(2));
+    // it is still picked, as a person could not ask so soon, and fails at
+    // once. So it is asked until it goes up, however long that takes.
+    let mut next = None;
+    for request in [
+        "after_1", "after_2", "after_3", "after_4", "after_5", "after_6",
+    ] {
+        let asking = ask(&daemon, request);
+        session.eventually(|session| asking.is_finished() || question_up(session));
+        if !asking.is_finished() {
+            next = Some(asking);
+            break;
+        }
+        assert_eq!(asking.join().unwrap().0, 2, "failed, as still picked");
+        std::thread::sleep(Duration::from_millis(50));
     }
-    let next = ask(&daemon, "after");
-    asked(&mut session);
+    let next = next.unwrap();
     press(&mut session, key::ESCAPE);
     assert_eq!(answered(&mut session, next).0, 1);
     let folder = session.config.path().join("Pictures/Screenshots");
@@ -1052,7 +1065,13 @@ fn a_key_pressed_before_a_question_is_up_does_not_answer_it() {
         assert!(Instant::now() < until, "neither was answered");
         std::thread::sleep(Duration::from_millis(1));
     }
-    let asking = if one.is_finished() { other } else { one };
+    let (refused, asking) = if one.is_finished() {
+        (one, other)
+    } else {
+        (other, one)
+    };
+    // Failed at once for the reason the test is about: one is up.
+    assert_eq!(refused.join().unwrap(), (2, HashMap::new()));
     // A key meant for the box that went is no answer to the one that
     // comes: that one goes up, and waits for the user. The two look alike,
     // and nothing is up between them, as the one that comes is drawn only
