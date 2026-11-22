@@ -2366,7 +2366,10 @@ impl Compositor {
             Recorded::Screen,
         ];
         let in_use = InUse {
-            fullscreen: self.desktop.frames().any(|frame| frame.fullscreen),
+            // Filling a part of a workspace shared with others, as a tiled
+            // window does, is said as fullscreen too, and is not a film.
+            fullscreen: (self.desktop.frames())
+                .any(|frame| frame.fullscreen && frame.home != Home::Shared),
             recording: self.capture.recording.any(&recorded) || self.capture.sharing(),
             playing: self.presence.kept_awake
                 || self.kept_from().sleep
