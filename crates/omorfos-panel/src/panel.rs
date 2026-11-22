@@ -157,7 +157,8 @@ impl Panel {
     pub fn serve(&mut self) -> Failure {
         let started = Instant::now();
         // As the locale of the time asks, as the panel was started.
-        self.weeks_from(month::first_weekday(&|name| std::env::var(name).ok()));
+        let time = omorfos_i18n::locale("LC_TIME", &|name| std::env::var(name).ok());
+        self.weeks_from(month::first_weekday(&time.unwrap_or_default()));
         loop {
             let (time, changes) = omorfos_shell::clock::now();
             self.date(omorfos_shell::clock::today());

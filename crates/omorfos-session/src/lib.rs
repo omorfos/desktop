@@ -314,10 +314,10 @@ impl Places {
                 .split(':')
                 .map(str::to_owned)
                 .collect(),
-            locale: ["LC_ALL", "LC_MESSAGES", "LANG"]
-                .into_iter()
-                .find_map(|name| address(name).filter(|value| !value.is_empty()))
-                .unwrap_or_default(),
+            locale: omorfos_i18n::locale("LC_MESSAGES", &|name| {
+                variable(name).and_then(|value| value.into_string().ok())
+            })
+            .unwrap_or_default(),
         }
     }
 }

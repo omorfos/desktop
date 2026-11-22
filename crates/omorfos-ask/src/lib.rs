@@ -128,10 +128,10 @@ impl Places {
                 .map(OsString::into_string)
                 .and_then(Result::ok)
         };
-        // The first of these that is set, and not to nothing, which is as
-        // not set, as the C library has it for what is said in words.
-        let set = |name| text(name).filter(|value| !value.is_empty());
-        let locale = ["LC_ALL", "LC_MESSAGES", "LANG"].into_iter().find_map(set);
+        // As the C library has it for what is said in words.
+        let locale = omorfos_i18n::locale("LC_MESSAGES", &|name| {
+            variable(name).and_then(|value| value.into_string().ok())
+        });
         let helper = HELPERS
             .iter()
             .map(PathBuf::from)

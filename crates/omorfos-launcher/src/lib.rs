@@ -72,7 +72,8 @@ pub fn start(variable: &dyn Fn(&str) -> Option<OsString>) -> Result<(), Failure>
         Some(((wayland, socket), config)) => {
             let asked = omorfos_i18n::asked(&|name| get(name)?.into_string().ok());
             let locales = omorfos_entries::locales(&asked);
-            let numbers = Numbers::asked(&|name| get(name)?.into_string().ok());
+            let numeric = omorfos_i18n::locale("LC_NUMERIC", &|name| get(name)?.into_string().ok());
+            let numbers = Numbers::of_locale(&numeric.unwrap_or_default());
             let offered = (installed(&places, &locales), Icons::new(icons), numbers);
             client::run(&wayland, &socket, &config, offered)
         }
