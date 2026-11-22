@@ -2726,6 +2726,7 @@ impl Compositor {
                             veil: private.then(|| veils.veil(*id, frame.geometry.size, blurred)),
                             private,
                             on: frame.on,
+                            within: frame.within,
                             stretch,
                             giving,
                             way,
@@ -2821,6 +2822,8 @@ impl Compositor {
                 veil: None,
                 private: false,
                 on: frame.on,
+                // A picture of a window is of it alone, wherever it is.
+                within: None,
                 stretch: None,
                 giving: None,
                 way: Way::at(frame.geometry),
@@ -4133,6 +4136,7 @@ impl Compositor {
             .rev()
             .filter(|shown| shown.over == fullscreen)
             .filter(|shown| !self.hidden_by_overview(shown.outer))
+            .filter(|shown| shown.drawn_on(view))
         {
             let veil = shown.veil.as_ref().filter(|_| !seen);
             if let Some(Veil::Blank(veil)) = veil {
@@ -6104,6 +6108,9 @@ pub(crate) struct Shown {
     /// the one shown, while they slide, is gone from without fading once
     /// they settle.
     on: Showing,
+    /// While its workspace slides, the area of its output: it is drawn on
+    /// that output alone, and not on one beside that it is moved into.
+    within: Option<Rect>,
     /// How its picture is stretched to fill its frame, while its program
     /// has yet to draw the size the frame has.
     stretch: Option<Stretched>,
@@ -6185,6 +6192,14 @@ enum Veil {
 pub(crate) const PRIVATE_BLUR: u32 = 32;
 
 impl Shown {
+    /// Whether it is drawn on the output `view` looks at: on any it
+    /// reaches, but while its workspace slides only on its own, which is
+    /// the one whose corner is where the view's is.
+    fn drawn_on(&self, view: View) -> bool {
+        let own = |area: &Rect| Point::from((area.origin.x, area.origin.y)) == view.origin;
+        self.within.as_ref().is_none_or(own)
+    }
+
     /// Whether its frame was drawn on its way to where it was sent.
     fn going(&self) -> bool {
         self.outer != self.way.to()
@@ -6439,6 +6454,9 @@ struct FrameInfo {
     standing: Standing,
     /// Which of the workspaces drawn on its output it is on.
     on: Showing,
+    /// While its workspace slides, the area of its output, outside which
+    /// it is not drawn.
+    within: Option<Rect>,
 }
 
 impl FrameInfo {
@@ -6522,6 +6540,7 @@ impl FrameInfo {
             hovered: over.map(|(_, button)| button),
             standing: frame.standing,
             on: frame.on,
+            within: frame.within,
             shown,
             scale,
             geometry: frame.geometry,

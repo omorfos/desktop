@@ -233,6 +233,11 @@ pub struct Frame<'a> {
     pub standing: Standing,
     /// Which of the workspaces drawn on its output it is on.
     pub on: Showing,
+    /// While its workspace slides, the area of its output, outside which
+    /// it is not drawn: moved across, it would reach into the output
+    /// beside, which does not show its workspace. Nothing while it does
+    /// not slide, when it is drawn wherever it reaches.
+    pub within: Option<Rect>,
 }
 
 /// Which of the workspaces drawn on an output a frame is on.
@@ -3111,6 +3116,7 @@ impl Desktop {
             } else {
                 Showing::Beside
             },
+            within: own.map(|own| own.area).filter(|_| shift != 0),
         }
     }
 
@@ -6080,6 +6086,25 @@ mod tests {
         frames
             .map(|frame| (frame.window().id, frame.geometry.origin.x, frame.focused))
             .collect()
+    }
+
+    #[test]
+    fn while_a_workspace_slides_its_frames_and_those_beside_are_kept_within_their_output() {
+        let mut desktop = desktop();
+        desktop.set_outputs(vec![SCREEN, SECOND_SCREEN]);
+        open(&mut desktop, "first");
+        desktop.next_workspace();
+        open(&mut desktop, "second");
+        desktop.previous_workspace();
+        let within = |desktop: &Desktop| -> Vec<Option<Rect>> {
+            desktop.frames().map(|frame| frame.within).collect()
+        };
+        assert_eq!(within(&desktop), [None], "drawn wherever it reaches");
+
+        desktop.slide(-300);
+        assert_eq!(within(&desktop), [Some(SCREEN), Some(SCREEN)]);
+        desktop.slide(0);
+        assert_eq!(within(&desktop), [None]);
     }
 
     #[test]

@@ -151,6 +151,51 @@ fn a_window_opens_on_the_output_the_pointer_is_on_and_is_drawn_there() {
     );
 }
 
+/// How many pixels of a picture of the second screen, 800 by 600, are
+/// `color`.
+fn painted(picture: &crate::common::Picture, color: u32) -> usize {
+    let pixels = (0..600).flat_map(|y| (0..800).map(move |x| (x, y)));
+    pixels.filter(|(x, y)| picture.at(*x, *y) == color).count()
+}
+
+#[test]
+fn a_workspace_sliding_on_one_screen_is_not_drawn_on_the_screen_beside_it() {
+    let (mut session, _second) = two_screens();
+    // A red window on the first workspace of the left screen, shown, and a
+    // blue one on its second.
+    pointer_to(&mut session, 300, 200);
+    let mut client = session.connect();
+    session.open(&mut client, "first", (200, 100), RED);
+    perform(&mut session, &Action::NextWorkspace);
+    session.open(&mut client, "second", (200, 100), BLUE);
+    perform(&mut session, &Action::PreviousWorkspace);
+    session.settle();
+
+    // Going on, the red window slides off to the left and the blue in from
+    // the right, which is where the right screen is; and back again.
+    for action in [Action::NextWorkspace, Action::PreviousWorkspace] {
+        perform(&mut session, &action);
+        let mut both = false;
+        for step in 0..20 {
+            let picture = session.draw_on(1);
+            for (color, name) in [(RED, "red"), (BLUE, "blue")] {
+                let seen = painted(&picture, color);
+                assert_eq!(seen, 0, "{action:?}, step {step}: {name} on the right");
+            }
+            // On its own screen, the two are seen going and coming.
+            let left = session.draw_on(0);
+            let (red, blue) = (0..WIDTH).fold((false, false), |(red, blue), x| {
+                let at = left.at(x, 50);
+                (red || at == RED, blue || at == BLUE)
+            });
+            both |= red && blue;
+            session.advance(Duration::from_millis(20));
+        }
+        assert!(both, "{action:?}: the slide is drawn on the left screen");
+        session.settle();
+    }
+}
+
 #[test]
 fn a_window_across_two_outputs_is_drawn_on_both() {
     let (mut session, _second) = two_screens();
