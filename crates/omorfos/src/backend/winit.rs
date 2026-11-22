@@ -21,6 +21,7 @@ use smithay::backend::input::{
 };
 use smithay::backend::renderer::damage::OutputDamageTracker;
 use smithay::backend::renderer::gles::{GlesRenderer, GlesTexture};
+use smithay::backend::renderer::{Frame as _, Renderer as _};
 use smithay::backend::winit::{self, WinitEvent, WinitGraphicsBackend};
 use smithay::output::Output;
 use smithay::reexports::wayland_server::ListeningSocket;
@@ -338,6 +339,7 @@ impl Screen {
         self.report_problems(compositor);
         if self.redraw.replace(false) {
             let age = self.backend.buffer_age().unwrap_or(0);
+            let size = self.backend.window_size();
             let (damage, feedback) = {
                 let (renderer, mut framebuffer) = self.backend.bind()?;
                 // A window by itself is drawn in a buffer of the card's
@@ -351,6 +353,17 @@ impl Screen {
                     (&mut self.tracker, age),
                     frosting,
                 )?;
+                // Where nothing changed nothing was drawn, and the context
+                // may still draw into a picture a blur drew into since, not
+                // the window: Mesa refuses to swap a window that is not
+                // what it draws into. An empty frame makes the window that
+                // again, so that the swap paces the loop as ever.
+                if result.damage.is_none() {
+                    // It draws nothing, so there is nothing to wait for.
+                    let _ = renderer
+                        .render(&mut framebuffer, size, Transform::Normal)?
+                        .finish()?;
+                }
                 (result.damage, result.feedback)
             };
             self.backend.submit(damage.as_deref())?;
