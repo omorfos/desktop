@@ -555,6 +555,23 @@ impl Session {
         client
     }
 
+    /// Adopts a program as [`Session::adopt`] does, once it is let in,
+    /// however late. One that connects to a sandbox of the relay's is taken
+    /// from the sandbox's socket by a thread of the relay's, which on a
+    /// loaded machine may be later than any number of steps take.
+    pub(crate) fn adopt_once_let_in(&mut self, stream: UnixStream) -> Client {
+        let mut client = Client::new(stream);
+        self.eventually(|session| {
+            client.connection.flush().unwrap();
+            session.step();
+            client.receive();
+            !client.state.offered.is_empty()
+        });
+        self.roundtrip(&mut client);
+        self.roundtrip(&mut client);
+        client
+    }
+
     /// Runs the compositor's side once: handle requests, update, reply.
     pub(crate) fn step(&mut self) {
         for stepped in &mut self.stepped {

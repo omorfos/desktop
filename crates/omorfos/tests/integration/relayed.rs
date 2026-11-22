@@ -2007,7 +2007,7 @@ fn a_program_in_a_sandbox_is_kept_and_stays_in_it() {
     drop(flatpak);
     let shown = |client: &Client, name: &str| client.state.offered.iter().any(|it| it == name);
     let inside = |session: &mut Session| {
-        let client = session.adopt(UnixStream::connect(&path).unwrap());
+        let client = session.adopt_once_let_in(UnixStream::connect(&path).unwrap());
         let withheld = crate::roles::WITHHELD
             .iter()
             .all(|name| !shown(&client, name));
