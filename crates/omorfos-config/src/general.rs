@@ -1182,7 +1182,8 @@ impl ScreenMode {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
 #[serde(try_from = "String")]
 pub enum OutputScale {
-    /// Whatever suits the screen, going by how dense it is.
+    /// Whatever suits the screen, going by how dense it is and how near it
+    /// is read, or by its resolution where it says no true size (ADR 100).
     #[default]
     Auto,
     /// A fixed scale, counted in quarters: 4 draws one pixel to a unit of

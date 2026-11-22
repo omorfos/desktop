@@ -2136,13 +2136,16 @@ Security:
       with the connection, for the portals to ask the user by, and
       carried by the relay in its `sandboxed` hand, which keeps only
       that the program is inside one (ADR 61, 3d).
-- [ ] Smithay asked for a safe way to write into a buffer a program
-      shares, so that it need not be found through `/proc` (ADR 61).
-      Waits on: Smithay.
-- [ ] A safe way offered to the PipeWire bindings to hold a stream's
-      buffer and to give one memory of the caller's own, so that
-      `omorfos-pipewire` can go (ADR 41). Wanted soon. Waits on: the
-      PipeWire bindings, to which it is to be offered.
+- [ ] A safe way to write into a buffer a program shares, so that it
+      need not be found through `/proc` (ADR 61): asked of Smithay on
+      14 November 2026, as Smithay#2288 ([UPSTREAM.md](UPSTREAM.md)).
+      Waits on: Smithay's answer.
+- [ ] A safe way to hold a stream's buffer and to give one memory of the
+      caller's own, so that `omorfos-pipewire` can go (ADR 41): offered
+      to the PipeWire bindings on 15 November 2026, as pipewire-rs#124,
+      in five changes, their maintainers asked how they would have the
+      first shaped ([UPSTREAM.md](UPSTREAM.md)). Wanted soon. Waits on:
+      their answer.
 - [x] A review of everything a client can make the compositor allocate or
       wait for: done on 15 November 2026, by Mythos 5.2, and written up in
       [reviews/2026-11-15-what-a-client-can-cost.md](reviews/2026-11-15-what-a-client-can-cost.md), with how each finding was shown, what to change and the

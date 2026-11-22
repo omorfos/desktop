@@ -34,8 +34,9 @@ agree one.
 - **Workspaces made as you need them**, per screen, and gone when they
   are empty. A fullscreen window gets one to itself; rest the pointer
   against the top of the screen to get its titlebar back.
-- **A panel, a launcher and notifications**, each a small program of its
-  own, started again if it stops, and replaceable by any other.
+- **A panel and notifications**, each a small program of its own,
+  started again if it stops, and **a launcher**, started when it is
+  asked for; each replaceable by any other.
 - **A lock screen**, a box that asks for passwords that no other program
   can imitate, and the session locked before the machine sleeps.
 - **Screenshots and screen sharing**: of every screen, a window or a
