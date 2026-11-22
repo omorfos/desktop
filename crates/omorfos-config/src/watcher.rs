@@ -2,11 +2,12 @@
 
 use std::ffi::OsStr;
 use std::io;
+use std::mem::replace;
 use std::os::fd::{AsFd, BorrowedFd, OwnedFd};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
-use inotify::{EventMask, Inotify, WatchMask};
+use inotify::{EventMask, Inotify, WatchDescriptor, WatchMask};
 use rustix::event::epoll;
 use rustix::io::Errno;
 use rustix::time::{
@@ -30,12 +31,23 @@ use crate::{FILES, Store};
 /// A file that is a symbolic link is only seen to change when the link
 /// itself is replaced, not when its target is edited in place.
 ///
+/// The directory itself may be taken away and put back, as a backup is
+/// restored, or be a link pointed elsewhere, as home-manager does: the
+/// directory it is in is watched for its name, and it is watched again
+/// wherever its path then leads.
+///
 /// It also wakes when it is told to, as though a file had changed: when the
 /// scheme goes by the time of day, at the time it may change.
 #[derive(Debug)]
 pub struct Watcher {
     inotify: Inotify,
     buffer: Vec<u8>,
+    /// The directory, and what watches it, made again when it comes back.
+    directory: PathBuf,
+    watched: WatchDescriptor,
+    /// What watches the directory it is in, for its name coming and going,
+    /// if that may be watched.
+    parent: Option<WatchDescriptor>,
     /// Readable once the time it was told to wake at has come.
     timer: OwnedFd,
     /// Readable when either of them is.
@@ -54,15 +66,19 @@ impl Watcher {
     }
 
     fn with_buffer(directory: &Path, buffer: Vec<u8>) -> io::Result<Self> {
-        let mask = WatchMask::CLOSE_WRITE
-            | WatchMask::CREATE
+        // By its name, not through `..`, which a link would lead elsewhere.
+        let parent = directory.parent();
+        let parent = parent.filter(|parent| !parent.as_os_str().is_empty());
+        let parent = parent.unwrap_or(Path::new("."));
+        let named = WatchMask::CREATE
             | WatchMask::DELETE
             | WatchMask::MOVED_FROM
             | WatchMask::MOVED_TO
             | WatchMask::ONLYDIR;
         Inotify::init().and_then(|inotify| {
-            let watched = inotify.watches().add(directory, mask);
-            watched.and_then(|_| {
+            let watched = inotify.watches().add(directory, mask());
+            watched.and_then(|watched| {
+                let parent = inotify.watches().add(parent, named).ok();
                 // Woken by the time of day, and woken again if the clock is
                 // set, as after a suspend, for the time to be asked anew.
                 let flags = TimerfdFlags::NONBLOCK | TimerfdFlags::CLOEXEC;
@@ -82,6 +98,9 @@ impl Watcher {
                 both.map_err(io::Error::from).map(|(timer, either)| Self {
                     inotify,
                     buffer,
+                    directory: directory.to_owned(),
+                    watched,
+                    parent,
                     timer,
                     either,
                 })
@@ -162,20 +181,53 @@ impl Watcher {
     /// Returns an error if the events cannot be read.
     pub fn drain(&mut self) -> io::Result<bool> {
         let mut changed = false;
+        let mut again = false;
         loop {
             match self.inotify.read_events(&mut self.buffer) {
                 Ok(events) => {
                     for event in events {
-                        changed |= is_relevant(event.mask, event.name);
+                        let parent = self.parent.as_ref() == Some(&event.wd);
+                        // The directory's own name come or gone where it is.
+                        again |= parent && event.name == self.directory.file_name();
+                        // The directory gone, or moved, and its watch with it.
+                        let gone = EventMask::IGNORED | EventMask::MOVE_SELF;
+                        again |= event.wd == self.watched && event.mask.intersects(gone);
+                        changed |= !parent && is_relevant(event.mask, event.name);
                     }
                 }
                 Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
-                    return Ok(changed | self.rang());
+                    let back = again && self.watch_again();
+                    return Ok(changed | back | self.rang());
                 }
                 Err(error) => return Err(error),
             }
         }
     }
+
+    /// Watches the directory again, wherever its path now leads, and lets
+    /// go of what watched it before if that was another. Returns whether
+    /// it is there to be watched, and so is to be loaded again.
+    fn watch_again(&mut self) -> bool {
+        let watched = self.inotify.watches().add(&self.directory, mask());
+        watched.is_ok_and(|watched| {
+            let before = replace(&mut self.watched, watched);
+            let elsewhere = before != self.watched;
+            let _ = elsewhere.then(|| self.inotify.watches().remove(before));
+            true
+        })
+    }
+}
+
+/// What the directory is watched for: its files written, made, taken away
+/// or renamed, and itself moved.
+fn mask() -> WatchMask {
+    WatchMask::CLOSE_WRITE
+        | WatchMask::CREATE
+        | WatchMask::DELETE
+        | WatchMask::MOVED_FROM
+        | WatchMask::MOVED_TO
+        | WatchMask::MOVE_SELF
+        | WatchMask::ONLYDIR
 }
 
 impl AsFd for Watcher {
@@ -269,9 +321,71 @@ mod tests {
     }
 
     #[test]
+    fn a_directory_taken_away_and_put_back_is_watched_again() {
+        let parent = TempDir::new().unwrap();
+        let directory = parent.path().join("omorfos");
+        fs::create_dir(&directory).unwrap();
+        fs::write(directory.join("config.yaml"), "").unwrap();
+        let mut watcher = Watcher::new(&directory).unwrap();
+
+        // Taken away, as `rm -r` does: its file went with it.
+        fs::remove_dir_all(&directory).unwrap();
+        assert!(changed(&mut watcher));
+        // Put back, as a backup is restored.
+        fs::create_dir(&directory).unwrap();
+        assert!(changed(&mut watcher), "put back, it is to be loaded");
+        assert!(!changed(&mut watcher));
+        fs::write(directory.join("theme.css"), "").unwrap();
+        assert!(changed(&mut watcher), "and is watched again");
+    }
+
+    #[test]
+    fn a_directory_that_is_a_link_pointed_elsewhere_is_watched_where_it_now_leads() {
+        let parent = TempDir::new().unwrap();
+        let before = parent.path().join("before");
+        let after = parent.path().join("after");
+        fs::create_dir(&before).unwrap();
+        fs::create_dir(&after).unwrap();
+        let directory = parent.path().join("omorfos");
+        std::os::unix::fs::symlink(&before, &directory).unwrap();
+        let mut watcher = Watcher::new(&directory).unwrap();
+
+        // Pointed elsewhere as `ln -sfn` does: a new link renamed over it.
+        let new = parent.path().join("omorfos.new");
+        std::os::unix::fs::symlink(&after, &new).unwrap();
+        fs::rename(&new, &directory).unwrap();
+        assert!(changed(&mut watcher), "it leads elsewhere, to be loaded");
+        fs::write(after.join("keys.yaml"), "").unwrap();
+        assert!(changed(&mut watcher), "where it leads now is watched");
+        fs::write(before.join("keys.yaml"), "").unwrap();
+        assert!(!changed(&mut watcher), "and where it led is not");
+    }
+
+    #[test]
+    fn a_configuration_file_beside_the_directory_is_not_a_change() {
+        let parent = TempDir::new().unwrap();
+        let directory = parent.path().join("omorfos");
+        fs::create_dir(&directory).unwrap();
+        let mut watcher = Watcher::new(&directory).unwrap();
+        fs::write(parent.path().join("config.yaml"), "").unwrap();
+        fs::create_dir(parent.path().join("other")).unwrap();
+        assert!(!changed(&mut watcher));
+    }
+
+    #[test]
     fn a_queue_overflow_counts_as_a_change() {
         assert!(is_relevant(EventMask::Q_OVERFLOW, None));
         assert!(!is_relevant(EventMask::IGNORED, None));
+    }
+
+    /// A directory in one of its own, for a test of when the watcher wakes:
+    /// one made in the directory every test makes its own in would hear of
+    /// theirs coming and going, as the directory a directory is in is
+    /// watched for its name.
+    fn quiet() -> (TempDir, TempDir) {
+        let parent = TempDir::new().unwrap();
+        let directory = TempDir::new_in(parent.path()).unwrap();
+        (directory, parent)
     }
 
     /// Whether the watcher's descriptor becomes readable within `millis`.
@@ -287,7 +401,7 @@ mod tests {
 
     #[test]
     fn the_descriptor_becomes_readable_when_something_changes() {
-        let directory = TempDir::new().unwrap();
+        let (directory, _parent) = quiet();
         let mut watcher = Watcher::new(directory.path()).unwrap();
         assert!(!readable(&watcher, 0));
         fs::write(directory.path().join("config.yaml"), "").unwrap();
@@ -298,7 +412,7 @@ mod tests {
 
     #[test]
     fn it_wakes_at_the_time_it_is_told_as_though_something_had_changed() {
-        let directory = TempDir::new().unwrap();
+        let (directory, _parent) = quiet();
         let mut watcher = Watcher::new(directory.path()).unwrap();
         let soon = SystemTime::now() + Duration::from_millis(30);
         watcher.wake_at(Some(soon));
@@ -312,7 +426,7 @@ mod tests {
 
     #[test]
     fn a_store_whose_scheme_goes_by_the_time_of_day_is_loaded_again_when_it_is_due() {
-        let directory = TempDir::new().unwrap();
+        let (directory, _parent) = quiet();
         let mut store = Store::open(directory.path());
         let mut watcher = Watcher::of(&store).unwrap();
         assert!(!readable(&watcher, 20), "nothing is due");
@@ -335,7 +449,7 @@ mod tests {
 
     #[test]
     fn a_time_gone_by_wakes_it_at_once_and_none_at_all_does_not() {
-        let directory = TempDir::new().unwrap();
+        let (directory, _parent) = quiet();
         let mut watcher = Watcher::new(directory.path()).unwrap();
         watcher.wake_at(Some(SystemTime::UNIX_EPOCH));
         assert!(readable(&watcher, 100));

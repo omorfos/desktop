@@ -77,6 +77,10 @@ shell, so nothing in a configuration file is subject to shell expansion.
   stops there. Errors in different files are all reported.
 - A file symlinked from elsewhere is not seen to change when its target is
   edited in place. A manual reload command will cover this.
+- The directory itself may be taken away and put back, or be a link
+  pointed elsewhere: the directory it is in is watched for its name, and
+  the directory watched again wherever its path then leads (finding 2 of
+  the review of 22 November 2026).
 - Key names are not yet checked against real keysyms; that needs
   libxkbcommon and arrives with the compositor.
 - `serde-saphyr` brings `encoding_rs` for input decoding, its largest
