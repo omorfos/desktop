@@ -509,9 +509,11 @@ impl Compositor {
             // "About" has the keyboard while it is shown: Escape puts it
             // away, Enter copies what it says, and the arrows, the keys of
             // a page, space, Home and End scroll it. Nothing else of it
-            // reaches a window; a binding still does what it is bound to.
+            // reaches a window; a binding still does what it is bound to,
+            // so a key pressed with a modifier held is the binding's.
             let about = compositor.cards.about.asked.is_some();
-            if about && compositor.about_key(keysym) {
+            let plain = bridge::modifiers(held) == Modifiers::NONE;
+            if about && plain && compositor.about_key(keysym) {
                 compositor.taken.suppressed.push(code);
                 return FilterResult::Intercept(None);
             }
