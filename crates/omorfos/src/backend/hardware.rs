@@ -454,7 +454,7 @@ fn wait_for_seat(
         );
     }
     while !seat.is_active() {
-        session.dispatch(None, Instant::now())?;
+        session.dispatch_now(None)?;
     }
     Ok(heard)
 }
