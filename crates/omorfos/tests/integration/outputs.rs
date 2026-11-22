@@ -115,6 +115,22 @@ fn a_program_told_of_an_output_just_before_it_went_may_still_bind_it() {
 }
 
 #[test]
+fn what_was_told_of_an_output_that_went_is_let_go_of_when_due_on_a_quiet_session() {
+    let mut session = Session::new();
+    let brief = session.add_output((320, 240));
+    session.settle();
+    session.compositor_mut().remove_output(&brief);
+    session.step();
+    let due = session.now + Duration::from_secs(5);
+    // Once what moves as the screen goes has settled, nothing but that is
+    // waited for, and the compositor is woken for it.
+    session.advance(Duration::from_secs(2));
+    assert_eq!(session.compositor().deadline(), Some(due));
+    session.advance(Duration::from_secs(3));
+    assert_eq!(session.compositor().deadline(), None, "and it is gone");
+}
+
+#[test]
 fn a_window_opens_on_the_output_the_pointer_is_on_and_is_drawn_there() {
     let (mut session, _second) = two_screens();
     pointer_to(&mut session, WIDTH + 300, 200);

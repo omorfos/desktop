@@ -1271,6 +1271,7 @@ impl Compositor {
             self.capture.recording.deadline(),
             self.updates.versions.due(),
             self.updates.retiring.iter().map(|(_, by)| *by).min(),
+            self.withdrawn_due(),
             self.updates.next,
             self.shown_by(),
             self.interim.deadline(),
@@ -1300,7 +1301,6 @@ impl Compositor {
     pub fn refresh(&mut self, now: Instant) {
         self.events
             .retain(|(_, at)| now.saturating_duration_since(*at) < EVENT_LASTS);
-        self.forget_withdrawn(now);
         for refused in self.refused.take() {
             self.happened(&refused, now);
         }
@@ -1378,6 +1378,8 @@ impl Compositor {
         self.publish_ipc(now);
         self.tell_holder();
         self.tell_relay(false);
+        // Last, for what was withdrawn in this turn to be timed in it.
+        self.forget_withdrawn(now);
     }
 
     /// Has it say what it says in the first of `languages`, by their codes,
