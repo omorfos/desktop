@@ -95,9 +95,9 @@ pub struct Relay {
     /// connection it closes from then is it going, and the program kept.
     going: bool,
     /// Until when the socket is not listened to, as a program waiting at
-    /// it could not be taken; and whether that has been said since a
-    /// program last was.
-    paused: (Option<Instant>, bool),
+    /// it could not be taken, which has then been said, since a program
+    /// last was.
+    paused: Option<Instant>,
     /// The programs whose connection to the compositor closed while it
     /// was still there, each until when it is waited for to be seen gone:
     /// kept with the rest if it is, let go if it is not.
@@ -123,7 +123,7 @@ impl Relay {
             listed: BTreeMap::new(),
             readying: false,
             going: false,
-            paused: (None, false),
+            paused: None,
             doubtful: Vec::new(),
             polled: (Vec::new(), Vec::new()),
         }
@@ -260,14 +260,14 @@ impl Relay {
         if !tried {
             return;
         }
-        if failed && !self.paused.1 {
+        if failed && self.paused.is_none() {
             let _ = writeln!(
                 log,
                 "omorfos-relay: a program could not be let in, as no descriptor is left; it is \
                  let in once one is free"
             );
         }
-        self.paused = (failed.then(|| Instant::now() + AGAIN), failed);
+        self.paused = failed.then(|| Instant::now() + AGAIN);
     }
 
     /// Tells the compositor, once, that every program kept for it is ready
@@ -319,10 +319,7 @@ impl Relay {
         polled.push(PollFd::new(&self.holder, PollFlags::IN));
         // A socket not listened to is still among what is polled, asking
         // for nothing, so that each is where it is expected to be.
-        let left = self
-            .paused
-            .0
-            .map(|until| until.saturating_duration_since(Instant::now()));
+        let left = (self.paused).map(|until| until.saturating_duration_since(Instant::now()));
         let paused = left.filter(|left| !left.is_zero());
         let socket = if paused.is_some() {
             PollFlags::empty()
