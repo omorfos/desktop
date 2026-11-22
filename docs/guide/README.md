@@ -146,5 +146,6 @@ browser.
 - [What applications are told of the desktop](applications.md)
 - [Who may do what](permissions.md)
 - [Programs written for X11](x11.md)
+- [Under WSL](wsl.md), in a window on the Windows desktop
 - [Installing a new version](updating.md)
 - [When something is wrong](troubleshooting.md)

@@ -33,15 +33,6 @@ a known gap.
   was not this login's, which is a fault of its own (stage 8).
 - A screen that changes size while it is shared (stage 3), with a
   screen that has modes of more than one size.
-- omorfos run in a window under WSLg, with what it prints kept
-  (`cargo run -p omorfos 2>&1 | tee omorfos-wsl.log`, and
-  `findmnt /tmp/.X11-unix`): whether the one error it said was the X
-  server's, now said as WSL's read-only `/tmp/.X11-unix`, or glass drawn
-  solid on Direct3D 12's Mesa. If the first, Smithay is to be asked to
-  listen on the abstract socket alone where the directory cannot be
-  written to (docs/UPSTREAM.md), and the guide to say what runs under
-  WSL.
-
 ## Where this is going
 
 omorfos is small, fast and driven by text files, but what is being asked
@@ -2753,6 +2744,12 @@ Hardware and performance:
       which waits on Smithay.
 - [ ] What is claimed of speed made by a script, and each number kept
       with the commit, the card, its driver and how many runs it is of.
+- [ ] A window on another desktop (the nested backend) that does no work
+      when nothing changes. It draws again at each frame of the host's,
+      as the swap paces it, and swaps a frame where nothing changed: 7%
+      of a core under WSLg with nothing moving. The hardware backend's
+      way, a frame said to have gone only while something waits for one,
+      would do, with what the window is told of the host's frames.
 
 Reports and recovery:
 
@@ -2876,6 +2873,16 @@ Known gaps carried forward:
 - [ ] Protocols that let another's dock or bar manage windows and
       workspaces (`ext-workspace`, foreign-toplevel management). Waits on:
       people wanting to bring their own, as ours use the IPC socket.
+- [ ] Programs written for X11 under WSL, where `/tmp/.X11-unix` is
+      WSLg's and read-only: tried by hand on 22 November 2026, that was the
+      one error, and glass was blurred, not solid, on llvmpipe and on
+      Direct3D 12's Mesa alike. Meanwhile the guide says to start omorfos
+      under `bwrap` with a directory of its own there (`docs/guide/wsl.md`).
+      Waits on: Smithay listening on the abstract socket alone where the
+      directory cannot be written to (`docs/UPSTREAM.md`). Tried by hand
+      at the same time, a window under WSLg ended at its first frame where
+      nothing changed, as Mesa will not swap a window it is not drawing
+      into, and a blur had drawn elsewhere since; that is fixed.
 
 A way in:
 

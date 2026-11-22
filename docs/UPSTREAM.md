@@ -291,6 +291,20 @@ S=$(ls -d ~/.cargo/registry/src/*/smithay-$(awk '/^name = "smithay"/{getline; pr
 - **Check:** `grep -n 'pub fn spawn\|listen\|socket' "$S"/src/xwayland/xserver.rs`
   for a way to hand it sockets already listened on.
 
+### An X server cannot be started where `/tmp/.X11-unix` is read-only
+
+- **Wrong:** Smithay makes both of an X server's sockets, the one in
+  `/tmp/.X11-unix` and the abstract one, and gives up when the first
+  cannot be made. Under WSL, whose own X server keeps that directory
+  read-only, no X server can be started, though the abstract socket alone
+  would reach every program there.
+- **Meanwhile:** omorfos says that programs written for X11 cannot run,
+  and the guide says to start it under `bwrap` with a directory of its
+  own there (`docs/guide/wsl.md`).
+- **Check:** `grep -n 'fn open_x11_sockets_for_display' -A25 "$S"/src/xwayland/x11_sockets.rs`
+  for the abstract socket being kept where the one in the directory
+  cannot be made.
+
 ### A window manager started against a running X server takes up none of its windows
 
 - **Wrong:** `X11Wm::start_wm` manages the windows it hears of from then
