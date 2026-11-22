@@ -233,7 +233,14 @@ fn a_sum_typed_is_answered_and_enter_puts_the_answer_on_the_clipboard() {
     press(&mut session, key::RETURN);
     assert!(settle(&mut session, &mut launcher), "it is done with");
     drop(launcher);
-    session.roundtrip(&mut client);
+    // The launcher has the keyboard until the compositor sees it go, once
+    // every copy of its end of the connection is closed, which a test
+    // starting a program meanwhile holds for a moment: the window is
+    // offered the clipboard when it has the keyboard back.
+    session.eventually(|session| {
+        session.roundtrip(&mut client);
+        client.state.selection.is_some()
+    });
     let pipe = client.paste();
     session.roundtrip(&mut client);
     let mut text = String::new();
