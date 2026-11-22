@@ -40,15 +40,26 @@ const LEFT: u32 = 0x110;
 const FOCUSED_TITLEBAR: u32 = 0xff14_1c38;
 
 /// Runs `work`, which talks to the X server, while the compositor carries
-/// on.
+/// on, for half a minute at most.
+#[track_caller]
 fn meanwhile<T: Send>(session: &mut Session, work: impl FnOnce() -> T + Send) -> T {
+    let at = std::panic::Location::caller();
     std::thread::scope(|scope| {
         let working = scope.spawn(work);
-        while !working.is_finished() {
+        for _ in 0..30_000 {
+            if working.is_finished() {
+                return working.join().unwrap();
+            }
             session.step();
             std::thread::sleep(Duration::from_millis(1));
         }
-        working.join().unwrap()
+        // The scope still waits for the work before the test fails, which
+        // may be for good, until the run's time is up: where it is waited
+        // on is said first, straight to the terminal, as what a test prints
+        // is shown only once it ends.
+        let said = format!("{at}: what talks to the X server never ended\n");
+        let _ = std::io::Write::write_all(&mut std::io::stderr(), said.as_bytes());
+        unreachable!("what talks to the X server never ended")
     })
 }
 
@@ -234,6 +245,7 @@ fn ask(session: &mut Session, program: &RustConnection, window: u32, what: &str,
 }
 
 /// Waits for the program to be told something that `wanted` picks out.
+#[track_caller]
 fn told<T: Send>(
     session: &mut Session,
     program: &RustConnection,
@@ -591,6 +603,7 @@ fn a_program_written_for_x11_can_ask_for_its_window_to_be_maximized_or_fullscree
 /// Moves the pointer on, a little at a time, until the first window's
 /// frame is no longer `before`: until a drag that a program asked for has
 /// begun and taken hold.
+#[track_caller]
 fn drag_until_changed(session: &mut Session, from: (i32, i32), before: Rect) {
     for step in 0..5000 {
         let (x, y) = (f64::from(from.0 + step), f64::from(from.1 + step));
@@ -876,6 +889,7 @@ fn kill_and_recover(session: &mut Session) {
 /// Kills the session's X server and takes hold of its number before the
 /// compositor has heard, as what is left of an X server that stopped can
 /// for a moment.
+#[track_caller]
 fn kill_and_hold(session: &mut Session) -> UnixListener {
     wait(session, |session| server(session).is_some());
     let number = display(session).unwrap();
@@ -888,12 +902,13 @@ fn kill_and_hold(session: &mut Session) -> UnixListener {
     assert!(killed.unwrap().success());
     // The compositor is not let carry on meanwhile, so it cannot have
     // started another.
-    loop {
+    for _ in 0..5000 {
         if let Ok(held) = UnixListener::bind_addr(&name) {
             return held;
         }
         std::thread::sleep(Duration::from_millis(1));
     }
+    unreachable!("the number of an X server killed was never let go of")
 }
 
 /// Whether the compositor is waiting to try again to start an X server:
@@ -1099,6 +1114,7 @@ fn selection(primary: bool) -> &'static str {
 
 /// Lets the compositor and a program written for Wayland carry on until
 /// `done`, as `meanwhile` does for the compositor alone.
+#[track_caller]
 fn until(
     session: &mut Session,
     client: &mut Client,
@@ -1170,6 +1186,7 @@ fn hold(program: &RustConnection, window: u32, names: [u32; 3], text: &str, stop
 
 /// Has a program written for X11 ask for the clipboard or the selection
 /// as text, and returns what it is given, if anything.
+#[track_caller]
 fn fetch(program: &RustConnection, window: u32, names: [u32; 3]) -> Option<String> {
     let [which, plain, into] = names;
     program
@@ -1197,6 +1214,7 @@ fn fetch(program: &RustConnection, window: u32, names: [u32; 3]) -> Option<Strin
 /// Waits until the X server has someone to ask for the clipboard or the
 /// selection: the window manager, on behalf of a program written for
 /// Wayland that holds it.
+#[track_caller]
 fn held(session: &mut Session, program: &RustConnection, which: u32) {
     meanwhile(session, || {
         for _ in 0..5000 {

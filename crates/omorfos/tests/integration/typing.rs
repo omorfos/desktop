@@ -32,6 +32,7 @@ fn disable(field: &ZwpTextInputV3) {
 
 /// Where the first pixel of `color` is, reading from the top left: the
 /// corner of something filled with it.
+#[track_caller]
 fn corner(session: &mut Session, color: u32) -> (i32, i32) {
     let picture = session.draw();
     let found = (0..HEIGHT).find_map(|y| {

@@ -2,7 +2,7 @@
 
 use std::io::Read;
 
-use crate::common::Session;
+use crate::common::{Session, read_text};
 use crate::windows::{BLUE, RED};
 
 #[test]
@@ -20,11 +20,10 @@ fn text_copied_in_one_application_can_be_pasted_in_another() {
     assert_eq!(terminal.state.formats, ["text/plain;charset=utf-8"]);
 
     // The terminal asks, the editor answers, and the text arrives.
-    let mut pipe = terminal.paste().unwrap();
+    let pipe = terminal.paste().unwrap();
     session.roundtrip(&mut terminal);
     session.roundtrip(&mut editor);
-    let mut pasted = String::new();
-    pipe.read_to_string(&mut pasted).unwrap();
+    let pasted = read_text(pipe);
     assert_eq!(pasted, "hello from the editor");
 }
 
@@ -126,8 +125,7 @@ fn a_program_that_pastes_through_a_pipe_already_full_does_not_stop_the_composito
     // And once the program does read, what it asked for is there.
     let mut read = vec![0; filled];
     reader.read_exact(&mut read).unwrap();
-    let mut pasted = String::new();
-    reader.read_to_string(&mut pasted).unwrap();
+    let pasted = read_text(reader);
     assert_eq!(pasted, text);
     session.eventually(|session| session.compositor_mut().handing_over() == 0);
 }
@@ -140,11 +138,10 @@ fn an_application_can_paste_what_it_copied_itself() {
     client.copy("round trip");
     session.roundtrip(&mut client);
 
-    let mut pipe = client.paste().unwrap();
+    let pipe = client.paste().unwrap();
     session.roundtrip(&mut client);
     session.roundtrip(&mut client);
-    let mut text = String::new();
-    pipe.read_to_string(&mut text).unwrap();
+    let text = read_text(pipe);
     assert_eq!(text, "round trip");
 }
 
@@ -184,11 +181,10 @@ fn selected_text_can_be_pasted_elsewhere_with_the_middle_button() {
     let mut terminal = session.connect();
     session.open(&mut terminal, "terminal", (200, 100), BLUE);
 
-    let mut pipe = terminal.paste_selection().unwrap();
+    let pipe = terminal.paste_selection().unwrap();
     session.roundtrip(&mut terminal);
     session.roundtrip(&mut editor);
-    let mut pasted = String::new();
-    pipe.read_to_string(&mut pasted).unwrap();
+    let pasted = read_text(pipe);
     assert_eq!(pasted, "selected in the editor");
 }
 

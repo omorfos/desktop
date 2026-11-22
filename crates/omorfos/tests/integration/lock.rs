@@ -54,6 +54,7 @@ pub(crate) fn lock(session: &mut Session) -> (Client, ExtSessionLockV1, WlSurfac
 
 /// Whether the compositor says, to those that ask it, that the session is
 /// locked.
+#[track_caller]
 fn said_locked(session: &mut Session, peer: &mut omorfos_ipc::Client) -> bool {
     match session.ask(peer, &omorfos_ipc::Request::State) {
         omorfos_ipc::Reply::State(state) => state.locked,

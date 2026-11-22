@@ -72,6 +72,7 @@ fn compositor(relayed: &Relayed) -> (Session, Holder, Client) {
 }
 
 /// How many windows the compositor of `session` has.
+#[track_caller]
 fn windows(session: &mut Session, peer: &mut Client) -> usize {
     match session.ask(peer, &Request::State) {
         Reply::State(state) => state.windows.len(),
@@ -152,6 +153,7 @@ fn reap(display: &Path) {
 /// Checks that the program the one window in `session` is of draws, as
 /// it is told to be as large as the screen, and makes it as it was; says
 /// what `said` says it said if not.
+#[track_caller]
 fn draws(session: &mut Session, peer: &mut Client, which: &str, said: &dyn Fn() -> String) {
     let focused = match session.ask(peer, &Request::State) {
         Reply::State(state) => state.windows.iter().any(|window| window.focused),

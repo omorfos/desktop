@@ -1,11 +1,9 @@
 //! Dragging something from one application and dropping it on another.
 
-use std::io::Read;
-
 use omorfos::Input;
 use omorfos_config::{Action, Half};
 
-use crate::common::{Client, Event, Session};
+use crate::common::{Client, Event, Session, read_text};
 use crate::windows::{BLUE, RED};
 
 const GREEN: u32 = 0xff00_ff00;
@@ -67,11 +65,10 @@ fn text_dragged_from_one_application_can_be_dropped_on_another() {
     button(&mut session, false);
     session.roundtrip(&mut to);
     assert!(to.take_events().contains(&Event::Dropped));
-    let mut pipe = to.take_drop();
+    let pipe = to.take_drop();
     session.roundtrip(&mut to);
     session.roundtrip(&mut from);
-    let mut dropped = String::new();
-    pipe.read_to_string(&mut dropped).unwrap();
+    let dropped = read_text(pipe);
     assert_eq!(dropped, "dragged from the editor");
 
     // Once the other says it has it, the first is told it was taken.
@@ -96,11 +93,11 @@ fn what_is_dropped_where_it_is_to_be_moved_is_told_to_its_program_as_moved() {
     session.roundtrip(&mut to);
     button(&mut session, false);
     session.roundtrip(&mut to);
-    let mut pipe = to.take_drop();
+    let pipe = to.take_drop();
     session.roundtrip(&mut to);
     session.roundtrip(&mut from);
-    let mut dropped = String::new();
-    pipe.read_to_string(&mut dropped).unwrap();
+    // Read to its end, as a program does before it says it is done.
+    let _ = read_text(pipe);
     to.finish_drop();
     session.roundtrip(&mut to);
     session.roundtrip(&mut from);

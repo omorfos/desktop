@@ -12,6 +12,7 @@ use serde_json::json;
 use crate::common::{HEIGHT, LayerShape, Session, WIDTH};
 use crate::windows::{BLUE, RED};
 
+#[track_caller]
 fn state(session: &mut Session, peer: &mut Client) -> State {
     match session.ask(peer, &Request::State) {
         Reply::State(state) => state,
@@ -20,6 +21,7 @@ fn state(session: &mut Session, peer: &mut Client) -> State {
 }
 
 /// Reads the next update on a subscription.
+#[track_caller]
 fn update(session: &mut Session, peer: &mut Client) -> State {
     session.step();
     let Ok(Reply::State(state)) = peer.receive() else {
@@ -235,9 +237,7 @@ fn a_window_can_be_activated_by_its_identifier() {
 fn pasted(session: &mut Session, client: &mut crate::common::Client) -> String {
     let pipe = client.paste();
     session.roundtrip(client);
-    let mut text = String::new();
-    let _ = pipe.map(|mut pipe| pipe.read_to_string(&mut text));
-    text
+    pipe.map(crate::common::read_text).unwrap_or_default()
 }
 
 #[test]
@@ -790,6 +790,7 @@ fn a_window_joins_a_workspace_that_has_room_for_it_by_what_it_is_known_by() {
 }
 
 /// Where the windows that can be seen are, as the compositor answers.
+#[track_caller]
 fn placed(session: &mut Session, peer: &mut Client) -> Vec<Placed> {
     match session.ask(peer, &Request::Placed) {
         Reply::Placed(placed) => placed,
@@ -949,6 +950,7 @@ fn what_speaks_for_the_radios_says_what_they_are_for_as_long_as_it_is_connected(
 }
 
 /// How each screen drew its last frame, as the compositor answers.
+#[track_caller]
 fn frames(session: &mut Session, peer: &mut Client) -> Vec<Drawing> {
     match session.ask(peer, &Request::Frames) {
         Reply::Frames(frames) => frames,

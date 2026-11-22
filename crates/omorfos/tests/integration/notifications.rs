@@ -134,6 +134,7 @@ fn notify(peer: &Connection, title: &str, stays: i32, hints: HashMap<&str, Value
 /// Lets the notifications and the compositor talk, at the time `now`,
 /// until `shown` is true of the screen. What programs send arrives on a
 /// thread of its own, so it is waited for.
+#[track_caller]
 fn until(
     session: &mut Session,
     notifier: &mut Notifier,
@@ -986,6 +987,7 @@ fn lowest(session: &mut Session) -> i32 {
 /// screen a second or more after it, when anything on its way has got
 /// where it was going, and whatever was coming has come. Returns the time
 /// it came to.
+#[track_caller]
 fn settled(
     session: &mut Session,
     notifier: &mut Notifier,

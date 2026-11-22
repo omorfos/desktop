@@ -28,7 +28,7 @@ use wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_surface_v1::{
 };
 
 use crate::capture::{ask, develop, snap_sized};
-use crate::common::{Client, Event, HEIGHT, LayerShape, Session, TEXT, WIDTH, key};
+use crate::common::{Client, Event, HEIGHT, LayerShape, Session, TEXT, WIDTH, key, read_text};
 use crate::cursors::{color_at, pointer_at, theme};
 use crate::hold::{Holder, hold_with};
 use crate::holding::{nudge, pointed};
@@ -535,24 +535,22 @@ fn what_the_compositor_before_offered_goes_nowhere_and_the_next_ones_offers_are_
 
     // Asked of an offer of the compositor before, nothing comes; and it is
     // destroyed as the program likes.
-    let (mut nothing, writer) = std::io::pipe().unwrap();
+    let (nothing, writer) = std::io::pipe().unwrap();
     stale.receive("text/plain;charset=utf-8".to_owned(), writer.as_fd());
     drop(writer);
     stale.destroy();
     second.roundtrip(&mut client);
-    let mut said = String::new();
-    nothing.read_to_string(&mut said).unwrap();
+    let said = read_text(nothing);
     assert_eq!(said, "");
 
     // What is copied now is offered, and pasted, as before.
     client.copy("after");
     second.roundtrip(&mut client);
     second.roundtrip(&mut client);
-    let mut pasted = client.paste().unwrap();
+    let pasted = client.paste().unwrap();
     second.roundtrip(&mut client);
     second.roundtrip(&mut client);
-    let mut text = String::new();
-    pasted.read_to_string(&mut text).unwrap();
+    let text = read_text(pasted);
     assert_eq!(text, "after");
 }
 
@@ -1713,11 +1711,7 @@ fn what_was_copied_is_there_again_from_the_keeper_kept_through_a_restart() {
         session.open(&mut terminal, "terminal", (200, 100), BLUE);
         let pipe = terminal.paste();
         session.roundtrip(&mut terminal);
-        pipe.map(|mut pipe| {
-            let mut text = String::new();
-            let _ = pipe.read_to_string(&mut text);
-            text
-        })
+        pipe.map(read_text)
     };
     second.eventually(|session| pasted(session).as_deref() == Some("kept"));
     drop(second);
@@ -1769,6 +1763,7 @@ fn the_keeper_is_started_through_the_relay_and_not_again_by_the_next_compositor(
 
 /// What the compositor of `session` says the session is, over its socket
 /// for scripts.
+#[track_caller]
 fn state(session: &mut Session) -> omorfos_ipc::State {
     let environment = session.compositor().session_environment();
     let mut socket = environment.into_iter();
@@ -1894,6 +1889,7 @@ fn the_desktop_shown_is_shown_again_though_a_window_kept_is_fullscreen_on_anothe
 }
 
 /// What the compositor of `session` says it has, asked over IPC by `peer`.
+#[track_caller]
 fn state_of(session: &mut Session, peer: &mut omorfos_ipc::Client) -> omorfos_ipc::State {
     let omorfos_ipc::Reply::State(state) = session.ask(peer, &omorfos_ipc::Request::State) else {
         unreachable!("expected the state");

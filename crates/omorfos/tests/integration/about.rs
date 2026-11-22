@@ -4,7 +4,6 @@
 //! keys, which no window sees while it is shown; what the computer is,
 //! which its button, or Enter, copies for any program to paste.
 
-use std::io::Read;
 use std::time::Duration;
 
 use omorfos::Input;
@@ -357,9 +356,7 @@ fn pasted(session: &mut Session, client: &mut crate::common::Client) -> String {
     let pipe = client.paste();
     session.roundtrip(client);
     // Nothing on offer is nothing pasted, which the test finds wanting.
-    let mut text = String::new();
-    let _ = pipe.map(|mut pipe| pipe.read_to_string(&mut text));
-    text
+    pipe.map(crate::common::read_text).unwrap_or_default()
 }
 
 #[test]

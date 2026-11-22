@@ -6,7 +6,6 @@
 )]
 
 use std::ffi::OsString;
-use std::io::Read;
 use std::thread::JoinHandle;
 use std::time::Duration;
 
@@ -84,11 +83,9 @@ fn copied(
 fn pasted(session: &mut Session) -> Option<String> {
     let mut terminal = session.connect();
     session.open(&mut terminal, "terminal", (200, 100), BLUE);
-    let mut pipe = terminal.paste()?;
+    let pipe = terminal.paste()?;
     session.roundtrip(&mut terminal);
-    let mut text = String::new();
-    pipe.read_to_string(&mut text).unwrap();
-    Some(text)
+    Some(crate::common::read_text(pipe))
 }
 
 /// Ends the session, and with it the keeper, and says why it stopped.
@@ -314,6 +311,7 @@ fn the_keeper_needs_the_clipboard_role_and_a_session() {
 
 /// Lets the session run for `millis` milliseconds of real time, as what is
 /// forgotten is.
+#[track_caller]
 fn wait(session: &mut Session, millis: u64) {
     let start = std::time::Instant::now();
     while start.elapsed() < Duration::from_millis(millis) {

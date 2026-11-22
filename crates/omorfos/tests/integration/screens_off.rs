@@ -11,6 +11,7 @@ const OFF: &str = "outputs:\n  - { name: test-0 }\n  - { name: test-1, enabled: 
 
 /// The screens as `omorfosctl screens` lists them: each name, and whether
 /// it is off.
+#[track_caller]
 fn listed(session: &mut Session, peer: &mut omorfos_ipc::Client) -> Vec<(String, bool)> {
     let omorfos_ipc::Reply::State(state) = session.ask(peer, &omorfos_ipc::Request::State) else {
         unreachable!("the state was asked for");

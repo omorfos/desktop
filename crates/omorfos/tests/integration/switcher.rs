@@ -781,6 +781,7 @@ fn in_a_picture_a_private_window_is_shown_by_its_icon_large_where_its_picture_wo
 
 /// Where each window the switcher shows is, front first, and how much of
 /// it is seen, but not which is picked.
+#[track_caller]
 fn standing(session: &Session) -> Vec<(u64, Rect, u16)> {
     let layout = session.compositor().switcher_layout().unwrap_or_else(|| {
         unreachable!("the switcher is open");

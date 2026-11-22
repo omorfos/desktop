@@ -100,6 +100,7 @@ fn click(session: &mut Session, button: u32) {
 }
 
 /// What the compositor says of the session.
+#[track_caller]
 fn state(session: &mut Session) -> State {
     let mut peer = Ipc::connect(&session.config.path().join("ipc.sock")).unwrap();
     let Reply::State(state) = session.ask(&mut peer, &Request::State) else {
