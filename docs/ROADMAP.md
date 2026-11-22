@@ -4,15 +4,16 @@ What omorfos is to become, in the order it is to be built. Stages are
 worked top to bottom and one at a time; within a stage the order is a
 suggestion. Tick items as they land and keep the "Next" pointer current.
 
-**Next:** what the review of 19 November 2026 found unsafe (stage 8,
-where its findings are in the order agreed), then what glass costs,
-measured (stage 4), then screens remembered and scaled (stage 3), then
-what closes stage 4: the rest of the redesign of windows (ADR 97) and
-the defaults reviewed together. Stage 5, the bar and the dock, follows,
-wearing that look. What else is left of stages 3 and 4 is known gaps,
-taken as the code beside them is touched. Of what is taken from stage 8
-ahead of its turn, the first release waits, there being no hurry for it,
-as do packages beyond `.deb` and the AUR.
+**Next:** what the reviews of 22 and 19 November 2026 found unsafe
+(stage 8, the first's findings in the order proposed, the second's in
+the order agreed), then what glass costs, measured (stage 4), then
+screens remembered and scaled (stage 3), then what closes stage 4: the
+rest of the redesign of windows (ADR 97) and the defaults reviewed
+together. Stage 5, the bar and the dock, follows, wearing that look.
+What else is left of stages 3 and 4 is known gaps, taken as the code
+beside them is touched. Of what is taken from stage 8 ahead of its turn,
+the first release waits, there being no hurry for it, as do packages
+beyond `.deb` and the AUR.
 
 Items that came from the wishlist kept outside this repository carry its
 number, as (wish 3), so that nothing asked for is lost track of.
@@ -2607,6 +2608,48 @@ The review of pull requests 44 to 48, of 20 November 2026, found in
       ([seen in passing](reviews/2026-11-20-pull-requests-44-to-48.md#seen-in-passing-for-later)):
       the card says it only where Super is Ctrl, and `omorfos-ask` takes
       the first of `LC_ALL`, `LC_MESSAGES` and `LANG` set to something.
+
+The review of 22 November 2026, of the whole tree again, by eight
+reviewers at once, is written up in
+[reviews/2026-11-22-the-whole-tree-again.md](reviews/2026-11-22-the-whole-tree-again.md),
+in the order to take it; what was written but could not be built there
+is a pull request of its own, to be built and tested first:
+
+- [ ] High: one connection has the relay, and the compositor behind it,
+      keep about a thousand million rectangles or kinds, the bound on
+      each object multiplied by the objects a link may hold
+      ([finding 1](reviews/2026-11-22-the-whole-tree-again.md#1-one-connection-can-have-the-relay-and-the-compositor-behind-it-keep-about-a-thousand-million-rectangles-or-kinds)): written, not built, with 65,536 as the
+      total.
+- [ ] Medium: a configuration directory taken away and put back, or a
+      link to one pointed elsewhere, never watched again by any program
+      ([finding 2](reviews/2026-11-22-the-whole-tree-again.md#2-a-configuration-directory-taken-away-and-put-back-or-a-link-to-one-pointed-elsewhere-is-never-watched-again-by-any-program-of-the-session)): written, not built.
+- [ ] Medium: a window's frame decided again by each compositor, so a
+      tab can come back with two titlebars; the place text's version is
+      a decision ([finding 3](reviews/2026-11-22-the-whole-tree-again.md#3-a-windows-frame-is-decided-again-by-each-compositor-so-a-framed-window-can-come-back-without-one-and-a-tab-with-two-titlebars)).
+- [ ] Low: the test of the question after a withdrawn picture gives up
+      after about 350 ms, which the tick of finding 16 of 19 November
+      does not say ([finding 4](reviews/2026-11-22-the-whole-tree-again.md#4-the-test-said-to-wait-however-long-that-takes-after-a-withdrawn-picture-gives-up-after-about-350-ms)): written, not built.
+- [ ] Low: "About" takes Super with Return, space, Escape and the arrows
+      from their bindings ([finding 5](reviews/2026-11-22-the-whole-tree-again.md#5-while-about-is-shown-super-with-return-space-escape-or-an-arrow-does-what-about-does-not-what-the-key-is-bound-to)): written, not built.
+- [ ] Low: without Xwayland, the notice says "os error 2" and not what is
+      missing ([finding 6](reviews/2026-11-22-the-whole-tree-again.md#6-without-xwayland-installed-every-logins-notice-says-no-such-file-or-directory-os-error-2)).
+- [ ] Low: today faint among the days of another month ([finding 7](reviews/2026-11-22-the-whole-tree-again.md#7-today-is-drawn-as-faintly-as-the-days-of-another-month-when-the-month-shown-is-not-todays)):
+      written, not built.
+- [ ] Low: a screen's global let go of only when something else wakes the
+      compositor ([finding 8](reviews/2026-11-22-the-whole-tree-again.md#8-a-screens-global-kept-five-seconds-after-the-screen-goes-is-let-go-of-only-when-something-else-wakes-the-compositor)): written, not built.
+- [ ] Low: the locale looked up by five copies of one lookup ([finding 9](reviews/2026-11-22-the-whole-tree-again.md#9-the-users-locale-is-looked-up-by-five-copies-of-one-lookup-and-the-fix-of-21-november-went-into-one)): written, not built.
+- [ ] Low: the limits on what a copy is offered as said in four places
+      ([finding 10](reviews/2026-11-22-the-whole-tree-again.md#10-how-many-kinds-a-copy-may-come-in-and-how-long-each-may-be-is-said-in-four-places-and-nothing-holds-the-relays-and-the-compositors-alike)): written, not built.
+- [ ] Low: a screen's name copied each frame, and each turn the overview,
+      the switcher or the sealed prompt is up ([finding 11](reviews/2026-11-22-the-whole-tree-again.md#11-each-frame-drawn-copies-the-screens-name-and-so-does-each-turn-while-the-overview-the-switcher-or-the-sealed-prompt-is-up)).
+- [ ] Low: every start of the X server reads `/proc` ([finding 12](reviews/2026-11-22-the-whole-tree-again.md#12-every-start-of-the-x-server-reads-proc-and-looks-at-tmpx11-unix-though-only-a-start-that-failed-needs-them)):
+      written, not built.
+- [ ] Low: the compositor's count of kinds held by no test ([finding 13](reviews/2026-11-22-the-whole-tree-again.md#13-a-program-that-offers-too-many-short-kinds-is-never-shown-to-be-refused-by-the-compositor)): written, not built.
+- [ ] Low: three fixes since 19 November run by the tests and held by none
+      ([finding 14](reviews/2026-11-22-the-whole-tree-again.md#14-three-fixes-since-19-november-are-run-by-the-tests-and-held-by-none)): written, not built, in part.
+- [x] Low: four documents no longer so ([finding 15](reviews/2026-11-22-the-whole-tree-again.md#15-four-documents-said-what-is-no-longer-so)): the roadmap's items asked
+      of Smithay and the PipeWire bindings, ADR 11, `OutputScale::Auto`'s
+      comment and the README's launcher put right.
 
 Accessibility:
 
