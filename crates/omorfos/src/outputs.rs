@@ -118,7 +118,8 @@ pub(crate) struct Aside {
     pub(crate) dark: Vec<Head>,
     /// What programs were told of outputs taken out of the space: no
     /// longer offered, but still there to be bound, until when it goes for
-    /// good, once a turn has said when that is.
+    /// good, once a turn has said when that is, as the turn it was taken
+    /// out in ends.
     withdrawn: Vec<(GlobalId, Option<Instant>)>,
 }
 
@@ -250,6 +251,13 @@ impl Compositor {
         for (global, _) in self.aside.withdrawn.extract_if(.., due) {
             self.display.remove_global::<Self>(global);
         }
+    }
+
+    /// When the first of what programs were told of outputs withdrawn is
+    /// to go for good, of those a turn has said when of.
+    pub(crate) fn withdrawn_due(&self) -> Option<Instant> {
+        let due = self.aside.withdrawn.iter().filter_map(|(_, until)| *until);
+        due.min()
     }
 
     /// Every output: those that stand in the space, those that mirror one
