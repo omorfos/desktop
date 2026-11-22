@@ -3248,10 +3248,12 @@ impl Compositor {
             // Nothing of the session is drawn while it is locked: only what
             // the locker shows, on black. Nothing else is even looked at.
             let elements = self.locked_elements(renderer, output, view);
-            if let Some(head) = self.head(output) {
-                head.blanked.set(true);
-            }
             let drawn = tracker.render_output(renderer, framebuffer, age, &elements, BLACK);
+            // Showing nothing of the session once that is drawn: a frame
+            // that failed may leave the last of the session on the screen.
+            if let Some(head) = self.head(output) {
+                head.blanked.set(drawn.is_ok());
+            }
             return self.drawn(output, output, drawn);
         }
         // A pointer an application draws is drawn by itself for programs
@@ -3656,7 +3658,6 @@ impl Compositor {
         }
         let locked = self.is_locked();
         let (drawn, behind) = if locked {
-            self.aside.mirrors[at].head.blanked.set(true);
             (self.locked_elements(renderer, &source, view), BLACK)
         } else {
             let shown = Extras {
@@ -3678,7 +3679,10 @@ impl Compositor {
             ))
         }));
         let drawn = tracker.render_output(renderer, framebuffer, age, &elements, behind);
-        let output = self.aside.mirrors[at].head.output.clone();
+        // Showing nothing of the session once that is drawn, as above.
+        let head = &self.aside.mirrors[at].head;
+        head.blanked.set(locked && drawn.is_ok());
+        let output = head.output.clone();
         self.drawn(&output, &source, drawn)
     }
 
