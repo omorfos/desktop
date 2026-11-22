@@ -50,6 +50,12 @@ pub type Sending = (Vec<u8>, Vec<Rc<OwnedFd>>);
 /// relay with them.
 pub const MOST_ADDED: usize = 4096;
 
+/// The most a program may add over all of its objects together: without it,
+/// the most for each object would be multiplied by the most objects a
+/// program may hold. Far more than any program adds, and few enough that
+/// what is kept of it stays some megabytes.
+pub const MOST_ADDED_IN_ALL: usize = 65_536;
+
 pub use omorfos_ipc::copied::{LONGEST_KIND, MOST_KINDS};
 
 /// The longest a request that offers a kind is: its header, how long the
@@ -441,6 +447,8 @@ pub struct Journal {
     /// again on its own later, or not at all: what pictures of a window are
     /// taken through, until the window is back.
     held: HashSet<u32>,
+    /// How many requests that added to an object are kept, over all of them.
+    added: usize,
 }
 
 impl Journal {
@@ -451,7 +459,8 @@ impl Journal {
     /// # Errors
     ///
     /// Returns why the program is to be let go if it has added more to one
-    /// object than any program adds, [`MOST_ADDED`], or offered what it
+    /// object than any program adds, [`MOST_ADDED`], more to all of them
+    /// together than [`MOST_ADDED_IN_ALL`], or offered what it
     /// copied in more kinds than [`MOST_KINDS`] or one longer than
     /// [`LONGEST_KIND`].
     pub fn request(
@@ -481,6 +490,10 @@ impl Journal {
                 committed: Vec::new(),
                 named: 0,
             };
+            // In place of anything kept by that number, which a program
+            // may name again before it is told it may: what was added to
+            // that is no longer counted.
+            let _ = self.remove(made);
             self.kept.insert(made, kept);
             return Ok(());
         }
@@ -573,7 +586,8 @@ impl Journal {
             .kept
             .get(&object)
             .is_some_and(|kept| kept.adding.len() >= most);
-        if rule == Rule::Adding && full {
+        let in_all = self.added >= MOST_ADDED_IN_ALL;
+        if rule == Rule::Adding && (full || in_all) {
             return Err(wire::ADDED_TOO_MUCH);
         }
         self.name(object, &message.names);
@@ -581,6 +595,7 @@ impl Journal {
             Rule::Lasting => replace(&mut kept.lasting, message),
             Rule::Adding => {
                 kept.adding.push(message);
+                self.added += 1;
                 None
             }
             // What is pending is all that is left: a commit is taken in
@@ -719,7 +734,7 @@ impl Journal {
             }
         }
         for (number, interface) in &ended {
-            let kept = self.kept.remove(number);
+            let kept = self.remove(*number);
             for names in kept.iter().flat_map(Kept::names) {
                 self.unname(*number, &names);
             }
@@ -767,7 +782,7 @@ impl Journal {
             }
         }
         for number in &ended {
-            let kept = self.kept.remove(number);
+            let kept = self.remove(*number);
             for names in kept.iter().flat_map(Kept::names) {
                 self.unname(*number, &names);
             }
@@ -969,7 +984,7 @@ impl Journal {
     pub fn forget(&mut self, numbers: &HashSet<u32>) {
         self.held.retain(|number| !numbers.contains(number));
         for number in numbers {
-            let kept = self.kept.remove(number);
+            let kept = self.remove(*number);
             for names in kept.iter().flat_map(Kept::names) {
                 self.unname(*number, &names);
             }
@@ -1100,13 +1115,21 @@ impl Journal {
         }
     }
 
+    /// Takes `object` out of what is kept, and what was added to it out of
+    /// the count of all that was.
+    fn remove(&mut self, object: u32) -> Option<Kept> {
+        let kept = self.kept.remove(&object);
+        self.added -= kept.as_ref().map_or(0, |kept| kept.adding.len());
+        kept
+    }
+
     /// Lets go of `object`, destroyed, unless something kept still names it.
     fn end(&mut self, object: u32) {
         let named = self.kept.get(&object).map(|kept| kept.named);
         if named != Some(0) {
             return;
         }
-        let kept = self.kept.remove(&object);
+        let kept = self.remove(object);
         for names in kept.iter().flat_map(Kept::names) {
             self.unname(object, &names);
         }

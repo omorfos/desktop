@@ -1663,15 +1663,9 @@ mod tests {
 
     #[test]
     fn a_program_may_not_add_more_to_an_object_than_any_adds() {
-        let (mut link, program, compositor) = linked();
-        let mut setup = get_registry();
-        let mut body = words(&[1]);
-        body.extend(text("wl_compositor"));
-        body.extend(words(&[6, 3]));
-        setup.extend(message(2, 0, &body));
+        let (mut link, program, compositor) = composing();
         // A region, added to as many times as may be, and once more.
-        setup.extend(message(3, 1, &words(&[4])));
-        send(&program, &setup, &[]);
+        send(&program, &message(3, 1, &words(&[4])), &[]);
         assert_eq!(read_through(&mut link, &compositor), Ok(()));
         let mut read = Ok(());
         for _ in 0..=journal::MOST_ADDED {
@@ -1682,6 +1676,69 @@ mod tests {
             }
         }
         assert_eq!(read, Err(Ended::Broken(wire::ADDED_TOO_MUCH)));
+    }
+
+    /// A link whose program has bound the compositor, as object 3.
+    fn composing() -> (Link, UnixStream, UnixStream) {
+        let (mut link, program, compositor) = linked();
+        let mut setup = get_registry();
+        let mut body = words(&[1]);
+        body.extend(text("wl_compositor"));
+        body.extend(words(&[6, 3]));
+        setup.extend(message(2, 0, &body));
+        send(&program, &setup, &[]);
+        assert_eq!(read_through(&mut link, &compositor), Ok(()));
+        (link, program, compositor)
+    }
+
+    /// Has the program make `region` and add to it as often as one object
+    /// may be added to, in batches; says how what it sent was read, to the
+    /// first that was refused.
+    fn fill(
+        link: &mut Link,
+        program: &UnixStream,
+        compositor: &UnixStream,
+        region: u32,
+    ) -> Result<(), Ended> {
+        send(program, &message(3, 1, &words(&[region])), &[]);
+        assert_eq!(read_through(link, compositor), Ok(()));
+        for _ in 0..journal::MOST_ADDED / 64 {
+            let batch: Vec<u8> = (0..64)
+                .flat_map(|_| message(region, 1, &words(&[0, 0, 1, 1])))
+                .collect();
+            send(program, &batch, &[]);
+            read_through(link, compositor)?;
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn a_program_may_not_add_more_in_all_than_any_adds_by_spreading_it_over_objects() {
+        let (mut link, program, compositor) = composing();
+        // Each region as full as one may be, until more is kept in all
+        // than may be.
+        let regions = journal::MOST_ADDED_IN_ALL / journal::MOST_ADDED + 1;
+        let mut read = Ok(());
+        for region in 4..4 + u32::try_from(regions).unwrap() {
+            read = fill(&mut link, &program, &compositor, region);
+            if read.is_err() {
+                break;
+            }
+        }
+        assert_eq!(read, Err(Ended::Broken(wire::ADDED_TOO_MUCH)));
+    }
+
+    #[test]
+    fn what_was_added_to_an_object_let_go_of_no_longer_counts_against_a_program() {
+        let (mut link, program, compositor) = composing();
+        // Twice as much added as may be kept in all, each region destroyed
+        // once it is full.
+        let regions = 2 * journal::MOST_ADDED_IN_ALL / journal::MOST_ADDED;
+        for region in 4..4 + u32::try_from(regions).unwrap() {
+            assert_eq!(fill(&mut link, &program, &compositor, region), Ok(()));
+            send(&program, &message(region, 0, &[]), &[]);
+            assert_eq!(read_through(&mut link, &compositor), Ok(()));
+        }
     }
 
     /// A link whose program has made the object 4, which offers what it
