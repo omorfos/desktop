@@ -138,6 +138,30 @@ fn a_program_a_rule_frames_is_told_the_compositor_decorates_it_whatever_it_prefe
 }
 
 #[test]
+fn a_program_that_names_itself_after_it_asks_is_framed_as_a_rule_for_its_name_says() {
+    let rule = "rules:\n  - match: { app_id: code }\n    decorations: true\n";
+    let mut session = Session::with_config(&[("rules.yaml", rule)]);
+    let mut client = session.connect();
+    // It asks to draw its own titlebar before it has a name, and is named
+    // only then, before its first commit.
+    let window = client.toplevel_uncommitted("", "");
+    let decoration = client.decoration(&window);
+    decoration.set_mode(Mode::ClientSide);
+    window.role.set_app_id("code".to_owned());
+    window.surface.commit();
+    session.roundtrip(&mut client);
+    let events = client.take_events();
+    assert!(
+        events.contains(&Event::Decoration { server_side: true }),
+        "{events:?}"
+    );
+    client.fill(&window.surface, (200, 100), RED);
+    session.roundtrip(&mut client);
+    let frame = session.compositor().desktop().frames().next().unwrap();
+    assert!(frame.decoration.is_some(), "framed, as the rule says");
+}
+
+#[test]
 fn a_program_a_rule_leaves_bare_is_told_it_draws_its_own_titlebar() {
     let rule = "rules:\n  - match: { app_id: foot }\n    decorations: false\n";
     let mut session = Session::with_config(&[("rules.yaml", rule)]);
