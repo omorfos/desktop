@@ -154,6 +154,7 @@ pub(crate) mod key {
     pub(crate) const UP: Keycode = Keycode::new(111);
     pub(crate) const PAGE_UP: Keycode = Keycode::new(112);
     pub(crate) const LEFT: Keycode = Keycode::new(113);
+    pub(crate) const KP_ENTER: Keycode = Keycode::new(104);
     pub(crate) const RIGHT: Keycode = Keycode::new(114);
     pub(crate) const END: Keycode = Keycode::new(115);
     pub(crate) const DOWN: Keycode = Keycode::new(116);
