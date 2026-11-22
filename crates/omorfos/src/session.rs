@@ -245,6 +245,27 @@ impl Session {
         timeout: Option<Duration>,
         now: Instant,
     ) -> Result<(), Box<dyn Error>> {
+        self.dispatch_told(timeout, || now)
+    }
+
+    /// Runs one turn as [`Session::dispatch`] does, the compositor told the
+    /// time by the clock on the wall once the wait is over: what was due
+    /// while it waited is then due, in the same turn.
+    ///
+    /// # Errors
+    ///
+    /// As [`Session::dispatch`].
+    pub fn dispatch_now(&mut self, timeout: Option<Duration>) -> Result<(), Box<dyn Error>> {
+        self.dispatch_told(timeout, Instant::now)
+    }
+
+    /// Runs one turn, the compositor told the time `now` says after the
+    /// wait and what came in it.
+    fn dispatch_told(
+        &mut self,
+        timeout: Option<Duration>,
+        now: impl FnOnce() -> Instant,
+    ) -> Result<(), Box<dyn Error>> {
         self.event_loop
             .dispatch(timeout, &mut self.compositor)
             .map_err(Box::from)
@@ -253,7 +274,7 @@ impl Session {
                 read.map_err(Box::from)
             })
             .and_then(|_| {
-                self.compositor.refresh(now);
+                self.compositor.refresh(now());
                 self.compositor.display.flush_clients().map_err(Box::from)
             })
     }
@@ -278,9 +299,8 @@ impl Session {
             let asleep = Instant::now();
             let deadline = self.compositor.deadline();
             let timeout = deadline.map(|deadline| deadline.saturating_duration_since(asleep));
-            // The compositor is told the time it is once the wait is over.
             outcome = self
-                .dispatch(timeout, Instant::now())
+                .dispatch_now(timeout)
                 .and_then(|()| turn(&mut self.compositor))
                 .and_then(|()| self.compositor.display.flush_clients().map_err(Box::from));
         }
