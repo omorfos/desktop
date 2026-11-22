@@ -336,37 +336,62 @@ impl Compositor {
             let said = self.words.say("no-descriptors", &[]);
             self.refused.say(&said);
         }
-        for peer in &mut server.peers {
+        // What each peer asked, in the order asked, answered once the
+        // server is back: an answer may start a program, which is to be
+        // told where the socket is, or ask what the peers keep the session
+        // from.
+        let mut asked = Vec::new();
+        for (at, peer) in server.peers.iter_mut().enumerate() {
             for line in peer.read_lines() {
                 let request = String::from_utf8(line).map_err(|error| error.to_string());
-                match request.and_then(|line| decode::<Request>(&line)) {
-                    // Answered when the state is next published, moments
-                    // from now, so that it is sent once and not twice.
-                    Ok(Request::Subscribe) => {
-                        peer.follows = peer.follows.or(Some(Follows::State));
-                        peer.waiting = true;
-                    }
-                    Ok(Request::ShowProblems) => {
-                        peer.follows = Some(Follows::Problems);
-                        peer.waiting = true;
-                    }
-                    Ok(Request::Hold { idle, sleep }) => {
-                        peer.kept = Kept { idle, sleep };
-                        peer.queue(&Reply::Done);
-                    }
-                    Ok(Request::Radios { radios }) => {
-                        // Kept with the compositor too, as the state is made
-                        // while the server is out of its hands.
-                        self.radios.clone_from(&radios);
-                        peer.radios = Some(radios);
-                        peer.queue(&Reply::Done);
-                    }
-                    Ok(request) => peer.queue(&self.answer(request)),
-                    Err(message) => peer.queue(&Reply::Error { message }),
-                }
+                asked.push((at, request.and_then(|line| decode::<Request>(&line))));
             }
         }
         self.ipc = Some(server);
+        for (at, request) in asked {
+            let reply = match request {
+                // Answered when the state is next published, moments from
+                // now, so that it is sent once and not twice.
+                Ok(Request::Subscribe) => {
+                    self.with_peer(at, |peer| {
+                        peer.follows = peer.follows.or(Some(Follows::State));
+                        peer.waiting = true;
+                    });
+                    None
+                }
+                Ok(Request::ShowProblems) => {
+                    self.with_peer(at, |peer| {
+                        peer.follows = Some(Follows::Problems);
+                        peer.waiting = true;
+                    });
+                    None
+                }
+                Ok(Request::Hold { idle, sleep }) => {
+                    self.with_peer(at, |peer| peer.kept = Kept { idle, sleep });
+                    Some(Reply::Done)
+                }
+                Ok(Request::Radios { radios }) => {
+                    // Kept with the compositor too, as the state is made
+                    // while the server is out of its hands.
+                    self.radios.clone_from(&radios);
+                    self.with_peer(at, |peer| peer.radios = Some(radios));
+                    Some(Reply::Done)
+                }
+                Ok(request) => Some(self.answer(request)),
+                Err(message) => Some(Reply::Error { message }),
+            };
+            let _ = reply.map(|reply| self.with_peer(at, |peer| peer.queue(&reply)));
+        }
+    }
+
+    /// Does `done` to the peer at `at`, which is there: peers are only
+    /// taken on, or let go of, while the server is out.
+    fn with_peer(&mut self, at: usize, done: impl FnOnce(&mut Peer)) {
+        let peer = self
+            .ipc
+            .as_mut()
+            .and_then(|server| server.peers.get_mut(at));
+        let _ = peer.map(done);
     }
 
     /// Sends subscribers the state if it changed, and sends everyone what
