@@ -53,6 +53,30 @@ fn a_program_that_copies_in_very_many_kinds_does_not_end_the_program_next_given_
 }
 
 #[test]
+fn a_program_that_copies_in_more_kinds_than_any_does_each_short_is_not_offered() {
+    let mut session = Session::new();
+    let mut flood = session.connect();
+    session.open(&mut flood, "flood", (200, 100), RED);
+    // Kinds as short as kinds are, but far more of them than any program
+    // offers: each is within how long a kind may be, and only how many
+    // there are refuses them.
+    let source = flood.copy_as("too many", &["text/plain"]);
+    session.roundtrip(&mut flood);
+    for kind in 0..2000 {
+        source.offer(format!("flood/{kind}"));
+        if kind % 64 == 63 {
+            session.roundtrip(&mut flood);
+        }
+    }
+    session.roundtrip(&mut flood);
+
+    let mut editor = session.connect();
+    session.open(&mut editor, "editor", (200, 100), BLUE);
+    assert_eq!(editor.state.formats.len(), 0, "offered nothing");
+    session.roundtrip(&mut editor);
+}
+
+#[test]
 fn a_program_may_copy_in_as_many_kinds_as_any_does_and_each_as_long() {
     let mut session = Session::new();
     let mut editor = session.connect();
