@@ -545,6 +545,12 @@ impl Capture {
             .any(|following| following.session.is_some())
     }
 
+    /// How many pictures programs have asked for and not yet been given.
+    pub(crate) fn asked(&self) -> usize {
+        let asked = self.shots.iter().filter(|shot| shot.stage == Stage::Asked);
+        asked.count()
+    }
+
     /// The drawings of a screen from which pictures have been asked for.
     pub(crate) fn wanted(&self, output: &Output) -> Vec<Pass> {
         let mut passes = Vec::new();

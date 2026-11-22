@@ -2050,13 +2050,16 @@ fn a_shared_window_grows_and_shrinks(card: Option<u64>) {
     // then the picture asked for after the last waits: the window changes
     // size while it does, and what reads the stream agrees on the new size
     // before the screen is drawn again. The picture is not asked for twice.
+    // The picture is waited for, not a while: a portal slower to ask, as
+    // in the build the coverage gate measures, would otherwise ask only
+    // once the window had changed size, and what lets go of a picture
+    // whose memory PipeWire takes away would go untried.
     for (size, colour) in [((600, 400), GREEN), ((200, 100), BLUE)] {
-        for _ in 0..20 {
-            session.step();
+        session.eventually(|session| {
             app.receive();
             viewer.turn(node);
-            std::thread::sleep(Duration::from_millis(10));
-        }
+            session.compositor().pictures_asked() > 0
+        });
         app.fill(&window.surface, size, colour);
         session.roundtrip(&mut app);
         for _ in 0..50 {
