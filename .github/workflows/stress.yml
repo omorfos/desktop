@@ -111,7 +111,18 @@ jobs:
           sudo install -D -m 0644 mozilla.gpg /etc/apt/keyrings/packages.mozilla.org.asc
           echo "deb [signed-by=/etc/apt/keyrings/packages.mozilla.org.asc] https://packages.mozilla.org/apt mozilla main" \
             | sudo tee /etc/apt/sources.list.d/mozilla.list > /dev/null
-          sudo apt-get update
+          # Mozilla's index of what is for every architecture is now and
+          # then served a moment out of step with its release file, while
+          # its mirrors sync, and apt then refuses the whole update, which
+          # failed arm64's night on 21 and 22 November: it is fetched again,
+          # a minute apart, for as long as five minutes.
+          for attempt in 1 2 3 4 5; do
+            if sudo apt-get update; then
+              break
+            fi
+            test "$attempt" -lt 5
+            sleep 60
+          done
           sudo apt-get install -y --no-install-recommends firefox-esr
           flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
           flatpak install --user --noninteractive flathub org.telegram.desktop
