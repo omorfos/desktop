@@ -5,6 +5,7 @@ use std::borrow::Cow;
 
 use omorfos_core::geometry::Size as DomainSize;
 use omorfos_core::{Desktop, Edges, WindowId};
+use omorfos_ipc::copied::{LONGEST_KIND, MOST_KINDS};
 use smithay::backend::allocator::dmabuf::Dmabuf;
 use smithay::wayland::dmabuf::{DmabufGlobal, DmabufHandler, DmabufState, ImportNotifier};
 use smithay::delegate_dmabuf;
@@ -658,13 +659,6 @@ pub enum Offer {
     /// Text of the compositor's own, as "About" copies what the computer is.
     Text(Arc<str>),
 }
-
-/// The most kinds a program may offer what it copied in, and the longest
-/// each may be, as long as a media type is: far more than any program
-/// offers. Whoever is given the keyboard is sent every one, and more than
-/// its socket holds would end it, with whatever was not saved in it.
-const MOST_KINDS: usize = 256;
-const LONGEST_KIND: usize = 255;
 
 impl Compositor {
     /// Takes off the clipboard, and out of the selection, what a program

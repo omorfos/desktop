@@ -50,14 +50,7 @@ pub type Sending = (Vec<u8>, Vec<Rc<OwnedFd>>);
 /// relay with them.
 pub const MOST_ADDED: usize = 4096;
 
-/// The most kinds a program may offer what it copied, selected or dragged
-/// in, and the longest each may be, as long as a media type is: far more
-/// than any program offers. Every one is sent to whichever program is
-/// given the keyboard, or dragged over, and more than its socket holds
-/// would end it, with whatever was not saved in it.
-pub const MOST_KINDS: usize = 256;
-/// The longest a kind may be, in bytes.
-pub const LONGEST_KIND: usize = 255;
+pub use omorfos_ipc::copied::{LONGEST_KIND, MOST_KINDS};
 
 /// The longest a request that offers a kind is: its header, how long the
 /// kind is, and the kind with the byte that ends it.
