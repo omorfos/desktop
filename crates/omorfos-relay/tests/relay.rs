@@ -1020,7 +1020,11 @@ fn a_sandbox_whose_socket_is_not_one_lets_no_one_in_and_holds_no_one_up() {
     let not_a_socket = std::fs::File::open("/dev/null").unwrap();
     let (_open, closing) = UnixStream::pair().unwrap();
     make_sandbox(&program, &not_a_socket, &closing);
-    for _ in 0..5 {
+    // For longer than the relay waits before it tries again after a
+    // failure, as it did before it was told this one would not pass, so
+    // that one said only then is heard: steps of the relay's are short.
+    let until = Instant::now() + 3 * omorfos_ipc::AGAIN;
+    while Instant::now() < until {
         held.step();
     }
     // Programs come in as they did, and nothing is said of descriptors
