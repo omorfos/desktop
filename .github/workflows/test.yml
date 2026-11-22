@@ -23,6 +23,7 @@ jobs:
   test:
     name: Test and coverage (${{ matrix.arch }})
     runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
@@ -46,9 +47,20 @@ jobs:
       - uses: taiki-e/install-action@v2.90.3
         with:
           tool: cargo-llvm-cov
-      # `cargo coverage` is an alias defined in .cargo/config.toml.
+      # `cargo coverage` is an alias defined in .cargo/config.toml. A run
+      # not over in forty minutes, where it takes under ten, is
+      # stopped and fails, naming the tests it was still waiting on, which
+      # the test harness says of each still running after a minute.
       - name: Unit and integration tests with the coverage gate
-        run: cargo coverage --locked
+        run: |
+          set -o pipefail
+          status=0
+          timeout --kill-after=60 40m cargo coverage --locked 2>&1 | tee run.log || status=$?
+          if [ "$status" -ge 124 ] && [ "$status" -le 137 ]; then
+            echo "::error::the tests were not over in 40 minutes; still running:"
+            { grep "has been running for over" run.log || true; } | sed 's/\x1b\[[0-9;]*m//g' | tail -10
+          fi
+          exit "$status"
       # Real programs kept through changes of compositor (docs/TESTING.md,
       # "Real programs"), from the build the coverage gate made: foot and a
       # GTK program here, from Ubuntu's archive, and the rest every night,
@@ -56,7 +68,7 @@ jobs:
       - name: Real programs through changes of compositor
         env:
           OMORFOS_REAL: required
-        run: cargo llvm-cov --no-report --workspace --all-features --locked --test integration -- --ignored real::foot real::a_gtk
+        run: timeout --kill-after=60 15m cargo llvm-cov --no-report --workspace --all-features --locked --test integration -- --ignored real::foot real::a_gtk
       # How much room was left, for the next time it runs short.
       - name: Room left on the disk
         if: ${{ !cancelled() }}

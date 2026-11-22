@@ -188,6 +188,33 @@ instant.
   lose the same race in a real session. If it could, that is a bug in the
   compositor, and the test should force the race, not wait it out.
 
+### Nothing waits for good
+
+A test that waits for something that never comes must fail, soon, and say
+where; it must not hold the run up, which says nothing until someone
+notices it has not ended.
+
+- Every wait has a bound: `eventually`, `wait`, `roundtrip` and the waits
+  of each file give up after so many turns and fail. A new one does the
+  same, never `loop` or `while` on a condition alone.
+- A helper that fails a test is marked `#[track_caller]`, so that its
+  failure names the line of the test that called it, not the helper's.
+  `roundtrip` is called a dozen times in some tests; without it, which one
+  went unanswered cannot be told.
+- What is written to a pipe is read with `read_all` or `read_text`, which
+  give up after thirty seconds. What writes to it is often the
+  compositor, which only the test's own thread steps, so a plain
+  `read_to_string` waiting on it would wait for good. A program a test
+  runs on a thread of its own is waited for with `eventually` and
+  `is_finished` before it is joined, as `x11.rs` does.
+- Behind these, every run has a time it may take: each job of CI has a
+  `timeout-minutes`, which `tools/timeouts.sh` holds every workflow to; the
+  tests of CI are stopped after forty minutes, of the stress run after
+  twenty, and of the gates' tiers after an hour and a half
+  (`OMORFOS_TESTS_WITHIN`). A run stopped so fails and names the tests it
+  was still waiting on, from what the test harness says of each still
+  running after a minute.
+
 ### Pixels and text
 
 - Windows are filled with one colour, so a pixel says which window, or
