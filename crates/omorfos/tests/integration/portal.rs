@@ -157,16 +157,16 @@ fn start_with_pipewire(
 /// Asks for a picture of the screen for an application, as the portal
 /// does, by a request of this name, and waits for the answer on a thread
 /// of its own.
-fn ask(daemon: &Daemon, request: &'static str) -> JoinHandle<Answered> {
+fn ask(daemon: &Daemon, request: &str) -> JoinHandle<Answered> {
     ask_by(daemon, request, "Screenshot")
 }
 
 /// The same, by `method` of the Screenshot portal: `PickColor` for a
 /// colour on the screen.
-fn ask_by(daemon: &Daemon, request: &'static str, method: &'static str) -> JoinHandle<Answered> {
+fn ask_by(daemon: &Daemon, request: &str, method: &'static str) -> JoinHandle<Answered> {
     let peer = daemon.peer();
+    let request = format!("/org/freedesktop/portal/desktop/request/1_1/{request}");
     std::thread::spawn(move || {
-        let request = format!("/org/freedesktop/portal/desktop/request/1_1/{request}");
         let path = ObjectPath::try_from(request.as_str()).unwrap();
         let options: HashMap<&str, Value<'_>> = HashMap::new();
         let body = (path, "org.example.App", "", options);
@@ -781,21 +781,21 @@ fn a_picture_withdrawn_while_it_is_picked_is_refused_at_once() {
     // The portal hears what was picked a moment after the picker has gone,
     // on its own time: until then, what is asked is taken for asked while
     // it is still picked, as a person could not ask so soon, and fails at
-    // once. So it is asked until it goes up, however long that takes.
-    let mut next = None;
-    for request in [
-        "after_1", "after_2", "after_3", "after_4", "after_5", "after_6",
-    ] {
-        let asking = ask(&daemon, request);
+    // once. So it is asked until it goes up, however long that takes, as
+    // long as the machine is not so slow that something else is wrong.
+    let until = Instant::now() + Duration::from_secs(10);
+    let mut tried = 0;
+    let next = loop {
+        tried += 1;
+        let asking = ask(&daemon, &format!("after_{tried}"));
         session.eventually(|session| asking.is_finished() || question_up(session));
         if !asking.is_finished() {
-            next = Some(asking);
-            break;
+            break asking;
         }
         assert_eq!(asking.join().unwrap().0, 2, "failed, as still picked");
+        assert!(Instant::now() < until, "still picked after {tried} asks");
         std::thread::sleep(Duration::from_millis(50));
-    }
-    let next = next.unwrap();
+    };
     press(&mut session, key::ESCAPE);
     assert_eq!(answered(&mut session, next).0, 1);
     let folder = session.config.path().join("Pictures/Screenshots");
