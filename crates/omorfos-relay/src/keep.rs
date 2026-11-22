@@ -698,6 +698,10 @@ impl Keeping {
             return;
         };
         self.described.retain(|(object, _), _| *object != made);
+        // A window made under a number another had is told nothing yet: a
+        // lock surface told the size of the one before would show what it
+        // drew at another as though it were for this one.
+        self.windows.remove(&made);
         self.commits.remove(&made);
         self.gestures.remove(&made);
         self.given.remove(&made);
