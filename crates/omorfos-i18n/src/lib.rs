@@ -191,6 +191,16 @@ fn bundle(code: &str, text: &str) -> FluentBundle<FluentResource> {
     bundle
 }
 
+/// The locale the environment asks for what is of `category`, as
+/// `LC_TIME`, whole, as `pl_PL.UTF-8`: the first of `LC_ALL`, `category`
+/// and `LANG` that is set to something, as the C library reads them; one
+/// set to nothing is as not set. `get` looks a variable up. Every program
+/// of the session looks a locale up so, here.
+pub fn locale(category: &str, get: &dyn Fn(&str) -> Option<String>) -> Option<String> {
+    let set = |name: &str| get(name).filter(|value| !value.is_empty());
+    ["LC_ALL", category, "LANG"].into_iter().find_map(set)
+}
+
 /// The locales the environment asks for, whole, as `pl_PL.UTF-8`, in
 /// order: `LANGUAGE`'s, then the first of `LC_ALL`, `LC_MESSAGES` and
 /// `LANG` that is set, as the C library reads them; `get` looks a variable
@@ -198,7 +208,7 @@ fn bundle(code: &str, text: &str) -> FluentBundle<FluentResource> {
 /// matched by more than a language, as a desktop entry's `Name[pl_PL]`.
 pub fn asked(get: &dyn Fn(&str) -> Option<String>) -> Vec<String> {
     let set = |name: &str| get(name).filter(|value| !value.is_empty());
-    let locale = ["LC_ALL", "LC_MESSAGES", "LANG"].into_iter().find_map(set);
+    let locale = locale("LC_MESSAGES", get);
     let listed = set("LANGUAGE").unwrap_or_default();
     let named = listed.split(':').map(str::to_owned).chain(locale);
     named
@@ -284,6 +294,26 @@ mod tests {
             "Hallo, Ala"
         );
         assert_eq!(words.say("broken", &[]), "broken");
+    }
+
+    #[test]
+    fn the_locale_of_a_category_is_the_first_of_lc_all_it_and_lang_set_to_something() {
+        let of = |set: &[(&str, &str)], category| {
+            let set: HashMap<String, String> = set
+                .iter()
+                .map(|(name, value)| ((*name).to_owned(), (*value).to_owned()))
+                .collect();
+            locale(category, &|name| set.get(name).cloned())
+        };
+        let time = [("LANG", "pl_PL.UTF-8"), ("LC_TIME", "en_US.UTF-8")];
+        assert_eq!(of(&time, "LC_TIME").as_deref(), Some("en_US.UTF-8"));
+        assert_eq!(of(&time, "LC_NUMERIC").as_deref(), Some("pl_PL.UTF-8"));
+        let all = [("LC_ALL", "de_DE"), ("LC_TIME", "en_US")];
+        assert_eq!(of(&all, "LC_TIME").as_deref(), Some("de_DE"));
+        let empty = [("LC_ALL", ""), ("LC_TIME", ""), ("LANG", "en_CA.UTF-8")];
+        assert_eq!(of(&empty, "LC_TIME").as_deref(), Some("en_CA.UTF-8"));
+        assert_eq!(of(&[("LANG", "")], "LC_TIME"), None);
+        assert_eq!(of(&[("LANGUAGE", "pl")], "LC_MESSAGES"), None);
     }
 
     #[test]

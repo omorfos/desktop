@@ -29,19 +29,12 @@ const SATURDAY: &[&str] = &[
 /// Those whose weeks begin on Friday, as above.
 const FRIDAY: &[&str] = &["BD", "MV"];
 
-/// The day a week begins on where time is told as the environment asks:
-/// by the territory of the first of `LC_ALL`, `LC_TIME` and `LANG` that is
-/// set, as the C library reads them, and Monday where none names one. `get`
-/// looks a variable up.
+/// The day a week begins on where time is told in the locale `named`, as
+/// `en_US.UTF-8`: by its territory, and Monday where it names none.
 #[must_use]
-pub fn first_weekday(get: &dyn Fn(&str) -> Option<String>) -> Weekday {
-    let locale = ["LC_ALL", "LC_TIME", "LANG"]
-        .into_iter()
-        .find_map(|name| get(name).filter(|value| !value.is_empty()));
-    let territory = locale.as_deref().and_then(|locale| {
-        let name = locale.split(['.', '@']).next().unwrap_or(locale);
-        name.split_once('_').map(|(_, territory)| territory)
-    });
+pub fn first_weekday(named: &str) -> Weekday {
+    let name = named.split(['.', '@']).next().unwrap_or(named);
+    let territory = name.split_once('_').map(|(_, territory)| territory);
     match territory {
         Some(territory) if SUNDAY.contains(&territory) => Weekday::Sunday,
         Some(territory) if SATURDAY.contains(&territory) => Weekday::Saturday,
@@ -517,45 +510,14 @@ mod tests {
 
     #[test]
     fn a_week_begins_on_the_day_the_locale_of_the_time_begins_it_on() {
-        let first = |variables: &[(&str, &str)]| {
-            first_weekday(&|name| {
-                variables
-                    .iter()
-                    .find(|(variable, _)| *variable == name)
-                    .map(|(_, value)| (*value).to_owned())
-            })
-        };
-        assert_eq!(first(&[("LANG", "en_US.UTF-8")]), Weekday::Sunday);
-        assert_eq!(first(&[("LANG", "pl_PL.UTF-8")]), Weekday::Monday);
-        assert_eq!(first(&[("LANG", "ar_EG.UTF-8")]), Weekday::Saturday);
-        assert_eq!(first(&[("LANG", "bn_BD")]), Weekday::Friday);
-        assert_eq!(first(&[("LANG", "sr_RS@latin")]), Weekday::Monday);
-        assert_eq!(first(&[("LANG", "he_IL@euro")]), Weekday::Sunday);
-        assert_eq!(
-            first(&[("LANG", "C.UTF-8")]),
-            Weekday::Monday,
-            "no territory"
-        );
-        assert_eq!(first(&[]), Weekday::Monday, "nothing set");
-        assert_eq!(
-            first(&[("LANG", "pl_PL.UTF-8"), ("LC_TIME", "en_US.UTF-8")]),
-            Weekday::Sunday,
-            "LC_TIME before LANG"
-        );
-        assert_eq!(
-            first(&[
-                ("LANG", "en_US.UTF-8"),
-                ("LC_TIME", "en_US.UTF-8"),
-                ("LC_ALL", "en_GB.UTF-8")
-            ]),
-            Weekday::Monday,
-            "LC_ALL before both"
-        );
-        assert_eq!(
-            first(&[("LC_ALL", ""), ("LANG", "en_CA.UTF-8")]),
-            Weekday::Sunday,
-            "one empty is not set"
-        );
+        assert_eq!(first_weekday("en_US.UTF-8"), Weekday::Sunday);
+        assert_eq!(first_weekday("pl_PL.UTF-8"), Weekday::Monday);
+        assert_eq!(first_weekday("ar_EG.UTF-8"), Weekday::Saturday);
+        assert_eq!(first_weekday("bn_BD"), Weekday::Friday);
+        assert_eq!(first_weekday("sr_RS@latin"), Weekday::Monday);
+        assert_eq!(first_weekday("he_IL@euro"), Weekday::Sunday);
+        assert_eq!(first_weekday("C.UTF-8"), Weekday::Monday, "no territory");
+        assert_eq!(first_weekday(""), Weekday::Monday, "nothing set");
     }
 
     #[test]

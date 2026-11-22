@@ -107,16 +107,6 @@ impl Numbers {
         if comma { Self::Comma } else { Self::Point }
     }
 
-    /// How numbers are written in the locale the environment asks for them
-    /// in: the first of `LC_ALL`, `LC_NUMERIC` and `LANG` that is set, as
-    /// the C library reads them; `get` looks a variable up.
-    #[must_use]
-    pub fn asked(get: &dyn Fn(&str) -> Option<String>) -> Self {
-        let set = |name: &str| get(name).filter(|value| !value.is_empty());
-        let named = ["LC_ALL", "LC_NUMERIC", "LANG"].into_iter().find_map(set);
-        Self::of_locale(&named.unwrap_or_default())
-    }
-
     /// Whether `sign` marks the decimals.
     fn decimal(self, sign: char) -> bool {
         sign == '.' || (self == Self::Comma && sign == ',')
@@ -659,30 +649,5 @@ mod tests {
         ] {
             assert_eq!(Numbers::of_locale(named), Numbers::Point, "{named}");
         }
-    }
-
-    #[test]
-    fn the_locale_for_numbers_is_taken_as_the_c_library_takes_it() {
-        let asked = |set: &[(&str, &str)]| {
-            let set: Vec<(String, String)> = set
-                .iter()
-                .map(|(name, value)| ((*name).to_owned(), (*value).to_owned()))
-                .collect();
-            Numbers::asked(&|name| {
-                set.iter()
-                    .find(|(set, _)| set == name)
-                    .map(|(_, value)| value.clone())
-            })
-        };
-        assert_eq!(asked(&[]), Numbers::Point);
-        assert_eq!(asked(&[("LANG", "pl_PL.UTF-8")]), Numbers::Comma);
-        let numeric = [("LANG", "en_GB.UTF-8"), ("LC_NUMERIC", "pl_PL.UTF-8")];
-        assert_eq!(asked(&numeric), Numbers::Comma);
-        let all = [("LC_ALL", "en_US.UTF-8"), ("LC_NUMERIC", "pl_PL.UTF-8")];
-        assert_eq!(asked(&all), Numbers::Point);
-        // What is set empty is not set; the messages' language is not looked at.
-        let empty = [("LC_ALL", ""), ("LANG", "de_DE"), ("LANGUAGE", "en")];
-        assert_eq!(asked(&empty), Numbers::Comma);
-        assert_eq!(asked(&[("LC_MESSAGES", "pl_PL")]), Numbers::Point);
     }
 }
