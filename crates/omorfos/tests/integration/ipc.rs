@@ -647,6 +647,33 @@ fn programs_started_by_the_compositor_are_told_where_the_socket_is() {
 }
 
 #[test]
+fn programs_started_by_a_request_on_the_socket_are_told_where_it_is_too() {
+    let mut session = Session::new();
+    let path = session.listen();
+    let mut peer = Client::connect(&path).unwrap();
+    let marker = session.config.path().join("spawned");
+    let script = format!("printf %s \"$OMORFOS_SOCKET\" > '{}'", marker.display());
+
+    // As the launcher starts what is picked, and omorfosctl what it is told.
+    let action = json!({ "spawn": ["sh", "-c", script] });
+    let reply = session.ask(&mut peer, &Request::Perform { action });
+    assert_eq!(reply, Reply::Done);
+
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while std::fs::read_to_string(&marker)
+        .unwrap_or_default()
+        .is_empty()
+        && Instant::now() < deadline
+    {
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    assert_eq!(
+        std::fs::read_to_string(&marker).unwrap(),
+        path.display().to_string()
+    );
+}
+
+#[test]
 fn the_state_says_which_workspaces_were_made_and_knows_each_by_what_does_not_change() {
     let mut session = Session::with_config(&[("config.yaml", "workspaces: [web]\n")]);
     let mut client = session.connect();
