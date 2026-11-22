@@ -2117,6 +2117,14 @@ impl Compositor {
         self.animation.glass.blurs()
     }
 
+    /// How many pictures programs have asked for, of a screen or of a
+    /// window, and not yet been given: until the screen is drawn again,
+    /// those of what has not changed since the last.
+    #[must_use]
+    pub fn pictures_asked(&self) -> usize {
+        self.capture.asked()
+    }
+
     /// Says where the wallpaper that comes with omorfos is: a name to look
     /// up in `PATH`, or a path. It is then started with the session, unless
     /// the configuration turns it off. Until this is called there is none
