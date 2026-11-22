@@ -159,8 +159,8 @@ impl Panel {
         // As the locale of the time asks, as the panel was started.
         self.weeks_from(month::first_weekday(&|name| std::env::var(name).ok()));
         loop {
-            let (time, changes) = omorfos_shell::clock::now();
-            self.date(omorfos_shell::clock::today());
+            let (time, changes, today) = omorfos_shell::clock::now();
+            self.date(today);
             let now = started.elapsed();
             if let Err(failure) = self.turn(&time, now) {
                 return failure;

@@ -5,12 +5,14 @@ use std::time::Duration;
 use jiff::Zoned;
 use jiff::civil::Date;
 
-/// The time now where the user is, as it reads on the bar, and how long
-/// until it reads differently.
+/// The time now where the user is, as it reads on the bar, how long until
+/// it reads differently, and what day it is: all of one moment, so that the
+/// time and the day agree at midnight too.
 #[must_use]
-pub fn now() -> (String, Duration) {
+pub fn now() -> (String, Duration, Date) {
     let now = Zoned::now();
-    reading(now.hour(), now.minute(), now.second(), now.millisecond())
+    let (time, changes) = reading(now.hour(), now.minute(), now.second(), now.millisecond());
+    (time, changes, now.date())
 }
 
 /// How the moment `seconds` after the Unix epoch reads on the bar, where
@@ -34,12 +36,6 @@ fn reading(hour: i8, minute: i8, second: i8, millisecond: i16) -> (String, Durat
         format!("{hour:02}:{minute:02}"),
         Duration::from_millis(left),
     )
-}
-
-/// What day it is where the user is.
-#[must_use]
-pub fn today() -> Date {
-    Zoned::now().date()
 }
 
 #[cfg(test)]
@@ -72,7 +68,7 @@ mod tests {
 
     #[test]
     fn the_time_now_is_a_time_of_day() {
-        let (time, wait) = now();
+        let (time, wait, _) = now();
         let (hour, minute) = time.split_once(':').unwrap();
         assert!(hour.parse::<u8>().unwrap() < 24, "{time}");
         assert!(minute.parse::<u8>().unwrap() < 60, "{time}");

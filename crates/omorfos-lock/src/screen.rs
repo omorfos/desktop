@@ -504,7 +504,7 @@ impl Shell {
             .as_ref()
             .is_none_or(|(_, changes)| *changes <= now)
         {
-            let (time, changes) = omorfos_shell::clock::now();
+            let (time, changes, _) = omorfos_shell::clock::now();
             self.clock = Some((time, now + changes));
             self.stale = true;
         }
