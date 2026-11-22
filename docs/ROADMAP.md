@@ -885,6 +885,21 @@ what only games and touchpads need last.
 - [x] Two workspaces sliding side by side told apart: the wallpaper goes
       with them, drawn for each, where the windows of one ran on into the
       other's over a wallpaper that stayed still.
+- [ ] A workspace sliding kept to its own screen (seen by the maintainer
+      on 22 November 2026): with a laptop's screen and another beside
+      it, each with more than one workspace, going to the next or the
+      one before shows the windows sliding in, or out, on the other
+      screen too, as they cross the edge between the two. The domain
+      places the windows of the workspace shown, and of the one beside
+      it, in the one space all screens share, moved right or left by the
+      slide (`Desktop::beside`, `Desktop::drawn`), so that what is moved
+      past a screen's edge is in the next screen's part of it, and that
+      screen draws it. What a screen draws of a slide is to be cut to
+      that screen, as the wallpaper already is drawn for each. No test
+      slides with two screens; the first is to: two side by side, a
+      window on the second workspace of the left one, a key to go to it,
+      and the right screen's pixels unchanged at every step of the
+      slide.
 - [x] Nothing sliding with `appearance.reduce_motion`: the keys change
       the workspace at once, and three fingers carry nothing, changing it
       as they lift if they went far enough or fast enough (ADR 71).
