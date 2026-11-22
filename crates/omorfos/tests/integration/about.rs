@@ -335,6 +335,39 @@ fn about_has_the_keyboard_its_keys_scroll_it_and_a_window_sees_none_but_bindings
 }
 
 #[test]
+fn a_binding_on_a_key_about_takes_does_what_it_is_bound_to_while_about_is_shown() {
+    let keys = (
+        "keys.yaml",
+        concat!(
+            "bindings:\n",
+            "  - { keys: Super+Return, action: about }\n",
+            "  - { keys: Super+space, action: about }\n",
+        ),
+    );
+    for chord in [key::RETURN, key::SPACE] {
+        let mut session = short(&[keys]);
+        about(&mut session);
+        for (code, pressed) in [
+            (key::SUPER, true),
+            (chord, true),
+            (chord, false),
+            (key::SUPER, false),
+        ] {
+            session
+                .compositor_mut()
+                .input(Input::Key { code, pressed }, 0);
+        }
+        session.settle();
+        let screen = session.draw();
+        assert_eq!(
+            screen.at(LEFT_SIDE, HEIGHT - 30),
+            BACKGROUND,
+            "put away by the binding, not taken by \"About\""
+        );
+    }
+}
+
+#[test]
 fn about_does_not_outlast_the_session_being_locked() {
     let mut session = unblurred();
     about(&mut session);
