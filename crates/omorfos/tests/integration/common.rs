@@ -585,6 +585,7 @@ impl Session {
 
     /// Exchanges messages until the compositor has handled everything the
     /// client has sent and the client has seen every reply.
+    #[track_caller]
     pub(crate) fn roundtrip(&mut self, client: &mut Client) {
         client.state.synced = false;
         client.connection.display().sync(&client.queue.handle(), ());
@@ -3441,10 +3442,39 @@ pub(crate) fn between(color: u32, one: u32, other: u32) -> bool {
     within && color != one && color != other
 }
 
+/// The longest a test reads what is written to a pipe for, in real time.
+const READ_FOR: Duration = Duration::from_secs(30);
+
+/// Reads what is written to `pipe` until every writer has closed it, as
+/// `read_to_end` does, for as long as [`READ_FOR`] at most. What writes to
+/// it is often the compositor or a program this very thread steps, and a
+/// read waiting on one that never closes it would wait for good, holding
+/// the whole run up without a word of which test it was in. It fails the
+/// test instead, at the caller's line.
+#[track_caller]
+pub(crate) fn read_all(mut pipe: impl std::io::Read + Send + 'static) -> Vec<u8> {
+    let (read, got) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let mut bytes = Vec::new();
+        let _ = read.send(pipe.read_to_end(&mut bytes).map(|_| bytes));
+    });
+    let Ok(read) = got.recv_timeout(READ_FOR) else {
+        unreachable!("what was written to the pipe never ended");
+    };
+    read.unwrap()
+}
+
+/// Reads what is written to `pipe`, as [`read_all`] does, as text.
+#[track_caller]
+pub(crate) fn read_text(pipe: impl std::io::Read + Send + 'static) -> String {
+    String::from_utf8(read_all(pipe)).unwrap()
+}
+
 /// Lets the compositor carry on until something is so, without time
 /// passing for it: for what the clock goes by, as how often an X server
 /// may be started again does, or what changes over time and is to be seen
 /// from its start.
+#[track_caller]
 pub(crate) fn wait(session: &mut Session, so: impl Fn(&Session) -> bool) {
     for _ in 0..20_000 {
         session.step();

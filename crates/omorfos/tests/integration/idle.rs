@@ -438,6 +438,7 @@ fn away_for_the_time_configured_the_machine_is_asked_to_sleep() {
 
 /// Whether the session says, to those that ask it, that it is kept awake,
 /// and until when.
+#[track_caller]
 fn said_awake(session: &mut Session, peer: &mut omorfos_ipc::Client) -> Option<Awake> {
     let omorfos_ipc::Reply::State(state) = session.ask(peer, &omorfos_ipc::Request::State) else {
         unreachable!("the state was asked for");

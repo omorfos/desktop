@@ -113,6 +113,7 @@ const STARTS: &str = "#!/bin/sh\nprintf '%s\\n' $$ >> \"$0.checked\"\nexec sleep
 /// a stand-in that [`STARTS`], to check it, and collected it once it
 /// ended: a process that has ended is in `/proc` until then, but with
 /// nothing in its command line from as it begins to end.
+#[track_caller]
 fn checked(session: &mut Session, own: &Path) {
     let mark = own.with_extension("checked");
     let collected = |number: &str| !Path::new("/proc").join(number).exists();

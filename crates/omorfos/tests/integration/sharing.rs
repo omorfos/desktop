@@ -849,6 +849,7 @@ fn sharing_with(
 /// Has the session go on for a while, doing `also` meanwhile, as the
 /// backend paces itself by the clock, so that what it does in that time is
 /// done.
+#[track_caller]
 fn wait(session: &mut Session, long: Duration, mut also: impl FnMut()) {
     let until = std::time::Instant::now() + long;
     while std::time::Instant::now() < until {

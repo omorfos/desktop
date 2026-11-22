@@ -296,16 +296,14 @@ const BOTH: Roles = Roles::CAPTURE.with(Roles::CLIPBOARD);
 /// Has a program with the keyboard paste the picture on the clipboard,
 /// and returns the colour at a place in it.
 fn pasted(session: &mut Session, app: &mut Client, (x, y): (usize, usize)) -> u32 {
-    use std::io::Read;
     session.eventually(|session| {
         session.draw();
         session.roundtrip(app);
         app.state.formats.iter().any(|format| format == "image/png")
     });
-    let mut reader = app.paste_as("image/png").unwrap();
+    let reader = app.paste_as("image/png").unwrap();
     session.roundtrip(app);
-    let mut bytes = Vec::new();
-    reader.read_to_end(&mut bytes).unwrap();
+    let bytes = crate::common::read_all(reader);
     let mut decoded = png::Decoder::new(std::io::Cursor::new(bytes))
         .read_info()
         .unwrap();

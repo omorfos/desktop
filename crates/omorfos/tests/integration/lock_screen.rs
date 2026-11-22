@@ -79,6 +79,7 @@ fn awake(session: &mut Session, there: &Path, ways: &[Way]) -> Lock {
 
 /// Lets the lock screen and the compositor talk until `done` holds, and
 /// returns whether the lock screen said it is done.
+#[track_caller]
 fn until(session: &mut Session, lock: &mut Lock, mut done: impl FnMut(&Session) -> bool) -> bool {
     for _ in 0..5000 {
         let unlocked = lock.turn(Instant::now()).unwrap();
@@ -122,6 +123,7 @@ const EMPTIED: [Keycode; 3] = [key::BACKSPACE; 3];
 
 /// Types the password, afresh, until the session is unlocked: until the
 /// helper has started and asks, Enter goes nowhere.
+#[track_caller]
 fn unlock(session: &mut Session, lock: &mut Lock) {
     for _ in 0..500 {
         typed(session, &EMPTIED);
@@ -655,6 +657,7 @@ fn buttons(session: &mut Session) -> Vec<f64> {
 /// Lets the lock screen and the compositor talk until `count` buttons are
 /// shown, and returns where. Every screen is drawn meanwhile, as the
 /// session is said to be locked only once each has been.
+#[track_caller]
 fn shown(session: &mut Session, lock: &mut Lock, count: usize) -> Vec<f64> {
     for _ in 0..5000 {
         lock.turn(Instant::now()).unwrap();
@@ -967,6 +970,7 @@ fn settle_at(session: &mut Session, lock: &mut Lock, at: Instant) {
 
 /// Presses Enter until the lock screen has unlocked: once its helper is
 /// asking, it is handed what is in the field.
+#[track_caller]
 fn entered(session: &mut Session, lock: &mut Lock) {
     for _ in 0..500 {
         tap(session, key::RETURN);
