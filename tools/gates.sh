@@ -48,17 +48,28 @@ step() {
 # Runs a command that runs tests. Where the directory X servers keep
 # their sockets in cannot be written to, as under WSL, every test of a
 # program written for X11 would fail; the command then has one of its own,
-# through bubblewrap, and sees the rest of the machine as it is.
+# through bubblewrap, and sees the rest of the machine as it is. A run not
+# over in an hour and a half, or OMORFOS_TESTS_WITHIN, as `20m`, is stopped
+# and fails, naming the tests it was still waiting on: one that waits for
+# good would otherwise hold the tier, and the coverage gate after it, for
+# good too.
 tested() {
+    local within=${OMORFOS_TESTS_WITHIN:-90m} status=0
     if [ -w /tmp/.X11-unix ] || [ ! -e /tmp/.X11-unix ]; then
-        "$@"
+        timeout --kill-after=60 "$within" "$@" || status=$?
     elif command -v bwrap >/dev/null; then
-        bwrap --dev-bind / / --tmpfs /tmp/.X11-unix -- "$@"
+        timeout --kill-after=60 "$within" \
+            bwrap --dev-bind / / --tmpfs /tmp/.X11-unix -- "$@" || status=$?
     else
         echo "/tmp/.X11-unix cannot be written to and bwrap is not installed:" \
             "the tests of programs written for X11 will fail." >&2
-        "$@"
+        timeout --kill-after=60 "$within" "$@" || status=$?
     fi
+    if [ "$status" -ge 124 ] && [ "$status" -le 137 ]; then
+        echo "The tests were not over in $within; still running:"
+        grep "has been running for over" "$log" | tail -10 || true
+    fi
+    return "$status"
 }
 
 # The tree of what is in the working copy now, untracked files that are
