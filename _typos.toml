@@ -10,6 +10,8 @@ omorfos = "omorfos"
 datas = "datas"
 # What GnuPG calls a key's fingerprint in what it lists, and asks for by.
 fpr = "fpr"
+# Mesa's driver that draws OpenGL with Vulkan, as its messages name it.
+zink = "zink"
 
 [files]
 # The time zone database's table of places, as it comes, abbreviations and all.
