@@ -52,8 +52,8 @@ pub(crate) struct Head {
     /// How many pixels it draws to a unit of layout.
     pub(crate) scale: Scale,
     /// Whether a frame showing nothing of the session has been drawn on it
-    /// since the session was locked. Set while drawing, which does not
-    /// change anything else.
+    /// since the session was locked, and drawing the last frame did not
+    /// fail. Set while drawing, which does not change anything else.
     pub(crate) blanked: Cell<bool>,
 }
 
