@@ -1491,8 +1491,9 @@ impl Compositor {
     fn go_to_workspace(&mut self, go: impl FnOnce(&mut Desktop, usize) -> bool) {
         self.desktop.turn_to(self.pointer_position());
         let was = self.desktop.active_workspace();
+        let id = self.desktop.active_workspace_id();
         let forwards = go(&mut self.desktop, was);
-        self.slide_in(was, forwards);
+        self.slide_in(id, forwards);
     }
 
     /// Carries out an action from a key binding or menu entry.
