@@ -160,8 +160,8 @@ impl Panel {
         let time = omorfos_i18n::locale("LC_TIME", &|name| std::env::var(name).ok());
         self.weeks_from(month::first_weekday(&time.unwrap_or_default()));
         loop {
-            let (time, changes) = omorfos_shell::clock::now();
-            self.date(omorfos_shell::clock::today());
+            let (time, changes, today) = omorfos_shell::clock::now();
+            self.date(today);
             let now = started.elapsed();
             if let Err(failure) = self.turn(&time, now) {
                 return failure;
