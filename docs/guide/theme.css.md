@@ -323,12 +323,14 @@ popover-day:hover, popover-day-outside:hover {
   background: var(--surface-raised);
   border: 2px solid var(--accent);
 }
-popover-day:active {
+popover-day:active, popover-day-outside:active {
   background: var(--accent);
   border-color: var(--accent);
   color: var(--on-accent);
 }
-popover-day:active:hover { border-color: var(--text); }
+popover-day:active:hover, popover-day-outside:active:hover {
+  border-color: var(--text);
+}
 
 /* The launcher: where a name is typed, and the programs that match. The
  * launcher is as wide as its min-width. */

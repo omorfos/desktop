@@ -586,4 +586,24 @@ mod tests {
         month.turn(true);
         assert_eq!(cells(&month), [], "today is not in December's weeks");
     }
+
+    #[test]
+    fn today_is_drawn_in_the_accent_among_the_days_of_the_month_before() {
+        let theme = theme();
+        let accent = theme
+            .style(Part::PopoverDay, States::NONE.with(State::Active))
+            .background;
+        let layout = Layout::new(&theme);
+        let mut month = Month::new(said(), date(2026, 11, 3), Weekday::Monday);
+        // October 2026's six weeks run from Monday 28 September to Sunday
+        // 8 November: the third of November, a Tuesday, is in the last.
+        month.turn(false);
+        let canvas = month.paint(&mut Text::new(), &theme, Scale::ONE);
+        let (left, top, ..) = layout.cell(1, 7);
+        let at = canvas.at(
+            left.unsigned_abs() + 2,
+            top.unsigned_abs() + layout.side / 2,
+        );
+        assert_eq!(at, argb(accent), "today, though it is not October's");
+    }
 }
