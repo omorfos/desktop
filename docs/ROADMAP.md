@@ -3106,6 +3106,38 @@ Reaching people:
       asked: it looked out of place, and Skip does what it did.
 - [ ] Packages beyond `.deb` and the AUR.
 
+How functional the code is, and how solid that makes it, reviewed on
+22 November 2026 as the maintainer asked
+([reviews/2026-11-22-how-functional-it-is.md](reviews/2026-11-22-how-functional-it-is.md)):
+a functional core inside an imperative shell, solid where the data is
+modelled and fragile where a state is spread over fields that must
+agree. Eight small faults were put right the same day, each in a pull
+request of its own; what is larger, in the order worth taking:
+
+- [ ] Medium: one flag, `fullscreen`, says both fullscreen and tiled, so a
+      tiled window cannot go fullscreen as ADR 39 promises; an enum on
+      `Group` and `Frame` in its place ([the review of how functional it is](reviews/2026-11-22-how-functional-it-is.md#on-the-roadmap), item 1).
+- [ ] Medium: each component's Wayland globals as one `Globals`, gathered
+      once and naming what is missing, in place of 54 `Option`s ([the review of how functional it is](reviews/2026-11-22-how-functional-it-is.md#on-the-roadmap), item 2).
+- [ ] Low: one `Now` of the instant and the wall clock given to `refresh`,
+      `deadline` and what starts a timer, so that nothing decides by
+      reading the clock itself ([the review of how functional it is](reviews/2026-11-22-how-functional-it-is.md#on-the-roadmap), item 3).
+- [ ] Low: the X server's life as one enum in place of six `Option`s, and
+      `manage_x11` a function from one state to the next ([the review of how functional it is](reviews/2026-11-22-how-functional-it-is.md#on-the-roadmap), item 4).
+- [ ] Low: the relay given the time in `step`, so its grace and its pause
+      are tested without waiting ([the review of how functional it is](reviews/2026-11-22-how-functional-it-is.md#on-the-roadmap), item 5).
+- [ ] Low: the relay's maps of what is told of an object emptied by one
+      `forget` ([the review of how functional it is](reviews/2026-11-22-how-functional-it-is.md#on-the-roadmap), item 6).
+- [ ] Low: the clipboard keeper deciding on its main thread alone ([the review of how functional it is](reviews/2026-11-22-how-functional-it-is.md#on-the-roadmap), item 7).
+- [ ] Low: states spread over pairs of fields made one each, in the relay,
+      the portal, the screenshot, the panel and the holder ([the review of how functional it is](reviews/2026-11-22-how-functional-it-is.md#on-the-roadmap), item 8).
+- [ ] Low: a screen counted locked once its frame is shown, not drawn
+      ([the review of how functional it is](reviews/2026-11-22-how-functional-it-is.md#on-the-roadmap), item 9).
+- [ ] Low: `clippy::indexing_slicing` turned on, crate by crate, from
+      `omorfos-core` out ([the review of how functional it is](reviews/2026-11-22-how-functional-it-is.md#on-the-roadmap), item 10).
+- [ ] Low: `Config.scheme` and `theme` private, worked out in one place
+      ([the review of how functional it is](reviews/2026-11-22-how-functional-it-is.md#on-the-roadmap), item 11).
+
 ## 9. For others to build on
 
 Asked for on 14 November 2026: a way for other projects and repositories
