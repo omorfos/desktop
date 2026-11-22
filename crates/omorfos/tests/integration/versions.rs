@@ -388,6 +388,30 @@ fn a_fullscreen_window_holds_the_compositors_new_version_back_until_it_has_waite
 }
 
 #[test]
+fn windows_tiled_side_by_side_do_not_hold_the_compositors_new_version_back() {
+    let (mut session, _) = session(&[("config.yaml", "update:\n  wait: 30\n")]);
+    let (_holder, relays, _, _socket) = relayed(&mut session);
+    relay::send(relays.as_fd(), &Hand::Kept, &[]).unwrap();
+    let mut client = session.connect();
+    let _editor = session.open(&mut client, "editor", (200, 100), RED);
+    let half = omorfos_config::Half::Left;
+    session
+        .compositor_mut()
+        .perform(&omorfos_config::Action::Tile(half));
+    session.roundtrip(&mut client);
+    let _terminal = session.open(&mut client, "terminal", (200, 100), GREEN);
+    session.roundtrip(&mut client);
+    let _own = updated(&mut session);
+    // Taken up once the user is still, as with no window, not held back
+    // for as long as a film may hold it.
+    session.advance(Duration::from_secs(20));
+    assert!(
+        session.compositor().stepping_down(),
+        "two windows side by side are not a film"
+    );
+}
+
+#[test]
 fn sound_playing_holds_the_compositors_new_version_back_until_it_stops() {
     let (mut session, _) = session(&[]);
     let (_holder, relays, _, _socket) = relayed(&mut session);
