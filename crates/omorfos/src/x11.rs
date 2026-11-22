@@ -19,6 +19,7 @@ use std::time::{Duration, Instant};
 use omorfos_config::{Config, Cursor, X11Scaling};
 use omorfos_core::geometry::Rect;
 use omorfos_core::{Desktop, WindowId};
+use omorfos_ipc::copied::LONGEST_KIND;
 use smithay::backend::input::KeyState;
 use smithay::backend::renderer::utils::with_renderer_surface_state;
 use smithay::desktop::Window;
@@ -441,11 +442,9 @@ const KEPT: &str = "application/x-omorfos-kept";
 /// has something to give, as text, pictures and files. Each costs the X
 /// server a name it keeps for as long as it runs, and the compositor a wait
 /// on it whenever a program asks which kinds there are; and each a program
-/// written for Wayland a message.
+/// written for Wayland a message. Far fewer than a program may offer
+/// ([`omorfos_ipc::copied::MOST_KINDS`]), each kept as long as it may be.
 const MOST_KINDS: usize = 32;
-
-/// The longest a kind is: as long as a media type may be.
-const LONGEST_KIND: usize = 255;
 
 /// Of the `kinds` a program offers what it copied in, those offered to
 /// programs of the other kind, written for X11 or for Wayland: the first

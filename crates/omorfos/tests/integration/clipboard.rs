@@ -2,6 +2,8 @@
 
 use std::io::Read;
 
+use omorfos_ipc::copied::{LONGEST_KIND, MOST_KINDS};
+
 use crate::common::{Session, read_text};
 use crate::windows::{BLUE, RED};
 
@@ -58,15 +60,17 @@ fn a_program_may_copy_in_as_many_kinds_as_any_does_and_each_as_long() {
     let mut editor = session.connect();
     session.open(&mut editor, "editor", (200, 100), RED);
     let source = editor.copy_as("much", &[]);
-    for kind in 0..256 {
-        source.offer(format!("much/{kind:0>250}"));
+    // The most, each as long as it may be.
+    let width = LONGEST_KIND - "much/".len();
+    for kind in 0..MOST_KINDS {
+        source.offer(format!("much/{kind:0>width$}"));
     }
     session.roundtrip(&mut editor);
 
     let mut terminal = session.connect();
     session.open(&mut terminal, "terminal", (200, 100), BLUE);
-    assert_eq!(terminal.state.formats.len(), 256);
-    assert_eq!(terminal.state.formats[255].len(), 255);
+    assert_eq!(terminal.state.formats.len(), MOST_KINDS);
+    assert_eq!(terminal.state.formats[MOST_KINDS - 1].len(), LONGEST_KIND);
 }
 
 #[test]
@@ -77,7 +81,9 @@ fn text_selected_in_a_kind_longer_than_any_is_not_offered_with_the_middle_button
     // What it copied, in a kind as kinds are, is none the worse for it.
     flood.copy("copied");
     let source = flood.select("selected");
-    source.offer(format!("flood/{:0>250}", 0));
+    // One byte longer than a kind may be.
+    let width = LONGEST_KIND + 1 - "flood/".len();
+    source.offer(format!("flood/{:0>width$}", 0));
     session.roundtrip(&mut flood);
 
     let mut editor = session.connect();
