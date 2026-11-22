@@ -1212,8 +1212,10 @@ struct Set {
     /// while the workspaces are slid across: see [`Desktop::slide`].
     slid: i32,
     /// The workspace drawn beside it while it is slid, if not the one next
-    /// to it on the side it leaves: see [`Desktop::slide_from`].
-    beside: Option<usize>,
+    /// to it on the side it leaves: see [`Desktop::slide_from`]. Known by
+    /// what does not change, as the switch it slides for may have taken an
+    /// empty one away and numbered the rest anew.
+    beside: Option<WorkspaceId>,
 }
 
 impl Set {
@@ -2798,6 +2800,13 @@ impl Desktop {
         self.sets[self.current].active
     }
 
+    /// What the workspace the current output is showing is known by.
+    #[must_use]
+    pub fn active_workspace_id(&self) -> WorkspaceId {
+        let set = &self.sets[self.current];
+        set.workspaces[set.active].id
+    }
+
     /// The zero-based workspace each output is showing, in the order the
     /// outputs were given. One entry while there is no output.
     pub fn shown_workspaces(&self) -> impl Iterator<Item = usize> {
@@ -2829,8 +2838,9 @@ impl Desktop {
 
     /// As [`Desktop::slide`], with `workspace` beside the one shown in place
     /// of the one next to it, until the slide ends: the one a key went from,
-    /// when it went further than the next.
-    pub fn slide_from(&mut self, offset: i32, workspace: usize) {
+    /// when it went further than the next. One gone since, as an empty one
+    /// left is, has nothing beside.
+    pub fn slide_from(&mut self, offset: i32, workspace: WorkspaceId) {
         self.slide(offset);
         let set = &mut self.sets[self.current];
         set.beside = (offset != 0).then_some(workspace);
@@ -2860,7 +2870,10 @@ impl Desktop {
             _ => return None,
         };
         let next = next.filter(|next| *next < count);
-        let workspace = shown.beside.filter(|beside| *beside < count).or(next)?;
+        let workspace = match shown.beside {
+            Some(id) => shown.workspaces.iter().position(|it| it.id == id),
+            None => next,
+        }?;
         (workspace != shown.active).then_some((workspace, shift))
     }
 
@@ -6165,6 +6178,23 @@ mod tests {
     }
 
     #[test]
+    fn slid_from_a_workspace_that_has_gone_nothing_is_beside() {
+        let mut desktop = desktop();
+        desktop.switch_workspace(1);
+        open(&mut desktop, "middle");
+        desktop.switch_workspace(2);
+        open(&mut desktop, "last");
+        // One past the last, empty, which goes once another is shown.
+        desktop.next_workspace();
+        let was = desktop.active_workspace_id();
+        desktop.switch_workspace(0);
+        assert!(desktop.workspaces().all(|place| place.id != was));
+
+        desktop.slide_from(-300, was);
+        assert_eq!(across(&desktop).len(), 0, "not the middle, which is not it");
+    }
+
+    #[test]
     fn slid_from_a_workspace_further_off_it_is_that_one_beside_until_the_slide_ends() {
         let mut desktop = desktop();
         let first = open(&mut desktop, "first");
@@ -6173,7 +6203,8 @@ mod tests {
         let third = open(&mut desktop, "third");
         let width = SCREEN.size.width.cast_signed();
 
-        desktop.slide_from(300, 0);
+        let was = desktop.workspaces().find(|place| place.index == 0).unwrap();
+        desktop.slide_from(300, was.id);
         assert_eq!(desktop.slid(), 300);
         let shown = across(&desktop);
         assert_eq!(shown[0].0, third);

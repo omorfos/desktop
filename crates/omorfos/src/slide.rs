@@ -30,6 +30,7 @@
 use std::time::Duration;
 
 use omorfos_config::Easing;
+use omorfos_core::WorkspaceId;
 
 use crate::compositor::Compositor;
 
@@ -210,10 +211,11 @@ impl Compositor {
     /// from the side it lies on, `forwards` being the right, with `was`,
     /// the one it was showing, beside it. Nothing slides if the key brought
     /// nothing else.
-    pub(crate) fn slide_in(&mut self, was: usize, forwards: bool) {
+    pub(crate) fn slide_in(&mut self, was: WorkspaceId, forwards: bool) {
         // Under the overview, its windows glide in from where they are
         // rather than slide.
-        if self.desktop.active_workspace() == was || self.still() || self.overview_open() {
+        let stayed = self.desktop.active_workspace_id() == was;
+        if stayed || self.still() || self.overview_open() {
             return;
         }
         let width = self.slide_width();
