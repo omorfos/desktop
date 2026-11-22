@@ -1,6 +1,7 @@
 # 11. Scaling
 
-- Status: accepted
+- Status: accepted; the scale guessed for `auto` replaced by
+  [ADR 100](0100-a-screens-scale-by-how-near-it-is-read.md)
 - Date: 2026-10-09
 
 ## Context
