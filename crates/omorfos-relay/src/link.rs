@@ -12,6 +12,7 @@
 //! is so held to what the compositor does with a program that does not
 //! read (ADR 45).
 
+use std::cell::RefCell;
 use std::collections::{BTreeMap, HashSet, VecDeque};
 use std::io::{self, IoSlice, IoSliceMut};
 use std::mem::MaybeUninit;
@@ -50,8 +51,14 @@ const AT_ONCE: usize = 28;
 /// in what it keeps for the next compositor and what is still to be sent
 /// to this one: far more than any program holds, a pool of shared memory
 /// and a buffer of the graphics card each one, and few enough that one
-/// program cannot take what the session has (ADR 93).
+/// program cannot take what the session has (ADR 93). It is the most over
+/// every connection of the program's, which share what they hold.
 pub const MOST_DESCRIPTORS: usize = 4096;
+
+/// What a program has handed over, while the relay holds it: shared by
+/// every connection of the program's, so that it is held to
+/// [`MOST_DESCRIPTORS`] over all of them.
+pub type Handed = Rc<RefCell<Vec<Weak<OwnedFd>>>>;
 
 /// The display, and its event that says the program did what it may not.
 const DISPLAY: u32 = 1;
@@ -133,8 +140,9 @@ pub struct Link {
     /// The roles the compositor gave it, where it is a part of the session
     /// it started: none for a program.
     roles: u8,
-    /// Whether it connected through a sandbox, and is inside it.
-    sandboxed: bool,
+    /// The sandbox it connected through, and is inside, by the number the
+    /// relay gave it: none if it is not in one.
+    sandbox: Option<u64>,
     /// The sandboxes it makes, which the relay answers for.
     sandboxes: Sandboxes,
     /// Where each of its windows is, as the compositor last said, by the
@@ -154,7 +162,7 @@ pub struct Link {
     up: Passing,
     down: Passing,
     /// What the program has handed over, while the relay holds it.
-    held: Vec<Weak<OwnedFd>>,
+    held: Handed,
 }
 
 impl Link {
@@ -171,7 +179,7 @@ impl Link {
             program,
             who,
             roles: 0,
-            sandboxed: false,
+            sandbox: None,
             sandboxes: Sandboxes::default(),
             places: BTreeMap::new(),
             compositor: Some(compositor),
@@ -182,7 +190,7 @@ impl Link {
             again: false,
             up: Passing::default(),
             down: Passing::default(),
-            held: Vec::new(),
+            held: Handed::default(),
         })
     }
 
@@ -200,11 +208,34 @@ impl Link {
         self
     }
 
-    /// This link, of a program that connected through a sandbox.
+    /// This link, of a program that connected through the sandbox the
+    /// relay numbered `sandbox`.
     #[must_use]
-    pub const fn in_sandbox(mut self) -> Self {
-        self.sandboxed = true;
+    pub const fn in_sandbox(mut self, sandbox: u64) -> Self {
+        self.sandbox = Some(sandbox);
         self
+    }
+
+    /// The sandbox the program connected through, by the relay's number for
+    /// it, if it did.
+    #[must_use]
+    pub const fn sandbox(&self) -> Option<u64> {
+        self.sandbox
+    }
+
+    /// This link, holding what is handed over in `held`, which other
+    /// connections of the same program share.
+    #[must_use]
+    pub fn sharing(mut self, held: Handed) -> Self {
+        self.held = held;
+        self
+    }
+
+    /// What the program has handed over, for another connection of its to
+    /// share.
+    #[must_use]
+    pub fn held(&self) -> Handed {
+        Rc::clone(&self.held)
     }
 
     /// The sandboxes the program has made since they were last taken, for
@@ -341,7 +372,7 @@ impl Link {
     /// with its roles, where it has some.
     #[must_use]
     pub const fn hand(&self) -> Hand {
-        if self.sandboxed {
+        if self.sandbox.is_some() {
             Hand::Sandboxed(self.who)
         } else if self.roles == 0 {
             Hand::Program(self.who)
@@ -525,15 +556,16 @@ impl Link {
             }
             let fds: Vec<Rc<OwnedFd>> = self.up.read_fds.drain(..read.fds).map(Rc::new).collect();
             if !fds.is_empty() {
-                self.held.retain(|held| held.strong_count() > 0);
-                self.held.extend(fds.iter().map(Rc::downgrade));
-                if self.held.len() > MOST_DESCRIPTORS {
+                let mut held = self.held.borrow_mut();
+                held.retain(|held| held.strong_count() > 0);
+                held.extend(fds.iter().map(Rc::downgrade));
+                if held.len() > MOST_DESCRIPTORS {
                     return Err(wire::HOLDING_TOO_MANY.into());
                 }
             }
             let described = &read.interface.requests[usize::from(read.opcode)];
             *start = at.end;
-            let inside = (header.object, self.sandboxed);
+            let inside = (header.object, self.sandbox.is_some());
             if self.sandboxes.request(inside, &read, described, &fds)? {
                 // The sandbox no compositor knows of is made there as one of
                 // the relay's syncs, so that its number is taken, and is the
@@ -892,7 +924,7 @@ mod tests {
     #[test]
     fn a_program_in_a_sandbox_that_makes_one_ends_its_link() {
         let (link, program, _compositor) = linked();
-        let mut link = link.in_sandbox();
+        let mut link = link.in_sandbox(1);
         let (listening, closing) = UnixStream::pair().unwrap();
         let mut sent = get_registry();
         let mut bind = words(&[1]);

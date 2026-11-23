@@ -53,3 +53,16 @@ and what is run in it among them. Setting it back for each, between
 - Running out still has to be survived, and is: the compositor and its
   IPC socket listen again once descriptors are free, and the relay is to
   do the same.
+- What the relay holds a program to, 4096 descriptors, it holds it to
+  over all of its connections at once, and it lets in no more than 32 of
+  them, and listens on no more than 4 sandboxes it makes (a review,
+  [finding 4](../reviews/2026-11-19-after-the-redesign-of-windows.md#4-what-the-relay-holds-a-program-to-it-holds-each-connection-to-and-connections-are-not-counted)).
+  A program is known by its process, which is all a socket says of it,
+  and one inside a sandbox by the sandbox, as there it may start as many
+  processes as it likes. A program outside one may start them too, and
+  is held to as much again in each; it can do more than that as the user
+  already, and these are for what is untrusted. Nothing holds every
+  program to a most together: the relay stops taking programs when
+  descriptors run out, as above, and whether an honest program's
+  descriptor is lost meanwhile, and that program let go, is yet to be
+  shown.

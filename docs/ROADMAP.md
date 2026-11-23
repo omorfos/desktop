@@ -2394,8 +2394,10 @@ Security:
       they are: they keep pictures to show again, take one off by
       attaching none, or wait for the commit of the surface under them.
       Each program still takes its scale's events itself.
-- [ ] Low to medium: one program takes every sandbox's place
-      ([finding 5 of what was not looked at](reviews/2026-11-16-what-the-first-review-did-not-look-at.md#5-one-program-can-take-every-place-the-relay-keeps-for-sandboxes)).
+- [x] Low to medium: one program takes every sandbox's place
+      ([finding 5 of what was not looked at](reviews/2026-11-16-what-the-first-review-did-not-look-at.md#5-one-program-can-take-every-place-the-relay-keeps-for-sandboxes)):
+      a program has at most 4 listened on, and one in a sandbox is let
+      go if it makes one, as it was.
 - [ ] Low to medium: words of a program's own in the notice for every
       key
       ([finding 18](reviews/2026-11-16-the-whole-tree.md#18-a-program-can-put-words-of-its-own-in-the-compositors-notices-by-asking-for-every-key)).
@@ -2500,10 +2502,17 @@ First, what is unsafe or gives away what is private:
       the glass over its picture made small reaches a pixel further, to
       the last that picture is drawn to. Stage 3's known gaps in a blurred
       private window remain.
-- [ ] Medium: the relay's limits hold a connection, not a program, and
+- [x] Medium: the relay's limits hold a connection, not a program, and
       connections are not counted
       ([finding 4](reviews/2026-11-19-after-the-redesign-of-windows.md#4-what-the-relay-holds-a-program-to-it-holds-each-connection-to-and-connections-are-not-counted)):
       with "one program takes every sandbox's place" above, as one change.
+      A program, known by its process, or by its sandbox if it is in one,
+      is let in on at most 32 connections, and held to 4096 descriptors
+      over all of them; what is added to objects stays each
+      connection's, so bounded 32 times over (ADR 93). Left: a program
+      outside a sandbox that starts processes is held to as much in
+      each, and whether an honest program's descriptor is lost while the
+      relay has none left is yet to be shown.
 - [x] Low: part of a notice in English in the code
       ([finding 21](reviews/2026-11-19-after-the-redesign-of-windows.md#21-part-of-a-notice-the-user-reads-is-english-written-in-the-code)): why glass is solid, and a keyboard layout that cannot be had,
       are said in messages.

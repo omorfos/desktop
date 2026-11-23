@@ -63,6 +63,19 @@ const GRACE: Duration = Duration::from_millis(500);
 /// may make as many as it likes, so past this one made is let go.
 const SANDBOXES: usize = 64;
 
+/// The most sandboxes one program may have listened on at once: Flatpak
+/// makes one for each program it starts, from a process of its own for
+/// each, so that a program that makes more does not take every place.
+pub const SANDBOXES_EACH: usize = 4;
+
+/// The most connections one program may have at once, or the programs of
+/// one sandbox in all, which may start as many processes as they like:
+/// toolkits make one for each process, and few make more than a couple.
+/// So that what the relay holds a program to, each connection holds it to
+/// no more than this many times over; what it hands over is held to
+/// [`link::MOST_DESCRIPTORS`] over all of them (ADR 93).
+pub const MOST_CONNECTIONS: usize = 32;
+
 /// How long the socket is not listened to once a program waiting at it
 /// could not be taken, as when no descriptor is left: it stays ready, and
 /// listened to it would be woken for at once, again and again.
@@ -76,7 +89,9 @@ pub struct Relay {
     /// The socket programs connect to, once the holder has handed it.
     socket: Option<UnixListener>,
     /// The sandboxes programs have made, whose sockets the relay listens on.
-    sandboxes: Vec<Listened>,
+    sandboxes: Vec<Watched>,
+    /// The number the next sandbox is given.
+    next_sandbox: u64,
     /// The connection to the compositor, while there is one.
     compositor: Option<OwnedFd>,
     links: Vec<Link>,
@@ -116,6 +131,7 @@ impl Relay {
             holder,
             socket: None,
             sandboxes: Vec::new(),
+            next_sandbox: 1,
             compositor: None,
             links: Vec::new(),
             next: 1,
@@ -232,13 +248,16 @@ impl Relay {
             let failed = Cell::new(false);
             let programs = socket
                 .into_iter()
-                .flat_map(|socket| waiting(socket, &failed));
+                .flat_map(|socket| waiting(socket, &failed))
+                .map(|program| (program, None));
             let waiting_inside = self.sandboxes.iter().zip(&through);
             let waiting_inside = waiting_inside.filter(|(_, (_, waiting))| *waiting);
-            let inside = waiting_inside.flat_map(|(sandbox, _)| sandbox.waiting(&failed));
+            let inside = waiting_inside.flat_map(|(sandbox, _)| {
+                let programs = sandbox.listened.waiting(&failed);
+                programs.map(|program| (program, Some(sandbox.number)))
+            });
             let _ = compositor.map(|compositor| {
-                admit(programs, false, compositor, links, next, log);
-                admit(inside, true, compositor, links, next, log);
+                admit(programs.chain(inside), compositor, (links, next), log);
             });
             let tried = socket_ready == Some(true) || through.iter().any(|(_, waiting)| *waiting);
             self.pause(tried, failed.get(), log);
@@ -282,13 +301,33 @@ impl Relay {
     }
 
     /// Listens on each sandbox a program has made, as far as there is room
-    /// for it; says on `log` of one there is not.
+    /// for it, and for the program's; says on `log` of one there is not.
     fn take_sandboxes(&mut self, log: &mut dyn Write) {
-        let made = self.links.iter_mut().flat_map(Link::sandboxes);
-        for sandbox in made.collect::<Vec<_>>() {
-            if self.sandboxes.len() < SANDBOXES {
+        let made = self.links.iter_mut().flat_map(|link| {
+            let who = link.who();
+            link.sandboxes()
+                .into_iter()
+                .map(move |sandbox| (who, sandbox))
+        });
+        for (who, sandbox) in made.collect::<Vec<_>>() {
+            let theirs = self.sandboxes.iter().filter(|each| each.maker == who.pid);
+            if theirs.count() >= SANDBOXES_EACH {
+                let _ = writeln!(
+                    log,
+                    "omorfos-relay: a sandbox was let go, as {} has {SANDBOXES_EACH} listened on \
+                     already",
+                    named(who)
+                );
+            } else if self.sandboxes.len() < SANDBOXES {
                 match sandbox.listen() {
-                    Ok(listened) => self.sandboxes.push(listened),
+                    Ok(listened) => {
+                        self.sandboxes.push(Watched {
+                            number: self.next_sandbox,
+                            maker: who.pid,
+                            listened,
+                        });
+                        self.next_sandbox += 1;
+                    }
                     Err(error) => {
                         let _ = writeln!(
                             log,
@@ -343,6 +382,7 @@ impl Relay {
             (timeout, paused) => timeout.or(paused),
         };
         for sandbox in &self.sandboxes {
+            let sandbox = &sandbox.listened;
             polled.push(PollFd::from_borrowed_fd(sandbox.closing(), PollFlags::IN));
             if self.compositor.is_some() {
                 // Not listened to while the socket is not: what keeps a
@@ -492,6 +532,15 @@ impl Relay {
             _ => {}
         }
     }
+}
+
+/// A sandbox listened on, by the number the relay gave it and the process
+/// that made it.
+#[derive(Debug)]
+struct Watched {
+    number: u64,
+    maker: u32,
+    listened: Listened,
 }
 
 /// What the relay keeps that the compositor hands it.
@@ -652,24 +701,56 @@ fn waiting<'a>(
     })
 }
 
-/// Takes each of `programs`, numbering each from `next`, and hands
-/// `compositor` a connection for it, as one inside a sandbox where they
-/// came through one, `sandboxed`, keeping each joined to its connection in
-/// `links`.
+/// Takes each of `programs`, with the sandbox each came through if it did,
+/// numbering each from `next`, and hands `compositor` a connection for it,
+/// keeping each joined to its connection in `links`: as far as there is
+/// room for the program, or its sandbox, which is said on `log` where there
+/// is not. Each shares what it hands over with the program's others.
 fn admit(
-    programs: impl Iterator<Item = UnixStream>,
-    sandboxed: bool,
+    programs: impl Iterator<Item = (UnixStream, Option<u64>)>,
     compositor: BorrowedFd<'_>,
-    links: &mut Vec<Link>,
-    next: &mut u32,
+    (links, next): (&mut Vec<Link>, &mut u32),
     log: &mut dyn Write,
 ) {
-    for program in programs {
-        match link(program, *next, sandboxed, compositor) {
-            Ok(link) => {
+    for (program, sandbox) in programs {
+        let found = rustix::net::sockopt::socket_peercred(&program).map_err(io::Error::from);
+        let linked = found.and_then(|found| {
+            let who = Program {
+                pid: found.pid.as_raw_nonzero().get().unsigned_abs(),
+                uid: found.uid.as_raw(),
+                gid: found.gid.as_raw(),
+                number: Some(*next),
+            };
+            // The program's others: by its sandbox, which may hold as many
+            // processes as it likes, or by its process.
+            let same = |link: &&Link| match sandbox {
+                Some(_) => link.sandbox() == sandbox,
+                None => link.sandbox().is_none() && link.who().pid == who.pid,
+            };
+            let others: Vec<&Link> = links.iter().filter(same).collect();
+            if others.len() >= MOST_CONNECTIONS {
+                let whose = if sandbox.is_some() {
+                    "its sandbox"
+                } else {
+                    "it"
+                };
+                let _ = writeln!(
+                    log,
+                    "omorfos-relay: {} was not let in, as {whose} has {MOST_CONNECTIONS} \
+                     connections already",
+                    named(who)
+                );
+                return Ok(None);
+            }
+            let held = others.first().map(|other| other.held()).unwrap_or_default();
+            link(program, who, sandbox, compositor).map(|link| Some(link.sharing(held)))
+        });
+        match linked {
+            Ok(Some(link)) => {
                 links.push(link);
                 *next = next.wrapping_add(1);
             }
+            Ok(None) => {}
             Err(error) => {
                 let _ = writeln!(log, "omorfos-relay: a program could not be let in: {error}");
             }
@@ -677,31 +758,25 @@ fn admit(
     }
 }
 
-/// Hands `compositor` a connection for `program`, numbered `number`, with who
-/// the program is and whether it is inside a sandbox, `sandboxed`, and joins
-/// the two.
+/// Hands `compositor` a connection for `program`, which is `who`, as one
+/// inside the `sandbox` it came through if it did, and joins the two.
 fn link(
     program: UnixStream,
-    number: u32,
-    sandboxed: bool,
+    who: Program,
+    sandbox: Option<u64>,
     compositor: BorrowedFd<'_>,
 ) -> io::Result<Link> {
-    let found = rustix::net::sockopt::socket_peercred(&program).map_err(io::Error::from);
-    let made = found.and_then(|found| UnixStream::pair().map(|pair| (found, pair)));
-    made.and_then(|(found, (ours, theirs))| {
-        let who = Program {
-            pid: found.pid.as_raw_nonzero().get().unsigned_abs(),
-            uid: found.uid.as_raw(),
-            gid: found.gid.as_raw(),
-            number: Some(number),
-        };
-        let hand = if sandboxed {
+    UnixStream::pair().and_then(|(ours, theirs)| {
+        let hand = if sandbox.is_some() {
             Hand::Sandboxed(who)
         } else {
             Hand::Program(who)
         };
         let link = Link::new(program, who, ours);
-        let link = link.map(|link| if sandboxed { link.in_sandbox() } else { link });
+        let link = link.map(|link| match sandbox {
+            Some(sandbox) => link.in_sandbox(sandbox),
+            None => link,
+        });
         relay::send(compositor, &hand, &[theirs.as_fd()]).and(link)
     })
 }

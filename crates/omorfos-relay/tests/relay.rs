@@ -1161,3 +1161,215 @@ fn a_program_whose_connection_closes_before_the_next_compositor_is_handed_is_kep
     assert_eq!(held.relay.programs(), 1, "kept: {said}");
     drop(compositor);
 }
+
+#[test]
+fn a_program_that_hands_over_more_descriptors_than_any_holds_over_several_connections_is_let_go() {
+    omorfos_ipc::limits::raise();
+    let mut held = Held::new();
+    let compositor = held.compositor();
+    let memory = std::fs::File::open("/dev/null").unwrap();
+    let mut connected = Vec::new();
+    for _ in 0..3 {
+        let (program, connection, _) = held.connect(&compositor);
+        program.set_nonblocking(true).unwrap();
+        let mut setup = get_registry();
+        setup.extend(bind_shm());
+        (&program).write_all(&setup).unwrap();
+        connected.push((program, connection));
+    }
+    // Fewer pools on each than any program holds, more on all three.
+    let each = u32::try_from(omorfos_relay::link::MOST_DESCRIPTORS / 2).unwrap();
+    for (program, connection) in &connected {
+        // Until one is let go, which is then sent nothing more.
+        for pool in 0..each {
+            if held.relay.programs() < 3 {
+                break;
+            }
+            send_with(program, &message(3, 0, &[4 + pool, 4096]), &memory);
+            held.step();
+            drain(connection);
+        }
+    }
+    held.until(|held| held.relay.programs() == 2);
+    let said = String::from_utf8_lossy(&held.said);
+    assert!(
+        said.contains(&format!(
+            "{} was let go, for more descriptors than any program holds",
+            named()
+        )),
+        "{said}"
+    );
+}
+
+#[test]
+fn a_program_with_as_many_connections_as_any_has_is_let_in_on_no_more() {
+    let mut held = Held::new();
+    let compositor = held.compositor();
+    let most = omorfos_relay::MOST_CONNECTIONS;
+    let _connected: Vec<_> = (0..most).map(|_| held.connect(&compositor)).collect();
+    let _one_more = UnixStream::connect(&held.socket).unwrap();
+    held.until(|held| !held.said.is_empty());
+    let said = String::from_utf8_lossy(&held.said);
+    assert!(
+        said.contains(&format!(
+            "{} was not let in, as it has {most} connections already",
+            named()
+        )),
+        "{said}"
+    );
+    assert_eq!(held.relay.programs(), most);
+}
+
+/// Has `program`, which has bound nothing yet, make `sandboxes`, each of
+/// which programs connect to at its listener and which ends once its
+/// `closing` closes: the manager bound as the object 3, and each sandbox
+/// made as the objects from 4 on and committed.
+fn make_sandboxes(program: &UnixStream, sandboxes: &[(UnixListener, UnixStream)]) {
+    let mut setup = get_registry();
+    setup.extend(bind(1, "wp_security_context_manager_v1", 1, 3));
+    (&*program).write_all(&setup).unwrap();
+    for ((listening, closing), number) in sandboxes.iter().zip(4..) {
+        let fds = [listening.as_fd(), closing.as_fd()];
+        send_fds(program, &message(3, 1, &[number]), &fds);
+        (&*program).write_all(&message(number, 4, &[])).unwrap();
+    }
+}
+
+#[test]
+fn a_program_that_makes_more_sandboxes_than_any_needs_has_the_rest_let_go_and_no_other() {
+    let mut held = Held::new();
+    let compositor = held.compositor();
+    let (program, _connection, _) = held.connect(&compositor);
+    let directory = TempDir::new().unwrap();
+    // Each ended once the second of its pair closes, which is kept open.
+    let mut open = Vec::new();
+    let mut sandbox = |name: String| {
+        let listening = UnixListener::bind(directory.path().join(name)).unwrap();
+        let (closing, kept) = UnixStream::pair().unwrap();
+        open.push(kept);
+        (listening, closing)
+    };
+    let most = omorfos_relay::SANDBOXES_EACH;
+    let made: Vec<_> = (0..=most).map(|each| sandbox(format!("{each}"))).collect();
+    make_sandboxes(&program, &made);
+    held.until(|held| !held.said.is_empty());
+    let said = String::from_utf8_lossy(&held.said);
+    assert!(
+        said.contains(&format!(
+            "a sandbox was let go, as {} has {most} listened on already",
+            named()
+        )),
+        "{said}"
+    );
+
+    // Another program's is listened on: a part of the session, which the
+    // compositor says is another process.
+    let (relays, part) = UnixStream::pair().unwrap();
+    let started = Started { pid: 1, roles: 0 };
+    relay::send(
+        compositor.as_fd(),
+        &Hand::Started(started),
+        &[relays.as_fd()],
+    )
+    .unwrap();
+    drop(relays);
+    let _handed = held.handed(&compositor);
+    let others = [sandbox("other".to_owned())];
+    make_sandboxes(&part, &others);
+    for _ in 0..5 {
+        held.step();
+    }
+    let _inside = UnixStream::connect(directory.path().join("other")).unwrap();
+    let handed = held.handed(&compositor);
+    assert!(
+        matches!(handed.hand, Some(Hand::Sandboxed(_))),
+        "{:?}",
+        handed.hand
+    );
+}
+
+#[test]
+fn a_sandbox_with_as_many_connections_as_any_program_has_lets_in_no_more() {
+    let mut held = Held::new();
+    let compositor = held.compositor();
+    let (program, _connection, _) = held.connect(&compositor);
+    let directory = TempDir::new().unwrap();
+    let path = directory.path().join("sandbox");
+    let listening = UnixListener::bind(&path).unwrap();
+    let (_open, closing) = UnixStream::pair().unwrap();
+    make_sandbox(&program, &listening, &closing);
+    held.step();
+    let most = omorfos_relay::MOST_CONNECTIONS;
+    let mut inside = Vec::new();
+    let mut handed = Vec::new();
+    for _ in 0..most {
+        inside.push(UnixStream::connect(&path).unwrap());
+        handed.push(held.handed(&compositor));
+    }
+    let sandboxed = |handed: &Received| matches!(handed.hand, Some(Hand::Sandboxed(_)));
+    assert!(handed.iter().all(sandboxed));
+    // Each of its own process, as a program in a sandbox may start as many
+    // as it likes: the sandbox is what is counted.
+    inside.push(UnixStream::connect(&path).unwrap());
+    held.until(|held| !held.said.is_empty());
+    let said = String::from_utf8_lossy(&held.said);
+    assert!(
+        said.contains(&format!(
+            "{} was not let in, as its sandbox has {most} connections already",
+            named()
+        )),
+        "{said}"
+    );
+    assert_eq!(held.relay.programs(), most + 1);
+}
+
+#[test]
+fn a_sandbox_made_when_as_many_are_listened_on_as_the_session_has_room_for_is_let_go() {
+    let mut held = Held::new();
+    let compositor = held.compositor();
+    let directory = TempDir::new().unwrap();
+    let mut open = Vec::new();
+    let mut parts = Vec::new();
+    // Parts of the session, each of a process of its own as the compositor
+    // says, each making as many as one may: sixteen fill every place, and
+    // the seventeenth's one is let go.
+    for process in 0..17 {
+        let (relays, part) = UnixStream::pair().unwrap();
+        let started = Started {
+            pid: 1000 + process,
+            roles: 0,
+        };
+        relay::send(
+            compositor.as_fd(),
+            &Hand::Started(started),
+            &[relays.as_fd()],
+        )
+        .unwrap();
+        drop(relays);
+        let handed = held.handed(&compositor);
+        let many = if process == 16 {
+            1
+        } else {
+            omorfos_relay::SANDBOXES_EACH
+        };
+        let made: Vec<_> = (0..many)
+            .map(|each| {
+                let path = directory.path().join(format!("{process}-{each}"));
+                let (closing, kept) = UnixStream::pair().unwrap();
+                open.push(kept);
+                (UnixListener::bind(path).unwrap(), closing)
+            })
+            .collect();
+        make_sandboxes(&part, &made);
+        parts.push((part, handed, made));
+        for _ in 0..3 {
+            held.step();
+        }
+    }
+    held.until(|held| !held.said.is_empty());
+    let said = String::from_utf8_lossy(&held.said);
+    assert_eq!(
+        said,
+        "omorfos-relay: a sandbox was let go, as 64 are listened on already\n"
+    );
+}

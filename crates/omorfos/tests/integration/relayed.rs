@@ -2074,21 +2074,22 @@ fn a_program_in_a_sandbox_that_connects_when_no_descriptor_is_left_is_let_in_onc
 }
 
 #[test]
-fn past_as_many_sandboxes_as_are_listened_on_one_made_is_let_go() {
+fn past_as_many_sandboxes_as_one_program_may_have_listened_on_one_made_is_let_go() {
     let relayed = Relayed::new();
     let directory = tempfile::TempDir::new().unwrap();
     let listener = UnixListener::bind(directory.path().join("sandbox")).unwrap();
     let (_open, closing) = UnixStream::pair().unwrap();
     let (mut first, _holder) = relayed.compositor();
     let mut flatpak = first.adopt(UnixStream::connect(&relayed.path).unwrap());
-    for _ in 0..=64 {
+    let most = omorfos_relay::SANDBOXES_EACH;
+    for _ in 0..=most {
         flatpak.sandbox_of(&listener, &closing);
     }
     first.roundtrip(&mut flatpak);
     first.step();
     let said = String::from_utf8_lossy(&relayed.said.borrow()).into_owned();
-    let let_go = said.matches("a sandbox was let go, as 64 are listened on already");
-    assert_eq!(let_go.count(), 1, "{said}");
+    let let_go = format!("has {most} listened on already");
+    assert_eq!(said.matches(&let_go).count(), 1, "{said}");
 }
 
 #[test]
