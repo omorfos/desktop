@@ -3287,6 +3287,29 @@ hardware backend; in the order worth taking:
       to be decided which is meant; with the roadmap's item for a card
       in CI.
 
+A review of the project from outside, of 23 November 2026, read from its
+documents and not its code, asked for four things that hold when the code
+is looked at; the rest it asked for was done already, or is for the
+stages it belongs to:
+
+- [ ] The relay's reading of what programs send, and what it keeps of
+      them, fuzzed: it reads every byte every Wayland program sends, and
+      is the parser most open to them, but has no target of its own
+      beside those of the configuration, IPC and messages.
+- [ ] Arbitrary sequences of what can be done to windows, workspaces and
+      screens, run against `omorfos-core` and the desktop checked to be
+      whole after each: as a fuzz target, which needs no new dependency.
+- [ ] Who may use the IPC socket, written down in `SECURITY.md`: any
+      program of the user's outside a sandbox may have programs started,
+      windows closed and the clipboard written, which is no more than it
+      can do as the user, and a sandbox reaches the socket only if given
+      `xdg-run`. Requests held to a role, should components of others
+      come, to be weighed then.
+- [ ] How long frames take kept over time by the compositor, its middle
+      and its slowest, for `omorfosctl frames` to say, in place of the
+      last frame alone, which measuring glass on 23 November needed a
+      sampler written for.
+
 ## 9. For others to build on
 
 Asked for on 14 November 2026: a way for other projects and repositories
