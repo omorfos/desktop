@@ -2146,9 +2146,6 @@ Ongoing, and taken between the stages above as much as after them.
 
 Security:
 
-- [x] Notification overflow evicts ordinary program notifications before
-      critical ones. When all eight slots are critical, the oldest is closed
-      explicitly and its sender is notified.
 - [x] The configuration, theme and IPC parsers fuzzed, beside the relay's
       reader: `configuration` and `ipc` in `fuzz/`, each run by CI as a
       job of its own on a change and for an hour each night, as
