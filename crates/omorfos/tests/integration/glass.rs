@@ -16,7 +16,7 @@ use wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_surface_v1::{
     Anchor, KeyboardInteractivity,
 };
 
-use crate::common::{Client, Drawn, LayerShape, Session, Toplevel, WIDTH, key};
+use crate::common::{Client, Drawn, HEIGHT, LayerShape, Session, Toplevel, WIDTH, key};
 use crate::windows::{BACKGROUND, BLUE, RED};
 
 /// A theme in which a panel is glass: white at half, over what is behind
@@ -362,6 +362,19 @@ fn a_titlebar_of_glass_is_redder_over_a_red_window_and_only_there() {
 }
 
 #[test]
+fn a_titlebars_glass_blurs_as_far_as_it_is_asked_and_no_further() {
+    // Blurred by as little as glass may, 16 pixels here: the red of the
+    // window under it runs half a blur past its edge, at 200, and is all
+    // but gone two and a half blurs past it.
+    let (mut session, _windows) = a_titlebar_over_a_red_window(TITLEBAR);
+    let picture = session.draw();
+    let beside = red(picture.at(380, ALONG));
+    let (near, far) = (red(picture.at(208, ALONG)), red(picture.at(240, ALONG)));
+    assert!(near > beside + 16, "{near} {beside}");
+    assert!(far <= beside + 4, "{far} {beside}");
+}
+
+#[test]
 fn a_titlebars_glass_is_rounded_above_as_its_window_is_and_square_below() {
     let theme = format!("{TITLEBAR}window {{ border: none; }}\n");
     let (mut session, _windows) = a_titlebar_over_a_red_window(&theme);
@@ -516,6 +529,57 @@ impl Frosting<PixmanRenderer, Drawn> for Wider {
     ) -> Option<Rc<dyn RenderElement<PixmanRenderer>>> {
         Frosting::<PixmanRenderer, Drawn>::element(&Software, renderer, made, at)
     }
+}
+
+/// A blur as the software's, that notes how large each picture it is
+/// given is.
+struct Measuring(Rc<std::cell::RefCell<Vec<Size<i32, Physical>>>>);
+
+impl Frosting<PixmanRenderer, Drawn> for Measuring {
+    fn blur(
+        &mut self,
+        renderer: &mut PixmanRenderer,
+        picture: (&mut Drawn, Size<i32, Physical>),
+        blur: &Blur,
+        made: &mut Option<Box<dyn Any>>,
+    ) -> bool {
+        self.0.borrow_mut().push(picture.1);
+        Frosting::<PixmanRenderer, Drawn>::blur(&mut Software, renderer, picture, blur, made)
+    }
+
+    fn element(
+        &self,
+        renderer: &mut PixmanRenderer,
+        made: &dyn Any,
+        at: (Rectangle<i32, Physical>, f64, f32),
+    ) -> Option<Rc<dyn RenderElement<PixmanRenderer>>> {
+        Frosting::<PixmanRenderer, Drawn>::element(&Software, renderer, made, at)
+    }
+}
+
+#[test]
+fn what_is_behind_glass_is_blurred_from_a_picture_half_as_large() {
+    let mut session = Session::with_config(&[("theme.css", GLASS)]);
+    let sizes = Rc::default();
+    session.frosting = Some(Box::new(Measuring(Rc::clone(&sizes))));
+    let mut window = session.connect();
+    let _toplevel = session.open(&mut window, "app", (200, 100), RED);
+    let mut panel = session.connect();
+    panel.layer_name = "panel";
+    session.open_layer(&mut panel, &across(30), (WIDTH, 30), TINT);
+    let picture = session.draw();
+    let sizes = sizes.borrow();
+    assert!(!sizes.is_empty(), "blurred");
+    // The desktop behind it, as large as the screen, is pictured half as
+    // large; and the glass is as red over the window as it was.
+    let half = Size::<i32, Physical>::from(((WIDTH + 1) / 2, (HEIGHT + 1) / 2));
+    assert!(
+        sizes
+            .iter()
+            .all(|size| size.w <= half.w && size.h <= half.h),
+        "{sizes:?}"
+    );
+    assert!(red(picture.at(100, 15)) > red(picture.at(400, 15)) + 64);
 }
 
 #[test]

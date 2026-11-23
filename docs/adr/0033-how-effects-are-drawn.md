@@ -73,6 +73,16 @@ arithmetic is on the tested side of the line.
 The last pass also gives what is behind a little more saturation, as the
 design language asks.
 
+What is behind glass is drawn half as large as it is, and blurred half as
+far in those pixels, which is as wide a blur on the screen; what is made
+is drawn back as large as the glass. The first pass down and the last up
+were the largest, reading and writing every pixel behind the glass, and
+are not made: a quarter of the pixels are drawn and blurred, and two
+passes of ten are left out, for a blur no one can tell from the other at
+the widths glass is blurred by, never less than sixteen units. It was
+measured to cost a frame without this (below). The blur itself is as it
+was, so the shader is held to the same specification.
+
 It is written with Smithay's custom texture shaders and its pictures to
 draw into, which are safe. The hardware backend reaches the GPU through
 Smithay's manager of several GPUs; it lends the renderer underneath, and
@@ -310,6 +320,29 @@ frames`): not in the state, which is sent to every subscriber whenever it
 changes, and this changes with every frame. A budget is not enforced by
 the compositor; it is watched by people, and glass behind titlebars in
 the built-in theme waits on it.
+
+### What it was measured to cost
+
+On 23 November 2026, on a laptop with Intel UHD Graphics 620 (an i7-8565U)
+driving its own screen at 3840 by 2160 and 60 frames a second, at a scale
+of 2.5, with thirteen windows of Ghostty open and one dragged over the
+others for thirty seconds, `omorfosctl frames` read as often as it
+changed:
+
+| The built-in theme | Median | 90 in 100 within | 99 in 100 within | Slowest | Over 16.7 ms |
+|---|---|---|---|---|---|
+| Glass, up to 4 blurs a frame | 11.50 ms | 14.38 ms | 26.63 ms | 30.53 ms | 17 of 447 |
+| Solid (`reduce_transparency`) | 1.38 ms | 1.64 ms | 2.26 ms | 3.92 ms | 0 of 941 |
+
+So glass cost a frame. A build that timed glass itself, over another
+drag of about 1500 frames, found glass three fifths of a frame (4.6 ms
+of a median 7.3 ms), and of that: three quarters in blurring, about two
+blurs a frame at about 3.5 ms each, a blur at this scale being ten
+passes; about 0.7 ms on every frame in asking each of the twelve covered
+sheets whether anything under it changed, though nothing had (the
+review of 19 November, finding 13); and textures made anew in more than
+a third of frames, which cost no more time than those kept (finding 7).
+What a blur's 3.5 ms is spent on is the next to be measured.
 
 ## Alternatives
 

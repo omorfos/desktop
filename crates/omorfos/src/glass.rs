@@ -30,7 +30,9 @@ use smithay::backend::renderer::element::memory::{
     MemoryRenderBuffer, MemoryRenderBufferRenderElement,
 };
 use smithay::backend::renderer::element::solid::{SolidColorBuffer, SolidColorRenderElement};
-use smithay::backend::renderer::element::utils::{Relocate, RelocateRenderElement};
+use smithay::backend::renderer::element::utils::{
+    Relocate, RelocateRenderElement, RescaleRenderElement,
+};
 use smithay::backend::renderer::element::{Element as _, Id, Kind, RenderElement};
 use smithay::backend::renderer::utils::{CommitCounter, DamageSet, OpaqueRegions};
 use smithay::backend::renderer::{
@@ -101,10 +103,8 @@ where
             blur.apply(pixels, (width, height))
         });
         blurred.is_some_and(|blurred| {
-            let kept = made
-                .as_mut()
-                .and_then(|made| made.downcast_mut::<MemoryRenderBuffer>());
-            if let Some(buffer) = kept {
+            let kept = made.as_mut().and_then(|made| made.downcast_mut::<Made>());
+            if let Some(Made(buffer, _)) = kept {
                 let mut context = buffer.render();
                 let drawn = context.draw(|into| {
                     for (to, from) in into.iter_mut().zip(&blurred) {
@@ -122,7 +122,7 @@ where
                     Transform::Normal,
                     None,
                 );
-                *made = Some(Box::new(buffer));
+                *made = Some(Box::new(Made(buffer, size)));
                 true
             }
         })
@@ -134,9 +134,12 @@ where
         made: &dyn Any,
         (area, scale, opacity): (Rectangle<i32, Physical>, f64, f32),
     ) -> Option<Rc<dyn RenderElement<R>>> {
-        let buffer = made.downcast_ref::<MemoryRenderBuffer>();
-        let element = buffer.and_then(|buffer| {
+        let made = made.downcast_ref::<Made>();
+        let element = made.and_then(|Made(buffer, made)| {
+            // All of what was made, drawn as large as `area`, whatever size
+            // it was made.
             let size = area.size.to_f64().to_logical(scale).to_i32_round();
+            let whole = Rectangle::from_size((f64::from(made.w), f64::from(made.h)).into());
             let at = area.loc.to_f64();
             let kind = Kind::Unspecified;
             let made = MemoryRenderBufferRenderElement::from_buffer(
@@ -144,7 +147,7 @@ where
                 at,
                 buffer,
                 Some(opacity),
-                None,
+                Some(whole),
                 Some(size),
                 kind,
             );
@@ -153,6 +156,9 @@ where
         element.map(|element| Rc::new(element) as Rc<dyn RenderElement<R>>)
     }
 }
+
+/// What [`Software`] makes: what it blurred, and how many pixels large.
+struct Made(MemoryRenderBuffer, Size<i32, Physical>);
 
 /// What a [`Frosting`] draws, among what the compositor draws.
 pub(crate) struct Frosted<R: Renderer>(Rc<dyn RenderElement<R>>);
@@ -576,9 +582,10 @@ struct Kept {
     names: Names,
 }
 
-/// A picture of what is behind glass, blurred: what it was drawn into, the
-/// tracker that says when what it is of changes, the blur, and what the
-/// frosting made of it, blurred, once it has.
+/// A picture of what is behind glass, blurred: what it was drawn into, half
+/// as large as what it is of, the tracker that says when what it is of
+/// changes, the blur, and what the frosting made of it, blurred, once it
+/// has, which is drawn as large as what it is of.
 #[derive(Debug)]
 struct Picture {
     /// What of the screen it is of, in pixels.
@@ -664,9 +671,11 @@ impl Glass {
     {
         let key = (name.to_owned(), pane.key);
         let mut kept = self.kept.remove(&key).unwrap_or_default();
-        let blur = frosting.zip(Blur::new(pane.blur));
+        // What is behind it is drawn half as large, and blurred half as far
+        // in its pixels: as wide a blur, from a quarter of the pixels.
+        let blur = frosting.zip(Blur::new(pane.blur.div_ceil(2)));
         let blurred = blur.and_then(|(frosting, blur)| {
-            let reach = i32::try_from(blur.reach()).unwrap_or(i32::MAX);
+            let reach = i32::try_from(blur.reach().saturating_mul(2)).unwrap_or(i32::MAX);
             // Within the screen: beyond it is what is inside it, mirrored, as
             // it is of the desktop blurred.
             let around = Rectangle::new(
@@ -764,13 +773,14 @@ impl Picture {
         if area.is_empty() {
             return None;
         }
-        let size = Size::<i32, Buffer>::from((area.size.w, area.size.h));
+        let halved = halved(area.size);
+        let size = Size::<i32, Buffer>::from((halved.w, halved.h));
         let target = renderer.create_buffer(Fourcc::Abgr8888, size).ok();
         target.map(|target| Self {
             area,
             blur,
             target: Box::new(target),
-            tracker: OutputDamageTracker::new(area.size, scale, Transform::Normal),
+            tracker: OutputDamageTracker::new(halved, scale, Transform::Normal),
             made: None,
             blurs: 0,
         })
@@ -795,12 +805,18 @@ impl Picture {
         R::TextureId: Clone + Texture + Send + 'static,
         P: std::fmt::Debug + 'static,
     {
+        // Made half as large about its corner, which is then put at the
+        // picture's.
         let corner = Point::from((-self.area.loc.x, -self.area.loc.y));
+        let half = Scale::from(0.5);
         let moved: Vec<_> = under
             .iter()
-            .map(|element| RelocateRenderElement::from_element(element, corner, Relocate::Relative))
+            .map(|element| {
+                let made = RescaleRenderElement::from_element(element, self.area.loc, half);
+                RelocateRenderElement::from_element(made, corner, Relocate::Relative)
+            })
             .collect();
-        let size = self.area.size;
+        let size = halved(self.area.size);
         let tracker = &mut self.tracker;
         let unseen = self.made.is_none();
         let (blur, made) = (&self.blur, &mut self.made);
@@ -815,6 +831,11 @@ impl Picture {
             })
         })
     }
+}
+
+/// `size` made half as large, rounded up, as what is behind glass is drawn.
+fn halved(size: Size<i32, Physical>) -> Size<i32, Physical> {
+    Size::from(((size.w + 1) / 2, (size.h + 1) / 2))
 }
 
 #[cfg(test)]
