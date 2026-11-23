@@ -584,13 +584,19 @@ calls for them.
         its resolution and is not: both are to be said. The state and
         `omorfosctl screens` say its scale and its size in pixels beside
         its size in units.
-- [ ] The windows of a screen that was unplugged put back on it when it
+- [x] The windows of a screen that was unplugged put back on it when it
       is plugged in again (asked on 17 November 2026): today they go to
       the primary screen and stay there. Each window is to go back to
       the screen and the workspace it was on, at the size it had, unless
       the user has moved or resized it since, which is taken as its
       being where they want it. A screen is known again by its own name
-      (EDID) where it has one, and by its socket otherwise.
+      (EDID) where it has one, and by its socket otherwise. Done in the
+      desktop model (`remove_output_known`, `bring_back`), by what the
+      screen says it is, with its socket where it says no serial, as its
+      kept scale is; a screen turned off and on again brings its windows
+      back too. Known gap: what is
+      kept lasts while the compositor does, and is lost if it is started
+      again while the screen is unplugged.
 
 What is left of this stage that is new, in the order it is to be done,
 as decided on 2026-10-21: what is felt every day first, the lock screen

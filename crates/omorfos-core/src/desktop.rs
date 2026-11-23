@@ -450,6 +450,14 @@ pub struct Offer {
     pub whole: Rect,
 }
 
+/// How far `point` is from `corner`, across and down.
+const fn from_corner(point: Point, corner: Point) -> (i32, i32) {
+    (
+        point.x.saturating_sub(corner.x),
+        point.y.saturating_sub(corner.y),
+    )
+}
+
 /// `at` moved right by `by`, as what is drawn on a workspace is while the
 /// workspaces slide.
 const fn moved_across(at: Rect, by: i32) -> Rect {
@@ -1406,7 +1414,33 @@ pub struct Desktop {
     sent: u64,
     /// What has been made again of what windows kept shared.
     restoring: Restoring,
+    /// The frames of outputs that went, to go back to each when it comes
+    /// back, unless moved since.
+    left: Vec<Left>,
 }
+
+/// A frame whose output went, kept to go back to it when it comes back:
+/// where it was there, and where it was put once it went, which it is to
+/// be still to go back, as one moved since is where the user wants it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Left {
+    /// What the output that went is known by, as its caller said.
+    screen: String,
+    /// The frame, by its serial.
+    frame: u64,
+    /// Which of that output's desktops it was on, counting from the first.
+    desktop: usize,
+    /// How far its corner was from that output's.
+    within: (i32, i32),
+    /// Where it was put: its workspace, how far its corner is from its
+    /// output's, how large it is, and whether it was maximized, fullscreen
+    /// or minimized.
+    put: Put,
+}
+
+/// Where a frame is, for whether it has been moved: its workspace, where
+/// it is from its output's corner, and how it stands there.
+type Put = (WorkspaceId, (i32, i32), Size, (bool, bool, bool));
 
 /// What has been made again of what windows kept through a change of
 /// compositor shared, for each that comes back after to share it again.
@@ -1460,6 +1494,7 @@ impl Desktop {
             next_serial: 0,
             sent: 0,
             restoring: Restoring::default(),
+            left: Vec::new(),
         };
         let first = desktop.set();
         desktop.sets.push(first);
@@ -1556,6 +1591,119 @@ impl Desktop {
             let outputs = std::mem::take(&mut self.outputs);
             self.set_outputs(outputs);
         }
+    }
+
+    /// Takes away the output at `index` as [`Desktop::remove_output`] does,
+    /// and keeps where each frame of its desktops was, so that it goes back
+    /// when the output known as `screen` comes back, by
+    /// [`Desktop::bring_back`], unless it has been moved, resized or sent
+    /// elsewhere since.
+    pub fn remove_output_known(&mut self, index: usize, screen: &str) {
+        let (Some(output), Some(set)) = (self.outputs.get(index), self.sets.get(index)) else {
+            return;
+        };
+        // The last output keeps its frames, and has nothing to come back to.
+        let noted: Vec<(u64, usize, (i32, i32))> = if self.sets.len() > 1 {
+            let corner = output.area.origin;
+            let desktops = set.desktops().into_iter().enumerate();
+            desktops
+                .flat_map(|(desktop, at)| {
+                    set.workspaces[at].groups.iter().map(move |group| {
+                        let within = from_corner(group.geometry.origin, corner);
+                        (group.serial, desktop, within)
+                    })
+                })
+                .collect()
+        } else {
+            Vec::new()
+        };
+        self.remove_output(index);
+        // What was kept of a frame before is what it was on an output that
+        // went earlier, which it now leaves too.
+        self.left
+            .retain(|left| noted.iter().all(|(frame, ..)| *frame != left.frame));
+        // Each is somewhere, having only moved to the output that is first.
+        let left: Vec<Left> = noted
+            .into_iter()
+            .filter_map(|(frame, desktop, within)| {
+                self.frame_at(frame).map(|at| Left {
+                    screen: screen.to_owned(),
+                    frame,
+                    desktop,
+                    within,
+                    put: self.put(at),
+                })
+            })
+            .collect();
+        self.left.extend(left);
+    }
+
+    /// Has each frame of the output known as `screen`, kept when it went,
+    /// go back to it, now at `index`, counted in the order the outputs were
+    /// given: to the desktop of the same number, where it was on it. One
+    /// moved, resized or sent elsewhere since it went, or closed, stays
+    /// where it is.
+    pub fn bring_back(&mut self, index: usize, screen: &str) {
+        let Some(corner) = self.outputs.get(index).map(|output| output.area.origin) else {
+            return;
+        };
+        let (back, kept): (Vec<Left>, Vec<Left>) = std::mem::take(&mut self.left)
+            .into_iter()
+            .partition(|left| left.screen == screen);
+        self.left = kept;
+        for left in back {
+            let Some(at) = self.frame_at(left.frame) else {
+                continue;
+            };
+            if self.put(at) != left.put {
+                continue;
+            }
+            let (set, workspace, group) = at;
+            let mut moved = self.sets[set].workspaces[workspace].groups.remove(group);
+            self.sets[set].workspaces[workspace].repair();
+            while self.sets[index].desktops().len() <= left.desktop
+                && self.sets[index].desktops().len() < Self::MOST_WORKSPACES
+            {
+                self.reach(index, usize::MAX);
+            }
+            let desktops = self.sets[index].desktops();
+            let onto = desktops[left.desktop.min(desktops.len() - 1)];
+            moved.geometry.origin = corner.offset(left.within.0, left.within.1);
+            let onto = &mut self.sets[index].workspaces[onto];
+            onto.groups.push(moved);
+            onto.repair();
+            self.sets[set].settle();
+            self.sets[index].settle();
+        }
+    }
+
+    /// Where the frame at `at`, among the sets, their workspaces and their
+    /// frames, is now, for whether it has moved.
+    fn put(&self, (set, workspace, group): (usize, usize, usize)) -> Put {
+        let on = &self.sets[set].workspaces[workspace];
+        let group = &on.groups[group];
+        let corner = self
+            .outputs
+            .get(set)
+            .map_or_default(|output| output.area.origin);
+        let stands = (group.maximized, group.fullscreen, group.minimized);
+        let within = from_corner(group.geometry.origin, corner);
+        (on.id, within, group.geometry.size, stands)
+    }
+
+    /// Where the frame `frame` is among the sets, their workspaces and
+    /// their frames, if it is anywhere.
+    fn frame_at(&self, frame: u64) -> Option<(usize, usize, usize)> {
+        self.sets.iter().enumerate().find_map(|(set, in_set)| {
+            in_set
+                .workspaces
+                .iter()
+                .enumerate()
+                .find_map(|(workspace, on)| {
+                    let group = on.groups.iter().position(|group| group.serial == frame)?;
+                    Some((set, workspace, group))
+                })
+        })
     }
 
     /// Removes a set of workspaces, giving its frames to the one of the
@@ -6536,6 +6684,112 @@ mod tests {
         // An output that is not there cannot be taken away.
         let before = desktop.clone();
         desktop.remove_output(1);
+        assert_eq!(desktop, before);
+    }
+
+    #[test]
+    fn frames_of_an_output_that_comes_back_go_back_to_it_unless_moved_since() {
+        let mut desktop = two_outputs();
+        let stays = open(&mut desktop, "stays");
+        let back = open_on_second(&mut desktop, "back");
+        let within = SECOND_SCREEN.origin.offset(100, 50);
+        desktop.set_geometry(back, Rect::new(within, SIZE));
+        let moved = open_on_second(&mut desktop, "moved");
+        let closed = open_on_second(&mut desktop, "closed");
+        desktop.turn_to(SECOND_SCREEN.origin);
+        desktop.switch_workspace(2);
+        let third = open_on_second(&mut desktop, "third");
+
+        desktop.remove_output_known(1, "office");
+        desktop.set_outputs(vec![SCREEN]);
+        // Moved, it is where the user wants it; and one closes.
+        desktop.set_geometry(moved, Rect::new(SCREEN.origin.offset(5, 5), SIZE));
+        desktop.remove_window(closed);
+        // Another output coming back takes none of them.
+        desktop.set_outputs(vec![SCREEN, SECOND_SCREEN]);
+        desktop.bring_back(1, "elsewhere");
+        let listed = |desktop: &Desktop| -> Vec<(WindowId, usize, usize)> {
+            let windows = desktop.windows();
+            let listed = windows.map(|listed| (listed.window.id, listed.output, listed.workspace));
+            listed.collect()
+        };
+        assert!(listed(&desktop).iter().all(|(_, output, _)| *output == 0));
+
+        desktop.bring_back(1, "office");
+        let mut now = listed(&desktop);
+        now.sort_unstable();
+        let mut wanted = vec![(stays, 0, 0), (back, 1, 0), (moved, 0, 0), (third, 1, 2)];
+        wanted.sort_unstable();
+        assert_eq!(now, wanted);
+        assert_eq!(
+            frame(&desktop, back).geometry.origin,
+            within,
+            "where it was on it"
+        );
+        // What was kept went with them: coming back again moves nothing.
+        let before = desktop.clone();
+        desktop.bring_back(1, "office");
+        assert_eq!(desktop, before);
+    }
+
+    #[test]
+    fn frames_of_two_outputs_that_went_go_back_each_to_its_own_and_past_its_last_desktop() {
+        let third = Rect::new(Point::new(3200, 0), Size::new(800, 600));
+        let mut desktop = desktop();
+        desktop.set_outputs(vec![SCREEN, SECOND_SCREEN, third]);
+        let on_second = open_on_second(&mut desktop, "second");
+        // On the third, on a desktop past those always there, made for it.
+        desktop.turn_to(third.origin);
+        desktop.new_workspace();
+        let past = desktop.add_window(
+            "past",
+            "past window",
+            SIZE,
+            third.origin.offset(10, 10),
+            true,
+        );
+        let place = |desktop: &Desktop, id: WindowId| {
+            let mut windows = desktop.windows();
+            let listed = windows.find(|listed| listed.window.id == id);
+            listed.map(|listed| (listed.output, listed.workspace))
+        };
+        assert_eq!(place(&desktop, past), Some((2, 3)));
+
+        // The second goes, then the third, its frame going on to the first.
+        desktop.remove_output_known(1, "second");
+        desktop.set_outputs(vec![SCREEN, third]);
+        desktop.remove_output_known(1, "third");
+        desktop.set_outputs(vec![SCREEN]);
+        assert_eq!(
+            place(&desktop, on_second).map(|(output, _)| output),
+            Some(0)
+        );
+
+        // Each comes back, the third first and as the second output now.
+        desktop.set_outputs(vec![SCREEN, third]);
+        desktop.bring_back(1, "third");
+        assert_eq!(
+            place(&desktop, past),
+            Some((1, 3)),
+            "its desktop made again"
+        );
+        desktop.set_outputs(vec![SCREEN, third, SECOND_SCREEN]);
+        desktop.bring_back(2, "second");
+        assert_eq!(place(&desktop, on_second), Some((2, 0)));
+    }
+
+    #[test]
+    fn the_last_output_going_keeps_nothing_and_one_not_there_is_not_brought_back_to() {
+        let mut desktop = desktop();
+        let alone = open(&mut desktop, "alone");
+        desktop.remove_output_known(0, "laptop");
+        desktop.set_outputs(vec![SCREEN]);
+        desktop.bring_back(0, "laptop");
+        assert_eq!(frame(&desktop, alone).geometry.origin, SCREEN.origin);
+        // Neither an output that is not there nor one not given.
+        let before = desktop.clone();
+        desktop.remove_output_known(5, "nowhere");
+        desktop.bring_back(5, "laptop");
         assert_eq!(desktop, before);
     }
 

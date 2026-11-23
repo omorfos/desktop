@@ -1245,3 +1245,61 @@ fn a_screen_is_guessed_for_anew_when_asked_and_that_is_kept() {
     assert_eq!(again.compositor().scale_of(&nested), Scale::new(1.5));
     assert_eq!(again.compositor().scale_of(&laptop), Scale::new(2.0));
 }
+
+#[test]
+fn the_windows_of_a_screen_plugged_in_again_go_back_to_it() {
+    // A monitor that says its serial, so that it is known wherever it is
+    // plugged in.
+    let monitor = || {
+        Some(omorfos_core::Identity {
+            serial: Some("7X3KD13".to_owned()),
+            ..says("DEL", 0xa0e1, Some("DELL U2720Q"))
+        })
+    };
+    let mut session = Session::new();
+    let office = session.add_output_saying((800, 600), monitor());
+    pointer_to(&mut session, WIDTH + 100, 100);
+    let mut client = session.connect();
+    let _window = session.open(&mut client, "app", (200, 100), RED);
+    assert_eq!(session.draw_on(1).at(100, 50), RED, "on the monitor");
+
+    // Unplugged, its window goes to the first screen.
+    session.compositor_mut().remove_output(&office);
+    session.step();
+    assert_eq!(session.draw_on(0).at(100, 50), RED, "on the first");
+
+    // Plugged in again, at another socket, its window goes back to it.
+    let _back = session.add_output_saying((800, 600), monitor());
+    session.step();
+    session.roundtrip(&mut client);
+    assert_eq!(session.draw_on(2).at(100, 50), RED, "back on the monitor");
+    assert_eq!(session.draw_on(0).at(100, 50), BACKGROUND);
+}
+
+#[test]
+fn the_windows_of_a_screen_turned_off_go_back_to_it_when_it_is_on_again() {
+    let mut session = Session::new();
+    let _second = session.add_output((800, 600));
+    pointer_to(&mut session, WIDTH + 100, 100);
+    let mut client = session.connect();
+    let _window = session.open(&mut client, "app", (200, 100), RED);
+    assert_eq!(session.draw_on(1).at(100, 50), RED, "on the second");
+
+    session.write_config(
+        "config.yaml",
+        "outputs: [{ name: test-1, enabled: false }]\n",
+    );
+    session.compositor_mut().reload_config();
+    session.step();
+    assert_eq!(
+        session.draw_on(0).at(100, 50),
+        RED,
+        "on the first while it is off"
+    );
+
+    session.write_config("config.yaml", "");
+    session.compositor_mut().reload_config();
+    session.step();
+    assert_eq!(session.draw_on(1).at(100, 50), RED, "back on it");
+    assert_eq!(session.draw_on(0).at(100, 50), BACKGROUND);
+}

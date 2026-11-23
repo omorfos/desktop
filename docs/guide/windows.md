@@ -155,7 +155,11 @@ Each screen has its own workspaces, and shows one of them: switching
 workspace on one screen leaves the others as they are. A window dragged
 onto another screen joins the workspace that screen is showing. When a
 screen is unplugged, its windows move to the workspace of the same number
-on the first screen that is left, which is made if it is not there.
+on the first screen that is left, which is made if it is not there; and
+when it is plugged in again, at any socket if it says its serial, they
+go back to it, each to the workspace of the number it was on and where
+it was on it, but for those you have moved, resized or sent elsewhere
+in between, which stay where you put them.
 
 ## Fullscreen and tiles
 

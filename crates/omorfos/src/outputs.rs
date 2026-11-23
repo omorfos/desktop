@@ -84,6 +84,17 @@ impl Head {
         self.identity.as_ref()
     }
 
+    /// What the screen is known by to what the session keeps of it: all it
+    /// says it is, with its socket where it says no serial, or its socket
+    /// alone where it says nothing.
+    fn kept_by(&self) -> String {
+        let said = self.identity.as_ref();
+        said.map_or_else(
+            || self.name.clone(),
+            |identity| kept_as(identity, &self.name),
+        )
+    }
+
     /// The size of the output in pixels, as the screen is made.
     pub(crate) fn pixels(&self) -> Size<i32, Physical> {
         let mode = self.output.current_mode();
@@ -259,7 +270,8 @@ impl Compositor {
     /// left, and its panels are closed.
     fn withdraw(&mut self, index: usize) -> Head {
         let mut head = self.heads.remove(index);
-        self.desktop.remove_output(index);
+        // Its windows are kept to go back to it if it comes back.
+        self.desktop.remove_output_known(index, &head.kept_by());
         for layer in layer_map_for_output(&head.output).layers() {
             layer.layer_surface().send_close();
         }
@@ -723,6 +735,12 @@ impl Compositor {
         self.desktop.set_primary(self.primary());
         self.changes += 1;
         self.update_screens();
+        // The windows of a screen that went go back to it, if it has come
+        // back and they have not been moved since.
+        let back: Vec<String> = self.heads.iter().map(Head::kept_by).collect();
+        for (index, screen) in back.iter().enumerate() {
+            self.desktop.bring_back(index, screen);
+        }
         self.configure_lock_surfaces();
     }
 
