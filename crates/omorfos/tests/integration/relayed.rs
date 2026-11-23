@@ -1674,6 +1674,7 @@ fn what_was_copied_is_there_again_from_the_keeper_kept_through_a_restart() {
     let directory = tempfile::TempDir::new().unwrap();
     let listener = UnixListener::bind(directory.path().join("wayland-keeper")).unwrap();
     let runtime = directory.path().to_owned();
+    let (finished, done) = std::sync::mpsc::channel();
     let keeper = std::thread::spawn(move || {
         let variable = |variable: &str| match variable {
             "XDG_RUNTIME_DIR" => Some(runtime.clone().into_os_string()),
@@ -1681,7 +1682,9 @@ fn what_was_copied_is_there_again_from_the_keeper_kept_through_a_restart() {
             _ => None,
         };
         let limits = omorfos_clipboard::Limits::default();
-        crate::keeper::said(omorfos_clipboard::start_with(&variable, limits))
+        let said = crate::keeper::said(omorfos_clipboard::start_with(&variable, limits));
+        finished.send(said.clone()).unwrap();
+        said
     });
     let (part, _) = listener.accept().unwrap();
     let started = Started {
@@ -1705,7 +1708,7 @@ fn what_was_copied_is_there_again_from_the_keeper_kept_through_a_restart() {
     drop((first, first_holder));
     relayed.step();
     relayed.step();
-    let (mut second, _holder) = relayed.compositor();
+    let (mut second, second_holder) = relayed.compositor();
     let pasted = |session: &mut Session| {
         let mut terminal = session.connect();
         session.open(&mut terminal, "terminal", (200, 100), BLUE);
@@ -1714,8 +1717,12 @@ fn what_was_copied_is_there_again_from_the_keeper_kept_through_a_restart() {
         pipe.map(read_text)
     };
     second.eventually(|session| pasted(session).as_deref() == Some("kept"));
-    drop(second);
-    assert!(!keeper.is_finished() || keeper.join().is_ok());
+    // With the session gone, the keeper ends, and says nothing went wrong;
+    // a keeper that never ends fails the test rather than outliving it.
+    drop((second, second_holder, relayed));
+    let said = done.recv_timeout(Duration::from_secs(10)).unwrap();
+    assert_eq!(said, "the session ended");
+    keeper.join().unwrap();
 }
 
 /// The stand-in for a program that runs for the whole session as the keeper
