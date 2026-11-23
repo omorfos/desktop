@@ -26,8 +26,6 @@ pub struct Wanted {
     pub step: Step,
     /// Whether the last one given was not right.
     pub again: bool,
-    /// What `gpg-agent` was given to say, for the log alone.
-    pub said: String,
 }
 
 /// Which passphrase is asked for.
@@ -74,7 +72,6 @@ pub struct Told {
     keyinfo: Option<String>,
     repeat: bool,
     error: bool,
-    said: String,
 }
 
 /// What came of asking the user.
@@ -109,10 +106,6 @@ pub fn reply(
             told.keyinfo = (argument != "--clear").then_some(argument);
             ok()
         }
-        "SETDESC" => {
-            told.said = argument;
-            ok()
-        }
         "SETERROR" => {
             told.error = !argument.is_empty();
             ok()
@@ -133,9 +126,9 @@ pub fn reply(
         // What is to be said, and how, is ours: what it is told of it is
         // taken and left; and a message, which asks nothing, is said to
         // have been shown, as nothing need be done of it.
-        "CONFIRM" | "MESSAGE" | "OPTION" | "SETPROMPT" | "SETTITLE" | "SETOK" | "SETCANCEL"
-        | "SETNOTOK" | "SETREPEATERROR" | "SETREPEATOK" | "SETQUALITYBAR" | "SETQUALITYBAR_TT"
-        | "SETGENPIN" | "SETGENPIN_TT" | "SETTIMEOUT" | "NOP" => ok(),
+        "CONFIRM" | "MESSAGE" | "OPTION" | "SETDESC" | "SETPROMPT" | "SETTITLE" | "SETOK"
+        | "SETCANCEL" | "SETNOTOK" | "SETREPEATERROR" | "SETREPEATOK" | "SETQUALITYBAR"
+        | "SETQUALITYBAR_TT" | "SETGENPIN" | "SETGENPIN_TT" | "SETTIMEOUT" | "NOP" => ok(),
         _ => vec![UNKNOWN.to_owned()],
     };
     (replies, false)
@@ -235,7 +228,6 @@ fn getpin(
             Step::Passphrase
         },
         again: std::mem::take(&mut told.error),
-        said: std::mem::take(&mut told.said),
     };
     let first = ask(&wanted);
     let given = match first {
@@ -381,8 +373,10 @@ pub fn lookup(grip: &str) -> Option<Key> {
 }
 
 /// A request to the prompt, as one line: which passphrase, whether the
-/// last was not right, and the key and what `gpg-agent` was given to say,
-/// each written so that it has no space or line's end in it.
+/// last was not right, and the key, written so that it has no space or
+/// line's end in it. What `gpg-agent` was given to say is not in it: for a
+/// smartcard, it names whose card it is and its number, and it would be
+/// written to the session's log.
 #[must_use]
 pub fn request(wanted: &Wanted) -> String {
     let step = match wanted.step {
@@ -397,10 +391,7 @@ pub fn request(wanted: &Wanted) -> String {
         |key| (word(&key.name), word(&key.fingerprint)),
     );
     let again = if wanted.again { "wrong" } else { "first" };
-    format!(
-        "ASK {step} {again} {fingerprint} {name} {}\n",
-        word(&wanted.said)
-    )
+    format!("ASK {step} {again} {fingerprint} {name}\n")
 }
 
 /// What a line from the pinentry asks, if it is a request as [`request`]
@@ -419,18 +410,13 @@ pub fn requested(line: &str) -> Option<Wanted> {
         _ => return None,
     };
     let again = words.next()? == "wrong";
+    // A pinentry from before may say more after the key; it is not read.
     let (fingerprint, name) = (word(words.next()), word(words.next()));
-    let said = word(words.next()).unwrap_or_default();
     let key = fingerprint.zip(name).map(|(fingerprint, name)| Key {
         name: tidied(&name),
         fingerprint,
     });
-    Some(Wanted {
-        key,
-        step,
-        again,
-        said,
-    })
+    Some(Wanted { key, step, again })
 }
 
 #[cfg(test)]
@@ -496,13 +482,16 @@ uid:u::::1700000000::HASH::Bob <bob@example.org>::::::::::0:
             key: Some(alice()),
             step: Step::NewAgain,
             again: true,
-            said: "Please enter\nthe passphrase, 100%".to_owned(),
         };
         let line = request(&wanted);
         assert_eq!(line.matches('\n').count(), 1, "{line}");
         assert_eq!(requested(&line), Some(wanted));
         let nameless = Wanted::default();
         assert_eq!(requested(&request(&nameless)), Some(nameless));
+        // One from a pinentry of before, which said what `gpg-agent` said
+        // after the key, is read as it was meant.
+        let before = format!("{} +Please%20enter\n", line.trim_end());
+        assert_eq!(requested(&before), requested(&line));
         assert_eq!(
             requested("ASK new first - -"),
             Some(Wanted {
@@ -538,6 +527,21 @@ uid:u::::1700000000::HASH::Bob <bob@example.org>::::::::::0:
     }
 
     #[test]
+    fn what_gpg_agent_is_given_to_say_goes_no_further_than_the_pinentry() {
+        // For a smartcard, it says whose card it is and its number, which
+        // the session's log, and the reports made of it, are not to hold.
+        let lines = [
+            "SETDESC Please unlock the card%0A%0ANumber: 1 234 567%0AHolder: Alice Example",
+            "GETPIN",
+        ];
+        let (_, asked) = spoken(&lines, vec![Given::Typed("secret".to_owned())]);
+        let line = request(&asked[0]);
+        for private in ["Alice", "Example", "234", "567"] {
+            assert!(!line.contains(private), "{private} in {line}");
+        }
+    }
+
+    #[test]
     fn a_passphrase_is_asked_of_the_key_named_and_given_back() {
         let lines = [
             "OPTION ttyname=/dev/pts/1",
@@ -556,7 +560,6 @@ uid:u::::1700000000::HASH::Bob <bob@example.org>::::::::::0:
                 key: Some(alice()),
                 step: Step::Passphrase,
                 again: false,
-                said: "Type your login password".to_owned(),
             }]
         );
     }

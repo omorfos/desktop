@@ -2784,6 +2784,11 @@ Reports and recovery:
       Only paths are left out today, so the journal's lines of `sudo`,
       `pkexec` and PAM name the user, and every line of the journal
       names the computer.
+- [x] What `gpg-agent` gives the pinentry to say kept out of the
+      session's log, and so out of a report (seen by the maintainer on
+      22 November 2026): for a smartcard it names whose card it is and
+      its number, and for a key its owner's name and address. It was
+      passed to `omorfos-ask` for the log alone, and is passed no more.
 - [ ] The screen kept lit while the compositor is started again (ADR
       60): the holder holding the screen's device, so that the last frame
       stays until the next compositor draws over it. The hardware

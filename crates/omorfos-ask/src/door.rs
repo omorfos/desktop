@@ -77,10 +77,7 @@ impl Door {
             }
             // One that says nothing in time, or nothing understood, is let go.
             asked.extend(said(&stream).map(|wanted| {
-                note(&format!(
-                    "GnuPG asks for a passphrase, and says: {}",
-                    wanted.said
-                ));
+                note("GnuPG asks for a passphrase");
                 Passing { stream, wanted }
             }));
         }
