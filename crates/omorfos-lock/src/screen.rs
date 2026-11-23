@@ -133,6 +133,19 @@ impl Lock {
         ways: &[Way],
         power: Option<(PathBuf, Vec<OsString>)>,
     ) -> Result<Self, Failure> {
+        Self::new_with_kept(wayland, config, (helper, user), ways, power, None)
+    }
+
+    /// The lock screen, using the last-known-good configuration the
+    /// compositor kept for this session where a live file no longer loads.
+    pub(crate) fn new_with_kept(
+        wayland: UnixStream,
+        config: &Path,
+        (helper, user): (PathBuf, User),
+        ways: &[Way],
+        power: Option<(PathBuf, Vec<OsString>)>,
+        kept: Option<&Path>,
+    ) -> Result<Self, Failure> {
         let room = (FACE_READ, FACE_READ);
         let face = user.faces.iter().find_map(|path| {
             let read = omorfos_wallpaper::picture::read(path, Fit::Fill, room);
@@ -147,7 +160,7 @@ impl Lock {
                 let (sender, heard) = mpsc::channel();
                 let (teller, told) = mpsc::channel();
                 let mut shell = Shell::new(
-                    Store::open(config),
+                    Store::open(config).starting_from(kept),
                     (user.called, face),
                     Ways::new(ways, helper, user.name, Words::of(&LOCK)),
                 );

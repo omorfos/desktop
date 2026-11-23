@@ -142,7 +142,8 @@ pub fn start(
     let (wayland, config) = wayland.zip(config).ok_or(
         "this is not an omorfos session: XDG_RUNTIME_DIR, WAYLAND_DISPLAY or HOME is not set",
     )?;
-    let settings = omorfos_config::Store::open(&config)
+    let kept = omorfos_config::kept_dir(runtime_dir);
+    let settings = configuration(&config, kept.as_deref())
         .current()
         .general
         .lock
@@ -154,15 +155,45 @@ pub fn start(
         .power
         .then(|| (PathBuf::from("omorfos-session"), Vec::new()));
     let connected = omorfos_shell::connect(&wayland).map_err(Failure::from);
-    let lock =
-        connected.and_then(|connected| Lock::new(connected, &config, (helper, user), &ways, power));
+    let lock = connected.and_then(|connected| {
+        Lock::new_with_kept(
+            connected,
+            &config,
+            (helper, user),
+            &ways,
+            power,
+            kept.as_deref(),
+        )
+    });
     lock.and_then(|mut lock| lock.serve())
+}
+
+/// Opens the configuration, using what the compositor last kept for this
+/// session where a file on disk no longer loads.
+fn configuration(config: &Path, kept: Option<&Path>) -> omorfos_config::Store {
+    omorfos_config::Store::open(config).starting_from(kept)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
 
+    #[test]
+    fn a_broken_live_configuration_uses_what_the_session_last_kept() {
+        let config = tempfile::TempDir::new().unwrap();
+        let runtime = tempfile::TempDir::new().unwrap();
+        let kept = runtime.path().join("last-good");
+        fs::write(config.path().join("config.yaml"), "lock: { key: false }\n").unwrap();
+        let mut store = omorfos_config::Store::open(config.path());
+        store.keep_in(&kept);
+
+        fs::write(config.path().join("config.yaml"), "lock: [\n").unwrap();
+
+        let loaded = configuration(config.path(), Some(&kept));
+        assert!(!loaded.current().general.lock.key);
+        assert_eq!(loaded.diagnostics().len(), 1);
+    }
     #[test]
     fn the_user_is_who_the_system_says_or_else_who_the_environment_does() {
         let passwd = "root:x:0:0::/root:/bin/sh\n\
