@@ -3357,7 +3357,8 @@ its own. It found one high, five medium and four low findings:
 - [ ] Medium: each refresh looks every window up in two lists, so a
       quiet turn costs as the square of the windows
       ([finding 3](reviews/2026-11-23-the-whole-tree-for-safety-speed-and-use.md#3-each-refresh-looks-every-window-up-in-two-lists-so-a-quiet-turn-costs-as-the-square-of-the-windows)):
-      the benchmark first.
+      the first CPU benchmark showed the indexed lookup is faster at 128
+      and 256 windows; the focused change is #102.
 - [ ] Medium: what is captured is worked out, and written, rectangle by
       rectangle
       ([finding 4](reviews/2026-11-23-the-whole-tree-for-safety-speed-and-use.md#4-what-is-captured-is-worked-out-and-written-rectangle-by-rectangle)):
