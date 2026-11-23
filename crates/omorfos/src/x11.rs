@@ -914,7 +914,7 @@ impl Compositor {
             kept_by: None,
         });
         // How small it said it can be before it was shown.
-        let least = self.windows.last().map(tiles::least).unwrap_or_default();
+        let least = self.windows.last().map_or_default(tiles::least);
         self.desktop.set_least(id, least);
         if self.asked_for(surface, pid, startup) {
             self.desktop.activate(id);

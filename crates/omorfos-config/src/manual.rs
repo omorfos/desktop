@@ -178,7 +178,7 @@ pub fn bindings() -> Vec<(String, String, &'static str)> {
         // Its name is what it is written as, or the key it is written by.
         let name = written.trim_start_matches("{ ").split(':').next();
         let told = TOLD.iter().find(|told| Some(told.name) == name);
-        let does = told.map(|told| told.does).unwrap_or_default();
+        let does = told.map_or_default(|told| told.does);
         (binding.keys.to_string(), written, does)
     });
     bindings.collect()

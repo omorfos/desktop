@@ -468,7 +468,7 @@ mod tests {
     }
 
     fn refused(result: Result<String, Refused>) -> String {
-        result.err().map(|why| why.to_string()).unwrap_or_default()
+        result.err().map_or_default(|why| why.to_string())
     }
 
     #[test]

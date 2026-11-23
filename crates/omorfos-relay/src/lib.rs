@@ -742,7 +742,7 @@ fn admit(
                 );
                 return Ok(None);
             }
-            let held = others.first().map(|other| other.held()).unwrap_or_default();
+            let held = others.first().map_or_default(|other| other.held());
             link(program, who, sandbox, compositor).map(|link| Some(link.sharing(held)))
         });
         match linked {

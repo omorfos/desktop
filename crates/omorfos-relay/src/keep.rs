@@ -983,7 +983,7 @@ impl Keeping {
     /// relay is to tell the program of its own accord.
     pub fn after(&mut self, read: &Read, bytes: &[u8]) -> bool {
         let header = wire::header(bytes).ok().flatten();
-        let object = header.map(|header| header.object).unwrap_or_default();
+        let object = header.map_or_default(|header| header.object);
         let body = bytes.get(HEADER..).unwrap_or_default();
         let word = |at| wire::word(body, at).unwrap_or_default();
         let catching = !self.caught_up();

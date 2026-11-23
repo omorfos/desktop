@@ -250,7 +250,7 @@ impl Compositor {
             kept_by,
         });
         // How small it said it can be before it was shown.
-        let least = self.windows.last().map(tiles::least).unwrap_or_default();
+        let least = self.windows.last().map_or_default(tiles::least);
         self.desktop.set_least(id, least);
         let client = surface.client();
         let pid = client.and_then(|client| self.process(&client));

@@ -133,7 +133,7 @@ fn every_manual_page_of_a_file_is_made_from_its_schema_and_the_guide() {
     let examples = examples(&guide().unwrap());
     let example = |file: &str| {
         let found = examples.iter().find(|(name, _)| name == file);
-        found.map(|(_, text)| text.as_str()).unwrap_or_default()
+        found.map_or_default(|(_, text)| text.as_str())
     };
     let examples = omorfos_config::manual::Examples {
         config: example("config.yaml"),

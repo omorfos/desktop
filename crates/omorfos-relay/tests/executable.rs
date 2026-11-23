@@ -1,5 +1,6 @@
 //! `omorfos-relay` run as the holder runs it.
 
+use std::assert_matches;
 use std::os::fd::AsFd;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::process::{Command, Stdio};
@@ -37,7 +38,7 @@ fn it_relays_what_the_holder_hands_it_until_the_holder_goes() {
         assert!(Instant::now() < by, "the program was never handed on");
         std::thread::sleep(Duration::from_millis(10));
     };
-    assert!(matches!(handed.hand, Some(Hand::Program(_))));
+    assert_matches!(handed.hand, Some(Hand::Program(_)));
 
     drop(holder);
     assert!(started.wait().unwrap().success());

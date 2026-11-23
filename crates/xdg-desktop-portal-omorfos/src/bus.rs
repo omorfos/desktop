@@ -789,6 +789,7 @@ fn property(connection: &Connection, message: &Message, member: &str) -> zbus::R
     reason = "a test ends with its threads, and one that cannot be started fails it"
 )]
 pub(crate) mod tests {
+    use std::assert_matches;
     use std::io::{BufRead, BufReader};
     use std::process::{Child, Command, Stdio};
     use std::thread;
@@ -1215,7 +1216,7 @@ pub(crate) mod tests {
         let asking = ask_for(&peer, request, "PickColor");
         let asked = heard(&portal).pop().unwrap();
         assert_eq!(asked.request().unwrap().as_str(), request);
-        assert!(matches!(&asked, Asked::Pick { app, .. } if app == "org.example.App"));
+        assert_matches!(&asked, Asked::Pick { app, .. } if app == "org.example.App");
         portal.respond_colour(asked.call().unwrap(), Response::Given, Some([255, 51, 0]));
         let (response, results) = asking.join().unwrap();
         let colour = <(f64, f64, f64)>::try_from(results["color"].clone()).unwrap();
@@ -1236,7 +1237,7 @@ pub(crate) mod tests {
             request.as_str(),
             "/org/freedesktop/portal/desktop/request/1/a"
         );
-        assert!(matches!(&asked, Asked::Screenshot { app, .. } if app == "org.example.App"));
+        assert_matches!(&asked, Asked::Screenshot { app, .. } if app == "org.example.App");
         assert!(!asking.is_finished(), "it waits");
         portal.respond(
             call,
@@ -1362,7 +1363,7 @@ pub(crate) mod tests {
             let _ = asking.call_method(Some(NAME), PATH, Some(SCREENSHOT), "Screenshot", &shot);
         });
         let asked = heard(&portal).pop().unwrap();
-        assert!(matches!(&asked, Asked::Screenshot { app, .. } if app.is_empty()));
+        assert_matches!(&asked, Asked::Screenshot { app, .. } if app.is_empty());
     }
 
     #[test]
@@ -1447,7 +1448,7 @@ pub(crate) mod tests {
         // again does: the backend is told, so that what was shared stops.
         let second = daemon.peer();
         let told = heard(&portal);
-        assert!(matches!(told.as_slice(), [Asked::Replaced]), "{told:?}");
+        assert_matches!(told.as_slice(), [Asked::Replaced]);
         assert!(told[0].request().is_none() && told[0].call().is_none());
         drop((first, second));
     }

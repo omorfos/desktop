@@ -702,7 +702,7 @@ impl Compositor {
             let same = |drawn: &Drawn| Arc::ptr_eq(&drawn.config, &config) && drawn.scale == scale;
             let painted_so = had.as_ref().is_some_and(same);
             let (kept, kept_hidden, had) = had.map_or((Vec::new(), Vec::new(), None), |drawn| {
-                let hidden = drawn.pictures.map(|face| face.cards).unwrap_or_default();
+                let hidden = drawn.pictures.map_or_default(|face| face.cards);
                 (drawn.screen.cards, hidden, drawn.shadow)
             });
             let keep = |cards: Vec<Card>| if painted_so { cards } else { Vec::new() };

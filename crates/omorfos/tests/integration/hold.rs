@@ -7,6 +7,7 @@
     reason = "test support code fails the test on any error"
 )]
 
+use std::assert_matches;
 use std::io::Read;
 use std::os::fd::{AsFd, BorrowedFd};
 use std::os::unix::net::{UnixListener, UnixStream};
@@ -118,7 +119,7 @@ fn a_compositor_under_a_holder_serves_the_socket_it_is_handed_and_says_it_is_up(
     );
     let mut peer = omorfos_ipc::Client::connect(&ipc).unwrap();
     let state = session.ask(&mut peer, &omorfos_ipc::Request::State);
-    assert!(matches!(state, omorfos_ipc::Reply::State(_)), "{state:?}");
+    assert_matches!(state, omorfos_ipc::Reply::State(_));
 
     // It is up once.
     session.advance(Duration::from_secs(1));

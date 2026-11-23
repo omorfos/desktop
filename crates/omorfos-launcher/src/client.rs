@@ -406,7 +406,7 @@ impl Shell {
     fn paste(&mut self) {
         let copied = self.copied.as_ref();
         let forms = copied.and_then(|copied| copied.data::<Forms>());
-        let forms = forms.map(Forms::taken).unwrap_or_default();
+        let forms = forms.map_or_default(Forms::taken);
         let text = pasting::TEXTS
             .into_iter()
             .find(|text| forms.iter().any(|form| form == text));
@@ -858,7 +858,7 @@ struct Forms(std::sync::Mutex<Vec<String>>);
 impl Forms {
     /// The forms offered so far.
     fn taken(&self) -> Vec<String> {
-        self.0.lock().map(|forms| forms.clone()).unwrap_or_default()
+        self.0.lock().map_or_default(|forms| forms.clone())
     }
 }
 

@@ -593,8 +593,7 @@ impl Compositor {
     /// that mirror another, where that one stands, and those that are off,
     /// standing nowhere.
     fn ipc_screens(&self) -> Vec<omorfos_ipc::Screen> {
-        let written =
-            |mode: Option<&OfferedMode>| mode.map(ToString::to_string).unwrap_or_default();
+        let written = |mode: Option<&OfferedMode>| mode.map_or_default(ToString::to_string);
         let screen = |head: &Head, area: Rectangle<i32, Logical>, mirrors: String, off: bool| {
             let mut modes = head.modes.clone();
             let largest = |mode: &OfferedMode| {
@@ -653,7 +652,7 @@ impl Compositor {
         // the order they are kept in here.
         let output = |index: usize| {
             let head = self.heads.get(index);
-            head.map(|head| head.output.name()).unwrap_or_default()
+            head.map_or_default(|head| head.output.name())
         };
         // What a key would count to: desktops have numbers, and a
         // workspace made for a fullscreen window has none.

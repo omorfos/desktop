@@ -209,7 +209,7 @@ impl Hand {
 /// Who `program` is as a hand writes it, with `roles` before its number
 /// where there are some.
 fn who(program: &Program, roles: Option<u8>) -> String {
-    let roles = roles.map(|roles| format!(" {roles}")).unwrap_or_default();
+    let roles = roles.map_or_default(|roles| format!(" {roles}"));
     let number = program.number.map(|number| format!(" {number}"));
     let number = number.unwrap_or_default();
     format!(

@@ -243,7 +243,7 @@ fn a_sum_typed_is_answered_and_enter_puts_the_answer_on_the_clipboard() {
     });
     let pipe = client.paste();
     session.roundtrip(&mut client);
-    let text = pipe.map(crate::common::read_text).unwrap_or_default();
+    let text = pipe.map_or_default(crate::common::read_text);
     assert_eq!(text, "3");
     for name in ["files", "firefox", "lens"] {
         assert_eq!(mark(&session, name), "", "{name} is not started");

@@ -322,7 +322,7 @@ impl Compositor {
         let clock = self.clock();
         self.close_switcher(false);
         let head = self.pointer_head();
-        let screen = head.map(|head| domain(head.area())).unwrap_or_default();
+        let screen = head.map_or_default(|head| domain(head.area()));
         let output = head.map(|head| head.output.clone());
         let output = self
             .heads
@@ -1133,7 +1133,7 @@ impl Compositor {
             .into_iter()
             .map(|(blank, rect)| {
                 let kept = had.iter().position(|(kept, _)| *kept == blank);
-                let mut buffer = kept.map(|at| had.swap_remove(at).1).unwrap_or_default();
+                let mut buffer = kept.map_or_default(|at| had.swap_remove(at).1);
                 buffer.update(size(rect), capture);
                 (blank, buffer)
             })

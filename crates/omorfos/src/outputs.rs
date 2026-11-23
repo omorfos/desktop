@@ -66,7 +66,7 @@ impl Head {
     /// The size of the output in pixels, as the screen is made.
     pub(crate) fn pixels(&self) -> Size<i32, Physical> {
         let mode = self.output.current_mode();
-        mode.map(|mode| mode.size).unwrap_or_default()
+        mode.map_or_default(|mode| mode.size)
     }
 
     /// How what is drawn on it is turned: as the configuration says the
@@ -383,7 +383,7 @@ impl Compositor {
     /// that is not there.
     #[must_use]
     pub fn area_of(&self, output: &Output) -> Rectangle<i32, Logical> {
-        self.head(output).map(Head::area).unwrap_or_default()
+        self.head(output).map_or_default(Head::area)
     }
 
     pub(crate) fn head(&self, output: &Output) -> Option<&Head> {
@@ -541,7 +541,7 @@ impl Compositor {
     /// turn against the clock.
     fn rotation_for(&self, name: &str) -> Transform {
         let listed = self.arrangement().named(name);
-        match listed.map(|listed| listed.rotate).unwrap_or_default() {
+        match listed.map_or_default(|listed| listed.rotate) {
             Rotation::Normal => Transform::Normal,
             Rotation::Left => Transform::_90,
             Rotation::Inverted => Transform::_180,

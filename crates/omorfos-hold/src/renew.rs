@@ -84,7 +84,7 @@ impl Hold {
         let socket = self.socket.path().display();
         let compositor = self.compositor.display();
         let own = self.own.as_deref().map(Path::display);
-        let own = own.map(|own| format!("own {own}\n")).unwrap_or_default();
+        let own = own.map_or_default(|own| format!("own {own}\n"));
         let relay = self.relay_program.as_deref().map(Path::display);
         let relay = relay
             .map(|relay| format!("relay {relay}\n"))

@@ -138,7 +138,7 @@ pub(crate) fn answer(
 ) -> Option<zbus::Result<()>> {
     let header = message.header();
     let body = message.body();
-    let who = header.sender().map(ToString::to_string).unwrap_or_default();
+    let who = header.sender().map_or_default(ToString::to_string);
     let refuse = |name: &str, why: &str| connection.reply_error(&header, name, &why);
     let malformed = || {
         let name = "org.freedesktop.DBus.Error.InvalidArgs";

@@ -701,7 +701,7 @@ impl Shell {
     /// Moves the keyboard on from the field to each button in turn, and
     /// round to the field again; or `back`.
     fn tab(&mut self, back: bool) {
-        let buttons = self.power.as_ref().map(Power::buttons).unwrap_or_default();
+        let buttons = self.power.as_ref().map_or_default(Power::buttons);
         let places = buttons.len() + 1;
         let focus = self.focus();
         let on = buttons.iter().position(|button| Some(*button) == focus);

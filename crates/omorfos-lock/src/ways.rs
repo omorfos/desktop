@@ -283,7 +283,7 @@ mod tests {
         let mut ways = Ways::new(&ways, PathBuf::new(), String::new(), words);
         ways.heard((way, said), Instant::now());
         let asking = ways.asking.iter().find(|asking| asking.way == way);
-        asking.map(|asking| asking.said.clone()).unwrap_or_default()
+        asking.map_or_default(|asking| asking.said.clone())
     }
 
     #[test]

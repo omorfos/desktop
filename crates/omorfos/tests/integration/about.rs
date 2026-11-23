@@ -389,7 +389,7 @@ fn pasted(session: &mut Session, client: &mut crate::common::Client) -> String {
     let pipe = client.paste();
     session.roundtrip(client);
     // Nothing on offer is nothing pasted, which the test finds wanting.
-    pipe.map(crate::common::read_text).unwrap_or_default()
+    pipe.map_or_default(crate::common::read_text)
 }
 
 #[test]

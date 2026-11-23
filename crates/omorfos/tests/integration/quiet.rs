@@ -1,6 +1,7 @@
 //! A session with nothing changing: the third priority, no work when
 //! nothing changes, held as a gate.
 
+use std::assert_matches;
 use std::time::Duration;
 
 use omorfos::Input;
@@ -73,7 +74,7 @@ fn a_session_with_nothing_changing_allocates_no_more_for_a_peer_that_follows_it(
     let mut client = session.connect();
     let _window = session.open_decorated(&mut client, "app", (200, 100), 0xff00_ff00);
     let told = session.ask(&mut peer, &omorfos_ipc::Request::Subscribe);
-    assert!(matches!(told, omorfos_ipc::Reply::State(_)), "{told:?}");
+    assert_matches!(told, omorfos_ipc::Reply::State(_));
     session.eventually(|session| !session.render());
 
     for turn in 0..10 {

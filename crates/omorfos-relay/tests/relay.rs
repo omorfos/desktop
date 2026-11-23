@@ -9,6 +9,7 @@
     reason = "test support code fails the test on any error"
 )]
 
+use std::assert_matches;
 use std::io::{Read, Write};
 use std::os::fd::{AsFd, OwnedFd};
 use std::os::unix::net::{UnixListener, UnixStream};
@@ -958,7 +959,7 @@ fn a_program_that_connects_when_no_descriptor_is_left_is_let_in_once_one_is() {
     drop(taken);
     held.until(|held| held.relay.programs() == 1);
     let handed = held.handed(&compositor);
-    assert!(matches!(handed.hand, Some(Hand::Program(_))));
+    assert_matches!(handed.hand, Some(Hand::Program(_)));
 }
 
 #[test]
@@ -1063,7 +1064,7 @@ fn a_program_that_has_the_socket_of_its_sandbox_wait_stops_nothing() {
         let _ = done.send(handed.hand);
     });
     let handed = finished.recv_timeout(Duration::from_secs(5));
-    assert!(matches!(handed, Ok(Some(Hand::Sandboxed(_)))), "{handed:?}");
+    assert_matches!(handed, Ok(Some(Hand::Sandboxed(_))));
 }
 
 #[test]
@@ -1113,7 +1114,7 @@ fn a_program_in_a_sandbox_that_makes_one_is_let_go_and_said_to_be() {
     held.step();
     let inside = UnixStream::connect(&path).unwrap();
     let handed = held.handed(&compositor);
-    assert!(matches!(handed.hand, Some(Hand::Sandboxed(_))));
+    assert_matches!(handed.hand, Some(Hand::Sandboxed(_)));
 
     let another = UnixListener::bind(directory.path().join("another")).unwrap();
     make_sandbox(&inside, &another, &closing);

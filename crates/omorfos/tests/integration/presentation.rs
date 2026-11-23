@@ -1,6 +1,7 @@
 //! Telling programs when what they drew reached the screen
 //! (`presentation-time`).
 
+use std::assert_matches;
 use std::time::{Duration, SystemTime};
 
 use omorfos_config::{Action, WorkspaceNumber};
@@ -120,10 +121,10 @@ fn a_window_not_on_the_screen_is_told_of_the_first_frame_it_is_in() {
     session.draw();
     session.present(Some(&CARD), Some(REFRESH));
     session.roundtrip(&mut client);
-    assert!(matches!(
+    assert_matches!(
         told(client.take_events())[..],
         [Event::Presented { sequence: 42, .. }]
-    ));
+    );
 }
 
 #[test]
@@ -165,8 +166,8 @@ fn a_panel_is_told_when_what_it_drew_reached_the_screen() {
     session.present(Some(&CARD), Some(REFRESH));
     session.roundtrip(&mut client);
 
-    assert!(matches!(
+    assert_matches!(
         told(client.take_events())[..],
         [Event::Presented { sequence: 42, .. }]
-    ));
+    );
 }

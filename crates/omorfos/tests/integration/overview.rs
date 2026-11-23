@@ -88,7 +88,7 @@ fn shown(session: &Session) -> Option<Shown> {
 fn place(session: &Session, which: &str) -> Rect {
     let (places, _) = shown(session).unwrap_or_default();
     let found = places.into_iter().find(|(name, _)| name == which);
-    found.map(|(_, place)| place).unwrap_or_default()
+    found.map_or_default(|(_, place)| place)
 }
 
 /// Three windows side by side across the screen, the last with focus,
@@ -591,7 +591,7 @@ fn private_in(session: &Session, on: Rect) -> (i32, i32) {
         .find(|listed| listed.window.app_id == "private");
     let id = id.map(|listed| listed.window.id);
     let frame = id.and_then(|id| desktop.frame_of(id));
-    let frame = frame.map(|frame| frame.geometry).unwrap_or_default();
+    let frame = frame.map_or_default(|frame| frame.geometry);
     let (x, y) = middle(frame);
     let x = on.origin.x + x * on.size.width.cast_signed() / WIDTH;
     let y = on.origin.y + y * on.size.width.cast_signed() / WIDTH;

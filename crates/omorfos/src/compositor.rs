@@ -1723,7 +1723,7 @@ impl Compositor {
     fn open_menu_of(&mut self, items: Vec<Item<Action>>) {
         let config = Arc::clone(self.store.current());
         // The menu stays on the output the pointer is on.
-        let area = self.pointer_head().map(Head::area).unwrap_or_default();
+        let area = self.pointer_head().map_or_default(Head::area);
         let area = Rect::new(
             DomainPoint::new(area.loc.x, area.loc.y),
             DomainSize::new(area.size.w.unsigned_abs(), area.size.h.unsigned_abs()),
@@ -2913,7 +2913,7 @@ impl Compositor {
         let (theme, scheme) = (&config.theme, config.scheme);
         let asked = self.cards.about.asked;
         let screen = asked.and_then(|at| self.head_at(at).or(self.primary_head()));
-        let within = screen.map(Head::area).unwrap_or_default();
+        let within = screen.map_or_default(Head::area);
         let scale = screen.map_or(Scale::ONE, |screen| screen.scale);
         let wanted = screen.is_some();
         // One that is no longer wanted fades out as it was; one painted
@@ -3037,7 +3037,7 @@ impl Compositor {
         // The notice is on the output that comes first, which is where a
         // session with one screen has it.
         let first = self.primary_head();
-        let within = first.map(Head::area).unwrap_or_default();
+        let within = first.map_or_default(Head::area);
         let scale = first.map_or(Scale::ONE, |head| head.scale);
         // One that is no longer wanted fades out as it was.
         let had = self.cards.notice.take();
@@ -3256,7 +3256,7 @@ impl Compositor {
         }
         let head = self.head(output);
         let view = View {
-            origin: head.map(|head| head.area().loc).unwrap_or_default(),
+            origin: head.map_or_default(|head| head.area().loc),
             scale: head.map_or(Scale::ONE, |head| head.scale),
         };
         if self.is_locked() {
@@ -3345,7 +3345,7 @@ impl Compositor {
         let scene = self.elements(renderer, output, view, shown);
         let desktop = self.config().theme.style(Part::Desktop, States::NONE);
         let behind = color(desktop.ground());
-        let size = self.head(output).map(Head::upright).unwrap_or_default();
+        let size = self.head(output).map_or_default(Head::upright);
         let solid = self.config().general.appearance.reduce_transparency;
         // Set aside while the screen's name is borrowed, which costs nothing.
         let mut glass = std::mem::take(&mut self.animation.glass);
@@ -3658,10 +3658,10 @@ impl Compositor {
         let room = self.aside.mirrors[at].head.upright();
         let head = self.head(&source);
         let view = View {
-            origin: head.map(|head| head.area().loc).unwrap_or_default(),
+            origin: head.map_or_default(|head| head.area().loc),
             scale: head.map_or(Scale::ONE, |head| head.scale),
         };
-        let picture = head.map(Head::upright).unwrap_or_default();
+        let picture = head.map_or_default(Head::upright);
         let (zoom, shown) = fitted(picture, room);
         let mirror = &mut self.aside.mirrors[at];
         let mut elements: Vec<Mirrored<R>> = Vec::new();
@@ -5735,7 +5735,7 @@ impl MenuChrome {
             })
             .collect();
         let style = theme.style(Part::Menu, States::NONE);
-        let mut had = had.map(|had| had.shadows).unwrap_or_default().into_iter();
+        let mut had = had.map_or_default(|had| had.shadows).into_iter();
         let shadows = panels.iter().filter_map(|(at, panel)| {
             let area = (at.x, at.y, panel.width(), panel.height());
             shades.cast(&style, scale, area, had.next())

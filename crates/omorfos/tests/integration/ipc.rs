@@ -1,5 +1,6 @@
 //! The IPC socket, used through the client other programs would use.
 
+use std::assert_matches;
 use std::io::{Read, Write};
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::net::UnixStream;
@@ -53,10 +54,10 @@ fn a_socket_left_behind_by_an_earlier_run_is_replaced() {
     std::fs::write(session.config.path().join("ipc.sock"), "stale").unwrap();
     let path = session.listen();
     let mut peer = Client::connect(&path).unwrap();
-    assert!(matches!(
+    assert_matches!(
         session.ask(&mut peer, &Request::Version),
         Reply::Version { .. }
-    ));
+    );
 }
 
 #[test]
@@ -237,7 +238,7 @@ fn a_window_can_be_activated_by_its_identifier() {
 fn pasted(session: &mut Session, client: &mut crate::common::Client) -> String {
     let pipe = client.paste();
     session.roundtrip(client);
-    pipe.map(crate::common::read_text).unwrap_or_default()
+    pipe.map_or_default(crate::common::read_text)
 }
 
 #[test]
@@ -362,7 +363,7 @@ fn told(session: &mut Session, peer: &mut Client) -> Option<State> {
     match peer.try_receive() {
         Ok(Some(Reply::State(state))) => Some(state),
         other => {
-            assert!(matches!(other, Ok(None)), "{other:?}");
+            assert_matches!(other, Ok(None));
             None
         }
     }
@@ -498,8 +499,8 @@ fn a_line_as_long_as_a_message_may_be_is_still_read() {
     session.step();
 
     let mut peer = Client::from_stream(raw);
-    assert!(matches!(peer.receive().unwrap(), Reply::Error { .. }));
-    assert!(matches!(peer.receive().unwrap(), Reply::Version { .. }));
+    assert_matches!(peer.receive().unwrap(), Reply::Error { .. });
+    assert_matches!(peer.receive().unwrap(), Reply::Version { .. });
 }
 
 #[test]
@@ -587,10 +588,10 @@ fn a_peer_that_disconnects_is_forgotten_and_others_carry_on() {
     let path = session.listen();
     let mut leaving = Client::connect(&path).unwrap();
     let mut staying = Client::connect(&path).unwrap();
-    assert!(matches!(
+    assert_matches!(
         session.ask(&mut leaving, &Request::Subscribe),
         Reply::State(_)
-    ));
+    );
     drop(leaving);
     session.step();
     assert_eq!(
@@ -614,10 +615,10 @@ fn connections_beyond_the_limit_are_turned_away() {
         "the thirty-third is refused"
     );
     let mut first = Client::from_stream(peers.remove(0));
-    assert!(matches!(
+    assert_matches!(
         session.ask(&mut first, &Request::Version),
         Reply::Version { .. }
-    ));
+    );
 }
 
 #[test]
@@ -1059,7 +1060,7 @@ fn a_peer_that_connects_when_no_descriptor_is_left_is_served_once_one_is() {
     drop(taken);
     let mut peer = Client::from_stream(waiting);
     let reply = session.ask(&mut peer, &Request::State);
-    assert!(matches!(reply, Reply::State(_)), "{reply:?}");
+    assert_matches!(reply, Reply::State(_));
 }
 
 #[test]
