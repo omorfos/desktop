@@ -3339,6 +3339,46 @@ stages it belongs to:
       last frame alone, which measuring glass on 23 November needed a
       sampler written for.
 
+The review of 23 November 2026, of the whole tree for safety, speed and
+use, by eight reviewers at once, is written up in
+[reviews/2026-11-23-the-whole-tree-for-safety-speed-and-use.md](reviews/2026-11-23-the-whole-tree-for-safety-speed-and-use.md),
+in the order to take it; each that is put right is a pull request of
+its own, and none it found is high:
+
+- [ ] Medium: a lock screen started after a file has gone wrong uses the
+      defaults, where the rest of the session uses what it kept
+      ([finding 1](reviews/2026-11-23-the-whole-tree-for-safety-speed-and-use.md#1-a-lock-screen-started-after-a-file-has-gone-wrong-uses-the-defaults-where-the-rest-of-the-session-uses-what-it-kept)):
+      it starts from the kept copy, for what it offers and how it looks
+      (#95).
+- [ ] Medium: a critical notification can be the one to go when there
+      are too many
+      ([finding 2](reviews/2026-11-23-the-whole-tree-for-safety-speed-and-use.md#2-a-critical-notification-can-be-the-one-to-go-when-there-are-too-many)):
+      the oldest that is not critical goes, while there is one (#100).
+- [ ] Medium: each refresh looks every window up in two lists, so a
+      quiet turn costs as the square of the windows
+      ([finding 3](reviews/2026-11-23-the-whole-tree-for-safety-speed-and-use.md#3-each-refresh-looks-every-window-up-in-two-lists-so-a-quiet-turn-costs-as-the-square-of-the-windows)):
+      the benchmark first.
+- [ ] Medium: what is captured is worked out, and written, rectangle by
+      rectangle
+      ([finding 4](reviews/2026-11-23-the-whole-tree-for-safety-speed-and-use.md#4-what-is-captured-is-worked-out-and-written-rectangle-by-rectangle)):
+      the benchmark first.
+- [ ] Low: the tests' Wayland client took a connection it could not read
+      for one with nothing to read
+      ([finding 5](reviews/2026-11-23-the-whole-tree-for-safety-speed-and-use.md#5-the-tests-wayland-client-took-a-connection-it-could-not-read-for-one-with-nothing-to-read)) (#98).
+- [ ] Low: the shell's pictures handed to the compositor without
+      checking that their size and bytes agree
+      ([finding 6](reviews/2026-11-23-the-whole-tree-for-safety-speed-and-use.md#6-the-shells-pictures-are-handed-to-the-compositor-without-checking-that-their-size-and-bytes-agree)) (#97).
+- [ ] Low: the relayed clipboard test's last assertion holds whatever the
+      keeper does
+      ([finding 7](reviews/2026-11-23-the-whole-tree-for-safety-speed-and-use.md#7-the-relayed-clipboard-tests-last-assertion-holds-whatever-the-keeper-does)) (#99).
+- [ ] Low: three documents said what is not so
+      ([finding 8](reviews/2026-11-23-the-whole-tree-for-safety-speed-and-use.md#8-three-documents-said-what-is-not-so)) (#96).
+- [ ] Why the portal sometimes waits more than five seconds to end
+      once the bus has gone, failing
+      `it_ends_when_the_bus_does_and_needs_no_configuration_it_can_watch`
+      in full runs
+      ([seen in passing](reviews/2026-11-23-the-whole-tree-for-safety-speed-and-use.md#seen-in-passing)).
+
 ## 9. For others to build on
 
 Asked for on 14 November 2026: a way for other projects and repositories
