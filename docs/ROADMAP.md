@@ -2732,6 +2732,17 @@ Hardware and performance:
 - [x] The strips a window is cut into for its frame's rounded corners
       kept with the frame, and worked out again only when the frame, the
       window or the radius changes, rather than twice a turn.
+- [ ] Every program that loads the configuration woken by whatever is
+      made, taken away or renamed beside its directory, as in `~/.config`
+      as each program there saves a file by renaming: since the watcher
+      watches the directory it is in for it being replaced (ADR 3), to do
+      nothing. Found on 23 November 2026, when it made the two tests that
+      count the loop's turns while no descriptor is left fail on a busy
+      `/tmp`, where each test's configuration was then; it is now in a
+      directory of its own. inotify cannot watch one name in a directory
+      alone, so the cost is to be weighed against what the watch catches,
+      or the watch made on the directory itself only, with what is lost
+      where it is replaced said in the guide.
 - [ ] A turn with nothing changing allocating nothing, the gate's ceiling
       lowered as each goes. With one window in a frame of ours, as `quiet::`
       has it since the X11 work showed the frame was being left out, 18:

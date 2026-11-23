@@ -16,7 +16,7 @@ fn the_defaults_have_no_problems() {
 fn the_configuration_directory_is_created_on_first_run() {
     let home = TempDir::new().unwrap();
     let directory = home.path().join("config").join("omorfos");
-    let session = Session::in_directory(home, Some(&directory));
+    let session = Session::in_directory(home, &directory);
     assert!(directory.is_dir());
     assert_eq!(session.compositor().problems(), [""; 0]);
 }
@@ -26,7 +26,7 @@ fn a_directory_that_cannot_be_used_is_reported_and_defaults_apply() {
     let home = TempDir::new().unwrap();
     std::fs::write(home.path().join("file"), "").unwrap();
     let directory = home.path().join("file").join("omorfos");
-    let session = Session::in_directory(home, Some(&directory));
+    let session = Session::in_directory(home, &directory);
 
     let problems = session.compositor().problems();
     assert!(

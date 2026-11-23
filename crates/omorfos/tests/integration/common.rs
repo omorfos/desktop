@@ -164,6 +164,23 @@ pub(crate) mod key {
     pub(crate) const DISPLAY: Keycode = Keycode::new(235);
 }
 
+/// A session's configuration directory, in a directory of its own. Each
+/// program watches the directory its configuration is in as well, for it
+/// being replaced, and is woken by whatever comes and goes there: in
+/// `/tmp`, where every test makes its own, that is never quiet, and a test
+/// that counts the turns of the loop would count those.
+pub(crate) struct Config {
+    directory: PathBuf,
+    _home: TempDir,
+}
+
+impl Config {
+    /// Where the configuration is.
+    pub(crate) fn path(&self) -> &Path {
+        &self.directory
+    }
+}
+
 /// A compositor with a software-rendered output and its own configuration
 /// directory.
 pub(crate) struct Session {
@@ -172,7 +189,7 @@ pub(crate) struct Session {
     /// The outputs, each with the picture it is drawn into. Tests that do
     /// not care have one, [`WIDTH`] by [`HEIGHT`].
     monitors: Vec<Monitor>,
-    pub(crate) config: TempDir,
+    pub(crate) config: Config,
     /// The time the compositor is told it is. Tests advance it by hand.
     pub(crate) now: Instant,
     /// What else is stepped each time the compositor is, such as a relay
@@ -251,22 +268,27 @@ impl Session {
 
     /// Starts a compositor whose configuration directory holds `files`.
     pub(crate) fn with_config(files: &[(&str, &str)]) -> Self {
-        let config = TempDir::new().unwrap();
+        let home = TempDir::new().unwrap();
+        let config = home.path().join("omorfos");
+        std::fs::create_dir(&config).unwrap();
         for (name, contents) in files {
-            std::fs::write(config.path().join(name), contents).unwrap();
+            std::fs::write(config.join(name), contents).unwrap();
         }
         // Nothing takes time unless the test says so.
         let theme = files.iter().find(|(name, _)| *name == "theme.css");
         let theme = theme.map_or("", |(_, contents)| contents);
-        std::fs::write(config.path().join("theme.css"), still(theme)).unwrap();
-        Self::in_directory(config, None)
+        std::fs::write(config.join("theme.css"), still(theme)).unwrap();
+        Self::in_directory(home, &config)
     }
 
-    /// Starts a compositor reading configuration from `directory`, or from
-    /// the temporary directory itself when `None`.
-    pub(crate) fn in_directory(config: TempDir, directory: Option<&Path>) -> Self {
-        let directory = directory.unwrap_or(config.path()).to_owned();
-        let mut inner = omorfos::Session::new(directory).unwrap();
+    /// Starts a compositor reading configuration from `directory`, in
+    /// `home`, which goes when the session does.
+    pub(crate) fn in_directory(home: TempDir, directory: &Path) -> Self {
+        let config = Config {
+            directory: directory.to_owned(),
+            _home: home,
+        };
+        let mut inner = omorfos::Session::new(config.directory.clone()).unwrap();
         // In English, whatever language the machine running them is in.
         inner.compositor_mut().set_languages(&[]);
         let mut session = Self {
@@ -360,7 +382,7 @@ impl Session {
     }
 
     /// Ends the session, keeping its configuration directory.
-    pub(crate) fn end(self) -> TempDir {
+    pub(crate) fn end(self) -> Config {
         self.config
     }
 
