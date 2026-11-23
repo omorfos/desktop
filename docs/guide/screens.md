@@ -109,7 +109,9 @@ it are drawn a little smaller than on one as dense of 20 inches or more
 on a desk. A television, over 56 cm on its shorter side, and a screen that
 does not say its size, are drawn by their resolution alone: 2 at 3840
 by 2160. The scale is a quarter up to 2 and a half beyond, and 1 or 2
-where it is near them, those being the sharpest; it is guessed again
+where it is near them, those being the sharpest, and 2 a little further
+above it than below, so that a 14-inch laptop of 3840 by 2160 is drawn
+at 2 and not 2.5; it is guessed again
 when a screen is driven in another `mode`. If the choice does not
 suit you, give a number: `1` is one pixel to a pixel, `1.5` half as
 large again, `2` twice the size.

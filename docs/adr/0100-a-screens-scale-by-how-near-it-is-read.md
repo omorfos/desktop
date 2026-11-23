@@ -66,11 +66,12 @@ that cannot say, from its resolution.** In this order:
    aimed at 135 to the inch; one of 20 inches or more stands on a
    desk, and is aimed at 110. The sum is the one over the other.
 4. **The sum is rounded to a quarter up to 2 and to a half beyond
-   it, and to 1 or 2 where it is within 0.15 of them.** So 1 is
-   anything up to 1.15, 2 is anything from 1.85 to under 2.25, and
-   nothing is under 1 or over 4. The lines between one scale and the
-   next are at 1.15, 1.375, 1.625, 1.85, 2.25, 2.75, 3.25 and 3.75. A
-   sum on a line takes the larger scale, but at 1.15, where it is 1.
+   it, and to 1 or 2 where it is within 0.15 of them, or up to 0.35
+   over 2.** So 1 is anything up to 1.15, 2 is anything from 1.85 to
+   2.35, and nothing is under 1 or over 4. The lines between one
+   scale and the next are at 1.15, 1.375, 1.625, 1.85, 2.35, 2.75,
+   3.25 and 3.75. A sum on a line takes the larger scale, but at 1.15
+   and 2.35, where it is 1 and 2.
 5. **Something is kept back.** No guess leaves fewer than 720 units
    on a screen's shorter side: one that would is brought down a step
    at a time until it does not.
@@ -94,10 +95,11 @@ Why these numbers:
 
 - **135 and 110** are GNOME's, which found 135 by trying, to match
   what macOS, Android, iOS and Windows show. Of the densities a
-  system uses, 135 is the one that gives the maintainer's laptop 2:
-  Windows's 110 gives it 2.5, and KDE's 125 puts its sum at 2.26, on
-  the line between 2 and 2.5. By the reference pixel 135 is reading
-  from 51 cm, and 110 from 62.
+  system uses, 135 is the one nearest to giving the maintainer's
+  laptop 2: at the size its panel says, its sum is 2.34 at 135, which
+  2 taken up to 0.35 over it makes 2; Windows's 110 gives it 3, and
+  KDE's 125 2.5. By the reference pixel 135 is reading from 51 cm, and
+  110 from 62.
 - **Near or on a desk by size, and not by socket**, as the roadmap
   had it. A second screen of 15 inches beside a laptop is read as the
   laptop is, and so the same panel gets the same scale on either;
@@ -107,10 +109,14 @@ Why these numbers:
   though it is not a laptop's, and one put further off is a setting
   away. At 1920 by 1080 a screen of 19 to 22 inches is 1 either side
   of the line, so the line falls where little turns on it.
-- **Halves beyond 2** keep the laptop's answer whatever its panel
-  says of itself: 2 for any width from 321 to 390 mm. In quarters it
-  would be 2.25 from 336 mm down, and that panel says 342 or less.
-  Windows's default has no 225% either.
+- **Halves beyond 2, and 2 up to 0.35 over it,** keep the laptop's
+  answer whatever its panel says of itself: 2 for any width from 308
+  to 390 mm. Its panel, a BOE NV140QUM-N53, says 309 by 174 mm, 14
+  inches and not the 15.6 first taken for it: 316 to the inch, and a
+  sum of 2.34, which halves alone make 2.5, the scale that was too
+  large. 2 is the sharper, and large enough, and the 14-inch 3840 by
+  2400, at 2.40, stays at 2.5. In quarters it would be 2.25 from 336
+  mm down. Windows's default has no 225% either.
 - **0.15** stops short of the 14-inch 1920 by 1080, whose sum is
   1.17, and which KDE, GNOME and ChromeOS give 1.25.
 - **560 mm** is midway, near enough, between the 43-inch screens that
@@ -199,8 +205,8 @@ The lines are where the decision has them, and a test stands to
 either side of each and not on it: no screen's sum falls on one, and
 what a number on a line comes to depends on how it is held. A sum of
 1.14 is 1, and one of 1.16 is 1.25. 1.37 is 1.25 and 1.38 is 1.5;
-1.62 is 1.5 and 1.63 is 1.75; 1.84 is 1.75 and 1.86 is 2; 2.24 is 2
-and 2.26 is 2.5; 2.74 is 2.5 and 2.76 is 3; 3.24 is 3 and 3.26 is
+1.62 is 1.5 and 1.63 is 1.75; 1.84 is 1.75 and 1.86 is 2; 2.35 is 2
+and 2.36 is 2.5; 2.74 is 2.5 and 2.76 is 3; 3.24 is 3 and 3.26 is
 3.5; 3.74 is 3.5 and 3.76 is 4, as is anything over.
 
 A 7-inch 1280 by 800, whose sum is 1.6, stays at 1, as 1.25 would
@@ -220,7 +226,7 @@ is 10 mm square gets 3.
 - **A density that gives that laptop 1.75**, which is one from 153 to
   173. Aimed at 160, the rule is under KDE, GNOME, ChromeOS and
   Windows at once on 15 of the 18 rows of screens under 20 inches; at
-  150 on 11; at 140 on 5; at 135 on one.
+  150 on 12; at 140 on 6; at 135 on one.
 - **Quarters all the way**, with the whole scale where within 0.15.
   What was first recommended. It leaves that laptop 1% from the line
   to 2.25 if its panel says 340 mm, and over it from 336 mm down.
@@ -250,10 +256,11 @@ is 10 mm square gets 3.
 - **All 32 rows are within what the survey's eight other rules give,
   and all but one within KDE, GNOME, ChromeOS and Windows.** The one
   is the 14-inch 2560 by 1600, at 1.5 where those four give 1.6 to 2.
-- **Lines remain.** Four of the 18 rows are within 2% of one: the
+- **Lines remain.** Five of the 18 rows are within 2% of one: the
   14-inch 1920 by 1080, at 1.17 by the line at 1.15; the 14- and
   16-inch 2560 by 1600, at 1.60 and 1.40 by those at 1.625 and 1.375;
-  and the 17.3-inch 3840 by 2160, at 1.89 by that at 1.85. A panel
+  the 17.3-inch 3840 by 2160, at 1.89 by that at 1.85; and the 14-inch
+  3840 by 2400, at 2.40 by that at 2.35. A panel
   says the same of itself each time, so a machine keeps its answer;
   two machines of one model whose panels say different sizes may not
   get the same.

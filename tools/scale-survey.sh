@@ -674,9 +674,12 @@ function the_screens() {
     tabled = screens
 
     # The laptop the roadmap names, by its nominal size and in whole
-    # centimetres.
+    # centimetres, as the survey took it.
     named = screen("", "laptop", 15.6, 3840, 2160)
     named_in_centimetres = screen_saying("", "laptop", 15.6, 3840, 2160, 340, 190)
+    # And as its panel says it is, read from its EDID on 23 November 2026:
+    # 14 inches, 309 by 174 mm.
+    measured = screen_saying("", "laptop", 14, 3840, 2160, 309, 174)
 
     # What is kept back: a 7-inch and a 6.8-inch screen, and one that says it
     # is 10 mm square.
@@ -725,6 +728,7 @@ function the_rule(    i) {
     near_under = 20
     a_television_over = 560
     whole_within = 0.15
+    two_within_over = 0.35
     lines_to_a_scale = 1080
     kept_back_to = 720
     # The lines between one scale and the next, and a hundredth or so to
@@ -733,22 +737,24 @@ function the_rule(    i) {
     line_at[2] = 1.375
     line_at[3] = 1.625
     line_at[4] = 2 - whole_within
-    line_at[5] = 2.25
+    line_at[5] = 2 + two_within_over
     line_at[6] = 2.75
     line_at[7] = 3.25
     line_at[8] = 3.75
-    split("1.14 1.37 1.62 1.84 2.24 2.74 3.24 3.74", just_under, " ")
-    split("1.16 1.38 1.63 1.86 2.26 2.76 3.26 3.76", just_over, " ")
+    split("1.14 1.37 1.62 1.84 2.35 2.74 3.24 3.74", just_under, " ")
+    split("1.16 1.38 1.63 1.86 2.36 2.76 3.26 3.76", just_over, " ")
     for (i = 1; i <= 8; i++) {
         just_under[i] += 0
         just_over[i] += 0
     }
 }
 
-# A quarter up to 2 and a half beyond; 1 or 2 where within 0.15 of them.
+# A quarter up to 2 and a half beyond; 1 or 2 where within 0.15 of them,
+# and 2 up to 0.35 over it.
 function rounded(wanted,    scale) {
     if (wanted >= 2) {
         scale = nearest(wanted * 2) / 2
+        if (wanted <= 2 + two_within_over) scale = 2
     } else {
         scale = nearest(wanted * 4) / 4
         if (abs(wanted - 1) <= whole_within) scale = 1
@@ -1135,8 +1141,9 @@ function decision_figures(    monitor, w, first_at_2, last_at_2, widest_over, sh
         written(windows(monitor))))
     figure(decision, sprintf("is taken at its word and given %s",
         written(omorfos_today(sized(3840, 2160, 160, 90)))))
-    figure(decision, sprintf("Windows's 110 gives it %s, and KDE's 125 puts its sum at %.2f",
-        written(rounded(density(named) / 110)), density(named) / 125))
+    figure(decision, sprintf("its sum is %.2f at 135", density(measured) / aim_near))
+    figure(decision, sprintf("Windows's 110 gives it %s, and KDE's 125 %s",
+        written(rounded(density(measured) / 110)), written(rounded(density(measured) / 125))))
 
     first_at_2 = 0
     last_at_2 = 0
@@ -1230,10 +1237,10 @@ function decision_figures(    monitor, w, first_at_2, last_at_2, widest_over, sh
     figure(decision, sprintf("%s of the %d rows are within 2%% of one",
         capital(word(near_a_line)), count_of("laptop")))
     figure(decision, sprintf("at %s by the line at 1.15; the 14- and 16-inch 2560 by 1600, at " \
-        "%s and %s by those at 1.625 and 1.375; and the 17.3-inch 3840 by 2160, at %s by that " \
-        "at 1.85",
+        "%s and %s by those at 1.625 and 1.375; the 17.3-inch 3840 by 2160, at %s by that " \
+        "at 1.85; and the 14-inch 3840 by 2400, at %s by that at %s",
         sum_of("14 in, 1920 by 1080"), sum_of("14 in, 2560 by 1600"), sum_of("16 in, 2560 by 1600"),
-        sum_of("17.3 in, 3840 by 2160")))
+        sum_of("17.3 in, 3840 by 2160"), sum_of("14 in, 3840 by 2400"), 2 + two_within_over))
 }
 
 BEGIN {

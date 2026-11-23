@@ -518,7 +518,14 @@ calls for them.
         themselves: what the laptop's panel says its size is, which
         for the old rule's 2.5 is 342 mm wide or less where 15.6 inches is
         345; and what Windows and macOS choose where the survey has
-        only users' word for it, over 250% and on a television.
+        only users' word for it, over 250% and on a television. The
+        panel, read from its EDID on 23 November 2026, is a BOE
+        NV140QUM-N53 of 14 inches, 309 by 174 mm, 316 to the inch, for
+        which ADR 100's rule gave 2.5: 2 is now taken up to 0.35 over
+        it, which gives it 2 and changes no screen of the survey's. It
+        names no model in its name and no serial, which a screen known
+        by what it is has to allow for. What Windows and macOS choose is
+        still to be found.
   - [ ] A screen known by what it is: its maker, model and serial, as
         it says them, and the socket only where it says none. What is
         set for a screen by its socket's name goes on working.

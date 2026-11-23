@@ -21,6 +21,10 @@ const NEAR_UNDER: f64 = 20.0;
 const A_TELEVISION_OVER: u32 = 560;
 /// How near 1 or 2 a sum is taken for them.
 const WHOLE_WITHIN: f64 = 0.15;
+/// How far over 2 a sum is still taken for 2: further than below it, as
+/// a dense laptop is sharper at 2 than at 2.5 and large enough, as one
+/// of 14 inches and 3840 by 2160, at 2.34, is (ADR 100).
+const TWO_WITHIN_OVER: f64 = 0.35;
 /// The lines to a whole scale, where a screen's size is not gone by.
 const LINES_TO_A_SCALE: u32 = 1080;
 /// The units no scale leaves fewer of on a screen's shorter side.
@@ -141,11 +145,12 @@ impl Scale {
 
     /// The scale a sum of how dense a screen is, over what it is aimed at,
     /// comes to: a quarter up to 2 and a half beyond, and 1 or 2 where it
-    /// is within 0.15 of them, those being the sharpest.
+    /// is within 0.15 of them, or up to 0.35 over 2, those being the
+    /// sharpest.
     fn rounded(sum: f64) -> Self {
         if (sum - 1.0).abs() <= WHOLE_WITHIN {
             Self::ONE
-        } else if (sum - 2.0).abs() <= WHOLE_WITHIN {
+        } else if (2.0 - WHOLE_WITHIN..=2.0 + TWO_WITHIN_OVER).contains(&sum) {
             Self::new(2.0)
         } else if sum > 2.0 {
             Self::new((sum * 2.0).round() / 2.0)
@@ -267,8 +272,15 @@ mod tests {
     }
 
     #[test]
+    fn the_maintainers_laptop_is_given_2_at_the_size_its_panel_says() {
+        // A BOE NV140QUM-N53, 14 inches, 3840 by 2160: 316 to the inch,
+        // which over what is aimed at is 2.34.
+        gives(Scale::for_screen((3840, 2160), (309, 174)), 2.0);
+    }
+
+    #[test]
     fn the_maintainers_laptop_is_given_2_whatever_width_its_panel_says() {
-        for width in 321..=390 {
+        for width in 309..=390 {
             let height = (width * 9 + 8) / 16;
             gives(Scale::for_screen((3840, 2160), (width, height)), 2.0);
         }
@@ -360,7 +372,8 @@ mod tests {
             (1.84, 1.75),
             (1.86, 2.0),
             (2.24, 2.0),
-            (2.26, 2.5),
+            (2.35, 2.0),
+            (2.36, 2.5),
             (2.74, 2.5),
             (2.76, 3.0),
             (3.24, 3.0),
