@@ -620,6 +620,9 @@ impl Compositor {
                     serial: identity.serial.clone(),
                 }),
                 known: head.known().to_owned(),
+                scale: head.scale.factor().to_string(),
+                pixel_width: head.pixels().w.unsigned_abs(),
+                pixel_height: head.pixels().h.unsigned_abs(),
             }
         };
         let standing = self.arranged().into_iter().map(|index| {

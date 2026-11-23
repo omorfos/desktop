@@ -137,7 +137,10 @@ your own may too; one that only wants to know the state asks `"subscribe"`.
       "preferred": "3840x2160@60",
       "modes": ["3840x2160@60", "3840x2160@48"],
       "says": { "maker": "BOE", "product": 1992, "name": null, "serial": null },
-      "known": "laptop"
+      "known": "laptop",
+      "scale": "2.5",
+      "pixel_width": 3840,
+      "pixel_height": 2160
     }
   ],
   "locked": false,
@@ -167,6 +170,11 @@ it says them; it is null, or absent from an older compositor, where it
 says nothing, as inside another desktop. `known` is the name
 `config.yaml` knows it by: one of the user's from `screens` that it is
 taken for, or else its own; it is absent from an older compositor.
+`width` and `height` are in units of layout, after the screen's scale,
+which reads as a resolution and is not one: `scale` is that scale, as
+`config.yaml` writes one, and `pixel_width` and `pixel_height` its size
+in pixels as it is driven, not turned. They are empty and zero from an
+older compositor.
 
 `locked` is true while the session is locked and nothing of it is on any
 screen: a screen locker holds it, and a frame with only the locker on it

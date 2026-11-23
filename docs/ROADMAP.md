@@ -579,9 +579,11 @@ calls for them.
         only where the user says so. Done as the `guess_scales` and
         `guess_scale` actions, which `omorfosctl action` and keys
         reach; Settings, when there is one, is to offer them.
-  - [ ] Known gap to close with it: `omorfosctl state` says how large a
+  - [x] Known gap to close with it: `omorfosctl state` says how large a
         screen is in units of layout, after its scale, which reads as
-        its resolution and is not: both are to be said.
+        its resolution and is not: both are to be said. The state and
+        `omorfosctl screens` say its scale and its size in pixels beside
+        its size in units.
 - [ ] The windows of a screen that was unplugged put back on it when it
       is plugged in again (asked on 17 November 2026): today they go to
       the primary screen and stay there. Each window is to go back to

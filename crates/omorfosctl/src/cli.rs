@@ -344,6 +344,14 @@ pub(crate) fn screens(state: &State, out: &mut dyn Write) {
         } else {
             format!(", mirroring {}", screen.mirrors)
         };
+        let pixels = if screen.scale.is_empty() {
+            String::new()
+        } else {
+            format!(
+                ", {} by {} pixels at scale {}",
+                screen.pixel_width, screen.pixel_height, screen.scale
+            )
+        };
         let known = if screen.known.is_empty() || screen.known == screen.name {
             String::new()
         } else {
@@ -354,7 +362,7 @@ pub(crate) fn screens(state: &State, out: &mut dyn Write) {
         } else {
             let _ = writeln!(
                 out,
-                "{}{known}: {} by {} units at {},{}{mirrors}{driven}",
+                "{}{known}: {} by {} units at {},{}{pixels}{mirrors}{driven}",
                 screen.name, screen.width, screen.height, screen.x, screen.y
             );
         }
@@ -805,6 +813,9 @@ mod tests {
                     serial: Some("7X3KD13".to_owned()),
                 }),
                 known: "office".to_owned(),
+                scale: "1.5".to_owned(),
+                pixel_width: 3840,
+                pixel_height: 2160,
             },
             omorfos_ipc::Screen {
                 name: "nested".to_owned(),
@@ -839,7 +850,8 @@ mod tests {
         assert_eq!(outcome.code, ExitCode::SUCCESS);
         assert_eq!(
             outcome.out,
-            "DP-1 (office): 2560 by 1440 units at 0,0, driven at 2560x1440@144\n  says { maker: \
+            "DP-1 (office): 2560 by 1440 units at 0,0, 3840 by 2160 pixels at scale 1.5, driven at \
+             2560x1440@144\n  says { maker: \
              DEL, product: 0xa0e1, name: DELL U2720Q, serial: 7X3KD13 }\n  2560x1440@144\n  \
              2560x1440@60, which suits it best\nnested: 640 by 480 units at 2560,0\nHDMI-A-1: 2560 \
              by 1440 units at 0,0, mirroring DP-1, driven at 1920x1080@60\nDP-2: off\n  says { \

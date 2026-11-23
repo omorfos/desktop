@@ -1123,6 +1123,17 @@ fn screens_are_known_by_what_they_say_wherever_they_are_plugged_in() {
         "{listed:?}"
     );
     let office_said = state.screens.iter().find(|screen| screen.known == "office");
+    // Its size in units is after its scale, which is said, with its size
+    // in pixels.
+    let office_listed = office_said.map(|screen| {
+        let units = (screen.width, screen.height);
+        (
+            units,
+            screen.scale.as_str(),
+            (screen.pixel_width, screen.pixel_height),
+        )
+    });
+    assert_eq!(office_listed, Some(((400, 300), "2", (800, 600))));
     let said = office_said.and_then(|screen| screen.says.as_ref()).unwrap();
     assert_eq!(
         (said.maker.as_str(), said.name.as_deref()),

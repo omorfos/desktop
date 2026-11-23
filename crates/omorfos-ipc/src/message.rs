@@ -261,6 +261,18 @@ pub struct Screen {
     /// that it is, or else its own. Empty from a compositor too old to say.
     #[serde(default)]
     pub known: String,
+    /// How many of its pixels it draws to a unit of layout, as `config.yaml`
+    /// writes a scale, such as `1.75`. Empty from a compositor too old to
+    /// say.
+    #[serde(default)]
+    pub scale: String,
+    /// How wide it is in pixels, as it is driven, and not turned: where
+    /// `width` is in units of layout. Zero from a compositor too old to say.
+    #[serde(default)]
+    pub pixel_width: u32,
+    /// How tall.
+    #[serde(default)]
+    pub pixel_height: u32,
 }
 
 /// What a screen says it is, as `screens` in `config.yaml` writes it.
@@ -582,6 +594,9 @@ mod tests {
                     serial: Some("7".to_owned()),
                 }),
                 known: "laptop".to_owned(),
+                scale: "2.5".to_owned(),
+                pixel_width: 3840,
+                pixel_height: 2160,
             }],
             locked: true,
             awake: Some(Awake {
