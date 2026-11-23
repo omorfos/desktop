@@ -1126,7 +1126,8 @@ pub(crate) struct Toplevel {
 }
 
 impl Client {
-    fn new(stream: UnixStream) -> Self {
+    /// A client of the compositor at the other end of `stream`.
+    pub(crate) fn new(stream: UnixStream) -> Self {
         let connection = Connection::from_socket(stream).unwrap();
         let queue = connection.new_event_queue();
         connection.display().get_registry(&queue.handle(), ());
@@ -1370,6 +1371,10 @@ impl Client {
     /// The error the compositor ended the connection with, as the name of
     /// what it was about and its number, once the compositor has handled
     /// what was sent.
+    ///
+    /// A connection that cannot be read for any other reason, such as one
+    /// the compositor closed without saying why, fails the test: it is not
+    /// taken for one with no error.
     #[expect(
         clippy::panic,
         reason = "an I/O failure invalidates the protocol-error assertion"
@@ -2306,20 +2311,6 @@ impl Client {
         let size = u32::try_from(text.len()).unwrap();
         keyboard.keymap(1, file.as_fd(), size);
         keyboard
-    }
-}
-
-#[cfg(test)]
-mod client_read_tests {
-    use super::*;
-
-    #[test]
-    fn a_client_reports_when_its_wayland_peer_has_closed() {
-        let (stream, peer) = UnixStream::pair().unwrap();
-        let mut client = Client::new(stream);
-        drop(peer);
-
-        assert!(client.receive().is_err());
     }
 }
 
