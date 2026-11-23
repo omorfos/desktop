@@ -2127,6 +2127,10 @@ viewer.
 
 Ongoing, and taken between the stages above as much as after them.
 
+- [x] A lock screen started after a configuration file goes wrong uses the
+      same last-known-good session settings as the compositor, for its
+      authentication methods and power actions as well as its appearance.
+
 Security:
 
 - [x] The configuration, theme and IPC parsers fuzzed, beside the relay's
