@@ -2726,13 +2726,6 @@ is a pull request of its own, to be built and tested first:
       of Smithay and the PipeWire bindings, ADR 11, `OutputScale::Auto`'s
       comment and the README's launcher put right.
 
-Testing:
-
-- [x] The tests' own Wayland client says when it cannot read from the
-      compositor, where it took that for nothing having been sent, so
-      that a compositor gone away failed a test only once it had waited
-      as long as it could.
-
 Accessibility:
 
 - [ ] Everything in the shell reachable from the keyboard.
