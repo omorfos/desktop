@@ -57,8 +57,8 @@ plugged in is taken for the first used. A laptop's own panel often says
 no name or serial, and is known by its maker and product. A name of
 your own may not end in a dash and a number, as sockets' do.
 `omorfosctl screens` shows what each screen says, as `screens` takes it,
-and the name it goes by in brackets. `wallpaper.yaml` names screens by
-their sockets still.
+and the name it goes by in brackets. `wallpaper.screens` in `config.yaml`
+still names screens by their sockets.
 
 One listed screen may be `primary: true`: the notice of what is wrong is
 shown on it, and the windows of a screen that is unplugged go to it.
@@ -101,7 +101,8 @@ The display key (`XF86Display`, the `next_screens` action) has the
 screens stand another way for now, without changing this file: first as
 the configuration says, then all showing what the one that comes first
 shows, then that one alone, then each of the others alone, and round
-again. Each screen keeps its `mode` and `rotate`. In the middle of each
+again. Each screen keeps its `mode` and `rotate` for the temporary
+arrangement. In the middle of each
 screen that is on, a box says which way they are in, such as "Mirrored:
 every screen shows what eDP-1 shows", and asks whether to keep them so:
 Enter keeps them, Escape puts them back as they were, and so does
@@ -109,8 +110,9 @@ waiting 15 seconds, since it is the key you press when a screen has gone
 dark. Pressing the key again goes on to the next way. What is kept is for
 the screens plugged in when it was; plugging one in or taking one out
 has them stand as this file says again, and plugging those back in has
-them stand as they were kept, at the next login too. Keeping the way this
-file says forgets any other.
+them stand as they were kept. At the next login, the arrangement is
+restored, but the screen's mode is chosen again unless `mode` is set in
+`config.yaml`. Keeping the way this file says forgets any other.
 
 A screen turned on its stand is said with `rotate`, as `xrandr --rotate`
 says it: `left`, with the top of the picture on the left as the screen

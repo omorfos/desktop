@@ -86,9 +86,9 @@ written as `screens` takes it, and the name it is known by.
 ## Consequences
 
 - Settings follow a monitor from one socket, or dock, to another.
-- `wallpaper.yaml` names screens by their sockets still; it is read by a
-  program of its own, which would need what each screen says passed to
-  it.
+- `wallpaper.screens` in `config.yaml` still names screens by their sockets;
+  the wallpaper program reads that file itself and would need each screen's
+  identity passed to it.
 - A screen inside another desktop, and one that gives no EDID, says
   nothing, and is known by its socket alone.
 - What the session keeps of a screen it has seen, the next item on the

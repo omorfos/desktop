@@ -334,7 +334,9 @@ own are given it. The ring does not turn yet.
 
 ## Settings for those who need them
 
-They are in `config.yaml` from the start and every part honours them.
+The implemented settings are in `config.yaml` from the start and every part
+honours them. Other accessibility settings that are not implemented yet are
+listed in [ACCESSIBILITY.md](ACCESSIBILITY.md).
 (Stage 4 brings the settings, `scheme` and `accent` first; the rules are
 binding on what is drawn before then.)
 
@@ -345,7 +347,6 @@ binding on what is drawn before then.)
 | `appearance.accent` | One of the accents above, or any colour |
 | `appearance.reduce_motion` | As under Movement |
 | `appearance.reduce_transparency` | Every surface solid, no blur |
-| `appearance.high_contrast` | Black and white surfaces, `--border-strong` for every edge, a ring on the window with focus, signs on the titlebar's buttons always |
 
 A program that asks is told the scheme, the accent and whether motion is
 reduced, through the settings portal, so that applications can match.
