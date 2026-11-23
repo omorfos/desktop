@@ -37,7 +37,8 @@ use wayland_client::{Dispatch, QueueHandle};
 ///
 /// # Errors
 ///
-/// Returns an error if the memory cannot be had or written to.
+/// Returns an error if the dimensions or byte length do not describe a valid
+/// Wayland pixel buffer, or if the memory cannot be had or written to.
 pub fn picture<S>(
     shm: &wl_shm::WlShm,
     canvas: &Canvas,
@@ -56,7 +57,8 @@ where
 ///
 /// # Errors
 ///
-/// Returns an error if the memory cannot be had or written to.
+/// Returns an error if the dimensions or byte length do not describe a valid
+/// Wayland pixel buffer, or if the memory cannot be had or written to.
 pub fn pixels<S>(
     shm: &wl_shm::WlShm,
     (width, height): (u32, u32),
@@ -66,18 +68,39 @@ pub fn pixels<S>(
 where
     S: Dispatch<wl_shm_pool::WlShmPool, ()> + Dispatch<wl_buffer::WlBuffer, ()> + 'static,
 {
+    let (width, height, stride, length) = checked_layout((width, height), bytes.len())?;
     let memory = memfd_create("omorfos-picture", MemfdFlags::CLOEXEC);
     let memory = memory.map(File::from).map_err(io::Error::from);
     let written = memory.and_then(|mut memory| memory.write_all(bytes).map(|()| memory));
     written.map(|memory| {
-        let length = i32::try_from(bytes.len()).unwrap_or(i32::MAX);
-        let (width, height) = (width.cast_signed(), height.cast_signed());
         let pool = shm.create_pool(memory.as_fd(), length, handle, ());
         let format = wl_shm::Format::Argb8888;
-        let buffer = pool.create_buffer(0, width, height, width * 4, format, handle, ());
+        let buffer = pool.create_buffer(0, width, height, stride, format, handle, ());
         pool.destroy();
         buffer
     })
+}
+
+/// Checks the dimensions and byte length before declaring a Wayland pool.
+fn checked_layout(
+    (width, height): (u32, u32),
+    byte_length: usize,
+) -> io::Result<(i32, i32, i32, i32)> {
+    let invalid = || io::Error::new(io::ErrorKind::InvalidInput, "invalid shared pixel buffer");
+    if width == 0 || height == 0 {
+        return Err(invalid());
+    }
+    let width = i32::try_from(width).map_err(|_| invalid())?;
+    let height = i32::try_from(height).map_err(|_| invalid())?;
+    let stride = width.checked_mul(4).ok_or_else(invalid)?;
+    let length = i32::try_from(byte_length).map_err(|_| invalid())?;
+    // Both values are positive signed 32-bit integers, so the product is
+    // strictly less than `u64::MAX`.
+    let expected = u64::from(stride.cast_unsigned()) * u64::from(height.cast_unsigned());
+    if u64::from(length.cast_unsigned()) != expected {
+        return Err(invalid());
+    }
+    Ok((width, height, stride, length))
 }
 
 /// Connects to the compositor: over the connection the compositor made
@@ -119,6 +142,58 @@ pub fn whole(position: f64) -> i32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_pixel_buffer_must_have_nonzero_dimensions() {
+        assert_eq!(
+            checked_layout((0, 1), 0).unwrap_err().kind(),
+            io::ErrorKind::InvalidInput
+        );
+        assert_eq!(
+            checked_layout((1, 0), 0).unwrap_err().kind(),
+            io::ErrorKind::InvalidInput
+        );
+    }
+
+    #[test]
+    fn a_pixel_buffer_must_have_exactly_four_bytes_per_pixel() {
+        assert_eq!(
+            checked_layout((2, 2), 15).unwrap_err().kind(),
+            io::ErrorKind::InvalidInput
+        );
+    }
+
+    #[test]
+    fn a_pixel_buffer_must_fit_waylands_signed_dimensions_and_stride() {
+        assert_eq!(
+            checked_layout((u32::try_from(i32::MAX).unwrap() + 1, 1), 0)
+                .unwrap_err()
+                .kind(),
+            io::ErrorKind::InvalidInput
+        );
+        assert_eq!(
+            checked_layout((1, u32::try_from(i32::MAX).unwrap() + 1), 0)
+                .unwrap_err()
+                .kind(),
+            io::ErrorKind::InvalidInput
+        );
+        let too_wide = u32::try_from(i32::MAX / 4 + 1).unwrap();
+        assert_eq!(
+            checked_layout((too_wide, 1), 0).unwrap_err().kind(),
+            io::ErrorKind::InvalidInput
+        );
+        assert_eq!(
+            checked_layout((1, 1), usize::try_from(i32::MAX).unwrap() + 1)
+                .unwrap_err()
+                .kind(),
+            io::ErrorKind::InvalidInput
+        );
+    }
+
+    #[test]
+    fn a_well_formed_pixel_buffer_has_a_checked_wayland_layout() {
+        assert_eq!(checked_layout((2, 3), 24).unwrap(), (2, 3, 8, 24));
+    }
 
     #[test]
     fn a_position_falls_in_the_unit_it_is_within() {
