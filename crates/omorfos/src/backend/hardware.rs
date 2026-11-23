@@ -26,6 +26,7 @@ use std::rc::Rc;
 use std::time::{Duration, Instant};
 
 use omorfos_config::{Acceleration, Action, Command, Mouse, OfferedMode, ScreenMode, Touchpad};
+use omorfos_core::Identity;
 use smithay::backend::allocator::dmabuf::{Dmabuf, DmabufFlags};
 use smithay::backend::allocator::gbm::{GbmAllocator, GbmBufferFlags, GbmDevice};
 use smithay::backend::allocator::{Fourcc, Modifier};
@@ -857,9 +858,32 @@ fn open_card(seat: &mut Taken, keep: bool) -> Result<Card, Box<dyn Error>> {
 }
 
 /// A screen found plugged in: its socket, the name of that socket, the
-/// ways it can be driven and how wide and tall it says it is in
-/// millimetres.
-type Found = (connector::Handle, String, Vec<Mode>, (u32, u32));
+/// ways it can be driven, how wide and tall it says it is in millimetres,
+/// and what it says it is.
+type Found = (
+    connector::Handle,
+    String,
+    Vec<Mode>,
+    (u32, u32),
+    Option<Identity>,
+);
+
+/// The name the configuration knows `screen` by.
+fn known<'a>(compositor: &'a Compositor, screen: &'a Screen) -> &'a str {
+    compositor.known_as(&screen.output).unwrap_or(&screen.name)
+}
+
+/// What the screen on `connector` says it is, from its EDID, if it says.
+fn identity(card: &DrmDevice, connector: connector::Handle) -> Option<Identity> {
+    let properties = card.get_properties(connector).ok()?;
+    let (handles, values) = properties.as_props_and_values();
+    let blob = handles.iter().zip(values).find_map(|(handle, value)| {
+        let info = card.get_property(*handle).ok()?;
+        (info.name().to_bytes() == b"EDID").then_some(*value)
+    })?;
+    let edid = card.get_property_blob(blob).ok()?;
+    Identity::from_edid(&edid)
+}
 
 /// A way a screen can be driven, as the configuration weighs it.
 fn offered(mode: &Mode) -> OfferedMode {
@@ -921,14 +945,21 @@ impl Hardware {
             compositor.screen_wrong(&screen.name, None);
             compositor.remove_output(&screen.output);
         }
-        // As the screens are to be once those found are taken on.
-        let plugged: Vec<String> = found.iter().map(|(_, name, ..)| name.clone()).collect();
-        for (connector, name, modes, millimetres) in found {
+        // As the screens are to be once those found are taken on, each by
+        // the name the configuration knows it by.
+        let plugged: Vec<(&str, Option<&Identity>)> = found
+            .iter()
+            .map(|(_, name, .., identity)| (name.as_str(), identity.as_ref()))
+            .collect();
+        let known = compositor.known_names(&plugged);
+        for ((connector, name, modes, millimetres, identity), as_known) in
+            found.into_iter().zip(&known)
+        {
             if self.screens.iter().any(|s| s.connector == connector) {
                 continue;
             }
-            let outputs = compositor.arrangement_for(&plugged.iter().map(String::as_str));
-            let wanted = outputs.named(&name).and_then(|listed| listed.mode);
+            let outputs = compositor.arrangement_for(&known.iter().map(String::as_str));
+            let wanted = outputs.named(as_known).and_then(|listed| listed.mode);
             let Some(mode) = chosen(compositor, &name, (&modes, wanted.as_ref())) else {
                 continue;
             };
@@ -939,7 +970,7 @@ impl Hardware {
                 connector,
                 (&name, &modes, wanted),
                 mode,
-                millimetres,
+                (millimetres, identity),
             ) {
                 Ok(screen) => self.screens.push(screen),
                 Err(error) => {
@@ -998,7 +1029,8 @@ impl Hardware {
                         | connector::Interface::DSI
                 );
                 let millimetres = socket.size().unwrap_or_default();
-                Some((!built_in, (*handle, name, modes, millimetres)))
+                let said = identity(&self.card, *handle);
+                Some((!built_in, (*handle, name, modes, millimetres, said)))
             })
             .collect();
         found.sort_by_key(|(external, _)| *external);
@@ -1012,7 +1044,7 @@ impl Hardware {
         connector: connector::Handle,
         (name, modes, wanted): (&str, &[Mode], Option<ScreenMode>),
         mode: Mode,
-        millimetres: (u32, u32),
+        (millimetres, identity): ((u32, u32), Option<Identity>),
     ) -> Result<Screen, Box<dyn Error>> {
         let crtc = self
             .free_crtc(connector)
@@ -1032,7 +1064,7 @@ impl Hardware {
         )?;
         let (width, height) = mode.size();
         let size = (i32::from(width), i32::from(height));
-        let output = compositor.add_output(name, size, Transform::Normal);
+        let output = compositor.add_output_saying(name, size, Transform::Normal, identity);
         if let Some((bytes, pixels)) = shown {
             compositor.fade_from(&output, &bytes, pixels, Fourcc::Abgr8888);
         }
@@ -1175,14 +1207,15 @@ impl Hardware {
     fn follow_modes(&mut self, compositor: &mut Compositor) {
         // Nothing is made while nothing has changed, which is every turn
         // but the one after the configuration says otherwise.
-        let names = self.screens.iter().map(|screen| screen.name.as_str());
+        let known = |screen| known(compositor, screen);
+        let names = self.screens.iter().map(known);
         let outputs = compositor.arrangement_for(&names);
         let changed: Vec<(usize, Option<ScreenMode>)> = self
             .screens
             .iter()
             .enumerate()
             .filter_map(|(at, screen)| {
-                let wanted = outputs.named(&screen.name).and_then(|listed| listed.mode);
+                let wanted = outputs.named(known(screen)).and_then(|listed| listed.mode);
                 (wanted != screen.wanted).then_some((at, wanted))
             })
             .collect();

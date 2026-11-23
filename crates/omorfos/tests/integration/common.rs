@@ -306,9 +306,19 @@ impl Session {
 
     /// Plugs in another output, to the right of those there are.
     pub(crate) fn add_output(&mut self, size: (i32, i32)) -> Output {
+        self.add_output_saying(size, None)
+    }
+
+    /// Plugs in another output as [`Session::add_output`] does, of a
+    /// screen that says it is `identity`.
+    pub(crate) fn add_output_saying(
+        &mut self,
+        size: (i32, i32),
+        identity: Option<omorfos_core::Identity>,
+    ) -> Output {
         let name = format!("test-{}", self.monitors.len());
         let compositor = self.inner.compositor_mut();
-        let output = compositor.add_output(&name, size, Transform::Normal);
+        let output = compositor.add_output_saying(&name, size, Transform::Normal, identity);
         let width = usize::try_from(size.0).unwrap();
         let height = usize::try_from(size.1).unwrap();
         self.monitors.push(Monitor {

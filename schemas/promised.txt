@@ -137,6 +137,11 @@ config.yaml portals
 config.yaml portals.enabled
 config.yaml power
 config.yaml power.ask
+config.yaml screens
+config.yaml screens.*.maker
+config.yaml screens.*.name
+config.yaml screens.*.product
+config.yaml screens.*.serial
 config.yaml screenshots
 config.yaml screenshots.destination
 config.yaml screenshots.destination = "both"

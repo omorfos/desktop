@@ -33,6 +33,33 @@ arrangements:
   - [{ name: HDMI-A-1, primary: true }, { name: eDP-1, place: below }]
 ```
 
+A screen named by its socket is whatever screen is plugged in there,
+and another plugged in there takes its settings. To know a screen by
+what it says it is, wherever it is plugged in, give it a name of your
+own under `screens`, with any of what `omorfosctl screens` shows it
+says, and use that name in `outputs`, `arrangements` and `mirror` in
+place of the socket's:
+
+```yaml
+screens:
+  laptop: { maker: BOE, product: 0x07c8 }
+  office: { maker: DEL, name: DELL U2720Q, serial: 7X3KD13 }
+outputs:
+  - { name: office, scale: 1.5 }
+  - { name: laptop, place: below }
+```
+
+A screen is taken for the first name used that it says all of, and that
+no screen before it has been taken for; a screen listed by its socket is
+that socket's, whatever it says. So two monitors alike that say no
+serial are told apart by two names that say the same of them: the first
+plugged in is taken for the first used. A laptop's own panel often says
+no name or serial, and is known by its maker and product. A name of
+your own may not end in a dash and a number, as sockets' do.
+`omorfosctl screens` shows what each screen says, as `screens` takes it,
+and the name it goes by in brackets. `wallpaper.yaml` names screens by
+their sockets still.
+
 One listed screen may be `primary: true`: the notice of what is wrong is
 shown on it, and the windows of a screen that is unplugged go to it.
 Without one, the first screen plugged in is.

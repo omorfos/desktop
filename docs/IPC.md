@@ -135,7 +135,9 @@ your own may too; one that only wants to know the state asks `"subscribe"`.
       "height": 864,
       "mode": "3840x2160@60",
       "preferred": "3840x2160@60",
-      "modes": ["3840x2160@60", "3840x2160@48"]
+      "modes": ["3840x2160@60", "3840x2160@48"],
+      "says": { "maker": "BOE", "product": 1992, "name": null, "serial": null },
+      "known": "laptop"
     }
   ],
   "locked": false,
@@ -158,7 +160,13 @@ those that stand on their own, with `mirrors` naming the other, and is
 said to stand where that one does; `mirrors` is empty, or absent from an
 older compositor, for one that stands on its own. A screen that is off
 comes last, with `off` true and no size; `off` is false, or absent from an
-older compositor, for one that is on.
+older compositor, for one that is on. `says` is what the screen says it
+is, from its EDID, as `screens` in `config.yaml` takes it: its maker's
+three letters, the maker's number for it, and its name and serial where
+it says them; it is null, or absent from an older compositor, where it
+says nothing, as inside another desktop. `known` is the name
+`config.yaml` knows it by: one of the user's from `screens` that it is
+taken for, or else its own; it is absent from an older compositor.
 
 `locked` is true while the session is locked and nothing of it is on any
 screen: a screen locker holds it, and a frame with only the locker on it

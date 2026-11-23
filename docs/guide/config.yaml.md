@@ -25,6 +25,7 @@ mouse:
   acceleration: adaptive  # adaptive | flat
 output:
   scale: auto             # auto | 1 to 4 in steps of 0.25
+screens: {}               # screens known by what they say, by names of yours
 outputs: []               # particular screens, by name
 idle:
   screen_off: 0           # seconds without input; 0 never

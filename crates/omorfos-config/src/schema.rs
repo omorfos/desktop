@@ -15,8 +15,8 @@ use crate::menu::RawItem;
 use crate::rules::RawMatch;
 use crate::{
     Accent, Bounded, Color, Command, General, KeyChain, Keys, MAX_WORKSPACES, Match, Menu,
-    MenuItem, NamedOutput, Offset, OutputScale, Outputs, Picture, Private, Role, Rules, ScreenMode,
-    ScreenWallpaper, Screens, Speed, Started, Workspaces,
+    MenuItem, NamedOutput, NamedScreens, Offset, OutputScale, Outputs, Picture, Private, Role,
+    Rules, ScreenMatch, ScreenMode, ScreenWallpaper, Screens, Speed, Started, Workspaces,
 };
 
 /// Generates a schema for each configuration file.
@@ -308,6 +308,22 @@ impl JsonSchema for Outputs {
             "description": "Screens by name, in the order they stand from the left.",
             "type": "array",
             "items": output,
+        })
+    }
+}
+
+impl JsonSchema for NamedScreens {
+    fn schema_name() -> Cow<'static, str> {
+        "NamedScreens".into()
+    }
+
+    fn json_schema(generator: &mut SchemaGenerator) -> Schema {
+        let screen = generator.subschema_for::<ScreenMatch>();
+        json_schema!({
+            "description": "Screens by names of the user's, each as what it says it is; no name \
+                            ends in a dash and a number, as sockets' do.",
+            "type": "object",
+            "additionalProperties": screen,
         })
     }
 }

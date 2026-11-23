@@ -613,6 +613,13 @@ impl Compositor {
                 modes: modes.iter().map(ToString::to_string).collect(),
                 mirrors,
                 off,
+                says: head.identity().map(|identity| omorfos_ipc::Says {
+                    maker: identity.maker.clone(),
+                    product: identity.product,
+                    name: identity.name.clone(),
+                    serial: identity.serial.clone(),
+                }),
+                known: head.known().to_owned(),
             }
         };
         let standing = self.arranged().into_iter().map(|index| {

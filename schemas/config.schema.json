@@ -565,6 +565,13 @@
       ],
       "type": "object"
     },
+    "NamedScreens": {
+      "additionalProperties": {
+        "$ref": "#/$defs/ScreenMatch"
+      },
+      "description": "Screens by names of the user's, each as what it says it is; no name ends in a dash and a number, as sockets' do.",
+      "type": "object"
+    },
     "NightLight": {
       "additionalProperties": false,
       "description": "The screens made warmer after dark.",
@@ -863,6 +870,48 @@
           "type": "string"
         }
       ]
+    },
+    "ScreenMatch": {
+      "additionalProperties": false,
+      "description": "What a screen says it is, all of which it is to say to be taken: as\n`omorfosctl screens` shows it.",
+      "properties": {
+        "maker": {
+          "default": null,
+          "description": "Who made it, by the three capital letters it is registered by, such\nas `DEL`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "name": {
+          "default": null,
+          "description": "Its name, such as `DELL U2720Q`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "product": {
+          "default": null,
+          "description": "The maker's number for it, such as `0x07c8`.",
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "serial": {
+          "default": null,
+          "description": "Its serial.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
     },
     "ScreenMode": {
       "description": "The size in pixels, such as `2560x1440`, and how many times a second it is drawn if that matters, such as `2560x1440@144`.",
@@ -1219,6 +1268,10 @@
     "power": {
       "$ref": "#/$defs/Power",
       "description": "What the `restart` and `shut_down` actions do before they act."
+    },
+    "screens": {
+      "$ref": "#/$defs/NamedScreens",
+      "description": "Screens known by what they say they are, by names of the user's,\nwhich `outputs`, `arrangements` and `mirror` take in place of a\nsocket's."
     },
     "screenshots": {
       "$ref": "#/$defs/Screenshots",

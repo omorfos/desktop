@@ -26,6 +26,9 @@ use smithay::output::{Mode, Output, PhysicalProperties, Scale as OutputScale, Su
 use smithay::reexports::wayland_server::backend::GlobalId;
 use smithay::utils::{Logical, Physical, Point, Rectangle, Size, Transform};
 
+use omorfos_config::Facts;
+use omorfos_core::Identity;
+
 use crate::compositor::Compositor;
 use crate::{Scale, bridge};
 
@@ -36,6 +39,12 @@ pub(crate) struct Head {
     /// The output's name, which never changes, kept so that it can be
     /// looked at without Smithay making a copy of it each time.
     name: String,
+    /// What the screen says it is, if it says.
+    identity: Option<Identity>,
+    /// The name the configuration knows it by: that of the screen it is
+    /// in `screens`, where an entry for one there takes it, or else its
+    /// own (ADR 103).
+    known: String,
     /// What clients see the output as, withdrawn when it goes or mirrors
     /// another; none until it is first settled where it stands.
     global: Option<GlobalId>,
@@ -61,6 +70,16 @@ impl Head {
     /// The output's name, as `eDP-1`.
     pub(crate) fn name(&self) -> &str {
         &self.name
+    }
+
+    /// The name the configuration knows it by.
+    pub(crate) fn known(&self) -> &str {
+        &self.known
+    }
+
+    /// What the screen says it is, if it says.
+    pub(crate) const fn identity(&self) -> Option<&Identity> {
+        self.identity.as_ref()
     }
 
     /// The size of the output in pixels, as the screen is made.
@@ -163,6 +182,18 @@ impl Compositor {
     ///
     /// The value returned names the output in every other call about it.
     pub fn add_output(&mut self, name: &str, size: (i32, i32), transform: Transform) -> Output {
+        self.add_output_saying(name, size, transform, None)
+    }
+
+    /// Adds an output as [`Compositor::add_output`] does, of a screen that
+    /// says it is `identity`, by which the configuration may know it.
+    pub fn add_output_saying(
+        &mut self,
+        name: &str,
+        size: (i32, i32),
+        transform: Transform,
+        identity: Option<Identity>,
+    ) -> Output {
         let output = Output::new(
             name.to_owned(),
             PhysicalProperties {
@@ -178,6 +209,8 @@ impl Compositor {
             global: None,
             output: output.clone(),
             name: name.to_owned(),
+            identity,
+            known: name.to_owned(),
             transform,
             rotation: self.rotation_for(name),
             modes: Vec::new(),
@@ -289,7 +322,7 @@ impl Compositor {
     /// Not every screen plugged in is turned off: if the configuration
     /// would have them all off, the first is left on, and the user told.
     fn settle_screens(&mut self) {
-        let names: Vec<String> = self.every_head().map(|head| head.output.name()).collect();
+        let names: Vec<String> = self.every_head().map(|head| head.known.clone()).collect();
         self.forget_tried(&names);
         let arrangement = self.arrangement_for(&names.iter().map(String::as_str));
         let off = |name: &&String| arrangement.named(name).is_some_and(|named| !named.enabled);
@@ -303,7 +336,7 @@ impl Compositor {
             .filter_map(|name| {
                 let source = arrangement.named(name)?.mirror.as_deref()?;
                 let mut plugged = self.every_head();
-                let source = plugged.find(|head| head.output.name() == source)?;
+                let source = plugged.find(|head| head.known == source)?;
                 Some((name.clone(), source.output.clone()))
             })
             .collect();
@@ -311,7 +344,7 @@ impl Compositor {
         // Those that are to be otherwise stand again first, and are taken
         // from there for what they are to be.
         let back = self.aside.mirrors.extract_if(.., |mirror| {
-            let wanted = mirror_wanted(mirroring(&mirror.head.output.name()));
+            let wanted = mirror_wanted(mirroring(&mirror.head.known));
             wanted != Some(&mirror.source)
         });
         let back: Vec<Head> = back.map(|mirror| mirror.head).collect();
@@ -319,13 +352,13 @@ impl Compositor {
         let lit = self
             .aside
             .dark
-            .extract_if(.., |head| !dark.contains(&head.output.name()));
+            .extract_if(.., |head| !dark.contains(&head.known));
         let lit: Vec<Head> = lit.collect();
         self.heads.extend(lit);
         let going = self.heads.iter().enumerate().filter_map(|(at, head)| {
-            let name = head.output.name();
-            let off = dark.contains(&name);
-            let source = mirror_wanted(mirroring(&name)).cloned();
+            let name = &head.known;
+            let off = dark.contains(name);
+            let source = mirror_wanted(mirroring(name)).cloned();
             (off || source.is_some()).then_some((at, source))
         });
         let going: Vec<(usize, Option<Output>)> = going.collect();
@@ -429,9 +462,54 @@ impl Compositor {
         let listed = self.arrangement().listed();
         let primary = |head: &Head| {
             let mut primaries = listed.iter().filter(|listed| listed.primary);
-            primaries.any(|listed| listed.name == head.name())
+            primaries.any(|listed| listed.name == head.known)
         };
         self.heads.iter().position(primary).unwrap_or(0)
+    }
+
+    /// The name each of `plugged`, a socket's name and what the screen
+    /// there says it is, if it says, goes by in the configuration: in the
+    /// first arrangement that, so named, names just those, or else in
+    /// `outputs` (ADR 103).
+    pub fn known_names(&self, plugged: &[(&str, Option<&Identity>)]) -> Vec<String> {
+        let general = &self.config().general;
+        let plugged: Vec<(&str, Option<Facts<'_>>)> = plugged
+            .iter()
+            .map(|(socket, identity)| (*socket, identity.map(facts)))
+            .collect();
+        let screens = &general.screens;
+        let fits = |listed: &omorfos_config::Outputs| {
+            let known = listed.known_as(screens, &plugged);
+            listed
+                .are(known.iter().map(String::as_str))
+                .then_some(known)
+        };
+        let fitting = general.arrangements.iter().find_map(fits);
+        fitting.unwrap_or_else(|| general.outputs.known_as(screens, &plugged))
+    }
+
+    /// The name the configuration knows `output` by, if it is there.
+    #[must_use]
+    pub fn known_as(&self, output: &Output) -> Option<&str> {
+        let head = self.every_head().find(|head| head.output == *output);
+        head.map(Head::known)
+    }
+
+    /// Has each screen go by the name the configuration knows it by, as
+    /// the screens plugged in and the configuration are now.
+    fn recognise(&mut self) {
+        let plugged: Vec<(String, Option<Identity>)> = self
+            .every_head()
+            .map(|head| (head.name.clone(), head.identity.clone()))
+            .collect();
+        let plugged: Vec<(&str, Option<&Identity>)> = plugged
+            .iter()
+            .map(|(socket, identity)| (socket.as_str(), identity.as_ref()))
+            .collect();
+        let known = self.known_names(&plugged);
+        for (head, known) in self.every_head_mut().zip(known) {
+            head.known = known;
+        }
     }
 
     /// The output that comes first, if there is one.
@@ -498,11 +576,12 @@ impl Compositor {
     /// Settles each output's scale and place, from the configuration and
     /// the backend's suggestions, and lays the outputs out again.
     pub(crate) fn apply_scale(&mut self) {
+        self.recognise();
         self.settle_screens();
         let standing = self.heads.iter().map(|head| {
-            let name = head.output.name();
-            let scale = self.scale_for(&name, head.suggested);
-            (head.output.clone(), scale, self.rotation_for(&name))
+            let name = &head.known;
+            let scale = self.scale_for(name, head.suggested);
+            (head.output.clone(), scale, self.rotation_for(name))
         });
         let standing: Vec<(Output, Scale, Transform)> = standing.collect();
         // A mirror is drawn at the scale of the one it mirrors, which is
@@ -513,13 +592,13 @@ impl Compositor {
                 .iter()
                 .find(|(output, ..)| *output == mirror.source);
             let scale = source.map_or(Scale::ONE, |(_, scale, _)| *scale);
-            (scale, self.rotation_for(&mirror.head.output.name()))
+            (scale, self.rotation_for(&mirror.head.known))
         });
         let dark = self.aside.dark.iter().map(|head| {
-            let name = head.output.name();
+            let name = &head.known;
             (
-                self.scale_for(&name, head.suggested),
-                self.rotation_for(&name),
+                self.scale_for(name, head.suggested),
+                self.rotation_for(name),
             )
         });
         let scales = standing
@@ -555,8 +634,8 @@ impl Compositor {
     pub(crate) fn arranged(&self) -> Vec<usize> {
         let listed = self.arrangement().listed();
         let place = |index: &usize| {
-            let name = self.heads[*index].output.name();
-            let place = listed.iter().position(|output| output.name == name);
+            let name = &self.heads[*index].known;
+            let place = listed.iter().position(|output| output.name == *name);
             // Those not listed come after all that are.
             place.unwrap_or(usize::MAX)
         };
@@ -576,7 +655,7 @@ impl Compositor {
             .iter()
             .map(|index| {
                 let head = &self.heads[*index];
-                let named = listed.named(&head.output.name());
+                let named = listed.named(&head.known);
                 let placing =
                     named.map(|named| (named.place.unwrap_or_default(), named.align, named.offset));
                 (head.area().size, placing)
@@ -616,6 +695,17 @@ impl Compositor {
             self.screens = self.heads.iter().map(screen).collect();
             self.desktop.set_outputs(self.screens.iter().copied());
         }
+    }
+}
+
+/// What a screen that says it is `identity` says, as the configuration
+/// is matched against.
+fn facts(identity: &Identity) -> Facts<'_> {
+    Facts {
+        maker: &identity.maker,
+        product: identity.product,
+        name: identity.name.as_deref(),
+        serial: identity.serial.as_deref(),
     }
 }
 

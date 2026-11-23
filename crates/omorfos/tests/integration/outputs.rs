@@ -1059,3 +1059,78 @@ fn the_arrangement_for_the_screens_plugged_in_is_followed_as_they_come_and_go() 
         "{problems:?}"
     );
 }
+
+/// A screen that says it was made by `maker`, as product `product`, with
+/// `name` and no serial.
+fn says(maker: &str, product: u16, name: Option<&str>) -> omorfos_core::Identity {
+    omorfos_core::Identity {
+        maker: maker.to_owned(),
+        product,
+        name: name.map(str::to_owned),
+        serial: None,
+    }
+}
+
+#[test]
+fn screens_are_known_by_what_they_say_wherever_they_are_plugged_in() {
+    let config = "screens:\n\
+                  \x20 office: { maker: DEL, name: DELL U2720Q }\n\
+                  \x20 left: { maker: GSM }\n\
+                  \x20 right: { maker: GSM }\n\
+                  outputs:\n\
+                  \x20 - { name: office, scale: 2 }\n\
+                  \x20 - { name: test-0 }\n\
+                  \x20 - { name: left }\n\
+                  \x20 - { name: right, mirror: office }\n";
+    let mut session = Session::with_config(&[("config.yaml", config)]);
+    let office =
+        session.add_output_saying((800, 600), Some(says("DEL", 0xa0e1, Some("DELL U2720Q"))));
+    // Two alike, the first plugged in taken for the first listed.
+    let left = session.add_output_saying((800, 600), Some(says("GSM", 1, None)));
+    let right = session.add_output_saying((800, 600), Some(says("GSM", 1, None)));
+    let compositor = session.compositor();
+    assert_eq!(compositor.known_as(&office), Some("office"));
+    assert_eq!(compositor.known_as(&left), Some("left"));
+    assert_eq!(compositor.known_as(&right), Some("right"));
+    assert_eq!(compositor.known_as(&session.output()), Some("test-0"));
+    // The office screen stands first, at its scale; the one the socket
+    // names next; then the one taken for `left`.
+    assert_eq!(compositor.scale_of(&office), Scale::new(2.0));
+    let office_at = compositor.area_of(&office);
+    assert_eq!((office_at.loc.x, office_at.size.w), (0, 400));
+    assert_eq!(compositor.area_of(&session.output()).loc.x, 400);
+    assert_eq!(compositor.area_of(&left).loc.x, 400 + WIDTH);
+
+    // The one taken for `right` mirrors the office screen, by its name.
+    let mut peer = omorfos_ipc::Client::connect(&session.listen()).unwrap();
+    let omorfos_ipc::Reply::State(state) = session.ask(&mut peer, &omorfos_ipc::Request::State)
+    else {
+        unreachable!("the state was asked for");
+    };
+    let listed: Vec<(&str, &str, &str)> = state
+        .screens
+        .iter()
+        .map(|screen| {
+            (
+                screen.name.as_str(),
+                screen.known.as_str(),
+                screen.mirrors.as_str(),
+            )
+        })
+        .collect();
+    assert!(
+        listed.contains(&("test-3", "right", "test-1")),
+        "{listed:?}"
+    );
+    let office_said = state.screens.iter().find(|screen| screen.known == "office");
+    let said = office_said.and_then(|screen| screen.says.as_ref()).unwrap();
+    assert_eq!(
+        (said.maker.as_str(), said.name.as_deref()),
+        ("DEL", Some("DELL U2720Q"))
+    );
+
+    // Unplugged, the office screen's place goes to none other, and the
+    // screen the socket names stands first.
+    session.compositor_mut().remove_output(&office);
+    assert_eq!(session.compositor().area_of(&session.output()).loc.x, 0);
+}

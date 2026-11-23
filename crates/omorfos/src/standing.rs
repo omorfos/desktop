@@ -152,7 +152,10 @@ impl Compositor {
     /// Has the screens stand the next way, to be kept only if the user
     /// says so in time. With one screen there is no other way.
     pub(crate) fn next_screens(&mut self) {
-        let plugged: Vec<String> = self.every_head().map(|head| head.output.name()).collect();
+        let plugged: Vec<String> = self
+            .every_head()
+            .map(|head| head.known().to_owned())
+            .collect();
         if plugged.len() < 2 {
             self.interim.said.push("only-one-screen");
             return;
@@ -191,7 +194,7 @@ impl Compositor {
     /// were plugged in.
     fn screen_order(&self, plugged: &[String]) -> Vec<String> {
         // There is always one that comes first, the screens never all off.
-        let first = self.primary_head().map(|head| head.output.name());
+        let first = self.primary_head().map(|head| head.known().to_owned());
         let first = first.unwrap_or_default();
         let rest = plugged.iter().filter(|name| **name != first).cloned();
         std::iter::once(first.clone()).chain(rest).collect()

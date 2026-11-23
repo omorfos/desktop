@@ -31,6 +31,10 @@ pub struct General {
     pub mouse: Mouse,
     /// How every screen is driven, unless it is named in `outputs`.
     pub output: Output,
+    /// Screens known by what they say they are, by names of the user's,
+    /// which `outputs`, `arrangements` and `mirror` take in place of a
+    /// socket's.
+    pub screens: crate::NamedScreens,
     /// Particular screens, by name: where each stands and how it is
     /// driven.
     pub outputs: Outputs,

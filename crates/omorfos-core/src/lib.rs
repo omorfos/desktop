@@ -18,6 +18,7 @@ mod credits;
 mod decoration;
 mod desktop;
 pub mod geometry;
+mod identity;
 mod keys;
 mod menu;
 mod overview;
@@ -33,6 +34,7 @@ pub use desktop::{
     Arrangement, Desk, Desktop, Frame, Half, Home, Kept, Line, Listed, Offer, Opening, Place,
     Screen, Settings, Showing, Standing, States, Tab, Tile, Window, WindowId, WorkspaceId,
 };
+pub use identity::Identity;
 pub use keys::{KeyChains, KeyOutcome};
 pub use menu::{Item, Keycap, Mark, Menu, MenuKey, MenuMetrics, MenuOutcome, Panel};
 pub use overview::{OverviewLayout, OverviewMetrics, overview};

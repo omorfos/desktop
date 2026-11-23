@@ -253,6 +253,29 @@ pub struct Screen {
     /// shows nothing, and is said to stand at the corner of the space.
     #[serde(default)]
     pub off: bool,
+    /// What it says it is, by which `screens` in `config.yaml` may know
+    /// it; none if it says nothing, as inside another desktop.
+    #[serde(default)]
+    pub says: Option<Says>,
+    /// The name `config.yaml` knows it by: that of a screen in `screens`
+    /// that it is, or else its own. Empty from a compositor too old to say.
+    #[serde(default)]
+    pub known: String,
+}
+
+/// What a screen says it is, as `screens` in `config.yaml` writes it.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct Says {
+    /// Who made it, as three capital letters, such as `DEL`.
+    pub maker: String,
+    /// The maker's number for it.
+    pub product: u16,
+    /// Its name, if it says one.
+    #[serde(default)]
+    pub name: Option<String>,
+    /// Its serial, if it says one.
+    #[serde(default)]
+    pub serial: Option<String>,
 }
 
 /// A workspace.
@@ -552,6 +575,13 @@ mod tests {
                 modes: vec!["3840x2160@60".to_owned(), "3840x2160@48".to_owned()],
                 mirrors: "DP-1".to_owned(),
                 off: false,
+                says: Some(Says {
+                    maker: "BOE".to_owned(),
+                    product: 0x07c8,
+                    name: None,
+                    serial: Some("7".to_owned()),
+                }),
+                known: "laptop".to_owned(),
             }],
             locked: true,
             awake: Some(Awake {

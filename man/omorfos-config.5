@@ -457,6 +457,24 @@ What the \fBrestart\fR and \fBshut_down\fR actions do before they act.
 \fBpower.ask\fR
 Whether they ask the user first, so that a stray click or key does not end what is not saved. False: they act at once. By default \fBtrue\fR.
 .TP
+\fBscreens\fR
+Screens known by what they say they are, by names of the user's, which \fBoutputs\fR, \fBarrangements\fR and \fBmirror\fR take in place of a socket's.
+.TP
+\fBscreens.*\fR
+What a screen says it is, all of which it is to say to be taken: as \fBomorfosctl screens\fR shows it.
+.TP
+\fBscreens.*.maker\fR
+Who made it, by the three capital letters it is registered by, such as \fBDEL\fR.
+.TP
+\fBscreens.*.name\fR
+Its name, such as \fBDELL U2720Q\fR.
+.TP
+\fBscreens.*.product\fR
+The maker's number for it, such as \fB0x07c8\fR. From 0 to 65535.
+.TP
+\fBscreens.*.serial\fR
+Its serial.
+.TP
 \fBscreenshots\fR
 Pictures of the screen.
 .TP
@@ -659,6 +677,7 @@ mouse:
   acceleration: adaptive  # adaptive | flat
 output:
   scale: auto             # auto | 1 to 4 in steps of 0.25
+screens: {}               # screens known by what they say, by names of yours
 outputs: []               # particular screens, by name
 idle:
   screen_off: 0           # seconds without input; 0 never

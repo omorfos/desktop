@@ -344,13 +344,32 @@ pub(crate) fn screens(state: &State, out: &mut dyn Write) {
         } else {
             format!(", mirroring {}", screen.mirrors)
         };
+        let known = if screen.known.is_empty() || screen.known == screen.name {
+            String::new()
+        } else {
+            format!(" ({})", screen.known)
+        };
         if screen.off {
-            let _ = writeln!(out, "{}: off", screen.name);
+            let _ = writeln!(out, "{}{known}: off", screen.name);
         } else {
             let _ = writeln!(
                 out,
-                "{}: {} by {} units at {},{}{mirrors}{driven}",
+                "{}{known}: {} by {} units at {},{}{mirrors}{driven}",
                 screen.name, screen.width, screen.height, screen.x, screen.y
+            );
+        }
+        // As `screens` in config.yaml takes it.
+        if let Some(says) = &screen.says {
+            let more: String = [("name", &says.name), ("serial", &says.serial)]
+                .into_iter()
+                .filter_map(|(what, value)| {
+                    value.as_ref().map(|value| format!(", {what}: {value}"))
+                })
+                .collect();
+            let _ = writeln!(
+                out,
+                "  says {{ maker: {}, product: {:#06x}{more} }}",
+                says.maker, says.product
             );
         }
         for mode in &screen.modes {
@@ -779,6 +798,13 @@ mod tests {
                 modes: vec!["2560x1440@144".to_owned(), "2560x1440@60".to_owned()],
                 mirrors: String::new(),
                 off: false,
+                says: Some(omorfos_ipc::Says {
+                    maker: "DEL".to_owned(),
+                    product: 0xa0e1,
+                    name: Some("DELL U2720Q".to_owned()),
+                    serial: Some("7X3KD13".to_owned()),
+                }),
+                known: "office".to_owned(),
             },
             omorfos_ipc::Screen {
                 name: "nested".to_owned(),
@@ -799,6 +825,12 @@ mod tests {
             omorfos_ipc::Screen {
                 name: "DP-2".to_owned(),
                 off: true,
+                says: Some(omorfos_ipc::Says {
+                    maker: "BOE".to_owned(),
+                    product: 0x07c8,
+                    ..omorfos_ipc::Says::default()
+                }),
+                known: "DP-2".to_owned(),
                 modes: vec!["1920x1080@60".to_owned()],
                 ..omorfos_ipc::Screen::default()
             },
@@ -807,10 +839,11 @@ mod tests {
         assert_eq!(outcome.code, ExitCode::SUCCESS);
         assert_eq!(
             outcome.out,
-            "DP-1: 2560 by 1440 units at 0,0, driven at 2560x1440@144\n  2560x1440@144\n  \
+            "DP-1 (office): 2560 by 1440 units at 0,0, driven at 2560x1440@144\n  says { maker: \
+             DEL, product: 0xa0e1, name: DELL U2720Q, serial: 7X3KD13 }\n  2560x1440@144\n  \
              2560x1440@60, which suits it best\nnested: 640 by 480 units at 2560,0\nHDMI-A-1: 2560 \
-             by 1440 units at 0,0, mirroring DP-1, driven at 1920x1080@60\nDP-2: off\n  \
-             1920x1080@60\n"
+             by 1440 units at 0,0, mirroring DP-1, driven at 1920x1080@60\nDP-2: off\n  says { \
+             maker: BOE, product: 0x07c8 }\n  1920x1080@60\n"
         );
     }
 
