@@ -199,6 +199,13 @@ pub fn run(start: Start) -> Result<(), Box<dyn Error>> {
     }));
     let compositor = session.compositor_mut();
     hardware.borrow_mut().frost(compositor);
+    // What the session kept of the screens, before they are taken on.
+    let state = env::var_os("XDG_STATE_HOME");
+    let home = env::var_os("HOME");
+    let state = omorfos_ipc::session_log::directory(state.as_deref(), home.as_deref());
+    if let Some(state) = state {
+        compositor.set_state_directory(&state);
+    }
     hardware.borrow_mut().scan(compositor);
     offer_gpu_buffers(&mut hardware.borrow_mut(), compositor);
     compositor.set_cursor_themes(cursor_themes());

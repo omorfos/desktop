@@ -1134,3 +1134,62 @@ fn screens_are_known_by_what_they_say_wherever_they_are_plugged_in() {
     session.compositor_mut().remove_output(&office);
     assert_eq!(session.compositor().area_of(&session.output()).loc.x, 0);
 }
+
+#[test]
+fn the_scale_guessed_for_a_screen_is_kept_for_the_next_login() {
+    let state = tempfile::TempDir::new().unwrap();
+    let panel = || Some(says("BOE", 0x07c8, None));
+    let mut first = Session::new();
+    first.compositor_mut().set_state_directory(state.path());
+    let laptop = first.add_output_saying((800, 600), panel());
+    first
+        .compositor_mut()
+        .suggest_scale(&laptop, Scale::new(2.5));
+    assert_eq!(first.compositor().scale_of(&laptop), Scale::new(2.5));
+    // One that says nothing of itself keeps nothing.
+    let nested = first.add_output((800, 600));
+    first
+        .compositor_mut()
+        .suggest_scale(&nested, Scale::new(2.0));
+    let kept = std::fs::read_to_string(state.path().join("screens.yaml")).unwrap();
+    assert!(kept.contains("BOE 0x07c8 on test-1"), "{kept}");
+    assert_eq!(kept.matches("screen:").count(), 1, "{kept}");
+    drop(first);
+
+    // Logged in again, the guess made then is kept, though another is
+    // made now, as a better rule would.
+    let mut again = Session::new();
+    again.compositor_mut().set_state_directory(state.path());
+    let laptop = again.add_output_saying((800, 600), panel());
+    again
+        .compositor_mut()
+        .suggest_scale(&laptop, Scale::new(2.0));
+    assert_eq!(again.compositor().scale_of(&laptop), Scale::new(2.5));
+    // Another, which says its serial, is kept by it and not its socket.
+    let serial = omorfos_core::Identity {
+        serial: Some("7X3KD13".to_owned()),
+        ..says("DEL", 1, Some("X"))
+    };
+    let monitor = again.add_output_saying((1600, 1200), Some(serial));
+    again
+        .compositor_mut()
+        .suggest_scale(&monitor, Scale::new(1.5));
+    assert_eq!(again.compositor().scale_of(&monitor), Scale::new(1.5));
+    let kept = std::fs::read_to_string(state.path().join("screens.yaml")).unwrap();
+    assert!(kept.contains("\"DEL 0x0001 X 7X3KD13\""), "{kept}");
+}
+
+#[test]
+fn what_is_kept_of_the_screens_that_cannot_be_read_is_guessed_again() {
+    let state = tempfile::TempDir::new().unwrap();
+    std::fs::write(state.path().join("screens.yaml"), "scales: [{ nonsense }\n").unwrap();
+    let mut session = Session::new();
+    session.compositor_mut().set_state_directory(state.path());
+    let laptop = session.add_output_saying((800, 600), Some(says("BOE", 0x07c8, None)));
+    session
+        .compositor_mut()
+        .suggest_scale(&laptop, Scale::new(2.0));
+    assert_eq!(session.compositor().scale_of(&laptop), Scale::new(2.0));
+    let kept = std::fs::read_to_string(state.path().join("screens.yaml")).unwrap();
+    assert!(kept.contains("scale: 2"), "written anew: {kept}");
+}

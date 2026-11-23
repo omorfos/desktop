@@ -559,7 +559,7 @@ calls for them.
         change of layout between compositors
         (finding 2 of the review of pull requests 44 to 48):
         a kept window not on its screen is to be put back on it.
-  - [ ] Everything of a screen remembered once it has been plugged in:
+  - [x] Everything of a screen remembered once it has been plugged in:
         its mode and how often it is drawn, its scale, where it stands
         among the others, which way up it is, and whether it shows what
         another shows; and plugged in again, at any socket, it is as it
@@ -569,7 +569,10 @@ calls for them.
         guess is made once, when a screen is first seen, and kept: one
         made later never takes the place of what is kept, through a
         screen pulled out and plugged in, sleep, and the compositor
-        started again.
+        started again. Done for the scale guessed at each size, and the way the display
+        key keeps, in `$XDG_STATE_HOME/omorfos/screens.yaml` (ADR 104);
+        the mode is what the screen says each time. Left for Settings:
+        its place and rotation chosen while running.
   - [ ] Guessing again when asked: `omorfosctl`, and Settings when
         there is one, has omorfos guess anew for a screen and keep
         that in place of what it kept; the user's own files are changed

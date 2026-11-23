@@ -5,12 +5,15 @@
 //!
 //! What is tried is never written to the configuration: it is for the
 //! screens plugged in when it was tried, and the configuration's way comes
-//! back as soon as another is plugged in or one taken out.
+//! back as soon as another is plugged in or one taken out. What is kept is
+//! kept by the session for the next login too, with those screens
+//! (ADR 104).
 
 use omorfos_i18n::{Value, Words};
+use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-use omorfos_config::{NamedOutput, Outputs, Rotation, Theme};
+use omorfos_config::{KeptScreens, KeptWay, NamedOutput, Outputs, Rotation, Stands, Theme};
 use smithay::output::Output;
 use smithay::utils::{Logical, Point, Rectangle};
 
@@ -71,6 +74,10 @@ pub(crate) struct Interim {
     pub(crate) prompts: Vec<Prompt>,
     /// What is to be said of it, once the compositor knows what time it is.
     said: Vec<&'static str>,
+    /// What the session keeps of the screens between logins, and the file
+    /// it keeps it in, once it is told where (ADR 104).
+    pub(crate) remembered: KeptScreens,
+    at: Option<PathBuf>,
 }
 
 /// What asks whether to keep the screens as they are, on one screen.
@@ -188,6 +195,45 @@ impl Compositor {
         self.apply_scale();
     }
 
+    /// Says where the session keeps what it keeps of the screens between
+    /// logins, `directory`, and takes up what is kept there: the way the
+    /// display key last kept them in, and the scales guessed for them. What
+    /// cannot be read is guessed again (ADR 104).
+    pub fn set_state_directory(&mut self, directory: &Path) {
+        let at = directory.join("screens.yaml");
+        let text = std::fs::read_to_string(&at).unwrap_or_default();
+        let remembered = KeptScreens::parse(&text).unwrap_or_default();
+        self.interim.kept = remembered.way.as_ref().map(|kept| {
+            let way = match &kept.stands {
+                Stands::Mirrored => Way::Mirrored,
+                Stands::Alone(alone) => Way::Alone(alone.clone()),
+            };
+            let configured = self.configured_for(&kept.names.iter().map(String::as_str));
+            let outputs = way_of(configured, &kept.order, &way);
+            Stood {
+                way,
+                order: kept.order.clone(),
+                names: sorted(kept.names.clone()),
+                outputs,
+            }
+        });
+        self.interim.remembered = remembered;
+        self.interim.at = Some(at);
+        self.apply_scale();
+    }
+
+    /// Writes what the session keeps of the screens where it is kept, if it
+    /// has been told where: whole or not at all, as it is written aside and
+    /// put in place. One that cannot be written is guessed again next time.
+    pub(crate) fn remember(&self) {
+        if let Some(at) = &self.interim.at {
+            let aside = at.with_extension("yaml.new");
+            let _ = at.parent().map(std::fs::create_dir_all);
+            let written = std::fs::write(&aside, self.interim.remembered.to_text());
+            let _ = written.and_then(|()| std::fs::rename(&aside, at));
+        }
+    }
+
     /// The screens called `plugged`, standing as the configuration has
     /// them, in the order the display key goes through them: the one that
     /// comes first, which the others mirror, and then the rest as they
@@ -200,14 +246,23 @@ impl Compositor {
         std::iter::once(first.clone()).chain(rest).collect()
     }
 
-    /// Keeps the way the screens are being tried in, if `keep`, or else
-    /// has them stand as they did before it.
+    /// Keeps the way the screens are being tried in, if `keep`, and for the
+    /// next login too, or else has them stand as they did before it.
     pub(crate) fn answer_screens(&mut self, keep: bool) {
         let tried = self.interim.trying.take().map(|(stood, _)| stood);
         if keep {
             // The configuration's way is kept by keeping no other, so that
             // a change to the configuration is followed again.
             self.interim.kept = tried.filter(|stood| stood.way != Way::Configured);
+            self.interim.remembered.way = self.interim.kept.as_ref().map(|stood| KeptWay {
+                stands: match &stood.way {
+                    Way::Alone(alone) => Stands::Alone(alone.clone()),
+                    Way::Mirrored | Way::Configured => Stands::Mirrored,
+                },
+                order: stood.order.clone(),
+                names: stood.names.clone(),
+            });
+            self.remember();
             self.interim.said.push("screens-kept");
         } else {
             self.interim.said.push("screens-back");

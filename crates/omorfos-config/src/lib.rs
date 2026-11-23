@@ -24,6 +24,7 @@ mod diagnostic;
 pub mod edit;
 mod general;
 mod gradient;
+mod kept;
 mod keys;
 #[cfg(feature = "schema")]
 pub mod manual;
@@ -60,6 +61,7 @@ pub use general::{
     Xwayland,
 };
 pub use gradient::{Direction, Gradient, Run, Stop};
+pub use kept::{KeptScale, KeptScreens, KeptWay, Stands};
 pub use keys::{Binding, KeyChain, KeyChord, Keys, Modifiers};
 pub use menu::{Menu, MenuItem};
 pub use night::{DAYLIGHT, NightLight, between, ramps, tint};

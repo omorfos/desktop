@@ -397,11 +397,34 @@ impl Compositor {
     /// Says what scale suits an output, which a backend knows from how
     /// dense the screen is and how near it is read (ADR 100). It is used unless the configuration names one.
     pub fn suggest_scale(&mut self, output: &Output, scale: Scale) {
+        let scale = self.kept_scale(output, scale);
         let known = self.every_head_mut().find(|head| head.output == *output);
         if let Some(head) = known {
             head.suggested = scale;
             self.apply_scale();
         }
+    }
+
+    /// The scale kept for `output` at the size it is driven at, if one was
+    /// guessed for it before; or else `guessed`, kept for it from now on. A
+    /// screen that says nothing of what it is keeps none (ADR 104).
+    fn kept_scale(&mut self, output: &Output, guessed: Scale) -> Scale {
+        let head = self.every_head().find(|head| head.output == *output);
+        let Some((screen, size)) = head.and_then(|head| {
+            let identity = head.identity()?;
+            let pixels = head.pixels();
+            let size = (pixels.w.unsigned_abs(), pixels.h.unsigned_abs());
+            Some((kept_as(identity, head.name()), size))
+        }) else {
+            return guessed;
+        };
+        if let Some(kept) = self.interim.remembered.scale(&screen, size) {
+            return Scale::new(kept);
+        }
+        let factor = guessed.factor();
+        self.interim.remembered.keep_scale(&screen, size, factor);
+        self.remember();
+        guessed
     }
 
     /// How many pixels an output draws to a unit of layout. One for an
@@ -696,6 +719,22 @@ impl Compositor {
             self.desktop.set_outputs(self.screens.iter().copied());
         }
     }
+}
+
+/// How the session keeps a screen that says it is `identity`, plugged in
+/// at `socket`: by all it says, and by its socket too where it says no
+/// serial, as two alike are then told apart by nothing else.
+fn kept_as(identity: &Identity, socket: &str) -> String {
+    let mut kept = format!("{} {:#06x}", identity.maker, identity.product);
+    for said in [&identity.name, &identity.serial].into_iter().flatten() {
+        kept.push(' ');
+        kept.push_str(said);
+    }
+    if identity.serial.is_none() {
+        kept.push_str(" on ");
+        kept.push_str(socket);
+    }
+    kept
 }
 
 /// What a screen that says it is `identity` says, as the configuration

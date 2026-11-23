@@ -108,7 +108,9 @@ Enter keeps them, Escape puts them back as they were, and so does
 waiting 15 seconds, since it is the key you press when a screen has gone
 dark. Pressing the key again goes on to the next way. What is kept is for
 the screens plugged in when it was; plugging one in or taking one out
-has them stand as this file says again, and so does logging in.
+has them stand as this file says again, and plugging those back in has
+them stand as they were kept, at the next login too. Keeping the way this
+file says forgets any other.
 
 A screen turned on its stand is said with `rotate`, as `xrandr --rotate`
 says it: `left`, with the top of the picture on the left as the screen
@@ -138,8 +140,11 @@ does not say its size, are drawn by their resolution alone: 2 at 3840
 by 2160. The scale is a quarter up to 2 and a half beyond, and 1 or 2
 where it is near them, those being the sharpest, and 2 a little further
 above it than below, so that a 14-inch laptop of 3840 by 2160 is drawn
-at 2 and not 2.5; it is guessed again
-when a screen is driven in another `mode`. If the choice does not
+at 2 and not 2.5. The guess is made once for each screen, at each
+size it is driven at, and kept from then on, in `~/.local/state/omorfos/screens.yaml`
+with the way the display key last kept the screens in: a better guess
+in a later version of omorfos does not change a screen already seen.
+Deleting that file has every screen guessed for again. If the choice does not
 suit you, give a number: `1` is one pixel to a pixel, `1.5` half as
 large again, `2` twice the size.
 

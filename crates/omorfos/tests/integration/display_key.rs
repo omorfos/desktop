@@ -161,3 +161,40 @@ fn with_one_screen_there_is_no_other_way() {
     // Nor is anything asked.
     assert_eq!(session.draw().at(WIDTH / 2, HEIGHT / 2), BACKGROUND);
 }
+
+#[test]
+fn a_way_kept_is_how_the_screens_stand_at_the_next_login() {
+    let state = tempfile::TempDir::new().unwrap();
+    // Each login a session of its own, with the same screens.
+    let login = || {
+        let mut session = Session::new();
+        session.compositor_mut().set_state_directory(state.path());
+        let second = session.add_output((800, 600));
+        session.step();
+        (session, second)
+    };
+    let (mut session, second) = login();
+    next(&mut session);
+    tap(&mut session, key::RETURN);
+    assert_eq!(stand(&session, &second), MIRRORED);
+    drop(session);
+
+    let (mut session, second) = login();
+    assert_eq!(stand(&session, &second), MIRRORED, "as it was kept");
+    next(&mut session);
+    tap(&mut session, key::RETURN);
+    assert_eq!(stand(&session, &second), FIRST_ALONE);
+    drop(session);
+
+    let (mut session, second) = login();
+    assert_eq!(stand(&session, &second), FIRST_ALONE, "one alone, kept");
+    // Going round to the configuration's way and keeping that keeps no
+    // other, for the login after too.
+    next(&mut session);
+    next(&mut session);
+    tap(&mut session, key::RETURN);
+    assert_eq!(stand(&session, &second), SIDE_BY_SIDE);
+    drop(session);
+    let (session, second) = login();
+    assert_eq!(stand(&session, &second), SIDE_BY_SIDE);
+}
