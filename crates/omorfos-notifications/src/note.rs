@@ -239,7 +239,9 @@ impl Stack {
             None => self.shown.insert(0, shown),
         }
         // Room is made by a program's notification going, never by one
-        // about something that is wrong.
+        // about something that is wrong; and by one its program did not
+        // mark as critical, while there is one, as a critical one stays
+        // until it is clicked.
         let theirs = |shown: &Shown| !shown.ours;
         let crowded = self.shown.iter().filter(|shown| theirs(shown)).count() > MOST;
         let oldest = self
@@ -767,7 +769,7 @@ mod tests {
     }
 
     #[test]
-    fn ordinary_overflow_does_not_evict_a_critical_notification() {
+    fn a_critical_notification_is_not_the_one_to_make_room_while_another_can() {
         let mut stack = Stack::new(5);
         stack.show(
             Note {
@@ -780,18 +782,13 @@ mod tests {
             stack.show(note(id, "Ordinary", ""), START);
         }
 
+        // The oldest that is not critical goes, though the critical is older.
         assert_eq!(stack.show(note(9, "Another ordinary", ""), START), Some(2));
-        assert!(
-            stack
-                .shown
-                .iter()
-                .any(|shown| shown.id == 1 && shown.urgent)
-        );
         assert_eq!(showing(&stack), [9, 8, 7, 6, 5, 4, 3, 1]);
     }
 
     #[test]
-    fn when_every_notification_is_critical_overflow_is_reported_by_its_id() {
+    fn when_every_notification_is_critical_the_oldest_makes_room_and_is_said_to_have_gone() {
         let mut stack = Stack::new(5);
         for id in 1..=8 {
             stack.show(
