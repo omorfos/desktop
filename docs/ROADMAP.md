@@ -2487,11 +2487,19 @@ First, what is unsafe or gives away what is private:
       when the portal's name changes hands or goes, the backend is told,
       and takes down the question or picker the one before put up, as
       withdrawn, and ends every share of its sessions.
-- [ ] Medium, high if shown: a private window to be blurred shows sharp
+- [x] High, as shown: a private window to be blurred shows sharp
       what it draws outside its frame
       ([finding 12](reviews/2026-11-19-after-the-redesign-of-windows.md#12-a-private-window-that-is-to-be-blurred-shows-sharp-in-pictures-of-the-screen-whatever-it-draws-outside-its-frame)):
-      with stage 3's known gaps in a blurred private window, which are of
-      the same drawing.
+      a part of its own beyond its frame was in pictures sharp; in a
+      picture, what it draws is cut to its frame where the frame does not
+      cut it already, as the frame lands once stretched to a new size. A
+      review of the fix found three more ways past the glass, each shown
+      and closed: the picture it had before, fading after a new size, is
+      left out, being noted as the screen has it; the glass grows with the
+      window as it comes in, should the theme have it come in larger; and
+      the glass over its picture made small reaches a pixel further, to
+      the last that picture is drawn to. Stage 3's known gaps in a blurred
+      private window remain.
 - [ ] Medium: the relay's limits hold a connection, not a program, and
       connections are not counted
       ([finding 4](reviews/2026-11-19-after-the-redesign-of-windows.md#4-what-the-relay-holds-a-program-to-it-holds-each-connection-to-and-connections-are-not-counted)):

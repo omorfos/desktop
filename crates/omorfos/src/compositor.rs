@@ -4153,6 +4153,7 @@ impl Compositor {
             let first = elements.len();
             // Or it is under glass that blurs it, frame and all, and is
             // blank where glass cannot blur.
+            let veiled = panes.len();
             if let Some(Veil::Blurred) = veil {
                 let theme = &self.config().theme;
                 let blank = theme.style(Part::Capture, States::NONE).ground();
@@ -4205,6 +4206,9 @@ impl Compositor {
             });
             scaling::scale(elements, first, around);
             scaling::scale_panes(&mut glass, 0, around);
+            // The glass that blurs it is as large as it is drawn, larger
+            // than it is as it comes in if the theme has it so.
+            scaling::scale_panes(panes, veiled, around);
             // What is behind its glass begins under its shadow.
             let under = elements.len();
             panes.extend(glass.into_iter().map(|pane| pane.under(under)));
@@ -4263,7 +4267,8 @@ impl Compositor {
 
     /// Adds what a window itself shows: its pop-ups whole, unless it is
     /// to be drawn `alone`, and its own picture, which is cut to the frame
-    /// if the frame's bottom corners are rounded. What it is drawn from is
+    /// if the frame's bottom corners are rounded or it is drawn `alone`,
+    /// under glass the size of its frame. What it is drawn from is
     /// noted if `noted`, to fade it out by when it goes.
     fn window_elements<R>(
         &self,
@@ -4283,12 +4288,13 @@ impl Compositor {
         };
         // Stretched, it is noted as it is drawn, to fade into the picture
         // its program draws next; over that, the picture it had before,
-        // while it does.
+        // while it does, but not under glass that blurs it: that picture
+        // was noted as the screen has it, uncut.
         let about = view.pixel(shown.origin.to_f64());
         if let Some(Stretched { by, .. }) = shown.stretch {
             noting.stretched(shown.origin, by);
         }
-        if let Some(giving) = &shown.giving {
+        if let Some(giving) = shown.giving.as_ref().filter(|_| !alone) {
             let changes = self
                 .config()
                 .theme
@@ -4309,16 +4315,29 @@ impl Compositor {
         let Some(chrome) = rounded else {
             let at = view.pixel(location.to_f64());
             let opacity = shown.seen.opacity;
-            let surfaces: Vec<WaylandSurfaceRenderElement<R>> = if alone {
+            if alone {
+                // Cut to its frame, the glass over which blurs it, as it
+                // lands once stretched: a part of its own placed beyond
+                // would be in the picture sharp.
                 let kind = Kind::Unspecified;
-                surfaces::tree(renderer, &shown.surface, at, scale, opacity, kind)
+                let tree: Vec<WaylandSurfaceRenderElement<R>> =
+                    surfaces::tree(renderer, &shown.surface, at, scale, opacity, kind);
+                let by = shown.stretch.map_or((1.0, 1.0), |stretched| stretched.by);
+                let frame = scaling::unstretched(view.pixels(logical(shown.outer)), about, by);
+                for surface in tree {
+                    let paint = noting.paint(surface.texture());
+                    if let Some(cut) = CropRenderElement::from_element(surface, scale, frame) {
+                        noting.add(&cut, paint);
+                        elements.push(Element::Cropped(cut));
+                    }
+                }
             } else {
-                surfaces::of(renderer, &shown.window, at, scale, opacity)
-            };
-            for surface in &surfaces {
-                noting.add(surface, noting.paint(surface.texture()));
+                let surfaces = surfaces::of(renderer, &shown.window, at, scale, opacity);
+                for surface in &surfaces {
+                    noting.add(surface, noting.paint(surface.texture()));
+                }
+                elements.extend(surfaces.into_iter().map(Element::Surface));
             }
-            elements.extend(surfaces.into_iter().map(Element::Surface));
             if let Some(Stretched { by, .. }) = shown.stretch {
                 scaling::stretch(elements, first, about, by);
             }

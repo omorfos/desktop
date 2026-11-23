@@ -46,6 +46,7 @@ less than a blank: colours, large shapes and where things are can still
 be made out, so keep `true` (or `blank`) for what nobody else should
 know is there, such as a password manager. Where a picture cannot be
 blurred, as with `appearance.reduce_transparency`, it is blank; a
-picture of the window by itself is blank too; and its menus are left
-out of a picture, as a blank window's are. In a frame of several
+picture of the window by itself is blank too; and its menus, and
+anything else it draws beyond its frame, a shadow of its own among it,
+are left out of a picture, as a blank window's are. In a frame of several
 windows, one to be blank makes all of it blank.

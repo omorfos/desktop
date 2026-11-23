@@ -38,6 +38,17 @@ pub(crate) fn whole(length: f64) -> i32 {
     length.round() as i32
 }
 
+/// `area` out to the next whole unit on every side, so that whatever pixel
+/// what fills it is drawn to, at any scale, is under it.
+fn covering((left, top, across, down): Exact) -> Rectangle<i32, Logical> {
+    let (right, bottom) = ((left + across).ceil(), (top + down).ceil());
+    let (left, top) = (left.floor(), top.floor());
+    Rectangle::new(
+        (whole(left), whole(top)).into(),
+        (whole(right - left), whole(bottom - top)).into(),
+    )
+}
+
 /// The size of `mapped`, as its frame has it.
 pub(crate) fn shape(mapped: &Mapped) -> (i32, i32) {
     let size = surfaces::proper(&mapped.window).size;
@@ -164,17 +175,9 @@ impl Compositor {
                 .theme
                 .style(Part::Capture, States::NONE)
                 .ground();
-            // Out to the next whole unit on every side, so that whatever
-            // pixel the picture is drawn to at any scale is under it.
-            let area = |(left, top, across, down): Exact| {
-                let (left, top) = (left.floor(), top.floor());
-                let (right, bottom) = ((left + across).ceil(), (top + down).ceil());
-                Rectangle::<i32, Logical>::new(
-                    (whole(left), whole(top)).into(),
-                    (whole(right - left), whole(bottom - top)).into(),
-                )
-            };
-            let area = area(picture).intersection(area(within)).unwrap_or_default();
+            let area = covering(picture)
+                .intersection(covering(within))
+                .unwrap_or_default();
             // Whole however faint the window is, as what it blurs is the
             // faint picture: glass as faint would let the picture through.
             // Known by the window and where it is pictured, not by where
@@ -186,5 +189,18 @@ impl Compositor {
                 (key, first),
             ));
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_area_covering_a_picture_reaches_as_far_as_it_does_wherever_it_begins() {
+        let area = covering((0.9, 1.5, 10.2, 4.6));
+        assert_eq!(area, Rectangle::new((0, 1).into(), (12, 6).into()));
+        let exact = covering((2.0, 3.0, 4.0, 5.0));
+        assert_eq!(exact, Rectangle::new((2, 3).into(), (4, 5).into()));
     }
 }

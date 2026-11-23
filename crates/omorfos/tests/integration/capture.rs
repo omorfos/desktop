@@ -14,7 +14,7 @@ use wayland_protocols::ext::image_copy_capture::v1::client::{
 };
 
 use crate::common::{Client, Event, HEIGHT, Picture, Session, WIDTH, mapped, open_on};
-use crate::windows::{BACKGROUND, BLUE, GREEN, RED};
+use crate::windows::{BACKGROUND, BLUE, GREEN, RED, SENT};
 use wayland_protocols::wp::cursor_shape::v1::client::wp_cursor_shape_device_v1::Shape;
 
 /// The dot in the middle of the mark that says the screen is captured.
@@ -1080,6 +1080,106 @@ fn a_private_window_to_be_blurred_is_blank_where_nothing_is_blurred() {
         (shot.at(0, 0), shot.at(10, 10), shot.at(19, 19)),
         (GREEN, GREEN, GREEN)
     );
+}
+
+#[test]
+fn what_a_private_window_to_be_blurred_draws_past_its_frame_is_not_in_a_picture() {
+    let mut session = Session::with_config(&BLURRED);
+    session.blurring();
+    let mut app = session.connect();
+    // With no frame of omorfos's, and a part of its own 40 units past it;
+    // the window says where it is, as a program with parts does.
+    let photos = app.toplevel("photos", "photos");
+    session.roundtrip(&mut app);
+    let _part = app.subsurface(&photos.surface, (60, 0), (20, 20), BLUE);
+    photos.xdg_surface.set_window_geometry(0, 0, 20, 20);
+    app.fill(&photos.surface, (20, 20), RED);
+    session.roundtrip(&mut app);
+    session.roundtrip(&mut app);
+    assert_eq!(session.draw().at(70, 10), BLUE, "the user sees it as ever");
+
+    let mut camera = camera(&mut session);
+    let taking = camera.capture(0, false);
+    let (shot, _) = snap(&mut session, &mut camera, &taking);
+    assert_eq!(shot.at(70, 10), BACKGROUND, "what is under it in its place");
+    let middle = shot.at(10, 10);
+    assert!(
+        crate::common::between(middle, BACKGROUND, RED),
+        "the window itself still blurred: {middle:#x}"
+    );
+}
+
+#[test]
+fn what_a_private_window_to_be_blurred_draws_past_its_frame_is_not_in_a_picture_as_it_changes_size()
+{
+    // Changing size over time, as `MOVING` has it.
+    let theme = (
+        "theme.css",
+        "capture { background: #00ff00; }\nwindow { transition: 180ms ease-out; }\n",
+    );
+    let mut session = Session::with_config(&[BLURRED[0], theme]);
+    session.blurring();
+    let mut app = session.connect();
+    // A part of its own 10 units past it, out of the picture to begin with.
+    let photos = app.toplevel("photos", "photos");
+    session.roundtrip(&mut app);
+    let _part = app.subsurface(&photos.surface, (110, 0), (20, 20), BLUE);
+    photos.xdg_surface.set_window_geometry(0, 0, 100, 100);
+    app.fill(&photos.surface, (100, 100), RED);
+    session.roundtrip(&mut app);
+    session.roundtrip(&mut app);
+    session.advance(Duration::from_secs(1));
+
+    // Made larger, and not yet drawn so, its last picture is stretched to
+    // its frame: the part with it, to where the frame no longer is.
+    session
+        .compositor_mut()
+        .perform(&omorfos_config::Action::Tile(omorfos_config::Half::Left));
+    session.roundtrip(&mut app);
+    session.roundtrip(&mut app);
+    session.advance(SENT);
+    let mut camera = camera(&mut session);
+    let taking = camera.capture(0, false);
+    let (shot, _) = snap(&mut session, &mut camera, &taking);
+    let stretched = (shot.at(370, 10), shot.at(400, 40));
+    assert_eq!(stretched, (BACKGROUND, BACKGROUND), "stretched");
+
+    // Drawn at its size, the stretched picture fades into the new one.
+    let ((across, down), _) = app.last_configure();
+    photos.xdg_surface.set_window_geometry(0, 0, across, down);
+    app.fill(&photos.surface, (across, down), RED);
+    session.roundtrip(&mut app);
+    session.roundtrip(&mut app);
+    session.advance(Duration::from_millis(60));
+    let (shot, _) = snap(&mut session, &mut camera, &taking);
+    let fading = (shot.at(370, 10), shot.at(400, 40));
+    assert_eq!(fading, (BACKGROUND, BACKGROUND), "fading");
+}
+
+#[test]
+fn a_private_window_to_be_blurred_coming_in_larger_than_it_is_is_blurred_as_large() {
+    // Coming in from half as large again, whole at once.
+    let theme = (
+        "theme.css",
+        "capture { background: #00ff00; }\nwindow { transition: 180ms linear; }\n\
+         @starting-style { window { opacity: 1; scale: 150% } }\n",
+    );
+    let mut session = Session::with_config(&[BLURRED[0], theme]);
+    session.blurring();
+    let mut app = session.connect();
+    let photos = app.toplevel("photos", "photos");
+    session.roundtrip(&mut app);
+    app.fill(&photos.surface, (100, 100), RED);
+    session.roundtrip(&mut app);
+    session.roundtrip(&mut app);
+    session.advance(Duration::from_millis(20));
+    assert_eq!(session.draw().at(110, 50), RED, "larger than it is");
+
+    let mut camera = camera(&mut session);
+    let taking = camera.capture(0, false);
+    let (shot, _) = snap(&mut session, &mut camera, &taking);
+    let beyond = shot.at(110, 50);
+    assert_ne!(beyond, RED, "blurred there too");
 }
 
 #[test]
