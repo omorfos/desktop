@@ -334,9 +334,9 @@ own are given it. The ring does not turn yet.
 
 ## Settings for those who need them
 
-The implemented settings are in `config.yaml` from the start and every part
-honours them. Other accessibility settings that are not implemented yet are
-listed in [ACCESSIBILITY.md](ACCESSIBILITY.md).
+Those there are now are in `config.yaml` from the start, and every part
+honours them; those still to come are listed in
+[ACCESSIBILITY.md](ACCESSIBILITY.md).
 (Stage 4 brings the settings, `scheme` and `accent` first; the rules are
 binding on what is drawn before then.)
 

@@ -534,8 +534,8 @@ calls for them.
         socket's; read from the EDID's first block by `omorfos-core`,
         and shown by `omorfosctl screens`. Not yet seen on hardware, as
         the backend that reads the EDID is run by no test. Known gap:
-         `wallpaper.screens` in `config.yaml` names screens by their sockets
-         still.
+        `wallpaper.screens` in `config.yaml` names screens by their
+        sockets still.
   - [x] A better guess: from how dense a screen is and how far it is
         read from, by the kind it is (a laptop's own, a monitor, a
         television, told by its size), rounded to a
