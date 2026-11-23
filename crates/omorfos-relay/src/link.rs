@@ -637,7 +637,7 @@ impl Link {
             let message = &self.down.read[at.clone()];
             let body = message.get(HEADER..).unwrap_or_default();
             let kept = self.keeping.journal.event(header, body, &read);
-            let passed = kept && self.keeping.after(&read, message);
+            let passed = kept && self.keeping.after(&read, message, &fds);
             self.errored |= header.object == DISPLAY && header.opcode == ERROR;
             self.tell_program();
             if passed {

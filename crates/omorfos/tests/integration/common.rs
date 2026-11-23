@@ -68,7 +68,7 @@ use wayland_protocols::wp::keyboard_shortcuts_inhibit::zv1::client::{
     zwp_keyboard_shortcuts_inhibitor_v1 as shortcuts_inhibitor,
 };
 use wayland_protocols::wp::linux_dmabuf::zv1::client::{
-    zwp_linux_buffer_params_v1, zwp_linux_dmabuf_v1,
+    zwp_linux_buffer_params_v1, zwp_linux_dmabuf_feedback_v1, zwp_linux_dmabuf_v1,
 };
 use wayland_protocols::wp::pointer_constraints::zv1::client::{
     zwp_confined_pointer_v1, zwp_locked_pointer_v1, zwp_pointer_constraints_v1,
@@ -868,6 +868,8 @@ pub(crate) enum Event {
     ShotFailed(capture_frame::FailureReason),
     /// A buffer in the memory of the graphics card could not be made.
     GpuBufferFailed,
+    /// What buffers of the graphics card may be made has been told, whole.
+    FedBack,
     /// Pictures may be taken in the memory of the graphics card with this
     /// device number, in this format and these layouts.
     CaptureCard(u64),
@@ -1360,6 +1362,13 @@ impl Client {
         params.add(file, 0, 0, stride, high, low);
         let flags = zwp_linux_buffer_params_v1::Flags::empty();
         params.create_immed(size.0, size.1, format, flags, &self.handle(), ())
+    }
+
+    /// Asks what buffers of the graphics card may be made, told whole as
+    /// [`Event::FedBack`].
+    pub(crate) fn gpu_feedback(&self) -> zwp_linux_dmabuf_feedback_v1::ZwpLinuxDmabufFeedbackV1 {
+        let buffers = self.state.gpu_buffers.as_ref().unwrap();
+        buffers.get_default_feedback(&self.handle(), ())
     }
 
     /// A buffer of one pixel that is not memory shared with the compositor.
@@ -2415,7 +2424,7 @@ impl Dispatch<wl_registry::WlRegistry, ()> for ClientState {
             }
             "wp_viewporter" => state.viewporter = Some(registry.bind(name, version, handle, ())),
             "zwp_linux_dmabuf_v1" => {
-                state.gpu_buffers = Some(registry.bind(name, version.min(3), handle, ()));
+                state.gpu_buffers = Some(registry.bind(name, version.min(4), handle, ()));
             }
             "wp_single_pixel_buffer_manager_v1" => {
                 state.single_pixels = Some(registry.bind(name, version, handle, ()));
@@ -3307,6 +3316,20 @@ impl Dispatch<zwp_linux_buffer_params_v1::ZwpLinuxBufferParamsV1, ()> for Client
     ) {
         if matches!(event, zwp_linux_buffer_params_v1::Event::Failed) {
             state.events.push(Event::GpuBufferFailed);
+        }
+    }
+}
+impl Dispatch<zwp_linux_dmabuf_feedback_v1::ZwpLinuxDmabufFeedbackV1, ()> for ClientState {
+    fn event(
+        state: &mut Self,
+        _: &zwp_linux_dmabuf_feedback_v1::ZwpLinuxDmabufFeedbackV1,
+        event: zwp_linux_dmabuf_feedback_v1::Event,
+        (): &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        if matches!(event, zwp_linux_dmabuf_feedback_v1::Event::Done) {
+            state.events.push(Event::FedBack);
         }
     }
 }

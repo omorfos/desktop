@@ -1262,6 +1262,16 @@ what only games and touchpads need last.
       terminal, locked, a video playing, a window of a program written for
       X11, and installing anew, with what is to be seen in each and what
       the log says.
+- [x] Ghostty ended as the compositor changed, with thirteen windows
+      open, on 23 November 2026: GTK before 4.24, told a second time what
+      buffers of the graphics card it may make, lets go of what it should
+      not, and ends (`docs/UPSTREAM.md`, under GTK). The next compositor
+      tells each feedback a kept program asked for, made again, what the
+      one before did. The relay now holds that back while it is as the
+      program was told, comparing tables of formats by what they hold,
+      and passes it on where it is not; a feedback that changed, as after
+      the driver is updated, still reaches the program, and a GTK older
+      than 4.24 may end on it.
 
 ## 4. The look
 

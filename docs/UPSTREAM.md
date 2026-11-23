@@ -463,6 +463,33 @@ S=$(ls -d ~/.cargo/registry/src/*/smithay-$(awk '/^name = "smithay"/{getline; pr
   and `grep -n -A25 'fn finish_internal' "$S"/src/backend/renderer/gles/mod.rs | grep -n EGLFence`.
   If either is gone, measure a blur's passes again as ADR 33 did.
 
+## GTK
+
+### A second feedback of the buffers it may make ends a program
+
+- **Wrong:** GTK before 4.24, told a second time what buffers of the
+  graphics card it may make (`linux-dmabuf`'s feedback), unmaps the wrong
+  pointer in `linux_dmabuf_format_table` (`gdk/wayland/gdkdmabuf-wayland.c`):
+  what it was told the first time, on its heap, in place of the table.
+  Where that lies on a page of its own the page goes, and the program
+  ends as the `done` after frees it. A program kept through a change of
+  compositor is told its feedback again by the next. Seen on 23 November
+  2026: thirteen windows of Ghostty, one process on GTK 4.18.6, ended
+  four seconds after a change. Fixed by GTK's a8a5692c ("wayland: Fix
+  munmap() of the wrong pointer in the dmabuf format table", 26 July
+  2026), first in 4.23.3 and 4.24.0; 4.18 and 4.20 have it still, and
+  Debian 13 ships 4.18.6.
+- **Meanwhile:** the relay holds back what the next compositor tells a
+  kept program's feedback, and passes it on only where it is not as the
+  program was told (`fed_back` in `crates/omorfos-relay/src/keep.rs`).
+  A feedback that changed, as after the driver is updated, still reaches
+  the program, and a GTK older than the fix may end on it.
+- **Check:** the GTK of each distribution omorfos is packaged for, as
+  `apt-cache policy libgtk-4-1` says on Debian and Ubuntu. Once it is
+  4.24 or later everywhere, this entry goes; the holding back stays, as a
+  feedback told again the same says nothing new to any program. Debian
+  could be asked to take the fix, a line, into 13's package.
+
 ## The PipeWire bindings (`pipewire`)
 
 ### A listener let go of after what it listens to writes freed memory

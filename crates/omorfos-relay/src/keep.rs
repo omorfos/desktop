@@ -17,7 +17,7 @@
 //! the rest, as [`Journal`] kept it. Until the second is answered, what the
 //! compositor says is sifted: what the program knows already is kept from it.
 //! What a buffer has to be for its pictures is told again only if it is not as
-//! it was. A locker is not told again that the session is locked, and a lock
+//! it was, and so are the buffers of the graphics card it may make. A locker is not told again that the session is locked, and a lock
 //! surface told the size it was is shown as it was by the relay; one told
 //! another is the locker's to draw anew, as what it showed is of another size. A window the next compositor lists that the program has listed is
 //! the one it has, once the relay knows which it is. A window of another
@@ -42,6 +42,11 @@
 //! to any compositor.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
+use std::fs::File;
+use std::hash::{DefaultHasher, Hash, Hasher};
+use std::os::fd::OwnedFd;
+use std::os::unix::fs::FileExt;
+use std::rc::Rc;
 
 use wayland_backend::protocol::MessageDesc;
 
@@ -139,6 +144,14 @@ const LOCK_ACK: u16 = 1;
 /// The event of a lock that says the session is locked; its other says the
 /// lock was refused or is over.
 const LOCKED: u16 = 0;
+
+/// The events of what a program is told of the buffers of the graphics
+/// card it may make (`linux-dmabuf`'s feedback) that say it is whole, and
+/// that hand over the table of formats the rest names; and the longest a
+/// table can be, as each of its entries is 16 bytes, named by 16 bits.
+const FED_BACK: u16 = 0;
+const FORMAT_TABLE: u16 = 1;
+const TABLE: u32 = 16 << 16;
 
 /// Numbers that mean something only to one compositor, kept as the
 /// program's for theirs where the two differ.
@@ -251,18 +264,63 @@ enum Shot {
     Told,
 }
 
-/// What a buffer has to be for a session's pictures, as the compositor
-/// says it, ending with that it is whole.
+/// What the compositor says in parts, ending with that it is whole: what
+/// a buffer has to be for a session's pictures, and what buffers of the
+/// graphics card a program may make.
+///
+/// The first the next compositor says is held back until it is whole, and
+/// passed on only if it is not as the program was told, for a program may
+/// take it as something changed. What was told is kept as a hash, so that
+/// what is kept of each is as small however much the compositor says.
 #[derive(Debug, Default)]
-struct Constraints {
-    /// What the program was last told.
-    told: Vec<Vec<u8>>,
+struct Batch {
+    /// What the program was last told, hashed.
+    told: Option<u64>,
     /// What the compositor has said since.
-    coming: Vec<Vec<u8>>,
-    /// Whether what comes is held back until it is whole, and passed on
-    /// only if it is not as the program was told: the first the next
-    /// compositor says.
+    coming: DefaultHasher,
+    /// What is held back of it meanwhile, as it is to be passed on.
+    held: Vec<Sending>,
+    /// Whether what comes is held back.
     sifting: bool,
+}
+
+impl Batch {
+    /// Takes in `said`, a part, compared by `compared`; returns whether it
+    /// is passed on.
+    fn part(&mut self, compared: impl Hash, said: Sending) -> bool {
+        compared.hash(&mut self.coming);
+        if self.sifting {
+            self.held.push(said);
+        }
+        !self.sifting
+    }
+
+    /// Takes in that it is whole; returns whether that is passed on, with
+    /// what was held back of it put in `telling` before it.
+    fn whole(&mut self, telling: &mut Vec<Sending>) -> bool {
+        let coming = std::mem::take(&mut self.coming).finish();
+        let held = std::mem::take(&mut self.held);
+        let same = std::mem::take(&mut self.sifting) && self.told == Some(coming);
+        if !same {
+            telling.extend(held);
+        }
+        self.told = Some(coming);
+        !same
+    }
+
+    /// Puts what is held back in `telling`, and passes on the rest as it
+    /// comes, as what is said cannot be compared.
+    fn unsure(&mut self, telling: &mut Vec<Sending>) {
+        telling.append(&mut self.held);
+        self.sifting = false;
+    }
+
+    /// Holds back what comes next, as the compositor goes.
+    fn sift(&mut self) {
+        self.coming = DefaultHasher::default();
+        self.held.clear();
+        self.sifting = true;
+    }
 }
 
 /// A window in a list of windows the program has (`ext-foreign-toplevel-list`).
@@ -448,7 +506,10 @@ pub struct Keeping {
     shots: HashMap<u32, Shot>,
     /// What a buffer has to be for each of the program's sessions of
     /// pictures, by its number for each.
-    taking: HashMap<u32, Constraints>,
+    taking: HashMap<u32, Batch>,
+    /// What buffers of the graphics card the program may make, as each
+    /// feedback it asked for says, by its number for each.
+    feedback: HashMap<u32, Batch>,
     /// Whether the pointer is over what each of the program's that follow
     /// it follows, by its number for each.
     following: HashMap<u32, bool>,
@@ -526,6 +587,7 @@ impl Default for Keeping {
             locked: HashSet::new(),
             shots: HashMap::new(),
             taking: HashMap::new(),
+            feedback: HashMap::new(),
             following: HashMap::new(),
             of_windows: HashMap::new(),
             sources: HashMap::new(),
@@ -683,6 +745,7 @@ impl Keeping {
             self.locked.remove(&object);
             self.shots.remove(&object);
             self.taking.remove(&object);
+            self.feedback.remove(&object);
             self.following.remove(&object);
             // What pictures of a window are taken through is made again
             // while something kept names it, as a source a session is of.
@@ -706,6 +769,7 @@ impl Keeping {
         self.gestures.remove(&made);
         self.given.remove(&made);
         self.constraints.remove(&made);
+        self.feedback.remove(&made);
         self.away.remove(&made);
         self.methods.remove(&made);
         self.grabbed.remove(&made);
@@ -981,7 +1045,7 @@ impl Keeping {
     /// Takes in the event `bytes`, which `read` says it is, once read as
     /// the program's. Returns whether it is to be passed on, after what the
     /// relay is to tell the program of its own accord.
-    pub fn after(&mut self, read: &Read, bytes: &[u8]) -> bool {
+    pub fn after(&mut self, read: &Read, bytes: &[u8], fds: &[Rc<OwnedFd>]) -> bool {
         let header = wire::header(bytes).ok().flatten();
         let object = header.map_or_default(|header| header.object);
         let body = bytes.get(HEADER..).unwrap_or_default();
@@ -1053,6 +1117,9 @@ impl Keeping {
             }
             (interface, opcode) if interface.starts_with("ext_image_copy_capture") => {
                 return self.pictured(object, interface, opcode, bytes);
+            }
+            ("zwp_linux_dmabuf_feedback_v1", opcode) => {
+                return self.fed_back(object, opcode, bytes, fds);
             }
             ("ext_idle_notification_v1", 0) => {
                 self.away.insert(object);
@@ -1147,19 +1214,36 @@ impl Keeping {
     /// passed on.
     fn constrained(&mut self, session: u32, opcode: u16, bytes: &[u8]) -> bool {
         let constraints = self.taking.entry(session).or_default();
-        if opcode != CONSTRAINED {
-            constraints.coming.push(bytes.to_vec());
-            return !constraints.sifting;
+        if opcode == CONSTRAINED {
+            return constraints.whole(&mut self.to_program);
         }
-        let coming = std::mem::take(&mut constraints.coming);
-        let sifted = std::mem::take(&mut constraints.sifting);
-        let same = coming == constraints.told;
-        if sifted && !same {
-            let held = coming.iter().map(|said| (said.clone(), Vec::new()));
-            self.to_program.extend(held);
+        constraints.part(bytes, (bytes.to_vec(), Vec::new()))
+    }
+
+    /// Takes in the event `bytes`, `opcode`, with `fds`, of `feedback`,
+    /// which says what buffers of the graphics card the program may make.
+    /// The first the next compositor says is held back until it is whole,
+    /// and passed on only if it is not as the program was told: GTK 4.18
+    /// lets go of what it should not as it is told a second time, and ends
+    /// (docs/UPSTREAM.md). A table of formats is compared by what it holds,
+    /// as each compositor hands over one of its own; one that cannot be
+    /// read cannot be compared, and is passed on with what was held back.
+    /// Returns whether it is passed on.
+    fn fed_back(&mut self, feedback: u32, opcode: u16, bytes: &[u8], fds: &[Rc<OwnedFd>]) -> bool {
+        let batch = self.feedback.entry(feedback).or_default();
+        let said = (bytes.to_vec(), fds.to_vec());
+        if opcode == FED_BACK {
+            return batch.whole(&mut self.to_program);
         }
-        constraints.told = coming;
-        !(sifted && same)
+        if opcode != FORMAT_TABLE {
+            return batch.part(bytes, said);
+        }
+        let size = wire::word(bytes, HEADER).unwrap_or_default();
+        let Some(table) = fds.first().and_then(|fd| table(fd, size)) else {
+            batch.unsure(&mut self.to_program);
+            return batch.part(bytes, said);
+        };
+        batch.part((bytes, table), said)
     }
 
     /// Lets go of what the program takes pictures through, as the compositor
@@ -1191,8 +1275,7 @@ impl Keeping {
             }
         }
         for constraints in self.taking.values_mut() {
-            constraints.coming.clear();
-            constraints.sifting = true;
+            constraints.sift();
         }
     }
 
@@ -1812,6 +1895,8 @@ impl Keeping {
         spent.extend(self.refused.drain());
         self.let_go_of_pictures(&mut spent);
         self.hold_pictures(objects);
+        // Each feedback is made again, and told anew by the next compositor.
+        self.feedback.values_mut().for_each(Batch::sift);
         let mut menu = false;
         for (number, interface) in self.journal.end_lost(&spent) {
             let untold = !self.given.remove(&number);
@@ -1925,6 +2010,17 @@ fn describes(interface: &str, opcode: u16) -> Option<bool> {
     }
 }
 
+/// What the table of formats `fd` holds, said to be `size` bytes long; or
+/// nothing if it cannot be read whole, or is longer than any table is.
+fn table(fd: &OwnedFd, size: u32) -> Option<Vec<u8>> {
+    let size = usize::try_from(size).ok().filter(|_| size <= TABLE)?;
+    let mut table = vec![0; size];
+    let read = fd
+        .try_clone()
+        .and_then(|fd| File::from(fd).read_exact_at(&mut table, 0));
+    read.ok().map(|()| table)
+}
+
 /// A registry's event that offers `global` under `name`.
 fn offer(registry: u32, name: u32, global: &Global) -> Sending {
     let mut body = name.to_ne_bytes().to_vec();
@@ -1943,6 +2039,8 @@ fn offer(registry: u32, name: u32, global: &Global) -> Sending {
 
 #[cfg(test)]
 mod tests {
+    use std::io::Write;
+
     use super::*;
     use crate::wire::tests::{message, text, words};
 
@@ -1972,6 +2070,12 @@ mod tests {
         /// The compositor sends the event `bytes`; returns it as the program
         /// is told it, if it is.
         fn told(&mut self, bytes: &[u8]) -> Option<Vec<u8>> {
+            self.handed(bytes, &[])
+        }
+
+        /// The compositor sends the event `bytes`, with `fds`; returns it as
+        /// the program is told it, if it is.
+        fn handed(&mut self, bytes: &[u8], fds: &[Rc<OwnedFd>]) -> Option<Vec<u8>> {
             let mut bytes = bytes.to_vec();
             let header = wire::header(&bytes).unwrap().unwrap();
             let header = self
@@ -1981,7 +2085,7 @@ mod tests {
             let read = self.objects.event(&bytes, header).unwrap();
             let body = bytes[HEADER..].to_vec();
             let kept = self.keeping.journal.event(header, &body, &read);
-            (kept && self.keeping.after(&read, &bytes)).then_some(bytes)
+            (kept && self.keeping.after(&read, &bytes, fds)).then_some(bytes)
         }
 
         /// A registry as 2, offered `globals` by the compositor, with what
@@ -2480,7 +2584,7 @@ mod tests {
                 if *event {
                     let header = keeping.before(objects, header, &mut bytes).unwrap()?;
                     let read = objects.event(&bytes, header).unwrap();
-                    keeping.after(&read, &bytes).then_some(bytes)
+                    keeping.after(&read, &bytes, &[]).then_some(bytes)
                 } else {
                     let read = objects.request(&bytes, header).unwrap();
                     let described = &read.interface.requests[usize::from(read.opcode)];
@@ -3452,6 +3556,93 @@ mod tests {
         }
         let stopped = message(11, STOPPED, &[]);
         assert_eq!(kept.told(&stopped), Some(stopped.clone()));
+    }
+
+    /// A table of formats as the compositor hands it, holding `formats`.
+    fn table(formats: &[u8]) -> Rc<OwnedFd> {
+        let mut file = tempfile::tempfile().unwrap();
+        file.write_all(formats).unwrap();
+        Rc::new(OwnedFd::from(file))
+    }
+
+    /// What the compositor says to the feedback `feedback` of the buffers a
+    /// program may make, as Smithay says it, with `table`, said to be `size`
+    /// bytes long: one tranche of the first two formats, then that it is whole.
+    fn fed_back(feedback: u32, table: &Rc<OwnedFd>, size: u32) -> [Sending; 7] {
+        let device = words(&[8, 0xe200, 0]);
+        let said = |opcode, arguments: &[u8]| (message(feedback, opcode, arguments), Vec::new());
+        [
+            (
+                message(feedback, FORMAT_TABLE, &words(&[size])),
+                vec![Rc::clone(table)],
+            ),
+            said(2, &device),
+            said(4, &device),
+            said(5, &words(&[4, 0x0001_0000])),
+            said(6, &words(&[0])),
+            said(3, &[]),
+            said(FED_BACK, &[]),
+        ]
+    }
+
+    #[test]
+    fn what_buffers_a_program_may_make_is_told_again_only_if_the_next_compositor_says_otherwise() {
+        let dmabuf = [(1, "zwp_linux_dmabuf_v1", 5)];
+        let mut kept = Kept::registered(&dmabuf);
+        kept.bind(1, "zwp_linux_dmabuf_v1", 5, 3);
+        let feedbacks = [4, 5, 6, 7];
+        for feedback in feedbacks {
+            kept.send(&message(3, 2, &words(&[feedback]))).unwrap();
+        }
+        // Each entry a format's code, padding and a modifier.
+        let entry = |code: &[u8; 4]| [code.as_slice(), &[0; 12]].concat();
+        let formats = [entry(b"XR24"), entry(b"AR24")].concat();
+        let size = u32::try_from(formats.len()).unwrap();
+        let first = table(&formats);
+        // One longer than any table is, as long as it says.
+        let longest = vec![0; usize::try_from(TABLE + 1).unwrap()];
+        for feedback in feedbacks {
+            let (table, size) = match feedback {
+                7 => (table(&longest), TABLE + 1),
+                _ => (Rc::clone(&first), size),
+            };
+            for (said, fds) in fed_back(feedback, &table, size) {
+                assert_eq!(kept.handed(&said, &fds), Some(said.clone()), "told as said");
+            }
+        }
+
+        kept.restarted(&dmabuf);
+        // The same, in a table of its own, is not told again: a program may
+        // take its table for one it has to let go of (GTK 4.18 frees what it
+        // should not).
+        for (said, fds) in fed_back(4, &table(&formats), size) {
+            assert_eq!(kept.handed(&said, &fds), None, "the same, not told again");
+        }
+        // Formats of their own, in a table as long, are held until whole,
+        // and told with the table they came with.
+        let other = table(&[entry(b"AB24"), entry(b"AR24")].concat());
+        let [said @ .., (done, _)] = fed_back(5, &other, size);
+        for (said, fds) in &said {
+            assert_eq!(kept.handed(said, fds), None, "held until it is whole");
+        }
+        assert_eq!(kept.handed(&done, &[]), Some(done.clone()));
+        let told = std::mem::take(&mut kept.keeping.to_program);
+        assert_eq!(
+            bytes(&told),
+            said.iter()
+                .map(|(said, _)| said.clone())
+                .collect::<Vec<_>>()
+        );
+        assert!(Rc::ptr_eq(&told[0].1[0], &other), "told with its table");
+        // A table that cannot be read, or longer than any is, is not
+        // compared, and what is said is told as it is said.
+        let (unread, _) = std::io::pipe().unwrap();
+        let unread = Rc::new(OwnedFd::from(unread));
+        let unreadable = fed_back(6, &unread, size);
+        let longest = fed_back(7, &table(&longest), TABLE + 1);
+        for (said, fds) in unreadable.into_iter().chain(longest) {
+            assert_eq!(kept.handed(&said, &fds), Some(said.clone()), "told as said");
+        }
     }
 
     #[test]

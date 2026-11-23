@@ -30,6 +30,7 @@ use wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_surface_v1::{
 use crate::capture::{ask, develop, snap_sized};
 use crate::common::{Client, Event, HEIGHT, LayerShape, Session, TEXT, WIDTH, key, read_text};
 use crate::cursors::{color_at, pointer_at, theme};
+use crate::gpu::drawable;
 use crate::hold::{Holder, hold_with};
 use crate::holding::{nudge, pointed};
 use crate::taskbar::{entry, listing};
@@ -442,6 +443,31 @@ fn restarted(
     session.eventually(|session| session.draw().at(10, 10) == RED);
     session.roundtrip(&mut client);
     (session, holder, client)
+}
+
+#[test]
+fn what_buffers_a_program_may_make_is_told_once_through_a_restart() {
+    let relayed = Relayed::new();
+    let offering = |session: &mut Session| {
+        let compositor = session.compositor_mut();
+        compositor.offer_gpu_buffers(0, drawable()).unwrap();
+    };
+    let (mut first, holder) = relayed.compositor_with(offering);
+    let mut client = first.adopt(UnixStream::connect(&relayed.path).unwrap());
+    let _feedback = client.gpu_feedback();
+    first.open(&mut client, "app", (200, 100), RED);
+    let told = |events: Vec<Event>| events.iter().filter(|e| **e == Event::FedBack).count();
+    assert_eq!(told(client.take_events()), 1);
+
+    drop((first, holder));
+    relayed.step();
+    relayed.step();
+    let (mut second, _holder) = relayed.compositor_with(offering);
+    second.eventually(|session| session.draw().at(10, 10) == RED);
+    second.roundtrip(&mut client);
+    relayed.kept();
+    // GTK 4.18 lets go of what it should not as it is told again, and ends.
+    assert_eq!(told(client.take_events()), 0, "told again");
 }
 
 #[test]
@@ -1559,7 +1585,7 @@ fn a_program_holding_a_buffer_in_the_memory_of_the_card_is_kept() {
     let offered = |session: &mut Session| {
         session
             .compositor_mut()
-            .offer_gpu_buffers(0, crate::gpu::drawable())
+            .offer_gpu_buffers(0, drawable())
             .unwrap();
     };
     let (mut first, first_holder) = relayed.compositor_with(offered);
@@ -1594,7 +1620,7 @@ fn a_window_drawn_in_the_memory_of_the_card_is_shown_again_by_the_next_composito
     let offered = |session: &mut Session| {
         session
             .compositor_mut()
-            .offer_gpu_buffers(number, crate::gpu::drawable())
+            .offer_gpu_buffers(number, drawable())
             .unwrap();
     };
     let (mut first, first_holder) = relayed.compositor_with(offered);

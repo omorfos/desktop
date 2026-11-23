@@ -274,8 +274,10 @@ pub const OFFERED: &[Protocol] = &[
         replayed: "Offered once the backend says which card can be drawn from. Each buffer made \
                    by create_immed made again from the descriptors held, with its planes, size, \
                    format and modifier; one the compositor made, by create, cannot yet be, and \
-                   its program is let go. The new compositor's feedback is passed on. A buffer \
-                   it cannot take, in a format it no longer offers, cannot be carried: its \
+                   its program is let go. The new compositor's feedback is passed on where it \
+                   is not as the program was told, its table compared by what it holds, as GTK \
+                   before 4.24 ends when told the same again. A buffer it cannot take, in a \
+                   format it no longer offers, cannot be carried: its \
                    surface shows nothing until the program draws again.",
     },
     Protocol {
