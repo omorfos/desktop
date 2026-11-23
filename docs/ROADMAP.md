@@ -913,6 +913,14 @@ what only games and touchpads need last.
       area of its own output (`Frame::within`), and a window is drawn
       on that output alone; one that is still is drawn wherever it
       reaches, as one across two screens is.
+- [x] A window flashing on the screen beside, as three fingers carried
+      a workspace the whole way across and lifted (seen by the
+      maintainer on 23 November 2026, and found with a build that logged
+      each frame): the slide then ends at once, its windows were taken
+      for windows that had gone, and a copy of each fading where it was
+      last drawn, a whole screen across, was drawn on the screen beside.
+      A window that had slid wholly off its screen has slid away, and
+      leaves no copy.
 - [ ] Known gaps in a workspace sliding beside another screen, found
       with the fix and not looked at further: a window moved across into
       the screen beside is still there in the space, so a click on that

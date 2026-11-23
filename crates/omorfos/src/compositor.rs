@@ -5652,9 +5652,15 @@ impl Animation {
     /// being drawn, as they last were, while they fade.
     fn leave(&mut self, previous: &mut Vec<Shown>, scene: &[Shown]) {
         for shown in previous.drain(..) {
-            // What slid from the screen with its workspace has not gone.
+            // What slid from the screen with its workspace has not gone, nor
+            // has what had slid wholly off its screen: a workspace carried
+            // the whole way across by the fingers is let go there, and a
+            // copy fading where it was would be on the screen beside.
             let beside = shown.on == Showing::Beside;
-            let still = beside || scene.iter().any(|now| now.id == shown.id);
+            let off = shown
+                .within
+                .is_some_and(|own| own.intersection(shown.outer).is_none());
+            let still = beside || off || scene.iter().any(|now| now.id == shown.id);
             let pieces = (!still).then(|| self.noted(&shown.surface));
             let gone = pieces.flatten().map(|pieces| Gone {
                 part: Part::Window,

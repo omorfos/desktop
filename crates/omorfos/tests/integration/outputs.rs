@@ -1303,3 +1303,56 @@ fn the_windows_of_a_screen_turned_off_go_back_to_it_when_it_is_on_again() {
     assert_eq!(session.draw_on(1).at(100, 50), RED, "back on it");
     assert_eq!(session.draw_on(0).at(100, 50), BACKGROUND);
 }
+
+#[test]
+fn a_workspace_swiped_across_one_screen_is_drawn_on_no_other() {
+    use omorfos::Gesture;
+    // Windows coming and going over time, as the built-in theme has them.
+    let moving = ("theme.css", "window { transition: 180ms ease-out; }\n");
+    let workspaces = ("config.yaml", crate::common::FOUR_WORKSPACES);
+    let mut session = Session::with_config(&[workspaces, moving]);
+    let _second = session.add_output((800, 600));
+    let mut client = session.connect();
+    // On the second screen, red shown and blue on its next workspace.
+    pointer_to(&mut session, WIDTH + 300, 200);
+    session.open(&mut client, "files", (200, 100), RED);
+    perform(&mut session, &Action::NextWorkspace);
+    session.open(&mut client, "other", (200, 100), BLUE);
+    perform(&mut session, &Action::PreviousWorkspace);
+    session.settle();
+    let first = |picture: &crate::common::Picture, color: u32| {
+        let pixels = (0..HEIGHT).flat_map(|y| (0..WIDTH).map(move |x| (x, y)));
+        pixels.filter(|(x, y)| picture.at(*x, *y) == color).count()
+    };
+    // Nothing of the second's, even as faint as something fading, on the
+    // first: it has no window of its own.
+    let look = |session: &mut Session, when: &str| {
+        // Each screen drawn, as each is on hardware.
+        drop(session.draw_on(1));
+        let picture = session.draw_on(0);
+        let drawn = WIDTH * HEIGHT - i32::try_from(first(&picture, BACKGROUND)).unwrap();
+        assert_eq!(drawn, 0, "{when}: something drawn on the first");
+    };
+
+    // Three fingers carry it left, toward the first screen, the whole way,
+    // and lift; it settles.
+    let gesture = |session: &mut Session, gesture: Gesture, time: u32| {
+        session
+            .compositor_mut()
+            .input(Input::Gesture(gesture), time);
+        session.step();
+    };
+    gesture(&mut session, Gesture::SwipeBegin { fingers: 3 }, 1000);
+    look(&mut session, "begun");
+    for step in 1..=12 {
+        let moved = Gesture::SwipeUpdate { dx: -40.0, dy: 0.0 };
+        gesture(&mut session, moved, 1000 + step * 16);
+        look(&mut session, &format!("carried, step {step}"));
+    }
+    gesture(&mut session, Gesture::SwipeEnd { cancelled: false }, 1200);
+    look(&mut session, "lifted");
+    for step in 0..20 {
+        session.advance(Duration::from_millis(20));
+        look(&mut session, &format!("settling, step {step}"));
+    }
+}
