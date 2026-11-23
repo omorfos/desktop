@@ -21,15 +21,15 @@ use crate::windows::{BACKGROUND, BLUE, RED};
 
 /// A theme in which a panel is glass: white at half, over what is behind
 /// it blurred by 8 pixels.
-const GLASS: &str = "panel { background: rgba(255, 255, 255, 0.5); \
+pub(crate) const GLASS: &str = "panel { background: rgba(255, 255, 255, 0.5); \
                      backdrop-filter: blur(8px); box-shadow: none; }\n";
 
 /// White at half, premultiplied, as the panel draws its tint.
-const TINT: u32 = 0x8080_8080;
+pub(crate) const TINT: u32 = 0x8080_8080;
 
 /// A panel across the top of the screen, `height` high, over the windows
 /// and keeping no room from them.
-fn across(height: u32) -> LayerShape {
+pub(crate) fn across(height: u32) -> LayerShape {
     LayerShape {
         layer: Layer::Top,
         anchor: Anchor::Top | Anchor::Left | Anchor::Right,

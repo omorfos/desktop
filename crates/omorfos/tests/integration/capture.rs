@@ -1183,6 +1183,56 @@ fn a_private_window_to_be_blurred_coming_in_larger_than_it_is_is_blurred_as_larg
 }
 
 #[test]
+fn glass_over_a_private_window_is_not_blurred_again_while_the_screen_is_recorded_and_still() {
+    // A private window to be blurred, under a panel of glass: the glass is
+    // over the window itself on the screen, and over the window blurred in
+    // a picture of it.
+    let theme = format!("{}{}", BLURRED[1].1, crate::glass::GLASS);
+    let mut session = Session::with_config(&[BLURRED[0], ("theme.css", &theme)]);
+    session.blurring();
+    let mut app = session.connect();
+    session.open(&mut app, "photos", (200, 100), RED);
+    let mut panel = session.connect();
+    panel.layer_name = "panel";
+    let across = crate::glass::across(30);
+    session.open_layer(&mut panel, &across, (WIDTH, 30), crate::glass::TINT);
+    // A program asking for a picture after each, as one recording does.
+    let mut camera = camera(&mut session);
+    let taking = camera.capture(0, false);
+    for _ in 0..3 {
+        let _ = snap(&mut session, &mut camera, &taking);
+    }
+    let blurs = session.compositor().blurs();
+    let _ = snap(&mut session, &mut camera, &taking);
+    assert_eq!(session.compositor().blurs(), blurs, "blurred again");
+}
+
+#[test]
+fn glass_is_blurred_once_for_the_screen_and_a_picture_of_it_with_no_private_window() {
+    let theme = format!("{}{}", BLURRED[1].1, crate::glass::GLASS);
+    let mut session = Session::with_config(&[("theme.css", &theme)]);
+    session.blurring();
+    let mut app = session.connect();
+    let window = session.open(&mut app, "app", (200, 100), RED);
+    let mut panel = session.connect();
+    panel.layer_name = "panel";
+    let across = crate::glass::across(30);
+    session.open_layer(&mut panel, &across, (WIDTH, 30), crate::glass::TINT);
+    let mut camera = camera(&mut session);
+    let taking = camera.capture(0, false);
+    for _ in 0..3 {
+        let _ = snap(&mut session, &mut camera, &taking);
+    }
+    // What is under the glass changes: the picture and the screen are
+    // alike, and the glass is blurred once for both.
+    let blurs = session.compositor().blurs();
+    app.fill(&window.surface, (200, 100), BLUE);
+    session.roundtrip(&mut app);
+    let _ = snap(&mut session, &mut camera, &taking);
+    assert_eq!(session.compositor().blurs(), blurs + 1);
+}
+
+#[test]
 fn a_window_becomes_private_when_its_title_comes_to_say_so() {
     let mut session = Session::with_config(&PRIVATE);
     let mut app = session.connect();

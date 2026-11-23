@@ -2529,9 +2529,14 @@ Then what glass costs. Measured first, as stage 4's item says, with a
 build that has the fix to finding 2, and each of these taken as the
 numbers say:
 
-- [ ] Medium: glass made and blurred again on every drawing while a screen
+- [x] Medium: glass made and blurred again on every drawing while a screen
       with a private window on it is recorded
-      ([finding 6](reviews/2026-11-19-after-the-redesign-of-windows.md#6-while-a-screen-is-recorded-with-a-private-window-on-it-glass-is-made-and-blurred-again-on-every-drawing)).
+      ([finding 6](reviews/2026-11-19-after-the-redesign-of-windows.md#6-while-a-screen-is-recorded-with-a-private-window-on-it-glass-is-made-and-blurred-again-on-every-drawing)):
+      a picture of the screen keeps its glass apart from the screen's
+      while a private window is shown, and shares it, blurring once for
+      both, while none is. Left: a private window seen only in the
+      overview's pictures of another workspace does not count, and the
+      glass there is blurred for each while it is recorded.
 - [x] Low, medium if measured so: every sheet of glass looks at everything
       under it on every drawing
       ([finding 13](reviews/2026-11-19-after-the-redesign-of-windows.md#13-every-sheet-of-glass-looks-at-everything-under-it-on-every-drawing-changed-or-not)):

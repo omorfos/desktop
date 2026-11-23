@@ -3355,6 +3355,17 @@ impl Compositor {
             .every_head()
             .find(|head| head.output == *output)
             .map_or("", Head::name);
+        // A picture of the screen with a private window shown differs from
+        // what the screen shows, and keeps its glass apart, under a name of
+        // its own: sharing, each would blur again what the other did. With
+        // none, the two are alike, and the picture uses the screen's.
+        let apart;
+        let name = if !shown.mark && self.scene.iter().any(|shown| shown.private) {
+            apart = format!("{name}, pictured");
+            apart.as_str()
+        } else {
+            name
+        };
         let screen = (name, size, view.scale.factor());
         let frosted = glass.frost::<R, P>(renderer, screen, scene, (behind, solid), frosting);
         self.animation.glass = glass;
