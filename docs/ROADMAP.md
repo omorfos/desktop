@@ -2730,6 +2730,9 @@ Testing:
 
 - [x] The integration Wayland client reports read failures instead of
       treating a disconnected compositor as an empty event queue.
+- [x] `Session::eventually` gives delayed process and descriptor-close
+      effects a longer real-time window under the full parallel test suite,
+      while continuing to advance the compositor's test clock.
 
 Accessibility:
 
