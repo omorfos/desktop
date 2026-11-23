@@ -42,7 +42,8 @@ fn someone(there: &Path) -> User {
 }
 
 /// A lock screen in the session, with the role to lock, asking `ways`; the
-/// helpers are steered by what is put in `there`.
+/// helpers are steered by what is put in `there`, and what the session kept
+/// of its configuration is in `last-good` there.
 fn joined(session: &mut Session, there: &Path, ways: &[Way]) -> Lock {
     let (ours, theirs) = UnixStream::pair().unwrap();
     session
@@ -50,7 +51,9 @@ fn joined(session: &mut Session, there: &Path, ways: &[Way]) -> Lock {
         .insert_client(ours, omorfos::Roles::LOCK)
         .unwrap();
     let config = session.config.path().to_owned();
-    Lock::new(theirs, &config, (helper(), someone(there)), ways, None).unwrap()
+    let kept = there.join("last-good");
+    let config = (config.as_path(), Some(kept.as_path()));
+    Lock::new(theirs, config, (helper(), someone(there)), ways, None).unwrap()
 }
 
 /// A row of the first screen.
@@ -348,7 +351,14 @@ fn a_helper_that_cannot_be_started_leaves_the_session_locked() {
     );
     // Nor can `omorfos-session`, which offers nothing then.
     let session_nowhere = Some((PathBuf::from("/nowhere/omorfos-session"), Vec::new()));
-    let mut lock = Lock::new(theirs, &config, nowhere, &[Way::Password], session_nowhere).unwrap();
+    let mut lock = Lock::new(
+        theirs,
+        (&config, None),
+        nowhere,
+        &[Way::Password],
+        session_nowhere,
+    )
+    .unwrap();
     until(&mut session, &mut lock, |session| {
         session.compositor().is_locked()
     });
@@ -369,10 +379,18 @@ fn field(session: &mut Session) -> Vec<u32> {
     row(session, FIELD_ROW)
 }
 
-/// A locked session whose theme is `stylesheet`, with a wrong password typed
-/// until it has been heard, and the field as it was at rest before.
-fn wrong(files: &[(&str, &str)]) -> (Session, Lock, tempfile::TempDir, Vec<u32>) {
+/// A locked session with the configuration `files`, and `kept` as what the
+/// session last kept of it, with a wrong password typed until it has been
+/// heard, and the field as it was at rest before.
+fn wrong(
+    files: &[(&str, &str)],
+    kept: &[(&str, &str)],
+) -> (Session, Lock, tempfile::TempDir, Vec<u32>) {
     let there = tempfile::TempDir::new().unwrap();
+    std::fs::create_dir(there.path().join("last-good")).unwrap();
+    for (name, contents) in kept {
+        std::fs::write(there.path().join("last-good").join(name), contents).unwrap();
+    }
     let mut session = Session::with_config(files);
     let mut lock = awake(&mut session, there.path(), &[Way::Password]);
     // As long as it takes to come into view.
@@ -398,7 +416,7 @@ fn wrong(files: &[(&str, &str)]) -> (Session, Lock, tempfile::TempDir, Vec<u32>)
 fn the_field_shakes_when_the_password_was_not_right_and_comes_to_rest() {
     // The tests' sessions keep still unless a part says otherwise.
     let theme = "question { transition: 120ms; }\n";
-    let (mut session, mut lock, _there, rest) = wrong(&[("theme.css", theme)]);
+    let (mut session, mut lock, _there, rest) = wrong(&[("theme.css", theme)], &[]);
     // Frames are shown a sixtieth of a second apart, by the time the
     // compositor tells them at.
     let mut shown = 0;
@@ -426,12 +444,27 @@ fn a_theme_that_moves_nothing_or_motion_reduced_has_the_field_keep_still() {
         &[moving, reduced],
     ];
     for files in still {
-        let (mut session, mut lock, _there, rest) = wrong(files);
+        let (mut session, mut lock, _there, rest) = wrong(files, &[]);
         for shown in 1..30 {
             session.send_frames(Duration::from_millis(shown * 16));
             settle(&mut session, &mut lock);
             assert!(field(&mut session) == rest, "{files:?}");
         }
+    }
+}
+
+#[test]
+fn a_lock_screen_started_after_the_configuration_went_wrong_honours_what_the_session_kept() {
+    // Motion was reduced when the session last kept the configuration;
+    // the file has gone wrong since, and its defaults would shake the field.
+    let moving = ("theme.css", "question { transition: 120ms; }\n");
+    let broken = ("config.yaml", "appearance: [\n");
+    let kept = ("config.yaml", "appearance: { reduce_motion: true }\n");
+    let (mut session, mut lock, _there, rest) = wrong(&[moving, broken], &[kept]);
+    for shown in 1..30 {
+        session.send_frames(Duration::from_millis(shown * 16));
+        settle(&mut session, &mut lock);
+        assert!(field(&mut session) == rest, "the field shook");
     }
 }
 
@@ -622,7 +655,7 @@ fn powered(session: &mut Session, there: &Path, offered: &str) -> Lock {
     let config = session.config.path().to_owned();
     let power = Some((power_helper(), vec![there.as_os_str().to_owned()]));
     let user = (helper(), someone(there));
-    let mut lock = Lock::new(theirs, &config, user, &[Way::Password], power).unwrap();
+    let mut lock = Lock::new(theirs, (&config, None), user, &[Way::Password], power).unwrap();
     until(session, &mut lock, |session| {
         session.compositor().is_locked()
     });

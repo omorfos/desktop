@@ -2127,10 +2127,6 @@ viewer.
 
 Ongoing, and taken between the stages above as much as after them.
 
-- [x] A lock screen started after a configuration file goes wrong uses the
-      same last-known-good session settings as the compositor, for its
-      authentication methods and power actions as well as its appearance.
-
 Security:
 
 - [x] The configuration, theme and IPC parsers fuzzed, beside the relay's
@@ -2349,6 +2345,10 @@ Security:
       the compositor keeps of the configuration too, and so do the portal,
       the clipboard's keeper and the password box; they read the copies
       and leave the keeping to the compositor.
+- [x] The lock screen does too, for the ways it asks by and whether it
+      offers to sleep and shut down as well as for how it looks: one
+      started after a file had gone wrong asked by every way and offered
+      to sleep and shut down, as the defaults do.
 - [ ] Medium: a buffer of the card not finished holds up drawing; with a
       card
       ([finding 4 of what was not looked at](reviews/2026-11-16-what-the-first-review-did-not-look-at.md#4-a-programs-buffer-of-the-graphics-card-that-is-not-finished-holds-up-drawing)).

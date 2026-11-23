@@ -155,16 +155,9 @@ pub fn start(
         .power
         .then(|| (PathBuf::from("omorfos-session"), Vec::new()));
     let connected = omorfos_shell::connect(&wayland).map_err(Failure::from);
-    let lock = connected.and_then(|connected| {
-        Lock::new_with_kept(
-            connected,
-            &config,
-            (helper, user),
-            &ways,
-            power,
-            kept.as_deref(),
-        )
-    });
+    let config = (config.as_path(), kept.as_deref());
+    let lock =
+        connected.and_then(|connected| Lock::new(connected, config, (helper, user), &ways, power));
     lock.and_then(|mut lock| lock.serve())
 }
 
@@ -184,16 +177,22 @@ mod tests {
         let config = tempfile::TempDir::new().unwrap();
         let runtime = tempfile::TempDir::new().unwrap();
         let kept = runtime.path().join("last-good");
-        fs::write(config.path().join("config.yaml"), "lock: { key: false }\n").unwrap();
+        // Each is offered by default.
+        let narrowed = "lock: { fingerprint: false, key: false, power: false }\n";
+        fs::write(config.path().join("config.yaml"), narrowed).unwrap();
         let mut store = omorfos_config::Store::open(config.path());
         store.keep_in(&kept);
 
         fs::write(config.path().join("config.yaml"), "lock: [\n").unwrap();
 
         let loaded = configuration(config.path(), Some(&kept));
-        assert!(!loaded.current().general.lock.key);
+        let lock = &loaded.current().general.lock;
+        assert_eq!(offered(lock), [Way::Password]);
+        assert!(!lock.power);
+        // What went wrong is still said.
         assert_eq!(loaded.diagnostics().len(), 1);
     }
+
     #[test]
     fn the_user_is_who_the_system_says_or_else_who_the_environment_does() {
         let passwd = "root:x:0:0::/root:/bin/sh\n\
