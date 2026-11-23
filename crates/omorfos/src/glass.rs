@@ -697,11 +697,11 @@ impl Glass {
             let reach = i32::try_from(blur.reach().saturating_mul(2)).unwrap_or(i32::MAX);
             // Within the screen: beyond it is what is inside it, mirrored, as
             // it is of the desktop blurred.
-            let around = Rectangle::new(
+            let needed = Rectangle::new(
                 pane.area.loc - Point::from((reach, reach)),
                 pane.area.size + Size::from((reach * 2, reach * 2)),
             );
-            let around = around
+            let around = needed
                 .intersection(Rectangle::from_size(size))
                 .unwrap_or_default();
             // Anything but the desktop behind it, as far round as the blur
@@ -713,7 +713,7 @@ impl Glass {
                 .iter()
                 .any(|element| element.geometry(scale.into()).overlaps(around));
             let (slot, area, under) = if covered {
-                (&mut kept.behind, around, under)
+                (&mut kept.behind, room(needed, size), under)
             } else {
                 let slot = self
                     .desktops
@@ -879,6 +879,31 @@ impl Picture {
     }
 }
 
+/// How far apart the sizes of the pictures of what is behind glass are, in
+/// pixels: one is kept while what it is needed for grows or shrinks within
+/// a step of it, as a part does coming in or going, and moves.
+const STEP: i32 = 64;
+
+/// What of a screen `screen` large is drawn behind glass that needs
+/// `needed` of it: as large as that rounded up to a whole number of steps,
+/// so that a picture made for it is kept while it moves and changes size a
+/// little, and moved to be within the screen rather than cut by it, but no
+/// larger than the screen. What it takes in beyond `needed` is what is
+/// there, beyond the reach of the blur.
+fn room(needed: Rectangle<i32, Physical>, screen: Size<i32, Physical>) -> Rectangle<i32, Physical> {
+    let stepped = |length: i32, most: i32| ((length + STEP - 1) / STEP * STEP).min(most);
+    let size = Size::from((
+        stepped(needed.size.w, screen.w),
+        stepped(needed.size.h, screen.h),
+    ));
+    let within = |at: i32, length: i32, most: i32| at.min(most - length).max(0);
+    let loc = Point::from((
+        within(needed.loc.x, size.w, screen.w),
+        within(needed.loc.y, size.h, screen.h),
+    ));
+    Rectangle::new(loc, size)
+}
+
 /// `size` made half as large, rounded up, as what is behind glass is drawn.
 fn halved(size: Size<i32, Physical>) -> Size<i32, Physical> {
     Size::from(((size.w + 1) / 2, (size.h + 1) / 2))
@@ -890,6 +915,34 @@ mod tests {
 
     use super::*;
     use crate::Scale;
+
+    #[test]
+    fn what_is_drawn_behind_glass_keeps_its_size_as_the_glass_moves_across_the_screens_edge() {
+        let screen = Size::from((640, 480));
+        let needed = |x: i32| Rectangle::new((x, 100).into(), (150, 70).into());
+        let rooms: Vec<_> = (560..600)
+            .step_by(10)
+            .map(|x| room(needed(x), screen))
+            .collect();
+        for (room, x) in rooms.iter().zip((560..600).step_by(10)) {
+            assert_eq!(room.size, Size::from((192, 128)), "a whole number of steps");
+            assert!(
+                room.contains_rect(
+                    needed(x)
+                        .intersection(Rectangle::from_size(screen))
+                        .unwrap()
+                )
+            );
+            assert_eq!(
+                room.loc.x + room.size.w,
+                640,
+                "within the screen, at its edge"
+            );
+        }
+        // And no larger than the screen.
+        let all = room(Rectangle::new((-50, -50).into(), (700, 500).into()), screen);
+        assert_eq!(all, Rectangle::from_size(screen));
+    }
 
     #[test]
     fn glass_made_smaller_with_its_part_is_smaller_about_the_same_point() {

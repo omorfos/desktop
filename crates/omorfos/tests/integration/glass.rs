@@ -267,6 +267,58 @@ fn a_menu_of_glass_over_a_red_window_is_red_there_and_not_beside_it() {
     assert!(session.compositor().blurs() > 0);
 }
 
+/// A blur as the software's, that counts the times it is given nothing it
+/// made before to make it in again.
+struct Counting(Rc<std::cell::Cell<u32>>);
+
+impl Frosting<PixmanRenderer, Drawn> for Counting {
+    fn blur(
+        &mut self,
+        renderer: &mut PixmanRenderer,
+        picture: (&mut Drawn, Size<i32, Physical>),
+        blur: &Blur,
+        made: &mut Option<Box<dyn Any>>,
+    ) -> bool {
+        self.0.set(self.0.get() + u32::from(made.is_none()));
+        Frosting::<PixmanRenderer, Drawn>::blur(&mut Software, renderer, picture, blur, made)
+    }
+
+    fn element(
+        &self,
+        renderer: &mut PixmanRenderer,
+        made: &dyn Any,
+        at: (Rectangle<i32, Physical>, f64, f32),
+    ) -> Option<Rc<dyn RenderElement<PixmanRenderer>>> {
+        Frosting::<PixmanRenderer, Drawn>::element(&Software, renderer, made, at)
+    }
+}
+
+#[test]
+fn a_menu_of_glass_coming_in_over_a_window_keeps_its_picture_as_it_grows() {
+    // As it comes in, from a little smaller than it is, over 100 ms.
+    let theme = "window, window:focus { box-shadow: none; }\n\
+                 menu { background: rgba(255, 255, 255, 0.5); transition: 100ms linear; \
+                 backdrop-filter: blur(8px); box-shadow: none; }\n";
+    let mut session = Session::with_config(&[("theme.css", theme)]);
+    let fresh = Rc::default();
+    session.frosting = Some(Box::new(Counting(Rc::clone(&fresh))));
+    let mut client = session.connect();
+    session.open(&mut client, "app", (200, 400), RED);
+    session.advance(Duration::from_millis(200));
+    drop(session.draw());
+    let motion = Input::Motion { x: 100.0, y: 100.0 };
+    session.compositor_mut().input(motion, 0);
+    session.compositor_mut().perform(&Action::ShowMenu);
+    let before = fresh.get();
+    for _ in 0..10 {
+        session.advance(Duration::from_millis(10));
+        drop(session.draw());
+    }
+    // Blurred on each frame, as it grows over what is behind it; what it is
+    // blurred in is made once.
+    assert_eq!(fresh.get() - before, 1);
+}
+
 #[test]
 fn a_menu_fading_out_keeps_its_glass_as_it_goes() {
     let theme = "window, window:focus { box-shadow: none; }\n\

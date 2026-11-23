@@ -2545,9 +2545,15 @@ numbers say:
       and its tracker is not run, nor its framebuffer made, until that
       changes; what glass adds to a quiet turn grows no faster than the
       windows.
-- [ ] Medium: a sheet of glass with a window behind it has every texture
+- [x] Medium: a sheet of glass with a window behind it has every texture
       made anew on each frame its size changes
-      ([finding 7](reviews/2026-11-19-after-the-redesign-of-windows.md#7-a-sheet-of-glass-with-a-window-behind-it-has-every-texture-made-anew-on-each-frame-its-size-changes)).
+      ([finding 7](reviews/2026-11-19-after-the-redesign-of-windows.md#7-a-sheet-of-glass-with-a-window-behind-it-has-every-texture-made-anew-on-each-frame-its-size-changes)):
+      measured as more than a third of frames on a drag, and no time of
+      a frame's (ADR 33). What is drawn behind glass is as large as it
+      needs rounded up to steps of 64 pixels, and moved within the screen
+      rather than cut by it, so a menu coming in makes its picture once
+      in ten frames where it made eight, and a titlebar dragged along the
+      screen's edge keeps its own.
 - [ ] Low: what is written more than once in the compositor's drawing,
       which is the same code
       ([finding 26](reviews/2026-11-19-after-the-redesign-of-windows.md#26-what-is-written-more-than-once-in-the-compositors-drawing)):

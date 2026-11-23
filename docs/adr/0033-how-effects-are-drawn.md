@@ -83,6 +83,14 @@ the widths glass is blurred by, never less than sixteen units. It was
 measured to cost a frame without this (below). The blur itself is as it
 was, so the shader is held to the same specification.
 
+What of the screen is drawn behind a sheet is as far round it as the blur
+reaches, rounded up to a whole number of steps of 64 pixels and moved to
+be within the screen rather than cut by it, as large as the screen at
+most. A picture made for it, with the textures of the blur, is kept while
+the sheet moves or changes size within a step, as a menu does coming in
+and a titlebar does dragged along the screen's edge; what it takes in
+beyond the reach of the blur is what is there, not a mirror of it.
+
 It is written with Smithay's custom texture shaders and its pictures to
 draw into, which are safe. The hardware backend reaches the GPU through
 Smithay's manager of several GPUs; it lends the renderer underneath, and
