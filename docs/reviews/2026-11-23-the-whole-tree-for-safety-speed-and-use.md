@@ -17,10 +17,11 @@ them opened the code each finding names, and has since built and tested
 each fix, so where a finding says **shown**, a test now fails without
 its fix. Line numbers are those of `a266d9b`, where they had not moved.
 
-Two findings were not so, and are under "Dropped", with why. Ranks are
-the review skill's: **high** stops or ends the session, or gives away
+The original proposed fixes for two findings were not suitable, and are
+under "Invalid proposed fixes", with why. The findings remain open:
+the review skill's **high** rank stops or ends the session, or gives away
 what is private; **medium** costs without bound, or breaks a promise;
-**low**, the rest. None is high.
+**low**, the rest.
 
 ## Findings
 
@@ -166,34 +167,68 @@ why it ended, and assert it was the session ending.
   each screen, or else what the screen says suits it best, as
   `way_of` in `standing.rs` takes it.
 
-## Dropped
+### 9. A same-user process can make the sealed prompt ask for its passphrase
 
-- **That a process named `gpg-agent` may have the pinentry ask in the
-  sealed prompt.** Ranked high by its reviewer. `omorfos-ask` knows the
-  pinentry's parent by the name the kernel keeps of it
-  (`crates/omorfos-ask/src/door.rs:116`), which any process may give
-  itself. That is so, and [ADR 58](../adr/0058-passphrases-asked-in-our-words.md)
-  says so, and why it is not the boundary: a program of the user's can
-  start a real `gpg-agent` with a home of its own and a key made to look
-  like the user's, and ask through that. The fix proposed, reading the
-  parent's program from `/proc/<pid>/exe`, cannot be made:
-  `gpg-agent` makes itself undumpable, and its `exe` is then not to be
-  read by the user's own programs (tried: "Permission denied", with
-  GnuPG 2.4.9). Asking the user's own agent for its process (`GETINFO
-  pid`, on the socket `gpgconf` names) would turn away the first kind
-  of program but not the second, and every agent of another home with
-  it; that is a decision for ADR 58, not a fault.
-- **That the notifications say they show actions, and show only the
-  click.** Ranked medium by its reviewer: `GetCapabilities` says
-  `actions` (`crates/omorfos-notifications/src/bus.rs:42`), and only
-  the `default` action, the click, is kept. No longer saying `actions`
-  was tried, and is worse: Firefox then sends no notification to the
-  desktop that can be clicked, and shows its own in the browser
-  (`toolkit/system/gnome/nsAlertsIconListener.cpp`), and Electron's
-  programs give theirs no click at all, so clicking a browser's
-  notification would no longer bring up its tab, as the guide says it
-  does. Buttons for a program's actions are already on the roadmap,
-  with the notification centre (stage 5), and `actions` stays said.
+**High. The threat is shown by reading; the proposed executable-path fix
+is invalid and the stronger design needs research.**
+
+`omorfos-ask` checks that the pinentry is the installed executable and
+that its parent is named `gpg-agent` (`crates/omorfos-ask/src/door.rs:89-97`).
+The name is mutable. A program running as the user can start the real
+`gpg-agent` with its own GnuPG home and key, configure it to start the
+installed `omorfos-pinentry`, and make the sealed prompt appear through
+that agent. The prompt can show a key identity belonging to the
+attacker's agent while the user believes it was requested by the
+operation they began.
+
+This is a real same-user trust-boundary limitation, but it is not fixed
+by checking `/proc/<pid>/exe`: GnuPG deliberately makes the genuine
+agent undumpable, and a user's process cannot read its executable link
+(the local GnuPG 2.4.9 agent returned `Permission denied`). An attacker
+can also launch the genuine `/usr/bin/gpg-agent`, so executable identity
+alone would not distinguish the two.
+
+What to research before changing code: whether the desktop can establish
+an authenticated relationship with the agent it configured, rather than
+trusting parent identity; whether the agent's socket and `GETINFO pid`
+can provide a useful binding; and whether that would wrongly reject a
+legitimate agent using another GnuPG home. Amend ADR 58 with the chosen
+same-user threat boundary before implementing anything.
+
+### 10. The notification service advertises actions it does not provide
+
+**Medium. Shown by reading; retain as an open protocol-contract issue.**
+
+`GetCapabilities` advertises `actions` (`crates/omorfos-notifications/src/bus.rs:42`),
+but only whether a notification has the `default` action is retained and
+the UI emits `ActionInvoked("default")` for every left click. Named
+Reply, Snooze or Open actions are neither displayed nor emitted.
+
+The Desktop Notifications specification says that `actions` means the
+server will provide the specified actions to the user. Clients may send
+actions without the capability, but the server may ignore them; that is
+not a reason for a server to advertise support it does not have.
+
+Removing the capability is not a complete fix: clients such as Firefox
+may then stop sending notifications whose default click activates the
+application, and Electron clients may omit their clickable action too.
+The correct follow-up is to preserve identifier/label pairs, provide an
+accessible minimal action UI, and emit the selected identifier. Until
+that is implemented, the capability is a compatibility and UX defect,
+not a finding to drop.
+
+## Invalid proposed fixes
+
+- **Checking the pinentry parent with `/proc/<pid>/exe`.** This was the
+  first attempted fix. It rejects the genuine GnuPG agent because it
+  hides that link, while accepting an attacker that launches the genuine
+  binary. It was reverted; the finding above remains open for an ADR and
+  design research.
+- **Removing `actions` immediately.** This was considered as a stopgap,
+  but would make some clients stop sending the default clickable action.
+  It was not applied; the capability finding remains open until the
+  server either implements the requested actions or deliberately defines
+  and documents a compatible subset.
 
 ## What it could be, beside the others
 

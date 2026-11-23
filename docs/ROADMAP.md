@@ -3332,7 +3332,7 @@ The review of 23 November 2026, of the whole tree for safety, speed and
 use, by eight reviewers at once, is written up in
 [reviews/2026-11-23-the-whole-tree-for-safety-speed-and-use.md](reviews/2026-11-23-the-whole-tree-for-safety-speed-and-use.md),
 in the order to take it; each that is put right is a pull request of
-its own, and none it found is high:
+its own. It found one high, five medium and four low findings:
 
 - [ ] Medium: a lock screen started after a file has gone wrong uses the
       defaults, where the rest of the session uses what it kept
@@ -3367,6 +3367,16 @@ its own, and none it found is high:
       `it_ends_when_the_bus_does_and_needs_no_configuration_it_can_watch`
       in full runs
       ([seen in passing](reviews/2026-11-23-the-whole-tree-for-safety-speed-and-use.md#seen-in-passing)).
+- [ ] High: a same-user process can make the sealed prompt ask for its
+      passphrase
+      ([finding 9](reviews/2026-11-23-the-whole-tree-for-safety-speed-and-use.md#9-a-same-user-process-can-make-the-sealed-prompt-ask-for-its-passphrase)):
+      research an authenticated relationship with the configured agent
+      and amend ADR 58 before changing the parent check.
+- [ ] Medium: the notification service advertises actions it does not
+      provide
+      ([finding 10](reviews/2026-11-23-the-whole-tree-for-safety-speed-and-use.md#10-the-notification-service-advertises-actions-it-does-not-provide)):
+      preserve named actions, show them accessibly and emit the selected
+      identifier; do not remove the capability as a stopgap.
 
 ## 9. For others to build on
 
