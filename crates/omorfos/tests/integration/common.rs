@@ -2290,6 +2290,36 @@ impl Client {
     }
 }
 
+#[cfg(test)]
+mod pixel_buffer_tests {
+    use super::*;
+
+    #[test]
+    fn a_pixel_buffer_with_the_wrong_byte_length_is_rejected_before_pool_creation() {
+        let mut session = Session::new();
+        let client = session.connect();
+        let shm = client.state.shm.as_ref().unwrap();
+
+        let result = omorfos_shell::pixels(shm, (2, 2), &[0; 15], &client.handle());
+
+        assert_eq!(result.unwrap_err().kind(), std::io::ErrorKind::InvalidInput);
+    }
+
+    #[test]
+    fn a_valid_pixel_buffer_is_created_and_destroyed_through_wayland() {
+        let mut session = Session::new();
+        let mut client = session.connect();
+        let buffer = {
+            let shm = client.state.shm.as_ref().unwrap();
+            omorfos_shell::pixels(shm, (2, 2), &[0; 16], &client.handle()).unwrap()
+        };
+
+        session.roundtrip(&mut client);
+        buffer.destroy();
+        session.roundtrip(&mut client);
+    }
+}
+
 /// A window as a taskbar sees it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Task {

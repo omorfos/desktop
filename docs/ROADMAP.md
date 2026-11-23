@@ -2146,6 +2146,9 @@ Ongoing, and taken between the stages above as much as after them.
 
 Security:
 
+- [x] The shell's public pixel-buffer helper checks nonzero dimensions,
+      signed Wayland dimensions and stride, pool length, and an exact
+      four-byte-per-pixel size before creating a shared-memory pool.
 - [x] The configuration, theme and IPC parsers fuzzed, beside the relay's
       reader: `configuration` and `ipc` in `fuzz/`, each run by CI as a
       job of its own on a change and for an hour each night, as
