@@ -117,34 +117,23 @@ impl Waker {
 
 impl Lock {
     /// A lock screen on the Wayland connection `wayland`, looking as the
-    /// configuration in `config` has it, for the user called `user`, asking
-    /// each of `ways` by a helper that is `helper`. Their face is the
-    /// first of theirs that reads as a picture; with none, there is none.
-    /// With `power`, `omorfos-session` and the words it is always asked
-    /// with first, it offers to sleep, restart, shut down and log out.
+    /// configuration in `config` has it, or for a file there that does not
+    /// load, the copy of it the compositor kept in `kept`, for the user
+    /// called `user`, asking each of `ways` by a helper that is `helper`.
+    /// Their face is the first of theirs that reads as a picture; with
+    /// none, there is none. With `power`, `omorfos-session` and the words
+    /// it is always asked with first, it offers to sleep, restart, shut
+    /// down and log out.
     ///
     /// # Errors
     ///
     /// Returns an error if the connection cannot be used.
     pub fn new(
         wayland: UnixStream,
-        config: &Path,
+        (config, kept): (&Path, Option<&Path>),
         (helper, user): (PathBuf, User),
         ways: &[Way],
         power: Option<(PathBuf, Vec<OsString>)>,
-    ) -> Result<Self, Failure> {
-        Self::new_with_kept(wayland, config, (helper, user), ways, power, None)
-    }
-
-    /// The lock screen, using the last-known-good configuration the
-    /// compositor kept for this session where a live file no longer loads.
-    pub(crate) fn new_with_kept(
-        wayland: UnixStream,
-        config: &Path,
-        (helper, user): (PathBuf, User),
-        ways: &[Way],
-        power: Option<(PathBuf, Vec<OsString>)>,
-        kept: Option<&Path>,
     ) -> Result<Self, Failure> {
         let room = (FACE_READ, FACE_READ);
         let face = user.faces.iter().find_map(|path| {
