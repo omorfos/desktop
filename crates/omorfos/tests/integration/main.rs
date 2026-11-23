@@ -68,6 +68,7 @@ mod sealed;
 mod session;
 mod shadows;
 mod sharing;
+mod shell_pixels;
 mod sleep;
 mod switcher;
 mod taskbar;

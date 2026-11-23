@@ -37,8 +37,8 @@ use wayland_client::{Dispatch, QueueHandle};
 ///
 /// # Errors
 ///
-/// Returns an error if the dimensions or byte length do not describe a valid
-/// Wayland pixel buffer, or if the memory cannot be had or written to.
+/// Returns an error if the canvas is empty or too large for Wayland, or if
+/// the memory cannot be had or written to.
 pub fn picture<S>(
     shm: &wl_shm::WlShm,
     canvas: &Canvas,
@@ -53,12 +53,14 @@ where
 
 /// Hands pixels to the compositor as a buffer it can read, as
 /// [`picture`] does those of a canvas: `size` of them, four bytes each, as
-/// [`Canvas::bytes`] has them.
+/// [`Canvas::bytes`] has them, row after row with nothing between, so
+/// that there are exactly four for each pixel.
 ///
 /// # Errors
 ///
-/// Returns an error if the dimensions or byte length do not describe a valid
-/// Wayland pixel buffer, or if the memory cannot be had or written to.
+/// Returns an error if `size` is empty or too large for Wayland, or the
+/// bytes are not exactly four for each pixel, or if the memory cannot be
+/// had or written to.
 pub fn pixels<S>(
     shm: &wl_shm::WlShm,
     (width, height): (u32, u32),
