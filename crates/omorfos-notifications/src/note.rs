@@ -242,7 +242,11 @@ impl Stack {
         // about something that is wrong.
         let theirs = |shown: &Shown| !shown.ours;
         let crowded = self.shown.iter().filter(|shown| theirs(shown)).count() > MOST;
-        let oldest = self.shown.iter().rposition(theirs);
+        let oldest = self
+            .shown
+            .iter()
+            .rposition(|shown| theirs(shown) && !shown.urgent)
+            .or_else(|| self.shown.iter().rposition(theirs));
         let gone = oldest.filter(|_| crowded);
         gone.map(|oldest| self.shown.remove(oldest).id)
     }
@@ -760,6 +764,56 @@ mod tests {
         assert_eq!(showing(&stack), [9, 8, 7, 6, 5, 4, 3, 2]);
         // One that takes another's place needs no room made.
         assert_eq!(stack.show(note(5, "Again", ""), START), None);
+    }
+
+    #[test]
+    fn ordinary_overflow_does_not_evict_a_critical_notification() {
+        let mut stack = Stack::new(5);
+        stack.show(
+            Note {
+                urgent: true,
+                ..note(1, "Critical", "")
+            },
+            START,
+        );
+        for id in 2..=8 {
+            stack.show(note(id, "Ordinary", ""), START);
+        }
+
+        assert_eq!(stack.show(note(9, "Another ordinary", ""), START), Some(2));
+        assert!(
+            stack
+                .shown
+                .iter()
+                .any(|shown| shown.id == 1 && shown.urgent)
+        );
+        assert_eq!(showing(&stack), [9, 8, 7, 6, 5, 4, 3, 1]);
+    }
+
+    #[test]
+    fn when_every_notification_is_critical_overflow_is_reported_by_its_id() {
+        let mut stack = Stack::new(5);
+        for id in 1..=8 {
+            stack.show(
+                Note {
+                    urgent: true,
+                    ..note(id, "Critical", "")
+                },
+                START,
+            );
+        }
+
+        assert_eq!(
+            stack.show(
+                Note {
+                    urgent: true,
+                    ..note(9, "Another critical", "")
+                },
+                START
+            ),
+            Some(1)
+        );
+        assert_eq!(showing(&stack), [9, 8, 7, 6, 5, 4, 3, 2]);
     }
 
     #[test]

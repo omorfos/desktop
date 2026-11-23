@@ -8,7 +8,9 @@ tells the program that sent it, which is how clicking a browser's
 notification brings up its tab; a click with the right button dismisses it
 without that. Otherwise it goes after as long as its sender asked for, or
 after `notifications.timeout` seconds. One its sender marked as critical
-stays until it is clicked.
+stays until it is clicked. At most eight program notifications are kept:
+ordinary ones make room first, and if every one is critical, the oldest is
+closed and its sender is notified.
 
 Each comes and goes over the theme's `notification` transition, and those
 around it make room for it, or take the room it leaves, by gliding there
