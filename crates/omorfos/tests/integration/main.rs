@@ -14,6 +14,7 @@ mod activation;
 mod ask;
 mod backdrops;
 mod capture;
+mod client_reads;
 mod clipboard;
 mod common;
 mod config;

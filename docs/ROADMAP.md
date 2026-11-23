@@ -2728,8 +2728,10 @@ is a pull request of its own, to be built and tested first:
 
 Testing:
 
-- [x] The integration Wayland client reports read failures instead of
-      treating a disconnected compositor as an empty event queue.
+- [x] The tests' own Wayland client says when it cannot read from the
+      compositor, where it took that for nothing having been sent, so
+      that a compositor gone away failed a test only once it had waited
+      as long as it could.
 
 Accessibility:
 
