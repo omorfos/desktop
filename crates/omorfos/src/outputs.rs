@@ -56,8 +56,10 @@ pub(crate) struct Head {
     /// driven in: none, from a backend that does not say.
     pub(crate) modes: Vec<OfferedMode>,
     pub(crate) mode: Option<OfferedMode>,
-    /// The scale the backend says suits it.
+    /// The scale the backend says suits it, or the one kept for it.
     suggested: Scale,
+    /// The scale the backend last guessed for it, kept or not.
+    guessed: Scale,
     /// How many pixels it draws to a unit of layout.
     pub(crate) scale: Scale,
     /// Whether a frame showing nothing of the session has been drawn on it
@@ -216,6 +218,7 @@ impl Compositor {
             modes: Vec::new(),
             mode: None,
             suggested,
+            guessed: suggested,
             scale: self.scale_for(name, suggested),
             blanked: Cell::new(false),
         };
@@ -397,12 +400,39 @@ impl Compositor {
     /// Says what scale suits an output, which a backend knows from how
     /// dense the screen is and how near it is read (ADR 100). It is used unless the configuration names one.
     pub fn suggest_scale(&mut self, output: &Output, scale: Scale) {
-        let scale = self.kept_scale(output, scale);
+        let kept = self.kept_scale(output, scale);
         let known = self.every_head_mut().find(|head| head.output == *output);
         if let Some(head) = known {
-            head.suggested = scale;
+            (head.suggested, head.guessed) = (kept, scale);
             self.apply_scale();
         }
+    }
+
+    /// Has the scale last guessed for each screen plugged in, or for the
+    /// one called `screen` by its socket or the configuration, used and
+    /// kept in place of the one kept before (ADR 104).
+    pub(crate) fn guess_scales(&mut self, screen: Option<&str>) {
+        let called =
+            |head: &Head| screen.is_none_or(|screen| screen == head.name || screen == head.known);
+        let kept: Vec<(String, (u32, u32), Scale)> = self
+            .every_head()
+            .filter(|head| called(head))
+            .filter_map(|head| {
+                let pixels = head.pixels();
+                let size = (pixels.w.unsigned_abs(), pixels.h.unsigned_abs());
+                Some((kept_as(head.identity()?, head.name()), size, head.guessed))
+            })
+            .collect();
+        for (kept, size, guessed) in kept {
+            self.interim
+                .remembered
+                .keep_scale(&kept, size, guessed.factor());
+        }
+        for head in self.every_head_mut().filter(|head| called(head)) {
+            head.suggested = head.guessed;
+        }
+        self.remember();
+        self.apply_scale();
     }
 
     /// The scale kept for `output` at the size it is driven at, if one was

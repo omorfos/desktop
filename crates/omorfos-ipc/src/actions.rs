@@ -210,6 +210,18 @@ pub const TOLD: &[Told] = &[
     ),
     told!(
         "Screens and input",
+        "guess_scales",
+        "",
+        "Guess every screen's scale anew, and keep it",
+    ),
+    told!(
+        "Screens and input",
+        "guess_scale",
+        "SCREEN",
+        "Guess one screen's scale anew, and keep it",
+    ),
+    told!(
+        "Screens and input",
         "next_layout",
         "",
         "Type with the next keyboard layout",

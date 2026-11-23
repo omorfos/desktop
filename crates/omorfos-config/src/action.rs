@@ -183,6 +183,13 @@ pub enum Action {
     /// showing what the first shows, and each alone. Each is kept only if
     /// the user says so in time.
     NextScreens,
+    /// Guess anew the scale for every screen plugged in, in place of the
+    /// one guessed when each was first seen, and keep that from now on: as
+    /// a newer version of omorfos would guess. A scale `config.yaml` gives
+    /// is laid over it still.
+    GuessScales,
+    /// The same for one screen, by its socket's name or one from `screens`.
+    GuessScale(String),
     /// Re-read the configuration now.
     ReloadConfig,
     /// Start the compositor again, keeping the login, as `omorfos-hold`
@@ -435,6 +442,11 @@ mod tests {
         );
         assert_eq!(parse("next_layout"), Ok(Action::NextLayout));
         assert_eq!(parse("next_screens"), Ok(Action::NextScreens));
+        assert_eq!(parse("guess_scales"), Ok(Action::GuessScales));
+        assert_eq!(
+            parse("guess_scale: office"),
+            Ok(Action::GuessScale("office".to_owned()))
+        );
         assert_eq!(
             parse("move_to_new_workspace"),
             Ok(Action::MoveToNewWorkspace)

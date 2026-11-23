@@ -289,6 +289,24 @@
           "type": "string"
         },
         {
+          "const": "guess_scales",
+          "description": "Guess anew the scale for every screen plugged in, in place of the\none guessed when each was first seen, and keep that from now on: as\na newer version of omorfos would guess. A scale `config.yaml` gives\nis laid over it still.",
+          "type": "string"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The same for one screen, by its socket's name or one from `screens`.",
+          "properties": {
+            "guess_scale": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "guess_scale"
+          ],
+          "type": "object"
+        },
+        {
           "const": "reload_config",
           "description": "Re-read the configuration now.",
           "type": "string"

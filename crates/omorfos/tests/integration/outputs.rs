@@ -1193,3 +1193,44 @@ fn what_is_kept_of_the_screens_that_cannot_be_read_is_guessed_again() {
     let kept = std::fs::read_to_string(state.path().join("screens.yaml")).unwrap();
     assert!(kept.contains("scale: 2"), "written anew: {kept}");
 }
+
+#[test]
+fn a_screen_is_guessed_for_anew_when_asked_and_that_is_kept() {
+    let state = tempfile::TempDir::new().unwrap();
+    let panel = || Some(says("BOE", 0x07c8, None));
+    let mut first = Session::new();
+    first.compositor_mut().set_state_directory(state.path());
+    let laptop = first.add_output_saying((800, 600), panel());
+    first
+        .compositor_mut()
+        .suggest_scale(&laptop, Scale::new(2.5));
+    drop(first);
+
+    // A newer rule guesses otherwise; what was kept stands until asked.
+    let mut again = Session::new();
+    again.compositor_mut().set_state_directory(state.path());
+    let laptop = again.add_output_saying((800, 600), panel());
+    again
+        .compositor_mut()
+        .suggest_scale(&laptop, Scale::new(2.0));
+    assert_eq!(again.compositor().scale_of(&laptop), Scale::new(2.5));
+    // A name of no screen plugged in changes nothing.
+    again
+        .compositor_mut()
+        .perform(&Action::GuessScale("elsewhere".to_owned()));
+    assert_eq!(again.compositor().scale_of(&laptop), Scale::new(2.5));
+    again
+        .compositor_mut()
+        .perform(&Action::GuessScale("test-1".to_owned()));
+    assert_eq!(again.compositor().scale_of(&laptop), Scale::new(2.0));
+    let kept = std::fs::read_to_string(state.path().join("screens.yaml")).unwrap();
+    assert!(kept.contains("scale: 2 }"), "{kept}");
+    // Every screen at once, one that says nothing of itself among them.
+    let nested = again.add_output((800, 600));
+    again
+        .compositor_mut()
+        .suggest_scale(&nested, Scale::new(1.5));
+    again.compositor_mut().perform(&Action::GuessScales);
+    assert_eq!(again.compositor().scale_of(&nested), Scale::new(1.5));
+    assert_eq!(again.compositor().scale_of(&laptop), Scale::new(2.0));
+}

@@ -202,6 +202,7 @@ keys.yaml bindings[].action = "close"
 keys.yaml bindings[].action = "focus_next"
 keys.yaml bindings[].action = "focus_previous"
 keys.yaml bindings[].action = "fullscreen"
+keys.yaml bindings[].action = "guess_scales"
 keys.yaml bindings[].action = "keep_above"
 keys.yaml bindings[].action = "lock"
 keys.yaml bindings[].action = "log_out"
@@ -237,6 +238,7 @@ keys.yaml bindings[].action.focus = "bottom"
 keys.yaml bindings[].action.focus = "left"
 keys.yaml bindings[].action.focus = "right"
 keys.yaml bindings[].action.focus = "top"
+keys.yaml bindings[].action.guess_scale
 keys.yaml bindings[].action.join_workspace
 keys.yaml bindings[].action.move_to_workspace
 keys.yaml bindings[].action.open
@@ -278,6 +280,7 @@ menu.yaml items[].action = "close"
 menu.yaml items[].action = "focus_next"
 menu.yaml items[].action = "focus_previous"
 menu.yaml items[].action = "fullscreen"
+menu.yaml items[].action = "guess_scales"
 menu.yaml items[].action = "keep_above"
 menu.yaml items[].action = "lock"
 menu.yaml items[].action = "log_out"
@@ -313,6 +316,7 @@ menu.yaml items[].action.focus = "bottom"
 menu.yaml items[].action.focus = "left"
 menu.yaml items[].action.focus = "right"
 menu.yaml items[].action.focus = "top"
+menu.yaml items[].action.guess_scale
 menu.yaml items[].action.join_workspace
 menu.yaml items[].action.move_to_workspace
 menu.yaml items[].action.open

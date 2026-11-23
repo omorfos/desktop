@@ -1596,6 +1596,8 @@ impl Compositor {
                 keyboard.with_xkb_state(self, |mut xkb| xkb.cycle_next_layout());
             }
             Action::NextScreens => self.next_screens(),
+            Action::GuessScales => self.guess_scales(None),
+            Action::GuessScale(screen) => self.guess_scales(Some(screen)),
             Action::ReloadConfig => self.reload_config(),
             Action::RestartCompositor => self.restart_compositor(),
             Action::Quit => self.quit(),

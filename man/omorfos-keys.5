@@ -303,6 +303,9 @@ Type with the next of the keyboard's layouts, and after the last with the first 
 \fBnext_screens\fR
 Have the screens stand the next way: as the configuration says, all showing what the first shows, and each alone. Each is kept only if the user says so in time.
 .TP
+\fBguess_scales\fR
+Guess anew the scale for every screen plugged in, in place of the one guessed when each was first seen, and keep that from now on: as a newer version of omorfos would guess. A scale \fBconfig.yaml\fR gives is laid over it still.
+.TP
 \fBreload_config\fR
 Re\-read the configuration now.
 .TP
@@ -329,6 +332,9 @@ The top half, or upwards.
 \fBbottom\fR
 The bottom half, or downwards.
 .RE
+.TP
+\fBbindings[].action.guess_scale\fR
+
 .TP
 \fBbindings[].action.join_workspace\fR
 At least 0.

@@ -23,8 +23,9 @@ the display key last kept the screens standing in.**
 
 - A scale is guessed once for a screen at a size, and kept: guessed again
   for it later, by this version or another, the kept one is used. The
-  user's files are laid over it, as over any guess; asking for it to be
-  guessed again is the next item.
+  user's files are laid over it, as over any guess. Asked to, with the
+  `guess_scales` action or `guess_scale` for one screen, the session
+  uses and keeps the latest guess in place of the one kept.
 - A screen is kept by all it says it is (ADR 103), and by its socket too
   where it says no serial, as two alike are then told apart by nothing
   else. One that says nothing, as inside another desktop, keeps nothing.

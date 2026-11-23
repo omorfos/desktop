@@ -144,7 +144,9 @@ at 2 and not 2.5. The guess is made once for each screen, at each
 size it is driven at, and kept from then on, in `~/.local/state/omorfos/screens.yaml`
 with the way the display key last kept the screens in: a better guess
 in a later version of omorfos does not change a screen already seen.
-Deleting that file has every screen guessed for again. If the choice does not
+`omorfosctl action guess_scales` has every screen plugged in guessed for
+anew and kept so, and `omorfosctl action guess_scale eDP-1` one screen;
+deleting that file has every screen guessed for again at the next login. If the choice does not
 suit you, give a number: `1` is one pixel to a pixel, `1.5` half as
 large again, `2` twice the size.
 

@@ -573,10 +573,12 @@ calls for them.
         key keeps, in `$XDG_STATE_HOME/omorfos/screens.yaml` (ADR 104);
         the mode is what the screen says each time. Left for Settings:
         its place and rotation chosen while running.
-  - [ ] Guessing again when asked: `omorfosctl`, and Settings when
+  - [x] Guessing again when asked: `omorfosctl`, and Settings when
         there is one, has omorfos guess anew for a screen and keep
         that in place of what it kept; the user's own files are changed
-        only where the user says so.
+        only where the user says so. Done as the `guess_scales` and
+        `guess_scale` actions, which `omorfosctl action` and keys
+        reach; Settings, when there is one, is to offer them.
   - [ ] Known gap to close with it: `omorfosctl state` says how large a
         screen is in units of layout, after its scale, which reads as
         its resolution and is not: both are to be said.
