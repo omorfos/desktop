@@ -532,7 +532,7 @@ impl Session {
                 return;
             }
             self.advance(Duration::from_millis(200));
-            std::thread::sleep(Duration::from_millis(2));
+            std::thread::sleep(Duration::from_millis(1));
         }
         unreachable!("the expected state was never reached");
     }
