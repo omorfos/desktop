@@ -597,7 +597,7 @@ impl Session {
         self.eventually(|session| {
             client.connection.flush().unwrap();
             session.step();
-            client.receive();
+            client.receive().unwrap();
             !client.state.offered.is_empty()
         });
         self.roundtrip(&mut client);
@@ -625,7 +625,7 @@ impl Session {
         for _ in 0..100 {
             client.connection.flush().unwrap();
             self.step();
-            client.receive();
+            client.receive().unwrap();
             if client.state.synced {
                 return;
             }
@@ -1146,12 +1146,15 @@ impl Client {
     /// A client a test does not read for long enough, while the compositor
     /// sends it more, is dropped by it once its socket is full and the
     /// compositor has kept a mebibyte more for it.
-    pub(crate) fn receive(&mut self) {
+    ///
+    /// Returns an error if the Wayland connection cannot be read or
+    /// dispatched.
+    pub(crate) fn receive(&mut self) -> Result<(), wayland_client::DispatchError> {
         if let Some(guard) = self.queue.prepare_read() {
-            // Nothing to read is not an error here.
-            let _ = guard.read();
+            guard.read()?;
         }
-        self.queue.dispatch_pending(&mut self.state).unwrap();
+        self.queue.dispatch_pending(&mut self.state)?;
+        Ok(())
     }
 
     /// Asks to take pictures of a screen, counted in the order screens
@@ -1367,12 +1370,28 @@ impl Client {
     /// The error the compositor ended the connection with, as the name of
     /// what it was about and its number, once the compositor has handled
     /// what was sent.
+    #[expect(
+        clippy::panic,
+        reason = "an I/O failure invalidates the protocol-error assertion"
+    )]
     pub(crate) fn error(&mut self) -> Option<(String, u32)> {
         let _ = self.connection.flush();
         if let Some(guard) = self.queue.prepare_read() {
-            let _ = guard.read();
+            match guard.read() {
+                Ok(_) | Err(wayland_client::backend::WaylandError::Protocol(_)) => {}
+                Err(error) => panic!("Wayland client read failed: {error}"),
+            }
         }
-        let _ = self.queue.dispatch_pending(&mut self.state);
+        // A protocol error is what this helper is looking for and is read
+        // from the connection below. Any other dispatch failure is a test
+        // failure, not an empty event queue.
+        match self.queue.dispatch_pending(&mut self.state) {
+            Ok(_)
+            | Err(wayland_client::DispatchError::Backend(
+                wayland_client::backend::WaylandError::Protocol(_),
+            )) => {}
+            Err(error) => panic!("Wayland client dispatch failed: {error}"),
+        }
         let error = self.connection.protocol_error()?;
         Some((error.object_interface, error.code))
     }
@@ -2287,6 +2306,20 @@ impl Client {
         let size = u32::try_from(text.len()).unwrap();
         keyboard.keymap(1, file.as_fd(), size);
         keyboard
+    }
+}
+
+#[cfg(test)]
+mod client_read_tests {
+    use super::*;
+
+    #[test]
+    fn a_client_reports_when_its_wayland_peer_has_closed() {
+        let (stream, peer) = UnixStream::pair().unwrap();
+        let mut client = Client::new(stream);
+        drop(peer);
+
+        assert!(client.receive().is_err());
     }
 }
 

@@ -333,7 +333,7 @@ impl Relayed {
         let mut told = Vec::new();
         for _ in 0..5000 {
             self.step();
-            client.receive();
+            client.receive().unwrap();
             told.extend(client.take_events());
             if wanted(&told) {
                 return told;

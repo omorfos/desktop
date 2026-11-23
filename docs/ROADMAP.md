@@ -2709,6 +2709,11 @@ is a pull request of its own, to be built and tested first:
       of Smithay and the PipeWire bindings, ADR 11, `OutputScale::Auto`'s
       comment and the README's launcher put right.
 
+Testing:
+
+- [x] The integration Wayland client reports read failures instead of
+      treating a disconnected compositor as an empty event queue.
+
 Accessibility:
 
 - [ ] Everything in the shell reachable from the keyboard.
