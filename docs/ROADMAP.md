@@ -2624,33 +2624,38 @@ is a pull request of its own, to be built and tested first:
       each object multiplied by the objects a link may hold
       ([finding 1](reviews/2026-11-22-the-whole-tree-again.md#1-one-connection-can-have-the-relay-and-the-compositor-behind-it-keep-about-a-thousand-million-rectangles-or-kinds)): written, not built, with 65,536 as the
       total.
-- [ ] Medium: a configuration directory taken away and put back, or a
+- [x] Medium: a configuration directory taken away and put back, or a
       link to one pointed elsewhere, never watched again by any program
-      ([finding 2](reviews/2026-11-22-the-whole-tree-again.md#2-a-configuration-directory-taken-away-and-put-back-or-a-link-to-one-pointed-elsewhere-is-never-watched-again-by-any-program-of-the-session)): written, not built.
+      ([finding 2](reviews/2026-11-22-the-whole-tree-again.md#2-a-configuration-directory-taken-away-and-put-back-or-a-link-to-one-pointed-elsewhere-is-never-watched-again-by-any-program-of-the-session)): the directory it is in is watched for its name, and it is watched again wherever its path leads (#69).
 - [ ] Medium: a window's frame decided again by each compositor, so a
       tab can come back with two titlebars; the place text's version is
       a decision ([finding 3](reviews/2026-11-22-the-whole-tree-again.md#3-a-windows-frame-is-decided-again-by-each-compositor-so-a-framed-window-can-come-back-without-one-and-a-tab-with-two-titlebars)).
-- [ ] Low: the test of the question after a withdrawn picture gives up
+- [x] Low: the test of the question after a withdrawn picture gives up
       after about 350 ms, which the tick of finding 16 of 19 November
-      does not say ([finding 4](reviews/2026-11-22-the-whole-tree-again.md#4-the-test-said-to-wait-however-long-that-takes-after-a-withdrawn-picture-gives-up-after-about-350-ms)): written, not built.
-- [ ] Low: "About" takes Super with Return, space, Escape and the arrows
-      from their bindings ([finding 5](reviews/2026-11-22-the-whole-tree-again.md#5-while-about-is-shown-super-with-return-space-escape-or-an-arrow-does-what-about-does-not-what-the-key-is-bound-to)): written, not built.
+      does not say ([finding 4](reviews/2026-11-22-the-whole-tree-again.md#4-the-test-said-to-wait-however-long-that-takes-after-a-withdrawn-picture-gives-up-after-about-350-ms)): it asks until the question goes up, for as long as ten seconds (#76).
+- [x] Low: "About" takes Super with Return, space, Escape and the arrows
+      from their bindings ([finding 5](reviews/2026-11-22-the-whole-tree-again.md#5-while-about-is-shown-super-with-return-space-escape-or-an-arrow-does-what-about-does-not-what-the-key-is-bound-to)): "About" takes a key only with nothing held (#70).
 - [ ] Low: without Xwayland, the notice says "os error 2" and not what is
       missing ([finding 6](reviews/2026-11-22-the-whole-tree-again.md#6-without-xwayland-installed-every-logins-notice-says-no-such-file-or-directory-os-error-2)).
-- [ ] Low: today faint among the days of another month ([finding 7](reviews/2026-11-22-the-whole-tree-again.md#7-today-is-drawn-as-faintly-as-the-days-of-another-month-when-the-month-shown-is-not-todays)):
-      written, not built.
-- [ ] Low: a screen's global let go of only when something else wakes the
-      compositor ([finding 8](reviews/2026-11-22-the-whole-tree-again.md#8-a-screens-global-kept-five-seconds-after-the-screen-goes-is-let-go-of-only-when-something-else-wakes-the-compositor)): written, not built.
-- [ ] Low: the locale looked up by five copies of one lookup ([finding 9](reviews/2026-11-22-the-whole-tree-again.md#9-the-users-locale-is-looked-up-by-five-copies-of-one-lookup-and-the-fix-of-21-november-went-into-one)): written, not built.
-- [ ] Low: the limits on what a copy is offered as said in four places
-      ([finding 10](reviews/2026-11-22-the-whole-tree-again.md#10-how-many-kinds-a-copy-may-come-in-and-how-long-each-may-be-is-said-in-four-places-and-nothing-holds-the-relays-and-the-compositors-alike)): written, not built.
+- [x] Low: today faint among the days of another month ([finding 7](reviews/2026-11-22-the-whole-tree-again.md#7-today-is-drawn-as-faintly-as-the-days-of-another-month-when-the-month-shown-is-not-todays)):
+      `popover-day-outside:active` has the accent too (#71).
+- [x] Low: a screen's global let go of only when something else wakes the
+      compositor ([finding 8](reviews/2026-11-22-the-whole-tree-again.md#8-a-screens-global-kept-five-seconds-after-the-screen-goes-is-let-go-of-only-when-something-else-wakes-the-compositor)): the time it goes is among what the compositor waits for (#72).
+- [x] Low: the locale looked up by five copies of one lookup ([finding 9](reviews/2026-11-22-the-whole-tree-again.md#9-the-users-locale-is-looked-up-by-five-copies-of-one-lookup-and-the-fix-of-21-november-went-into-one)): `omorfos_i18n::locale` (#75).
+- [x] Low: the limits on what a copy is offered as said in four places
+      ([finding 10](reviews/2026-11-22-the-whole-tree-again.md#10-how-many-kinds-a-copy-may-come-in-and-how-long-each-may-be-is-said-in-four-places-and-nothing-holds-the-relays-and-the-compositors-alike)): `omorfos_ipc::copied` (#74).
 - [ ] Low: a screen's name copied each frame, and each turn the overview,
       the switcher or the sealed prompt is up ([finding 11](reviews/2026-11-22-the-whole-tree-again.md#11-each-frame-drawn-copies-the-screens-name-and-so-does-each-turn-while-the-overview-the-switcher-or-the-sealed-prompt-is-up)).
-- [ ] Low: every start of the X server reads `/proc` ([finding 12](reviews/2026-11-22-the-whole-tree-again.md#12-every-start-of-the-x-server-reads-proc-and-looks-at-tmpx11-unix-though-only-a-start-that-failed-needs-them)):
-      written, not built.
-- [ ] Low: the compositor's count of kinds held by no test ([finding 13](reviews/2026-11-22-the-whole-tree-again.md#13-a-program-that-offers-too-many-short-kinds-is-never-shown-to-be-refused-by-the-compositor)): written, not built.
+- [x] Low: every start of the X server reads `/proc` ([finding 12](reviews/2026-11-22-the-whole-tree-again.md#12-every-start-of-the-x-server-reads-proc-and-looks-at-tmpx11-unix-though-only-a-start-that-failed-needs-them)):
+      only a start that failed (#73).
+- [x] Low: the compositor's count of kinds held by no test ([finding 13](reviews/2026-11-22-the-whole-tree-again.md#13-a-program-that-offers-too-many-short-kinds-is-never-shown-to-be-refused-by-the-compositor)): a copy in 2000 short kinds is refused (#77).
 - [ ] Low: three fixes since 19 November run by the tests and held by none
-      ([finding 14](reviews/2026-11-22-the-whole-tree-again.md#14-three-fixes-since-19-november-are-run-by-the-tests-and-held-by-none)): written, not built, in part.
+      ([finding 14](reviews/2026-11-22-the-whole-tree-again.md#14-three-fixes-since-19-november-are-run-by-the-tests-and-held-by-none)):
+      the decoration rule for a program that names itself late, the
+      keypad's Enter in "About" and the relay's socket that is not one
+      are held now (#78). Left: whether the manager of an X server is
+      kept once its connection is cut (`lost`) needs its test, and
+      `super_as_ctrl` on the welcome card is in a part no test runs.
 - [x] Low: four documents no longer so ([finding 15](reviews/2026-11-22-the-whole-tree-again.md#15-four-documents-said-what-is-no-longer-so)): the roadmap's items asked
       of Smithay and the PipeWire bindings, ADR 11, `OutputScale::Auto`'s
       comment and the README's launcher put right.
