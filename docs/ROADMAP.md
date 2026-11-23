@@ -3345,12 +3345,12 @@ use, by eight reviewers at once, is written up in
 in the order to take it; each that is put right is a pull request of
 its own. It found one high, five medium and four low findings:
 
-- [ ] Medium: a lock screen started after a file has gone wrong uses the
+- [x] Medium: a lock screen started after a file has gone wrong uses the
       defaults, where the rest of the session uses what it kept
       ([finding 1](reviews/2026-11-23-the-whole-tree-for-safety-speed-and-use.md#1-a-lock-screen-started-after-a-file-has-gone-wrong-uses-the-defaults-where-the-rest-of-the-session-uses-what-it-kept)):
       it starts from the kept copy, for what it offers and how it looks
       (#95).
-- [ ] Medium: a critical notification can be the one to go when there
+- [x] Medium: a critical notification can be the one to go when there
       are too many
       ([finding 2](reviews/2026-11-23-the-whole-tree-for-safety-speed-and-use.md#2-a-critical-notification-can-be-the-one-to-go-when-there-are-too-many)):
       the oldest that is not critical goes, while there is one (#100).
@@ -3362,16 +3362,16 @@ its own. It found one high, five medium and four low findings:
       rectangle
       ([finding 4](reviews/2026-11-23-the-whole-tree-for-safety-speed-and-use.md#4-what-is-captured-is-worked-out-and-written-rectangle-by-rectangle)):
       the benchmark first.
-- [ ] Low: the tests' Wayland client took a connection it could not read
+- [x] Low: the tests' Wayland client took a connection it could not read
       for one with nothing to read
       ([finding 5](reviews/2026-11-23-the-whole-tree-for-safety-speed-and-use.md#5-the-tests-wayland-client-took-a-connection-it-could-not-read-for-one-with-nothing-to-read)) (#98).
-- [ ] Low: the shell's pictures handed to the compositor without
+- [x] Low: the shell's pictures handed to the compositor without
       checking that their size and bytes agree
       ([finding 6](reviews/2026-11-23-the-whole-tree-for-safety-speed-and-use.md#6-the-shells-pictures-are-handed-to-the-compositor-without-checking-that-their-size-and-bytes-agree)) (#97).
-- [ ] Low: the relayed clipboard test's last assertion holds whatever the
+- [x] Low: the relayed clipboard test's last assertion holds whatever the
       keeper does
       ([finding 7](reviews/2026-11-23-the-whole-tree-for-safety-speed-and-use.md#7-the-relayed-clipboard-tests-last-assertion-holds-whatever-the-keeper-does)) (#99).
-- [ ] Low: three documents said what is not so
+- [x] Low: three documents said what is not so
       ([finding 8](reviews/2026-11-23-the-whole-tree-for-safety-speed-and-use.md#8-three-documents-said-what-is-not-so)) (#96).
 - [ ] Why the portal sometimes waits more than five seconds to end
       once the bus has gone, failing
