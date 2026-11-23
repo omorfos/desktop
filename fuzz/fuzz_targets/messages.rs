@@ -73,8 +73,9 @@ fn told(objects: &mut Objects, keeping: &mut Keeping, message: &mut [u8]) -> Opt
     };
     let read = objects.event(message, header).ok()?;
     let body = message.get(HEADER..).unwrap_or_default().to_vec();
+    // Handed no descriptors, as nothing read here comes with any.
     if keeping.journal.event(header, &body, &read) {
-        keeping.after(&read, message);
+        keeping.after(&read, message, &[]);
     }
     Some(())
 }
