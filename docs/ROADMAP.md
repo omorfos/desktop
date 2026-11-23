@@ -2610,11 +2610,14 @@ reviewers at once, is written up in
 in the order to take it; what was written but could not be built there
 is a pull request of its own, to be built and tested first:
 
-- [ ] High: one connection has the relay, and the compositor behind it,
+- [x] High: one connection has the relay, and the compositor behind it,
       keep about a thousand million rectangles or kinds, the bound on
       each object multiplied by the objects a link may hold
-      ([finding 1](reviews/2026-11-22-the-whole-tree-again.md#1-one-connection-can-have-the-relay-and-the-compositor-behind-it-keep-about-a-thousand-million-rectangles-or-kinds)): written, not built, with 65,536 as the
-      total.
+      ([finding 1](reviews/2026-11-22-the-whole-tree-again.md#1-one-connection-can-have-the-relay-and-the-compositor-behind-it-keep-about-a-thousand-million-rectangles-or-kinds)):
+      a connection may keep 65,536 additions over all its objects, and
+      what is added to an object let go of no longer counts (#68). Used
+      on the maintainer's laptop from 22 November 2026 with nothing let
+      go for it.
 - [x] Medium: a configuration directory taken away and put back, or a
       link to one pointed elsewhere, never watched again by any program
       ([finding 2](reviews/2026-11-22-the-whole-tree-again.md#2-a-configuration-directory-taken-away-and-put-back-or-a-link-to-one-pointed-elsewhere-is-never-watched-again-by-any-program-of-the-session)): the directory it is in is watched for its name, and it is watched again wherever its path leads (#69).
