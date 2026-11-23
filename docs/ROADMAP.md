@@ -1322,9 +1322,13 @@ the first than on the last.
       under each, rounded above as its window is and square below, kept
       as the window rolls up into it and as it fades out. The built-in
       theme does not, so it costs nothing until a theme asks for it.
-- [ ] What glass behind titlebars costs, measured with `omorfosctl
+- [x] What glass behind titlebars costs, measured with `omorfosctl
       frames` on a modest laptop with a dozen windows, one dragged over
-      the others, and written into ADR 33. The built-in theme's titlebar
+      the others, and written into ADR 33. It cost a frame, 17 in 447 on
+      a UHD 620 at 3840 by 2160, until what is behind glass was blurred
+      from a picture half as large and a sheet left alone while nothing
+      under it changes; then none in about 1600, the slowest 14 ms, and
+      glass stays. The built-in theme's titlebar
       is glass since ADR 97, ahead of that, as the maintainer asked, and
       is made solid again if it costs a frame. Everything that floats
       and the bar followed it the same day, as asked, so what is to be
@@ -2528,9 +2532,14 @@ numbers say:
 - [ ] Medium: glass made and blurred again on every drawing while a screen
       with a private window on it is recorded
       ([finding 6](reviews/2026-11-19-after-the-redesign-of-windows.md#6-while-a-screen-is-recorded-with-a-private-window-on-it-glass-is-made-and-blurred-again-on-every-drawing)).
-- [ ] Low, medium if measured so: every sheet of glass looks at everything
+- [x] Low, medium if measured so: every sheet of glass looks at everything
       under it on every drawing
-      ([finding 13](reviews/2026-11-19-after-the-redesign-of-windows.md#13-every-sheet-of-glass-looks-at-everything-under-it-on-every-drawing-changed-or-not)).
+      ([finding 13](reviews/2026-11-19-after-the-redesign-of-windows.md#13-every-sheet-of-glass-looks-at-everything-under-it-on-every-drawing-changed-or-not)):
+      measured at 0.7 ms a frame with twelve covered sheets on a UHD 620
+      (ADR 33). Each sheet keeps what was under it, element by element,
+      and its tracker is not run, nor its framebuffer made, until that
+      changes; what glass adds to a quiet turn grows no faster than the
+      windows.
 - [ ] Medium: a sheet of glass with a window behind it has every texture
       made anew on each frame its size changes
       ([finding 7](reviews/2026-11-19-after-the-redesign-of-windows.md#7-a-sheet-of-glass-with-a-window-behind-it-has-every-texture-made-anew-on-each-frame-its-size-changes)).

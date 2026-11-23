@@ -91,6 +91,44 @@ fn a_session_with_nothing_changing_allocates_no_more_for_a_peer_that_follows_it(
     }
 }
 
+/// How many times a turn with nothing changing allocates, at most over ten
+/// turns, with `windows` windows open in frames of ours, cascaded, and
+/// `theme`.
+fn quiet_with(windows: usize, theme: &str) -> u64 {
+    let mut session = Session::with_config(&[("theme.css", theme)]);
+    session.blurring();
+    let mut client = session.connect();
+    let _windows: Vec<_> = (0..windows)
+        .map(|each| {
+            session.open_decorated(&mut client, &format!("app{each}"), (200, 100), 0xff00_ff00)
+        })
+        .collect();
+    session.eventually(|session| !session.render());
+    let mut most = 0;
+    for _ in 0..10 {
+        let made = allocation_counter::measure(|| {
+            session.advance(Duration::from_millis(16));
+            session.render();
+        });
+        most = most.max(made.count_total);
+    }
+    most
+}
+
+#[test]
+fn a_session_with_nothing_changing_does_no_more_for_glass_the_more_windows_are_under_it() {
+    // Each titlebar is glass over those before it, so what is under each
+    // grows with the windows; with nothing changing, none of it is looked
+    // at again, and what glass adds to a turn grows no faster than the
+    // windows do.
+    let glass = |windows| quiet_with(windows, "") - quiet_with(windows, SOLID);
+    let (two, eight) = (glass(2), glass(8));
+    assert!(
+        eight <= 4 * two,
+        "glass adds {eight} with eight windows, {two} with two"
+    );
+}
+
 /// Whether anything on the session's screen waits to be told that a frame
 /// was shown there.
 fn awaited(session: &Session) -> bool {

@@ -443,6 +443,26 @@ S=$(ls -d ~/.cargo/registry/src/*/smithay-$(awk '/^name = "smithay"/{getline; pr
   Once it handles an empty mapping, the guard may stay: it also saves
   making a picture of nothing.
 
+### Each pass drawn into a texture makes a framebuffer and a fence
+
+- **Wrong:** binding a `GlesTexture` (`bind_texture` in
+  `src/backend/renderer/gles/mod.rs`) makes a framebuffer, checks it is
+  complete and deletes it when let go of, every time; and finishing a
+  frame (`finish_internal`) makes an EGL fence and flushes, every time,
+  though the next draw is into another texture of the same renderer. A
+  blur is ten passes, each a bind and a frame: on a UHD 620 a pass was
+  measured at about 350 µs, of which 40 µs in the framebuffer and 90 µs
+  in the fence and flush (ADR 33). A framebuffer kept with its texture,
+  and a way to finish a frame with no fence for what is drawn next by
+  the same renderer, would leave the drawing.
+- **Meanwhile:** fewer passes are made: what is behind glass is blurred
+  from a picture half as large, which leaves out the two largest, and a
+  sheet is not drawn again while nothing under it changes. Reaching GL
+  directly would need `unsafe`, which omorfos does not add.
+- **Check:** `grep -n -A12 'fn bind_texture' "$S"/src/backend/renderer/gles/mod.rs | grep -n GenFramebuffers`
+  and `grep -n -A25 'fn finish_internal' "$S"/src/backend/renderer/gles/mod.rs | grep -n EGLFence`.
+  If either is gone, measure a blur's passes again as ADR 33 did.
+
 ## The PipeWire bindings (`pipewire`)
 
 ### A listener let go of after what it listens to writes freed memory

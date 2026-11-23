@@ -596,7 +596,26 @@ struct Picture {
     made: Option<Box<dyn Any>>,
     /// How many blurs it has made that have not been counted yet.
     blurs: u64,
+    /// What was under it when it was last drawn, with where it was and
+    /// what it was drawn over: it is drawn again only once that changes,
+    /// and not looked at by its tracker until then.
+    seen: (Vec<Under>, Rectangle<i32, Physical>, Color32F),
+    /// What is under it now, made in the place of what was, so that
+    /// looking makes nothing anew.
+    looking: Vec<Under>,
 }
+
+/// What of an element under glass says whether it has changed: which it is,
+/// its commit, where it is, what of it is drawn, how much of it is seen and
+/// how it is turned.
+type Under = (
+    Id,
+    CommitCounter,
+    Rectangle<i32, Physical>,
+    Rectangle<f64, Buffer>,
+    u32,
+    Transform,
+);
 
 impl Glass {
     /// How many blurs have been made since the compositor started.
@@ -707,7 +726,8 @@ impl Glass {
             let picture = had.or_else(|| Picture::new::<R, P>(renderer, (area, blur), scale));
             *slot = picture.map(|mut picture| {
                 picture.area = area;
-                let blurred = picture.draw::<R, P>(renderer, (under, behind), &mut *frosting);
+                let drawing = (under, behind, scale);
+                let blurred = picture.draw::<R, P>(renderer, drawing, &mut *frosting);
                 picture.blurs += u64::from(blurred);
                 picture
             });
@@ -783,6 +803,8 @@ impl Picture {
             tracker: OutputDamageTracker::new(halved, scale, Transform::Normal),
             made: None,
             blurs: 0,
+            seen: (Vec::new(), Rectangle::default(), Color32F::TRANSPARENT),
+            looking: Vec::new(),
         })
     }
 
@@ -792,12 +814,14 @@ impl Picture {
         self.area.size == size && self.blur == blur
     }
 
-    /// Draws `under` into it, over `behind`, and has `frosting` blur it
-    /// again if that changed anything; whether it did.
+    /// Draws `under` into it, over `behind`, on a screen of `scale`
+    /// pixels to a unit, and has `frosting` blur it again if that changed
+    /// anything; whether it did. If nothing under it changed since it was
+    /// last blurred, it is not drawn again.
     fn draw<R, P>(
         &mut self,
         renderer: &mut R,
-        (under, behind): (&[Element<R>], Color32F),
+        (under, behind, scale): (&[Element<R>], Color32F, f64),
         frosting: &mut dyn Frosting<R, P>,
     ) -> bool
     where
@@ -805,6 +829,29 @@ impl Picture {
         R::TextureId: Clone + Texture + Send + 'static,
         P: std::fmt::Debug + 'static,
     {
+        let area = self.area;
+        self.looking.clear();
+        self.looking.extend(under.iter().filter_map(|element| {
+            let geometry = element.geometry(scale.into());
+            geometry.overlaps(area).then(|| {
+                let seen = (element.alpha().to_bits(), element.transform());
+                (
+                    element.id().clone(),
+                    element.current_commit(),
+                    geometry,
+                    element.src(),
+                    seen.0,
+                    seen.1,
+                )
+            })
+        }));
+        let (seen, was, drawn_over) = &mut self.seen;
+        let now = (&self.looking, area, behind);
+        if self.made.is_some() && (&*seen, *was, *drawn_over) == now {
+            return false;
+        }
+        std::mem::swap(seen, &mut self.looking);
+        (*was, *drawn_over) = (area, behind);
         // Made half as large about its corner, which is then put at the
         // picture's.
         let corner = Point::from((-self.area.loc.x, -self.area.loc.y));
@@ -817,18 +864,17 @@ impl Picture {
             })
             .collect();
         let size = halved(self.area.size);
+        // Something under it changed, or it was never blurred: what the
+        // tracker says to draw again is drawn, and it is blurred again.
         let tracker = &mut self.tracker;
-        let unseen = self.made.is_none();
         let (blur, made) = (&self.blur, &mut self.made);
         let target = (&mut *self.target as &mut dyn Any).downcast_mut::<P>();
         target.is_some_and(|target| {
-            let changed = renderer.bind(&mut *target).ok().map(|mut framebuffer| {
+            let drawn = renderer.bind(&mut *target).ok().map(|mut framebuffer| {
                 let drawn = tracker.render_output(renderer, &mut framebuffer, 1, &moved, behind);
-                drawn.is_ok_and(|drawn| drawn.damage.is_some())
+                drawn.is_ok()
             });
-            changed.is_some_and(|changed| {
-                (changed || unseen) && frosting.blur(renderer, (target, size), blur, made)
-            })
+            drawn == Some(true) && frosting.blur(renderer, (target, size), blur, made)
         })
     }
 }

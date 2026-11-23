@@ -190,10 +190,12 @@ below.
 ### Nothing is blurred twice
 
 Each sheet of glass keeps its blurred picture, and a record of what was
-under it when the picture was made, kept by the same damage tracker that
-decides what of the screen to draw again. Each frame it is asked whether
-anything under the glass, as far out as the blur reaches, has changed. If
-not, the picture is used again and the glass is not drawn again either.
+under it when the picture was made: each element, by which it is, its
+commit and where it is, and a damage tracker of its own, as the screen
+has. Each frame the elements under the glass, as far out as the blur
+reaches, are compared with the record. If none changed, the picture is
+used again, the tracker is not run, and the glass is not drawn again
+either; if one did, the tracker says what of it to draw again.
 
 So a still screen costs nothing, a clock ticking in the bar costs the
 bar's text, and a film playing under a menu costs a blur the size of the
@@ -342,7 +344,22 @@ passes; about 0.7 ms on every frame in asking each of the twelve covered
 sheets whether anything under it changed, though nothing had (the
 review of 19 November, finding 13); and textures made anew in more than
 a third of frames, which cost no more time than those kept (finding 7).
-What a blur's 3.5 ms is spent on is the next to be measured.
+A third build timed each pass of a blur: about 350 µs, of which about
+190 µs in drawing its one rectangle, 90 µs in finishing it, which makes
+a fence and flushes it to the card, and 40 µs in making the framebuffer
+it draws into; the last two are Smithay's to make cheaper.
+
+With what is behind glass blurred from a picture half as large, and a
+sheet not looked at again until something under it changes, the same
+drag, twice, in the same way:
+
+| Glass, after | Median | 90 in 100 within | 99 in 100 within | Slowest | Over 16.7 ms |
+|---|---|---|---|---|---|
+| The first time | 6.59 ms | 9.37 ms | 10.76 ms | 12.00 ms | 0 of 792 |
+| The second | 7.10 ms | 9.20 ms | 10.64 ms | 14.18 ms | 0 of 786 |
+
+So glass no longer costs a frame on that laptop, and the built-in theme
+keeps it.
 
 ## Alternatives
 
@@ -370,7 +387,9 @@ What a blur's 3.5 ms is spent on is the next to be measured.
 - The theme gains `backdrop-filter` and `box-shadow`, and colours of
   surfaces with opacity.
 - Every element under a sheet of glass is looked at once more each frame,
-  to ask whether it changed. That is arithmetic on rectangles, not
-  drawing.
+  to ask whether it changed: which it is, its commit and where it is,
+  compared with what was there when the sheet was last drawn. That is
+  arithmetic on rectangles, not drawing; the sheet's damage tracker, and
+  the framebuffer it draws into, are left alone until something did.
 - Memory: each sheet of glass keeps its blurred picture and the smaller
   ones on the way to it, and each kind of shadow a small picture.
