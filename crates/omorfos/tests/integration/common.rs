@@ -1913,6 +1913,17 @@ impl Client {
         )
     }
 
+    /// A buffer of `size` holding `bytes`, made as the shell's programs
+    /// make their pictures, by `omorfos_shell::pixels`.
+    pub(crate) fn shell_pixels(
+        &self,
+        size: (u32, u32),
+        bytes: &[u8],
+    ) -> std::io::Result<wl_buffer::WlBuffer> {
+        let shm = self.state.shm.as_ref().unwrap();
+        omorfos_shell::pixels(shm, size, bytes, &self.handle())
+    }
+
     /// Makes `surface` a part of `parent`, drawn with it, as a new part is.
     pub(crate) fn part_of(
         &self,
@@ -2287,36 +2298,6 @@ impl Client {
         let size = u32::try_from(text.len()).unwrap();
         keyboard.keymap(1, file.as_fd(), size);
         keyboard
-    }
-}
-
-#[cfg(test)]
-mod pixel_buffer_tests {
-    use super::*;
-
-    #[test]
-    fn a_pixel_buffer_with_the_wrong_byte_length_is_rejected_before_pool_creation() {
-        let mut session = Session::new();
-        let client = session.connect();
-        let shm = client.state.shm.as_ref().unwrap();
-
-        let result = omorfos_shell::pixels(shm, (2, 2), &[0; 15], &client.handle());
-
-        assert_eq!(result.unwrap_err().kind(), std::io::ErrorKind::InvalidInput);
-    }
-
-    #[test]
-    fn a_valid_pixel_buffer_is_created_and_destroyed_through_wayland() {
-        let mut session = Session::new();
-        let mut client = session.connect();
-        let buffer = {
-            let shm = client.state.shm.as_ref().unwrap();
-            omorfos_shell::pixels(shm, (2, 2), &[0; 16], &client.handle()).unwrap()
-        };
-
-        session.roundtrip(&mut client);
-        buffer.destroy();
-        session.roundtrip(&mut client);
     }
 }
 
