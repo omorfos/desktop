@@ -1672,7 +1672,7 @@ fn a_window_the_user_picks_is_shared_by_itself_at_its_size_as_that_changes() {
             session.compositor_mut().input(button, 0);
         }
         session.draw();
-        app.receive();
+        app.receive().unwrap();
         starting.is_finished()
     });
     let (response, results) = starting.join().unwrap();
@@ -1683,7 +1683,7 @@ fn a_window_the_user_picks_is_shared_by_itself_at_its_size_as_that_changes() {
     let mut viewer = Viewer::new(&remote);
     session.eventually(|session| {
         session.draw();
-        app.receive();
+        app.receive().unwrap();
         viewer.turn(node);
         viewer.pixels() == 200 * 100 && viewer.at(200, (10, 10)) == Some(RED)
     });
@@ -1692,7 +1692,7 @@ fn a_window_the_user_picks_is_shared_by_itself_at_its_size_as_that_changes() {
     session.roundtrip(&mut app);
     session.eventually(|session| {
         session.draw();
-        app.receive();
+        app.receive().unwrap();
         viewer.turn(node);
         viewer.pixels() == 300 * 150 && viewer.at(300, (250, 120)) == Some(GREEN)
     });
@@ -1732,7 +1732,7 @@ fn a_shared_window_that_says_an_empty_part_of_it_is_opaque_goes_on_being_shared(
         session.roundtrip(&mut app);
         session.eventually(|session| {
             session.draw();
-            app.receive();
+            app.receive().unwrap();
             viewer.turn(node);
             viewer.pixels() == 200 * 100 && viewer.at(200, (175, 80)) == Some(colour)
         });
@@ -1801,8 +1801,8 @@ fn a_window_behind_another_is_reached_by_tab_and_shared() {
     session.eventually(|session| {
         session.compositor_mut().input(on, 0);
         session.step();
-        app.receive();
-        cover.receive();
+        app.receive().unwrap();
+        cover.receive().unwrap();
         session.draw().at(edge.0, edge.1) != before
     });
     // The window reached is shown as it is, where it is, over the one
@@ -1865,7 +1865,7 @@ fn a_call_sharing_a_window_is_told_where_the_pointer_is_over_it() {
             session.compositor_mut().input(button, 0);
         }
         session.draw();
-        app.receive();
+        app.receive().unwrap();
         starting.is_finished()
     });
     let (response, results) = starting.join().unwrap();
@@ -1877,7 +1877,7 @@ fn a_call_sharing_a_window_is_told_where_the_pointer_is_over_it() {
     session.compositor_mut().input(on, 0);
     session.eventually(|session| {
         session.draw();
-        app.receive();
+        app.receive().unwrap();
         viewer.turn(node);
         viewer.seen().pointer.is_some_and(|(at, ..)| at == (50, 40))
     });
@@ -1885,7 +1885,7 @@ fn a_call_sharing_a_window_is_told_where_the_pointer_is_over_it() {
     session.compositor_mut().input(moved, 0);
     session.eventually(|session| {
         session.step();
-        app.receive();
+        app.receive().unwrap();
         viewer.turn(node);
         viewer.seen().pointer.is_some_and(|(at, ..)| at == (60, 45))
     });
@@ -1918,7 +1918,7 @@ fn a_region_dragged_over_a_screen_is_shared_by_itself() {
     session.eventually(|session| {
         session.compositor_mut().input(to(150.0, 50.0), 0);
         session.step();
-        app.receive();
+        app.receive().unwrap();
         session.draw().at(edge.0, edge.1) != before
     });
     let button = |pressed| Input::Button {
@@ -1950,7 +1950,7 @@ fn a_region_dragged_over_a_screen_is_shared_by_itself() {
     let mut viewer = Viewer::new(&remote);
     session.eventually(|session| {
         session.draw();
-        app.receive();
+        app.receive().unwrap();
         viewer.turn(node);
         viewer.pixels() == 100 * 100 && viewer.at(100, (10, 10)) == Some(RED)
     });
@@ -1960,7 +1960,7 @@ fn a_region_dragged_over_a_screen_is_shared_by_itself() {
     session.roundtrip(&mut app);
     session.eventually(|session| {
         session.draw();
-        app.receive();
+        app.receive().unwrap();
         viewer.turn(node);
         viewer.at(100, (10, 10)) == Some(GREEN)
     });
@@ -1968,7 +1968,7 @@ fn a_region_dragged_over_a_screen_is_shared_by_itself() {
     session.compositor_mut().input(to(170.0, 80.0), 0);
     session.eventually(|session| {
         session.step();
-        app.receive();
+        app.receive().unwrap();
         viewer.turn(node);
         viewer.seen().pointer.is_some_and(|(at, ..)| at == (20, 30))
     });
@@ -1979,7 +1979,7 @@ fn a_region_dragged_over_a_screen_is_shared_by_itself() {
     let output = session.output();
     session.eventually(|session| {
         session.draw();
-        app.receive();
+        app.receive().unwrap();
         viewer.turn(node);
         !session.compositor().captured(&output)
     });
@@ -2008,7 +2008,7 @@ fn shared_window(
             session.compositor_mut().input(button, 0);
         }
         session.draw();
-        app.receive();
+        app.receive().unwrap();
         starting.is_finished()
     });
     let (response, results) = starting.join().unwrap();
@@ -2042,7 +2042,7 @@ fn a_shared_window_grows_and_shrinks(card: Option<u64>) {
     let mut viewer = Viewer::reading(&remote, card.is_some());
     session.eventually(|session| {
         session.draw();
-        app.receive();
+        app.receive().unwrap();
         viewer.turn(node);
         viewer.pixels() == 200 * 100
     });
@@ -2056,7 +2056,7 @@ fn a_shared_window_grows_and_shrinks(card: Option<u64>) {
     // whose memory PipeWire takes away would go untried.
     for (size, colour) in [((600, 400), GREEN), ((200, 100), BLUE)] {
         session.eventually(|session| {
-            app.receive();
+            app.receive().unwrap();
             viewer.turn(node);
             session.compositor().pictures_asked() > 0
         });
@@ -2064,7 +2064,7 @@ fn a_shared_window_grows_and_shrinks(card: Option<u64>) {
         session.roundtrip(&mut app);
         for _ in 0..50 {
             session.step();
-            app.receive();
+            app.receive().unwrap();
             viewer.turn(node);
             std::thread::sleep(Duration::from_millis(10));
         }
@@ -2072,7 +2072,7 @@ fn a_shared_window_grows_and_shrinks(card: Option<u64>) {
         let pixels = usize::try_from(width * height).unwrap();
         session.eventually(|session| {
             session.draw();
-            app.receive();
+            app.receive().unwrap();
             viewer.turn(node);
             viewer.pixels() == pixels && viewer.at(width, (10, 10)) == Some(colour)
         });
