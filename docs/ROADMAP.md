@@ -3165,6 +3165,67 @@ request of its own; what is larger, in the order worth taking:
 - [ ] Low: `Config.scheme` and `theme` private, worked out in one place
       ([the review of how functional it is](reviews/2026-11-22-how-functional-it-is.md#on-the-roadmap), item 11).
 
+What the coverage gate leaves out, reviewed on 23 November 2026 as the
+maintainer asked
+([reviews/2026-11-23-what-the-coverage-gate-leaves-out.md](reviews/2026-11-23-what-the-coverage-gate-leaves-out.md)):
+the seven files ADR 2 excludes are 2.7% of the code that is not tests,
+and hold about a hundred decisions ADR 2 says they do not, most in the
+hardware backend; in the order worth taking:
+
+- [ ] Low: nothing stops a decision being put into an excluded file
+      again
+      ([finding 11](reviews/2026-11-23-what-the-coverage-gate-leaves-out.md#11-nothing-stops-a-decision-being-put-into-an-excluded-file-again)):
+      a test that counts the branches of each file ADR 2 excludes,
+      parsed with `syn`, against a blessed budget, and fails where the
+      coverage alias, ADR 2's table and the budget differ. First, so
+      that the rest only bring the budget down.
+- [ ] Medium: back from another virtual terminal, a screen that is to be
+      off is not turned off again
+      ([finding 2](reviews/2026-11-23-what-the-coverage-gate-leaves-out.md#2-back-from-another-virtual-terminal-a-screen-that-is-to-be-off-is-not-turned-off-again)):
+      small: on activation, `dark` and `lit` are taken as not known, so
+      the next turn applies them.
+- [ ] Medium: a screen that could not be drawn on is not tried again
+      until something else wakes the loop
+      ([finding 1](reviews/2026-11-23-what-the-coverage-gate-leaves-out.md#1-a-screen-that-could-not-be-drawn-on-is-not-tried-again-until-something-else-wakes-the-loop)):
+      what each screen is in as one plain type in `backend/mod.rs`,
+      saying what to do; a failed draw sets the timer the tick does.
+- [ ] Medium: what the session tells D-Bus and systemd as it starts,
+      starts again and ends is not tested, nor that its values stay
+      arguments to the shell
+      ([finding 4](reviews/2026-11-23-what-the-coverage-gate-leaves-out.md#4-what-the-session-tells-d-bus-and-systemd-as-it-starts-starts-again-and-ends-is-not-tested-nor-how-the-values-reach-the-shell)):
+      plain functions returning `Command`.
+- [ ] Medium: how a wheel, a pointer that reports positions and a
+      touchpad's gestures become input is decided only where no test
+      reaches, though ADR 2 says it is covered
+      ([finding 3](reviews/2026-11-23-what-the-coverage-gate-leaves-out.md#3-how-a-wheel-a-pointer-that-reports-positions-and-a-touchpads-gestures-become-input-is-decided-only-where-no-test-reaches)):
+      `on_input` into a covered module, or first two plain functions;
+      ADR 2's row put right.
+- [ ] Low: a blur by the card's shader that fails leaves what it had
+      drawn so far behind glass
+      ([finding 9](reviews/2026-11-23-what-the-coverage-gate-leaves-out.md#9-a-blur-by-the-cards-shader-that-fails-leaves-what-it-had-drawn-so-far-behind-glass)):
+      glass, which is covered, does not draw it.
+- [ ] Low: the nested window's empty frame, added on 22 November, is
+      decided where no test reaches
+      ([finding 7](reviews/2026-11-23-what-the-coverage-gate-leaves-out.md#7-the-nested-windows-empty-frame-is-decided-where-no-test-reaches)):
+      into a covered function generic over the renderer; ADR 5 to say
+      whether a nested drawing error ends the session.
+- [ ] Low: what is written to the log, and how often, is decided twice
+      where no test reaches
+      ([finding 6](reviews/2026-11-23-what-the-coverage-gate-leaves-out.md#6-what-is-written-to-the-log-and-how-often-is-decided-twice-where-no-test-reaches)):
+      one `Compositor` method both backends write from.
+- [ ] Low: which pointers are touchpads, and when settings are given
+      again, is not tested
+      ([finding 10](reviews/2026-11-23-what-the-coverage-gate-leaves-out.md#10-which-pointers-are-touchpads-and-when-settings-are-given-again-is-not-tested)).
+- [ ] Low: a screen driven in a new mode, and the screens found, are
+      given their size, scale, pace, order and names in two copies no
+      test reaches
+      ([finding 5](reviews/2026-11-23-what-the-coverage-gate-leaves-out.md#5-a-screen-driven-in-a-new-mode-and-the-screens-found-are-given-their-size-scale-pace-order-and-names-in-code-no-test-reaches)).
+- [ ] Low: a layout of the card agreed but not to be had gives no
+      memory, where its comment says something else is made
+      ([finding 8](reviews/2026-11-23-what-the-coverage-gate-leaves-out.md#8-a-layout-of-the-card-agreed-for-a-shared-screen-but-not-to-be-had-gives-no-memory-where-its-comment-says-something-else-is-made)):
+      to be decided which is meant; with the roadmap's item for a card
+      in CI.
+
 ## 9. For others to build on
 
 Asked for on 14 November 2026: a way for other projects and repositories
