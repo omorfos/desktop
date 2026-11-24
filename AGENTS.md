@@ -226,6 +226,20 @@ checked by `committed` in CI.
 - Breaking changes: `!` after the type and a `BREAKING CHANGE:` footer.
 - One logical change per commit (atomic commits): each commit builds and
   passes the checks on its own.
+- A clean history matters more than leaving a branch as it was pushed.
+  A branch other than `main`, a pull request's above all, is rebased onto
+  `main` rather than merged with it, and its fix-ups squashed into the
+  commits they fix, before it is merged; once rebased it is pushed again
+  with `git push --force-with-lease`, which refuses to write over what
+  another has pushed meanwhile.
+- `main` is protected at all costs: it is never rebased, never forced,
+  merged into by fast-forward only, and pushed by the maintainer alone.
+  Nothing is pushed to it by an agent, by a command naming it or by one
+  that does not name where it goes.
+- A branch is made with `git switch -c <name> --no-track origin/main`, or
+  from `main`, and pushed with `git push -u origin <name>`, naming it:
+  one made from `origin/main` tracks it, and where `push.default` is
+  `upstream` a plain `git push` sends the branch's commits to `main`.
 - Releases are derived from these messages; see
   [docs/RELEASING.md](docs/RELEASING.md). A new workspace crate must be added
   to `.github/release-please-config.json` so its `Cargo.lock` version is
