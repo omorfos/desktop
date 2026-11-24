@@ -25,7 +25,7 @@ pub(crate) const ABOUT: About = About {
         ),
         (
             "frames",
-            "Print how long each screen's last frame took to draw",
+            "Print how long each screen's last frame, and the last few, took to draw",
         ),
         (
             "watch",
@@ -391,27 +391,36 @@ pub(crate) fn screens(state: &State, out: &mut dyn Write) {
     }
 }
 
-/// Prints how many frames each screen has drawn, and how long the last
-/// took to draw and how many blurs it made.
+/// Prints how many frames each screen has drawn, how long the last took to
+/// draw and how many blurs it made, and how long the middle and the
+/// slowest of the last few took, where the compositor keeps them.
 fn frames(drawn: &[Drawing], out: &mut dyn Write) {
     let counted = |count: u64, what: &str| {
         let plural = if count == 1 { "" } else { "s" };
         format!("{count} {what}{plural}")
     };
+    let millis = |micros: u64| format!("{}.{:02}ms", micros / 1000, micros % 1000 / 10);
     for drawing in drawn {
         if drawing.frames == 0 {
             let _ = writeln!(out, "{}: no frames drawn", drawing.output);
             continue;
         }
-        let micros = drawing.took;
+        let last = (drawing.kept > 0).then(|| {
+            format!(
+                "; of the last {}, half in {} or less, the slowest in {}",
+                drawing.kept,
+                millis(drawing.middle),
+                millis(drawing.slowest),
+            )
+        });
         let _ = writeln!(
             out,
-            "{}: {}, the last drawn in {}.{:02}ms with {}",
+            "{}: {}, the last drawn in {} with {}{}",
             drawing.output,
             counted(drawing.frames, "frame"),
-            micros / 1000,
-            micros % 1000 / 10,
+            millis(drawing.took),
             counted(drawing.blurs, "blur"),
+            last.unwrap_or_default(),
         );
     }
 }
@@ -860,28 +869,37 @@ mod tests {
     }
 
     #[test]
-    fn frames_prints_how_each_screen_drew_its_last_frame() {
-        let drawing = |output: &str, frames, took, blurs| Drawing {
+    fn frames_prints_how_each_screen_drew_its_last_frame_and_the_last_few() {
+        let drawing = |output: &str, frames, took, blurs, (kept, middle, slowest)| Drawing {
             output: output.to_owned(),
             frames,
             took,
             blurs,
+            kept,
+            middle,
+            slowest,
         };
         let drawn = vec![
-            drawing("eDP-1", 1200, 850, 1),
-            drawing("HDMI-A-1", 1, 16_204, 2),
-            drawing("DP-2", 0, 0, 0),
+            drawing("eDP-1", 1200, 850, 1, (256, 800, 4_210)),
+            drawing("HDMI-A-1", 1, 16_204, 2, (1, 16_204, 16_204)),
+            drawing("DP-2", 0, 0, 0, (0, 0, 0)),
+            // From a compositor too old to keep the last few.
+            drawing("DP-3", 3, 1_000, 0, (0, 0, 0)),
         ];
         let outcome = invoke(&["frames"], vec![Reply::Frames(drawn)]);
         assert_eq!(outcome.code, ExitCode::SUCCESS);
         assert_eq!(outcome.requests, [Request::Frames]);
         assert_eq!(
             outcome.out,
-            "eDP-1: 1200 frames, the last drawn in 0.85ms with 1 blur
+            "eDP-1: 1200 frames, the last drawn in 0.85ms with 1 blur; of the last 256, \
+             half in 0.80ms or less, the slowest in 4.21ms
 \
-             HDMI-A-1: 1 frame, the last drawn in 16.20ms with 2 blurs
+             HDMI-A-1: 1 frame, the last drawn in 16.20ms with 2 blurs; of the last 1, \
+             half in 16.20ms or less, the slowest in 16.20ms
 \
              DP-2: no frames drawn
+\
+             DP-3: 3 frames, the last drawn in 1.00ms with 0 blurs
 "
         );
     }

@@ -3348,10 +3348,13 @@ stages it belongs to:
       with any role, which is no more than writing `keys.yaml` gives it,
       and a sandbox given write access to `~/.config/omorfos` is as good
       as outside it.
-- [ ] How long frames take kept over time by the compositor, its middle
+- [x] How long frames take kept over time by the compositor, its middle
       and its slowest, for `omorfosctl frames` to say, in place of the
       last frame alone, which measuring glass on 23 November needed a
-      sampler written for.
+      sampler written for. Each screen keeps its last 256 frames' times,
+      written over in a ring held once, and `frames` says the middle and
+      the slowest of them beside the last; `omorfosctl frames` prints
+      them.
 
 The review of 23 November 2026, of the whole tree for safety, speed and
 use, by eight reviewers at once, is written up in

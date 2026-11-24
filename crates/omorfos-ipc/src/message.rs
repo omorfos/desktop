@@ -428,6 +428,17 @@ pub struct Drawing {
     pub took: u64,
     /// How many blurs the last one made, of what is behind glass.
     pub blurs: u64,
+    /// How many of the last frames `middle` and `slowest` are of: at most
+    /// 256. Nothing from a compositor too old to say.
+    #[serde(default)]
+    pub kept: u64,
+    /// How long the middle of those took, in microseconds, as `took` is
+    /// counted: half took no longer.
+    #[serde(default)]
+    pub middle: u64,
+    /// How long the slowest of those took, in microseconds.
+    #[serde(default)]
+    pub slowest: u64,
 }
 
 /// Writes a message as one line, newline included.
@@ -630,6 +641,9 @@ mod tests {
                 frames: 1200,
                 took: 850,
                 blurs: 1,
+                kept: 256,
+                middle: 800,
+                slowest: 4_200,
             }]),
             Reply::Done,
             Reply::Error {

@@ -10,7 +10,7 @@ integrates beyond what Wayland protocols offer.
 omorfosctl version                 # the compositor's version
 omorfosctl state                   # workspaces, windows and problems, as JSON
 omorfosctl screens                 # the screens, where they stand and their modes
-omorfosctl frames                  # how long each screen's last frame took to draw
+omorfosctl frames                  # how long each screen's last frames took to draw
 omorfosctl watch                   # the state again, one line per change
 omorfosctl action                  # every action, and what each does
 omorfosctl action close            # any action from keys.yaml
@@ -267,7 +267,8 @@ each time a window moves.
 ```json
 {
   "frames": [
-    { "output": "eDP-1", "frames": 1200, "took": 850, "blurs": 1 }
+    { "output": "eDP-1", "frames": 1200, "took": 850, "blurs": 1,
+      "kept": 256, "middle": 800, "slowest": 4210 }
   ]
 }
 ```
@@ -277,7 +278,12 @@ them, and how many frames have been drawn on it since the compositor
 started: a frame is counted when something on the screen changed and it
 was drawn again, and not when nothing did. `took` is how long the last
 one took, in microseconds, and `blurs` how many blurs it made of what is
-behind glass. A screen that has drawn nothing has 0 for each.
+behind glass. Of the last `kept` frames, at most 256, about four
+seconds' worth at 60 a second, `middle` is how long the middle one took,
+half taking no longer, and `slowest` the slowest: how a drag or an
+animation just done went, where the last frame alone says only how it
+ended. A screen that has drawn nothing has 0 for each, and so has a
+compositor too old to keep them.
 
 `took` is the compositor's own work: laying the scene out, blurring, and
 drawing, until the frame is handed to the graphics card. The card may

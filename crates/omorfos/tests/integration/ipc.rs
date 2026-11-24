@@ -987,7 +987,7 @@ fn frames(session: &mut Session, peer: &mut Client) -> Vec<Drawing> {
 }
 
 #[test]
-fn how_long_each_screens_last_frame_took_and_how_many_blurs_it_made_is_told() {
+fn how_long_each_screens_frames_took_and_how_many_blurs_the_last_made_is_told() {
     use wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_shell_v1::Layer;
     use wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_surface_v1::{
         Anchor, KeyboardInteractivity,
@@ -1035,6 +1035,11 @@ fn how_long_each_screens_last_frame_took_and_how_many_blurs_it_made_is_told() {
     drop(session.draw());
     let next = frames(&mut session, &mut peer).remove(0);
     assert_eq!((next.frames, next.blurs), (first.frames + 1, 0), "{next:?}");
+    // Of every frame so far, the middle and the slowest, which is no
+    // faster than either of the two just drawn.
+    assert_eq!(next.kept, next.frames, "{next:?}");
+    assert!(next.middle > 0 && next.middle <= next.slowest, "{next:?}");
+    assert!(next.slowest >= first.took.max(next.took), "{next:?}");
 }
 
 #[test]
