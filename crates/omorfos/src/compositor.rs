@@ -1569,6 +1569,7 @@ impl Compositor {
             }
             Action::ShowMenu => self.open_menu(),
             Action::ShowLauncher => self.open_launcher(),
+            Action::FocusNotifications => self.focus_notifications(),
             Action::ShowWelcome => self.open_welcome(false),
             Action::About => {
                 // Asked again, it goes; and it is not shown on a locked
@@ -1890,6 +1891,29 @@ impl Compositor {
     /// open.
     pub fn set_launcher(&mut self, program: impl Into<PathBuf>) {
         self.on_demand.launcher.0 = Some(program.into());
+    }
+
+    /// Gives the keyboard to the notification nearest the top of a screen,
+    /// the newest, where one is showing that takes it when asked.
+    fn focus_notifications(&mut self) {
+        let mut asking = self.heads.iter().flat_map(|head| {
+            let layers = layer_map_for_output(&head.output);
+            let notifications = layers.layers().filter(|layer| {
+                let state = layer.cached_state();
+                layer.namespace() == "notification"
+                    && state.keyboard_interactivity == KeyboardInteractivity::OnDemand
+            });
+            let found = notifications.map(|layer| {
+                let top = layers.layer_geometry(layer).map_or(i32::MAX, |at| at.loc.y);
+                (top, layer.wl_surface().clone())
+            });
+            found.collect::<Vec<_>>()
+        });
+        // The newest is put nearest the top; the keyboard goes to it as a
+        // click on it would give it, until a click elsewhere.
+        if let Some((_, newest)) = asking.by_ref().min_by_key(|(top, _)| *top) {
+            self.layer_focus = Some(newest);
+        }
     }
 
     /// Opens the launcher, unless one is open already.

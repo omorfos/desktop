@@ -6,7 +6,14 @@ broken to fit, and a
 picture or the program's icon if it sent one. A click dismisses one, and
 tells the program that sent it, which is how clicking a browser's
 notification brings up its tab; a click with the right button dismisses it
-without that. Otherwise it goes after as long as its sender asked for, or
+without that. What else a program offers to do about one, as Reply or Mark
+read, is shown as buttons under its words, up to three; a click on one
+does it, and the notification goes, unless the program asked for it to
+stay. The action `focus_notifications` gives the newest the keyboard,
+ringed in the accent colour: Tab and the arrow keys go through it and its
+buttons, Enter or Space chooses as a click does, and Escape dismisses it
+as the right button does. No key is bound to it yet; bind one in
+`keys.yaml`. Otherwise it goes after as long as its sender asked for, or
 after `notifications.timeout` seconds. One its sender marked as critical
 stays until it is clicked, unless more than eight of programs' are shown:
 then the oldest of the others goes to make room for the one that has just

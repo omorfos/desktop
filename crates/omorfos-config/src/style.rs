@@ -119,9 +119,11 @@ pub enum Part {
     /// its background is used.
     LauncherBackdrop,
     /// A notification: what a program has to tell the user. It is
-    /// [`State::Urgent`] when the program marked it critical, and
-    /// [`State::Hovered`] under the pointer. Its margin is room kept
-    /// between it, the next one and the edges of the screen.
+    /// [`State::Urgent`] when the program marked it critical,
+    /// [`State::Hovered`] under the pointer, and [`State::Focused`] while
+    /// it has the keyboard, and not one of its buttons, which are drawn as
+    /// `question-button`. Its margin is room kept between it, the next one
+    /// and the edges of the screen.
     Notification,
     /// The first line of a notification, which says what it is about.
     NotificationTitle,

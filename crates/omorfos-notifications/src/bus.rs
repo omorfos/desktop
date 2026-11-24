@@ -23,7 +23,7 @@ use zbus::fdo::RequestNameFlags;
 use zbus::message::{Message, Type};
 use zbus::zvariant::OwnedValue;
 
-use crate::{Failure, Note, Picture, Reason};
+use crate::{ACTIONS, Act, DEFAULT_ACTION, Failure, Note, Picture, Reason};
 
 /// The name programs send notifications to, which is also the interface
 /// they send them by.
@@ -37,13 +37,9 @@ const PATH: &str = "/org/freedesktop/Notifications";
 const LARGEST_SIDE: i32 = 1024;
 
 /// What the service can do, as programs are told when they ask: a body
-/// besides the title, a picture that does not move, and telling a program
-/// that its notification was clicked.
+/// besides the title, a picture that does not move, and actions: the
+/// notification clicked, and buttons of the program's own.
 const CAPABILITIES: [&str; 3] = ["body", "icon-static", "actions"];
-
-/// The action a click on a notification is, by the name the specification
-/// gives it.
-const DEFAULT_ACTION: &str = "default";
 
 /// What the service says of itself to a program that asks how to use it.
 const INTROSPECTION: &str = r#"<!DOCTYPE node PUBLIC "-//freedesktop//DTD D-BUS Object Introspection 1.0//EN"
@@ -180,14 +176,15 @@ impl Bus {
         self.events.try_iter().collect()
     }
 
-    /// Tells every program that a notification was clicked, for the one
-    /// that sent it to do what it does then.
+    /// Tells every program that the action called `key` was chosen of the
+    /// notification `id`, for the one that sent it to do it: `default`
+    /// for a click on the notification itself.
     ///
     /// # Errors
     ///
     /// Returns an error if the bus has gone.
-    pub fn clicked(&self, id: u32) -> Result<(), Failure> {
-        let body = (id, DEFAULT_ACTION);
+    pub fn invoked(&self, id: u32, key: &str) -> Result<(), Failure> {
+        let body = (id, key);
         let nobody = None::<&str>;
         let told = self
             .connection
@@ -271,6 +268,11 @@ fn answer(connection: &Connection, message: &Message, last: &mut u32) -> Option<
                     stays,
                     // Actions come as a name and then what to call it.
                     acts: actions.iter().step_by(2).any(|name| name == DEFAULT_ACTION),
+                    actions: named(&actions),
+                    resident: hints
+                        .get("resident")
+                        .and_then(|value| value.downcast_ref::<bool>().ok())
+                        == Some(true),
                     level: level(&hints),
                     tag: tag(&hints),
                 }));
@@ -303,6 +305,30 @@ fn answer(connection: &Connection, message: &Message, last: &mut u32) -> Option<
     // when the next message is waited for.
     let _ = sent;
     event
+}
+
+/// The longest name of an action that is kept, in bytes. A program is told
+/// the name it gave, so one longer is not shown rather than cut short.
+const LONGEST_KEY: usize = 256;
+
+/// The most of what an action is called that is kept, in characters: more
+/// than fits on a button.
+const LONGEST_LABEL: usize = 64;
+
+/// The actions a program sent, as names and what to call each, that are
+/// shown as buttons: the first [`ACTIONS`] with a name not too long and
+/// something to call them by, the default, which is the click on the
+/// notification itself, left out.
+fn named(actions: &[String]) -> Vec<Act> {
+    let (pairs, _) = actions.as_chunks::<2>();
+    let shown = pairs.iter().filter(|[key, label]| {
+        key != DEFAULT_ACTION && key.len() <= LONGEST_KEY && !label.is_empty()
+    });
+    let acts = shown.take(ACTIONS).map(|[key, label]| Act {
+        key: key.clone(),
+        label: label.chars().take(LONGEST_LABEL).collect(),
+    });
+    acts.collect()
 }
 
 /// How pressing a notification is: 0 for low, 1 for usual, 2 for critical.
@@ -495,6 +521,8 @@ pub(crate) mod tests {
             urgent,
             stays: 1500,
             acts: false,
+            actions: Vec::new(),
+            resident: false,
             level: None,
             tag: None,
         }
@@ -684,11 +712,87 @@ pub(crate) mod tests {
         assert!(!send(vec!["reply", "default"]));
         assert!(!send(Vec::new()));
 
-        bus.clicked(4).unwrap();
+        bus.invoked(4, DEFAULT_ACTION).unwrap();
         let signal = signals.next().unwrap().unwrap();
         assert_eq!(signal.header().member().unwrap().as_str(), "ActionInvoked");
         let said: (u32, String) = signal.body().deserialize().unwrap();
         assert_eq!(said, (4, "default".to_owned()));
+    }
+
+    #[test]
+    fn a_programs_named_actions_are_kept_and_the_one_chosen_is_told() {
+        let daemon = Daemon::start();
+        let bus = Bus::open(Some(&daemon.address)).unwrap();
+        let peer = daemon.peer();
+        let rule = zbus::MatchRule::builder()
+            .msg_type(Type::Signal)
+            .interface(NAME)
+            .unwrap()
+            .build();
+        let mut signals = MessageIterator::for_match_rule(rule, &peer, None).unwrap();
+        let send = |actions: Vec<&str>, hints: Hints<'_>| {
+            let body = ("tester", 0_u32, "", "Mail", "", actions, hints, 0);
+            peer.call_method(Some(NAME), PATH, Some(NAME), "Notify", &body)
+                .unwrap();
+            heard(&bus)
+        };
+        // What is heard of a notification of number `id` with `actions`.
+        let heard_as = |id, actions: Vec<Act>, resident| {
+            let note = Note {
+                id,
+                title: "Mail".to_owned(),
+                acts: id == 1,
+                actions,
+                resident,
+                ..Note::default()
+            };
+            vec![Event::Show(note)]
+        };
+        let act = |key: &str, label: &str| Act {
+            key: key.to_owned(),
+            label: label.to_owned(),
+        };
+        // The default is the click on the card, not a button; a name with
+        // nothing to call it by, or longer than any is, is not shown.
+        let long = "x".repeat(LONGEST_KEY + 1);
+        let heard = send(
+            vec![
+                "default",
+                "Open",
+                "reply",
+                "Reply",
+                "mute",
+                "",
+                &long,
+                "Long",
+                "read",
+                "Mark read",
+                "snooze",
+                "Later",
+                "spam",
+                "Spam",
+                "odd",
+            ],
+            Hints::new(),
+        );
+        // The first named, as many as are shown, and gone once one is
+        // chosen.
+        let shown = vec![
+            act("reply", "Reply"),
+            act("read", "Mark read"),
+            act("snooze", "Later"),
+        ];
+        assert_eq!(heard, heard_as(1, shown, false));
+        let resident = Hints::from([("resident", Value::Bool(true))]);
+        let heard = send(vec!["reply", "Reply"], resident);
+        let stays = heard_as(2, vec![act("reply", "Reply")], true);
+        assert_eq!(heard, stays, "stays once an action is taken");
+
+        bus.invoked(5, "reply").unwrap();
+        let signal = signals.next().unwrap().unwrap();
+        assert_eq!(signal.header().member().unwrap().as_str(), "ActionInvoked");
+        let said: (u32, String) = signal.body().deserialize().unwrap();
+        assert_eq!(said, (5, "reply".to_owned()));
     }
 
     #[test]

@@ -5,8 +5,7 @@ worked top to bottom and one at a time; within a stage the order is a
 suggestion. Tick items as they land and keep the "Next" pointer current.
 
 **Next:** what is left of the review of 23 November 2026 (stage 8):
-the notification service's actions (finding 10), the portal that is
-slow to end, then what a refresh and what is captured cost, each
+the portal that is slow to end, then what a refresh and what is captured cost, each
 measured first (findings 3 and 4); then what closes stage 4: the rest of
 the redesign of windows (ADR 97) and the defaults reviewed together. Stage 5, the bar and the dock, follows, wearing that look.
 What else is left of stages 3 and 4 is known gaps, taken as the code
@@ -3408,11 +3407,17 @@ its own. It found one high, five medium and four low findings:
       the agent the user configured from one of its own would need a
       binding to it that GnuPG does not give, and would close one door
       of many such a program has.
-- [ ] Medium: the notification service advertises actions it does not
+- [x] Medium: the notification service advertises actions it does not
       provide
       ([finding 10](reviews/2026-11-23-the-whole-tree-for-safety-speed-and-use.md#10-the-notification-service-advertises-actions-it-does-not-provide)):
       preserve named actions, show them accessibly and emit the selected
-      identifier; do not remove the capability as a stopgap.
+      identifier; do not remove the capability as a stopgap. A program's
+      named actions are kept, up to three shown as buttons under the
+      words, drawn as `question-button`; the one chosen is told by its
+      name, and the notification goes unless it is `resident`. The new
+      action `focus_notifications` gives the newest the keyboard, which
+      goes through it and its buttons; no key is bound to it until the
+      defaults are reviewed.
 
 The pull requests merged on 23 November 2026, #67 to #102, reviewed on
 24 November by eight reviewers at once, with every gate run on `main`

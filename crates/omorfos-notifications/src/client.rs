@@ -20,8 +20,8 @@ use omorfos_ui::{Glide, Motion, Scale, Text};
 use rustix::event::{PollFd, PollFlags, Timespec, poll};
 use wayland_client::backend::ReadEventsGuard;
 use wayland_client::protocol::{
-    wl_buffer, wl_compositor, wl_output, wl_pointer, wl_registry, wl_seat, wl_shm, wl_shm_pool,
-    wl_surface,
+    wl_buffer, wl_compositor, wl_keyboard, wl_output, wl_pointer, wl_registry, wl_seat, wl_shm,
+    wl_shm_pool, wl_surface,
 };
 use wayland_client::{Connection, Dispatch, EventQueue, QueueHandle, WEnum, delegate_noop};
 use wayland_protocols::wp::fractional_scale::v1::client::{
@@ -30,11 +30,26 @@ use wayland_protocols::wp::fractional_scale::v1::client::{
 use wayland_protocols::wp::viewporter::client::{wp_viewport, wp_viewporter};
 use wayland_protocols_wlr::layer_shell::v1::client::{zwlr_layer_shell_v1, zwlr_layer_surface_v1};
 
-use crate::{Bus, Event, Failure, Key, Reason, Stack};
+use crate::{Bus, Clicked, Event, Failure, Key, Reason, Stack};
 
 /// The left and right buttons of a mouse, as Linux numbers them.
 const LEFT_BUTTON: u32 = 0x110;
 const RIGHT_BUTTON: u32 = 0x111;
+
+/// The keys a notification is worked with, as Linux numbers them: where
+/// they are on every layout, so that they are read without one.
+const ESCAPE: u32 = 1;
+const TAB: u32 = 15;
+const ENTER: u32 = 28;
+const SPACE: u32 = 57;
+const KEYPAD_ENTER: u32 = 96;
+const UP: u32 = 103;
+const LEFT: u32 = 105;
+const RIGHT: u32 = 106;
+const DOWN: u32 = 108;
+
+/// The modifier Shift is, in the layouts the compositor hands out.
+const SHIFT: u32 = 1;
 
 /// The notifications: a connection to the compositor as a Wayland client,
 /// the service on the bus, and what is showing.
@@ -219,7 +234,7 @@ impl Notifier {
         shell.stale |= shell.store.at(now);
         // A click is told of before the notification's going is.
         let mut clicked = mem::take(&mut shell.clicked).into_iter();
-        let clicked = clicked.try_for_each(|id| self.bus.clicked(id));
+        let clicked = clicked.try_for_each(|(id, key)| self.bus.invoked(id, &key));
         let mut gone = mem::take(&mut shell.gone).into_iter();
         let told = gone.try_for_each(|(id, reason)| self.bus.closed(id, reason));
         let told = clicked.and(told);
@@ -263,6 +278,9 @@ struct Shell {
     viewporter: Option<wp_viewporter::WpViewporter>,
     scales: Option<wp_fractional_scale_manager_v1::WpFractionalScaleManagerV1>,
     pointer: Option<wl_pointer::WlPointer>,
+    keyboard: Option<wl_keyboard::WlKeyboard>,
+    /// Whether Shift is held, which turns Tab round.
+    shifted: bool,
     /// The surfaces the notifications are on, one each, from the top.
     faces: Vec<Face>,
     /// The screen they are on, once the compositor has said, until none
@@ -274,7 +292,7 @@ struct Shell {
     icons: Icons,
     /// The notifications that were clicked and whose senders have yet to
     /// be told.
-    clicked: Vec<u32>,
+    clicked: Vec<(u32, String)>,
     /// The notifications that are no longer showing and that programs have
     /// yet to be told of, with why.
     gone: Vec<(u32, Reason)>,
@@ -352,6 +370,8 @@ impl Shell {
             viewporter: None,
             scales: None,
             pointer: None,
+            keyboard: None,
+            shifted: false,
             faces: Vec::new(),
             screen: None,
             stack: Stack::new(usual),
@@ -380,6 +400,49 @@ impl Shell {
         if let Reply::State(state) = reply {
             self.stale |= self.stack.tell(&state.problems, &state.events, now);
         }
+    }
+
+    /// Takes the key `key`, pressed on the notification with the keyboard:
+    /// Tab and the arrows move through it and its buttons, Enter and Space
+    /// choose as a click does, and Escape dismisses it, as the other button
+    /// does.
+    fn pressed(&mut self, key: u32) {
+        let clicked = match key {
+            TAB => {
+                self.stale |= self.stack.step(!self.shifted);
+                None
+            }
+            RIGHT | DOWN | LEFT | UP => {
+                self.stale |= self.stack.step(matches!(key, RIGHT | DOWN));
+                None
+            }
+            ENTER | KEYPAD_ENTER | SPACE => self.stack.press(true),
+            ESCAPE => self.stack.press(false),
+            _ => None,
+        };
+        if let Some(clicked) = clicked {
+            self.took(clicked);
+        }
+    }
+
+    /// Takes in what a click did, for its program to be told.
+    fn took(&mut self, clicked: Clicked) {
+        let chose = clicked.chose.map(|chose| (clicked.id, chose));
+        self.clicked.extend(chose);
+        // One that stays has not gone.
+        let gone = (!clicked.stays).then_some((clicked.id, Reason::Dismissed));
+        self.gone.extend(gone);
+        self.stale = true;
+    }
+
+    /// Notes where the pointer is on the notification it is on, `at` in
+    /// units of layout from its corner, for a button there to be lit.
+    fn aim(&mut self, (x, y): (f64, f64)) {
+        let theme = &self.store.current().theme;
+        // A surface is a few thousand units at most: as whole units, it fits.
+        #[expect(clippy::cast_possible_truncation, reason = "a surface's units fit")]
+        let at = (x.floor() as i32, y.floor() as i32);
+        self.stale |= self.stack.aim(theme, at);
     }
 
     /// Puts each notification on the screen on a surface of its own, takes
@@ -500,6 +563,8 @@ impl Shell {
         );
         let corner = zwlr_layer_surface_v1::Anchor::Top | zwlr_layer_surface_v1::Anchor::Right;
         layer.set_anchor(corner);
+        // Given the keyboard when asked for, to be worked without a pointer.
+        layer.set_keyboard_interactivity(zwlr_layer_surface_v1::KeyboardInteractivity::OnDemand);
         let viewport = viewporter.get_viewport(&surface, handle, ());
         let fraction = scales.get_fractional_scale(&surface, handle, ());
         Face {
@@ -648,6 +713,9 @@ impl Dispatch<wl_seat::WlSeat, ()> for Shell {
             let pointing = capabilities.contains(wl_seat::Capability::Pointer);
             let pointer = shell.pointer.take();
             shell.pointer = pointer.or_else(|| pointing.then(|| seat.get_pointer(handle, ())));
+            let typing = capabilities.contains(wl_seat::Capability::Keyboard);
+            let keyboard = shell.keyboard.take();
+            shell.keyboard = keyboard.or_else(|| typing.then(|| seat.get_keyboard(handle, ())));
         }
     }
 }
@@ -662,27 +730,67 @@ impl Dispatch<wl_pointer::WlPointer, ()> for Shell {
         _: &QueueHandle<Self>,
     ) {
         match event {
-            wl_pointer::Event::Enter { surface, .. } => {
+            wl_pointer::Event::Enter {
+                surface,
+                surface_x,
+                surface_y,
+                ..
+            } => {
                 let mut faces = shell.faces.iter();
                 let on = faces.find(|face| *face.sheet.surface() == surface);
                 shell.stale |= shell.stack.point(on.map(|face| face.key));
+                shell.aim((surface_x, surface_y));
             }
+            wl_pointer::Event::Motion {
+                surface_x,
+                surface_y,
+                ..
+            } => shell.aim((surface_x, surface_y)),
             wl_pointer::Event::Leave { .. } => shell.stale |= shell.stack.point(None),
             wl_pointer::Event::Button {
                 button: button @ (LEFT_BUTTON | RIGHT_BUTTON),
                 state: WEnum::Value(wl_pointer::ButtonState::Pressed),
                 ..
             } => {
-                // Either button dismisses the notification. The left one
-                // is also the click its sender may be waiting to hear of;
-                // the right one is a way to be rid of it without that.
-                let dismissed = shell.stack.click();
-                let acted = dismissed.filter(|(_, acts)| *acts && button == LEFT_BUTTON);
-                shell.clicked.extend(acted.map(|(id, _)| id));
-                let gone = dismissed.map(|(id, _)| (id, Reason::Dismissed));
-                shell.gone.extend(gone);
+                // The left button chooses: one of the notification's
+                // buttons, or the notification, which goes; the right one
+                // is a way to be rid of it without choosing anything.
+                if let Some(clicked) = shell.stack.click(button == LEFT_BUTTON) {
+                    shell.took(clicked);
+                }
                 shell.stale = true;
             }
+            _ => {}
+        }
+    }
+}
+
+impl Dispatch<wl_keyboard::WlKeyboard, ()> for Shell {
+    fn event(
+        shell: &mut Self,
+        _: &wl_keyboard::WlKeyboard,
+        event: wl_keyboard::Event,
+        (): &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        match event {
+            // The notification given the keyboard has it, and none once it
+            // has gone elsewhere.
+            wl_keyboard::Event::Enter { surface, .. } => {
+                let mut faces = shell.faces.iter();
+                let on = faces.find(|face| *face.sheet.surface() == surface);
+                shell.stale |= shell.stack.focus(on.map(|face| face.key));
+            }
+            wl_keyboard::Event::Leave { .. } => shell.stale |= shell.stack.focus(None),
+            wl_keyboard::Event::Modifiers { mods_depressed, .. } => {
+                shell.shifted = mods_depressed & SHIFT != 0;
+            }
+            wl_keyboard::Event::Key {
+                key,
+                state: WEnum::Value(wl_keyboard::KeyState::Pressed),
+                ..
+            } => shell.pressed(key),
             _ => {}
         }
     }

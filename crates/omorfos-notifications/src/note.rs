@@ -8,7 +8,7 @@ use std::time::Duration;
 
 use omorfos_config::{Edges, Part, State, States, Style, Theme};
 use omorfos_icons::Icons;
-use omorfos_ui::{Area, Canvas, Image, Motion, Scale, Text, inset};
+use omorfos_ui::{Area, Canvas, Image, Motion, Scale, Text, button, button_look, inset};
 
 /// The most notifications kept at once. When there are more, the oldest
 /// of the others goes to make room for the one that has just come.
@@ -40,6 +40,28 @@ const LEVEL: u32 = 6;
 
 /// The narrowest a notification is made, whatever the theme says.
 const NARROWEST: u32 = 120;
+
+/// The most of a program's actions shown as buttons, besides the click on
+/// the notification itself. More would not fit across it; the rest are
+/// not shown, as the specification lets a server choose.
+pub const ACTIONS: usize = 3;
+
+/// What a click on a notification itself is called, as the specification
+/// names it, which its sender is told when it asked to be.
+pub const DEFAULT_ACTION: &str = "default";
+
+/// The room between a notification's buttons, and above them.
+const BUTTON_GAP: u32 = 8;
+
+/// What a program offers to do about its notification, beside what a click
+/// on it does: a button, as Reply or Mark read.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Act {
+    /// What the program calls it, which it is told when it is chosen.
+    pub key: String,
+    /// What the button says.
+    pub label: String,
+}
 
 /// The picture that goes with a notification.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -74,6 +96,11 @@ pub struct Note {
     /// Whether its sender wants to hear of it being clicked, so as to do
     /// something then, such as showing the window it is about.
     pub acts: bool,
+    /// What else it offers to do, as buttons: at most [`ACTIONS`].
+    pub actions: Vec<Act>,
+    /// Whether it stays once one of them is chosen, as the program asks
+    /// for one it goes on changing.
+    pub resident: bool,
     /// How full something is, out of 100, such as the volume, shown as a
     /// bar under what it says.
     pub level: Option<u8>,
@@ -104,6 +131,19 @@ pub struct Place {
     pub right: u32,
     /// How large its box is.
     pub size: (u32, u32),
+}
+
+/// What a click did: which notification it was on, what its sender is to
+/// be told was chosen, if anything, and whether it stays.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Clicked {
+    /// The number its program gave it.
+    pub id: u32,
+    /// The action chosen: one of its buttons, or [`DEFAULT_ACTION`] for the
+    /// notification itself where its sender asked to hear of that.
+    pub chose: Option<String>,
+    /// Whether it stays: one a button was chosen of that asked to.
+    pub stays: bool,
 }
 
 /// Why a notification is no longer showing, as the numbers programs are
@@ -137,11 +177,23 @@ struct Shown {
     lines: Vec<String>,
     picture: Picture,
     urgent: bool,
-    acts: bool,
+    offers: Offers,
     level: Option<u8>,
     tag: Option<String>,
     /// When it goes, if it does of its own accord.
     until: Option<Duration>,
+}
+
+/// What a notification that is showing offers to do: what its sender
+/// sent as [`Note::acts`], [`Note::actions`] and [`Note::resident`].
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+struct Offers {
+    /// Whether its sender is told of a click on it.
+    clicked: bool,
+    /// Its buttons.
+    buttons: Vec<Act>,
+    /// Whether it stays once a button is chosen.
+    stays: bool,
 }
 
 /// The notifications that are showing, the newest first.
@@ -153,6 +205,11 @@ pub struct Stack {
     usual: Option<Duration>,
     /// The one the pointer is over.
     under: Option<Key>,
+    /// Which of its buttons the pointer is over, if one.
+    aimed: Option<usize>,
+    /// The one with the keyboard, and which of its buttons has it: none,
+    /// for the notification itself.
+    focused: Option<(Key, Option<usize>)>,
     /// What is wrong that the user has dismissed, and is still wrong.
     dismissed: Vec<String>,
     /// What has happened that has been shown, and that the compositor is
@@ -173,6 +230,8 @@ impl Stack {
             shown: Vec::new(),
             usual: (seconds > 0).then_some(usual),
             under: None,
+            aimed: None,
+            focused: None,
             dismissed: Vec::new(),
             seen: Vec::new(),
             made: 0,
@@ -220,7 +279,11 @@ impl Stack {
             said,
             picture: note.picture,
             urgent: note.urgent,
-            acts: note.acts,
+            offers: Offers {
+                clicked: note.acts,
+                buttons: note.actions,
+                stays: note.resident,
+            },
             level: note.level.map(|level| level.min(100)),
             tag: note.tag,
             until: lasts.map(|lasts| now.saturating_add(lasts)),
@@ -312,7 +375,7 @@ impl Stack {
             lines: said.clone(),
             said,
             picture: Picture::None,
-            acts: false,
+            offers: Offers::default(),
             level: None,
             tag: None,
             until,
@@ -399,22 +462,118 @@ impl Stack {
     /// be drawn as such. Returns whether that changed anything.
     pub fn point(&mut self, under: Option<Key>) -> bool {
         let changed = under != self.under;
+        if changed {
+            self.aimed = None;
+        }
         self.under = under;
         changed
     }
 
-    /// Takes a click: the notification the pointer is on is dismissed.
-    /// Returns its number, if it was a program's, and whether its sender
-    /// wants to hear of the click. One about something that is wrong is
-    /// not shown again while that stays wrong.
-    pub fn click(&mut self) -> Option<(u32, bool)> {
-        let under = self.under.take();
-        let place = under.and_then(|key| self.shown.iter().position(|shown| shown.key == key));
-        let clicked = place.map(|place| self.shown.remove(place));
-        let problem = clicked.as_ref().and_then(|shown| shown.problem.clone());
-        self.dismissed.extend(problem);
-        let theirs = clicked.filter(|shown| !shown.ours);
-        theirs.map(|shown| (shown.id, shown.acts))
+    /// Notes where on the notification it is on the pointer is, `at` from
+    /// its top left corner under `theme`, so that a button it is over is
+    /// drawn as such and is what a click chooses. Returns whether that
+    /// changed anything.
+    pub fn aim(&mut self, theme: &Theme, (x, y): (i32, i32)) -> bool {
+        let buttons = self.under.map(|key| self.buttons(theme, key));
+        let over = |area: &Area| {
+            (area.0..area.0.saturating_add_unsigned(area.2)).contains(&x)
+                && (area.1..area.1.saturating_add_unsigned(area.3)).contains(&y)
+        };
+        let aimed = buttons.and_then(|buttons| buttons.iter().position(over));
+        let changed = aimed != self.aimed;
+        self.aimed = aimed;
+        changed
+    }
+
+    /// Where on the notification `key` is of each of its buttons is under
+    /// `theme`, from its top left corner, in the order its program gave
+    /// them: none, if it has none or is not showing.
+    #[must_use]
+    pub fn buttons(&self, theme: &Theme, key: Key) -> Vec<Area> {
+        let mut places = self.places(theme).into_iter();
+        let found = places.find(|(shown, _)| shown.key == key);
+        found.map_or_else(Vec::new, |(shown, (_, _, width, height))| {
+            let style = theme.style(Part::Notification, self.states(shown));
+            let room = inset((0, 0, width, height), style.inset());
+            row(theme, room, shown.offers.buttons.len())
+        })
+    }
+
+    /// Takes a click, `choosing` with the button that chooses and not the
+    /// one that only dismisses, on the notification the pointer is on: on
+    /// one of its buttons, that button's action is chosen, and the
+    /// notification goes unless it asked to stay; anywhere else on it, it
+    /// is dismissed, its sender told of the click where it asked to be.
+    /// One about something that is wrong is not shown again while that
+    /// stays wrong. Returns what it did, if it was on a program's.
+    pub fn click(&mut self, choosing: bool) -> Option<Clicked> {
+        let aimed = self.under.map(|key| (key, self.aimed));
+        self.act(aimed, choosing)
+    }
+
+    /// Gives the keyboard to the notification `key` is of, the notification
+    /// itself before any of its buttons, or takes it away. Returns whether
+    /// that changed anything.
+    pub fn focus(&mut self, key: Option<Key>) -> bool {
+        let focused = key.map(|key| (key, None));
+        let changed = focused != self.focused;
+        self.focused = focused;
+        changed
+    }
+
+    /// Moves the keyboard on, `forwards` or back, through the notification
+    /// that has it and its buttons, round from the last to the first.
+    /// Returns whether it moved.
+    pub fn step(&mut self, forwards: bool) -> bool {
+        let focused = self.focused.and_then(|(key, button)| {
+            let shown = self.shown.iter().find(|shown| shown.key == key)?;
+            // The notification itself, then each button, in a ring.
+            let stops = shown.offers.buttons.len() + 1;
+            let at = button.map_or(0, |button| button + 1);
+            let next = if forwards { at + 1 } else { at + stops - 1 } % stops;
+            Some((key, next.checked_sub(1)))
+        });
+        let moved = focused.is_some();
+        self.focused = focused.or(self.focused);
+        moved
+    }
+
+    /// Takes a key that chooses, or one that only dismisses where not
+    /// `choosing`, as a click is taken, on whatever has the keyboard.
+    pub fn press(&mut self, choosing: bool) -> Option<Clicked> {
+        self.act(self.focused, choosing)
+    }
+
+    /// Does what a click does, `choosing` or not, on the notification
+    /// `target` names, and the button of it, if one: that button's action
+    /// is chosen, and the notification goes unless it asked to stay; or,
+    /// on the notification itself, it is dismissed, its sender told where
+    /// it asked to be. One about something that is wrong is not shown
+    /// again while that stays wrong. Returns what it did, if it was on a
+    /// program's.
+    fn act(&mut self, target: Option<(Key, Option<usize>)>, choosing: bool) -> Option<Clicked> {
+        let (key, button) = target?;
+        let place = self.shown.iter().position(|shown| shown.key == key)?;
+        let shown = &self.shown[place];
+        let button = button.filter(|_| choosing);
+        let action = button.and_then(|button| shown.offers.buttons.get(button));
+        let chose = action.map(|action| action.key.clone());
+        let stays = chose.is_some() && shown.offers.stays;
+        let default = (choosing && shown.offers.clicked).then(|| DEFAULT_ACTION.to_owned());
+        let clicked = Clicked {
+            id: shown.id,
+            chose: chose.or(default),
+            stays,
+        };
+        let ours = shown.ours;
+        if !stays {
+            self.under.take_if(|under| *under == key);
+            self.aimed.take_if(|_| self.under.is_none());
+            self.focused.take_if(|(focused, _)| *focused == key);
+            let gone = self.shown.remove(place);
+            self.dismissed.extend(gone.problem);
+        }
+        (!ours).then_some(clicked)
     }
 
     /// Draws the notification `key` is of, as large as its box, with
@@ -493,6 +652,15 @@ impl Stack {
                 };
                 canvas.draw_box((track.0, track.1, full, track.3), &filled);
             }
+            let row = row(theme, room, shown.offers.buttons.len());
+            for (index, (act, area)) in shown.offers.buttons.iter().zip(row).enumerate() {
+                let lit = self.under == Some(shown.key) && self.aimed == Some(index);
+                let keyed = self.focused == Some((shown.key, Some(index)));
+                let states = States::NONE.when(State::Hovered, lit);
+                let states = states.when(State::Focused, keyed);
+                let (style, font) = button_look(theme, states);
+                button(&mut canvas, text, (&style, font), (&act.label, area));
+            }
             canvas
         })
     }
@@ -500,7 +668,9 @@ impl Stack {
     /// The states a notification is in.
     fn states(&self, shown: &Shown) -> States {
         let urgent = States::NONE.when(State::Urgent, shown.urgent);
-        urgent.when(State::Hovered, self.under == Some(shown.key))
+        let keyed = self.focused == Some((shown.key, None));
+        let hovered = urgent.when(State::Hovered, self.under == Some(shown.key));
+        hovered.when(State::Focused, keyed)
     }
 
     /// Where each notification's box is, from the top.
@@ -518,6 +688,12 @@ impl Stack {
             let words = words.saturating_add(if shown.level.is_some() { level } else { 0 });
             let pictured = shown.picture != Picture::None;
             let content = words.max(if pictured { PICTURE } else { 0 });
+            let buttons = if shown.offers.buttons.is_empty() {
+                0
+            } else {
+                BUTTON_GAP.saturating_add(button_look(theme, States::NONE).0.height)
+            };
+            let content = content.saturating_add(buttons);
             let height = content.saturating_add(style.inset().down());
             let area = (
                 style.margin.left.cast_signed(),
@@ -531,6 +707,24 @@ impl Stack {
         });
         placed.collect()
     }
+}
+
+/// Where `count` buttons go in `room`, the inside of a notification: across
+/// the bottom of it, as wide as each other, with room between them.
+fn row(theme: &Theme, room: Area, count: usize) -> Vec<Area> {
+    let tall = button_look(theme, States::NONE).0.height;
+    let count = u32::try_from(count).unwrap_or(0);
+    let gaps = BUTTON_GAP.saturating_mul(count.saturating_sub(1));
+    let wide = room.2.saturating_sub(gaps).checked_div(count).unwrap_or(0);
+    let top = room
+        .1
+        .saturating_add_unsigned(room.3)
+        .saturating_sub_unsigned(tall);
+    let across = (0..count).map(|index| {
+        let step = wide.saturating_add(BUTTON_GAP).saturating_mul(index);
+        (room.0.saturating_add_unsigned(step), top, wide, tall)
+    });
+    across.collect()
 }
 
 /// How wide a notification's box is.
@@ -640,10 +834,176 @@ mod tests {
         stack.layout(theme)[index].size.1
     }
 
-    /// Points at the notification `index` from the top, and clicks.
+    /// Points at the notification `index` from the top, clear of its
+    /// buttons, and clicks: its number, and whether its sender is told.
     fn click(stack: &mut Stack, theme: &Theme, index: usize) -> Option<(u32, bool)> {
         stack.point(Some(stack.layout(theme)[index].key));
-        stack.click()
+        clicked(stack)
+    }
+
+    /// Clicks where the pointer is: the number of what was clicked, and
+    /// whether its sender is told.
+    fn clicked(stack: &mut Stack) -> Option<(u32, bool)> {
+        let clicked = stack.click(true);
+        clicked.map(|clicked| (clicked.id, clicked.chose.is_some()))
+    }
+
+    /// A notification of a program's that offers to `reply` and to `read`,
+    /// and to be clicked.
+    fn mail(id: u32) -> Note {
+        let act = |key: &str, label: &str| Act {
+            key: key.to_owned(),
+            label: label.to_owned(),
+        };
+        Note {
+            acts: true,
+            actions: vec![act("reply", "Reply"), act("read", "Mark read")],
+            ..note(id, "Mail", "From someone")
+        }
+    }
+
+    #[test]
+    fn from_the_keyboard_the_notification_and_each_button_is_reached_and_chosen_in_turn() {
+        let theme = Theme::default();
+        let mut stack = Stack::new(5);
+        stack.show(mail(1), START);
+        let key = stack.layout(&theme)[0].key;
+        let plain = painted(&stack, &theme, 0);
+        assert!(stack.focus(Some(key)), "the notification first");
+        assert!(!stack.focus(Some(key)), "as it was");
+        let ringed = painted(&stack, &theme, 0);
+        assert_ne!(ringed, plain, "drawn as having the keyboard");
+        // Forwards through its buttons and round again, and back.
+        assert!(stack.step(true));
+        let on_reply = painted(&stack, &theme, 0);
+        assert_ne!(on_reply, ringed);
+        stack.step(true);
+        stack.step(true);
+        assert_eq!(painted(&stack, &theme, 0), ringed, "round to itself");
+        stack.step(false);
+        let chose = stack.press(true).unwrap();
+        assert_eq!((chose.id, chose.chose.as_deref()), (1, Some("read")));
+        assert!(stack.is_empty());
+        assert!(!stack.step(true), "nothing to move through");
+        assert_eq!(stack.press(true), None, "nor to choose");
+
+        // On itself, the click; Escape, dismissed with nothing chosen.
+        stack.show(mail(2), START);
+        stack.show(mail(3), START);
+        let [upper, lower] = [0, 1].map(|index| stack.layout(&theme)[index].key);
+        stack.focus(Some(lower));
+        let chose = stack.press(true).unwrap();
+        assert_eq!(
+            (chose.id, chose.chose.as_deref()),
+            (2, Some(DEFAULT_ACTION))
+        );
+        stack.focus(Some(upper));
+        stack.step(true);
+        let chose = stack.press(false).unwrap();
+        assert_eq!((chose.id, chose.chose), (3, None));
+        assert!(stack.is_empty());
+        assert!(!stack.focus(None), "had none already, as it went");
+
+        // Taken back by its program while it has the keyboard, there is
+        // nothing to move through.
+        stack.show(mail(4), START);
+        stack.focus(Some(stack.layout(&theme)[0].key));
+        assert!(stack.close(4));
+        assert!(!stack.step(true));
+        assert_eq!(stack.press(true), None);
+    }
+
+    #[test]
+    fn a_programs_actions_are_drawn_as_buttons_under_its_words() {
+        let theme = Theme::default();
+        let mut stack = Stack::new(5);
+        stack.show(note(1, "Mail", "From someone"), START);
+        let plain = tall(&stack, &theme, 0);
+        stack.show(mail(2), START);
+        let key = stack.layout(&theme)[0].key;
+        assert!(tall(&stack, &theme, 0) > plain, "room is made for them");
+        let buttons = stack.buttons(&theme, key);
+        assert_eq!(buttons.len(), 2);
+        let ([first, second], card) = ([buttons[0], buttons[1]], painted(&stack, &theme, 0));
+        // Side by side, as wide as each other, under the words.
+        assert_eq!((first.1, first.2, first.3), (second.1, second.2, second.3));
+        assert!(second.0 > first.0.saturating_add_unsigned(first.2));
+        assert!(first.1.unsigned_abs() > plain / 2);
+        // Each its box, unlike the notification round it.
+        let middle = |area: Area| {
+            let x = area.0.unsigned_abs() + area.2 / 2;
+            let y = area.1.unsigned_abs() + area.3 / 2;
+            (x, y)
+        };
+        let beside = card.at(2, first.1.unsigned_abs() + first.3 / 2);
+        let inside = (0..first.2 / 4)
+            .map(|step| card.at(first.0.unsigned_abs() + 4 + step, middle(first).1));
+        assert!(inside.clone().any(|pixel| pixel != beside), "a box drawn");
+        assert_eq!(stack.buttons(&theme, Key(u64::MAX)), [], "of none");
+        // The one the pointer is over is lit, and only it.
+        stack.point(Some(key));
+        let pointed = painted(&stack, &theme, 0);
+        stack.aim(&theme, (second.0 + 2, second.1 + 2));
+        let lit = painted(&stack, &theme, 0);
+        let across = |canvas: &Canvas, area: Area| {
+            let (x, y) = middle(area);
+            (area.0.unsigned_abs() + 2..x)
+                .map(move |x| canvas.at(x, y))
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(across(&lit, first), across(&pointed, first));
+        assert_ne!(across(&lit, second), across(&pointed, second), "lit");
+    }
+
+    #[test]
+    fn a_button_clicked_chooses_its_action_and_the_notification_goes_unless_it_stays() {
+        let theme = Theme::default();
+        let mut stack = Stack::new(5);
+        stack.show(mail(1), START);
+        let key = stack.layout(&theme)[0].key;
+        let reply = stack.buttons(&theme, key)[0];
+        stack.point(Some(key));
+        assert!(stack.aim(&theme, (reply.0 + 2, reply.1 + 2)), "lit");
+        assert!(!stack.aim(&theme, (reply.0 + 3, reply.1 + 2)), "as it was");
+        let chose = stack.click(true).unwrap();
+        assert_eq!(
+            (chose.id, chose.chose.as_deref(), chose.stays),
+            (1, Some("reply"), false)
+        );
+        assert!(stack.is_empty());
+
+        // One that asks to stay stays, and is not taken for dismissed.
+        stack.show(
+            Note {
+                resident: true,
+                ..mail(2)
+            },
+            START,
+        );
+        let key = stack.layout(&theme)[0].key;
+        let read = stack.buttons(&theme, key)[1];
+        stack.point(Some(key));
+        stack.aim(&theme, (read.0 + 2, read.1 + 2));
+        let chose = stack.click(true).unwrap();
+        assert_eq!((chose.chose.as_deref(), chose.stays), (Some("read"), true));
+        assert_eq!(showing(&stack), [2]);
+        // A click beside the buttons is the click on the notification.
+        stack.aim(&theme, (2, 2));
+        let chose = stack.click(true).unwrap();
+        assert_eq!(
+            (chose.chose.as_deref(), chose.stays),
+            (Some(DEFAULT_ACTION), false)
+        );
+
+        // Dismissed, by the other button, a button's action is not chosen.
+        stack.show(mail(3), START);
+        let key = stack.layout(&theme)[0].key;
+        let reply = stack.buttons(&theme, key)[0];
+        stack.point(Some(key));
+        stack.aim(&theme, (reply.0 + 2, reply.1 + 2));
+        let chose = stack.click(false).unwrap();
+        assert_eq!((chose.id, chose.chose, chose.stays), (3, None, false));
+        assert!(stack.is_empty());
     }
 
     /// The numbers of the notifications showing, from the top.
@@ -1054,10 +1414,10 @@ mod tests {
         let mut stack = Stack::new(5);
         stack.show(note(1, "Lower", ""), START);
         stack.show(note(2, "Upper", ""), START);
-        assert_eq!(stack.click(), None, "on none");
+        assert_eq!(clicked(&mut stack), None, "on none");
         let lower = stack.layout(&theme)[1].key;
         assert_eq!(click(&mut stack, &theme, 1), Some((1, false)));
-        assert_eq!(stack.click(), None, "nothing is there now");
+        assert_eq!(clicked(&mut stack), None, "nothing is there now");
         assert_eq!(drawn(&stack, &theme, lower), None, "nor drawn");
         assert_eq!(click(&mut stack, &theme, 0), Some((2, false)));
         assert!(stack.is_empty());
@@ -1073,7 +1433,7 @@ mod tests {
         stack.show(note(4, "Gone", ""), START);
         stack.point(Some(stack.layout(&theme)[0].key));
         assert!(stack.close(4));
-        assert_eq!(stack.click(), None);
+        assert_eq!(clicked(&mut stack), None);
     }
 
     #[test]

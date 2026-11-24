@@ -206,6 +206,11 @@
           "type": "string"
         },
         {
+          "const": "focus_notifications",
+          "description": "Give the notifications the keyboard, the newest first: Tab and the\narrow keys go through it and its buttons, Enter chooses, as a click\ndoes, and Escape dismisses it.",
+          "type": "string"
+        },
+        {
           "const": "show_welcome",
           "description": "Show the welcome card: a step at a time, what the keys that matter\ndo, light or dark, the wallpapers that come with omorfos, and the\napplications that open what. It is shown by itself at the first\nlogin.",
           "type": "string"

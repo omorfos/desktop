@@ -83,8 +83,9 @@ others:
   with focus, and signs on the titlebar's buttons always.
 - **A magnifier**, **sticky keys** and **slow keys**.
 - **An on-screen keyboard.**
-- **Everything from the keyboard**: notifications are dismissed with the
-  pointer alone so far.
+- **Everything from the keyboard**: notifications are reached through the
+  action `focus_notifications`, which no key is bound to until the
+  defaults are reviewed.
 - **A window's focus shown by more than colour and shadow.** The window
   with focus has its titlebar, its text and its buttons in other colours,
   and its shadow deeper; its edge is the same as every window's. A ring

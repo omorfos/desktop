@@ -376,6 +376,7 @@ notification {
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.36), inset 0 1px var(--glass-rim);
 }
 notification:hover { border-color: var(--border-strong); }
+notification:focus { border-color: var(--accent); }
 notification:urgent { border-color: var(--danger); }
 notification-title {
   color: var(--text);

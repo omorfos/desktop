@@ -21,7 +21,7 @@ use std::path::Path;
 
 pub use bus::{Bus, Event};
 pub use client::Notifier;
-pub use note::{Key, Note, Picture, Place, Reason, Stack};
+pub use note::{ACTIONS, Act, Clicked, DEFAULT_ACTION, Key, Note, Picture, Place, Reason, Stack};
 use omorfos_icons::Icons;
 use omorfos_ipc::help::About;
 

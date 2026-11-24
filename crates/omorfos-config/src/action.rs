@@ -142,6 +142,10 @@ pub enum Action {
     ShowMenu,
     /// Open the launcher, to start a program by typing its name.
     ShowLauncher,
+    /// Give the notifications the keyboard, the newest first: Tab and the
+    /// arrow keys go through it and its buttons, Enter chooses, as a click
+    /// does, and Escape dismisses it.
+    FocusNotifications,
     /// Show the welcome card: a step at a time, what the keys that matter
     /// do, light or dark, the wallpapers that come with omorfos, and the
     /// applications that open what. It is shown by itself at the first
@@ -463,6 +467,7 @@ mod tests {
         );
         assert_eq!(parse("move_to_next_output"), Ok(Action::MoveToNextOutput));
         assert_eq!(parse("show_launcher"), Ok(Action::ShowLauncher));
+        assert_eq!(parse("focus_notifications"), Ok(Action::FocusNotifications));
         assert_eq!(parse("show_welcome"), Ok(Action::ShowWelcome));
         assert_eq!(parse("about"), Ok(Action::About));
         assert_eq!(parse("tile: left"), Ok(Action::Tile(Half::Left)));

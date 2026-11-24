@@ -348,6 +348,213 @@ fn a_program_that_asks_is_told_of_a_click_unless_it_is_the_right_button() {
 }
 
 #[test]
+fn a_button_of_a_programs_own_is_chosen_and_the_program_told_which() {
+    use omorfos_notifications::{Act, Note, Stack};
+
+    let daemon = Daemon::start();
+    let mut session = Session::new();
+    let mut notifier = notifier(&mut session, &daemon);
+    let peer = daemon.peer();
+    let rule = zbus::MatchRule::builder()
+        .msg_type(zbus::message::Type::Signal)
+        .interface(NAME)
+        .unwrap()
+        .member("ActionInvoked")
+        .unwrap()
+        .build();
+    let mut signals = zbus::blocking::MessageIterator::for_match_rule(rule, &peer, None).unwrap();
+    let hints: HashMap<&str, Value<'_>> = HashMap::new();
+    let actions = vec!["default", "Open", "reply", "Reply"];
+    let body = ("tester", 0_u32, "", "Mail", "", actions, hints, 0);
+    let reply = peer.call_method(Some(NAME), PATH, Some(NAME), "Notify", &body);
+    let id = reply.unwrap().body().deserialize::<u32>().unwrap();
+    until(&mut session, &mut notifier, Duration::ZERO, showing);
+
+    // Where its button is, as the service lays it out under the theme.
+    let theme = Theme::default();
+    let mut stack = Stack::new(5);
+    let act = Act {
+        key: "reply".to_owned(),
+        label: "Reply".to_owned(),
+    };
+    let note = Note {
+        id,
+        title: "Mail".to_owned(),
+        acts: true,
+        actions: vec![act],
+        ..Note::default()
+    };
+    stack.show(note, Duration::ZERO);
+    let place = stack.layout(&theme)[0];
+    let button = stack.buttons(&theme, place.key)[0];
+    let left = WIDTH - i32::try_from(place.right + place.size.0).unwrap();
+    let top = i32::try_from(place.top).unwrap();
+    let x = f64::from(left + button.0 + 4);
+    let y = f64::from(top + button.1 + 4);
+    session.compositor_mut().input(Input::Motion { x, y }, 0);
+    notifier.turn(Duration::ZERO).unwrap();
+    session.step();
+    for pressed in [true, false] {
+        let press = Input::Button {
+            button: LEFT,
+            pressed,
+        };
+        session.compositor_mut().input(press, 0);
+    }
+    until(&mut session, &mut notifier, Duration::ZERO, clear);
+    let signal = signals.next().unwrap().unwrap();
+    let said: (u32, String) = signal.body().deserialize().unwrap();
+    assert_eq!(said, (id, "reply".to_owned()), "the button, not the click");
+}
+
+/// Presses and lets go of the key Linux numbers `code`.
+fn tap(session: &mut Session, code: u32) {
+    let code = smithay::input::keyboard::Keycode::new(code + 8);
+    for pressed in [true, false] {
+        session
+            .compositor_mut()
+            .input(Input::Key { code, pressed }, 0);
+    }
+}
+
+/// What the service says of `member` on the bus `peer` is on.
+fn hearing(peer: &Connection, member: &'static str) -> zbus::blocking::MessageIterator {
+    let rule = zbus::MatchRule::builder()
+        .msg_type(zbus::message::Type::Signal)
+        .interface(NAME)
+        .unwrap()
+        .member(member)
+        .unwrap()
+        .build();
+    zbus::blocking::MessageIterator::for_match_rule(rule, peer, None).unwrap()
+}
+
+/// Sends a notification of mail from `peer` offering `actions`, and
+/// returns its number.
+fn mail(peer: &Connection, actions: Vec<&str>) -> u32 {
+    let hints: HashMap<&str, Value<'_>> = HashMap::new();
+    let body = ("tester", 0_u32, "", "Mail", "", actions, hints, 0);
+    let reply = peer.call_method(Some(NAME), PATH, Some(NAME), "Notify", &body);
+    reply.unwrap().body().deserialize::<u32>().unwrap()
+}
+
+/// Whether `client`, told what has happened since it last was, has been
+/// told the keyboard `came` to its window, or went from it.
+fn keyboard(session: &mut Session, client: &mut crate::common::Client, came: bool) -> bool {
+    session.roundtrip(client);
+    let told = client.take_events();
+    told.iter().any(|event| match event {
+        crate::common::Event::KeyboardEnter => came,
+        crate::common::Event::KeyboardLeave => !came,
+        _ => false,
+    })
+}
+
+/// Gives the notifications the keyboard.
+fn focus_notifications(session: &mut Session) {
+    session
+        .compositor_mut()
+        .perform(&omorfos_config::Action::FocusNotifications);
+}
+
+#[test]
+fn from_the_keyboard_a_notifications_button_is_reached_and_chosen() {
+    let daemon = Daemon::start();
+    let mut session = Session::new();
+    let mut client = session.connect();
+    let _window = session.open(&mut client, "app", (200, 100), crate::windows::RED);
+    let mut notifier = notifier(&mut session, &daemon);
+    let peer = daemon.peer();
+    let mut invoked = hearing(&peer, "ActionInvoked");
+    let id = mail(
+        &peer,
+        vec!["default", "Open", "reply", "Reply", "read", "Mark read"],
+    );
+    until(&mut session, &mut notifier, Duration::ZERO, showing);
+
+    // Given the keyboard, the window no longer has it.
+    focus_notifications(&mut session);
+    assert!(
+        keyboard(&mut session, &mut client, false),
+        "left the window"
+    );
+    // Tab to its first button, and Enter.
+    notifier.turn(Duration::ZERO).unwrap();
+    session.step();
+    for key in [15, 28] {
+        tap(&mut session, key);
+        notifier.turn(Duration::ZERO).unwrap();
+        session.step();
+    }
+    until(&mut session, &mut notifier, Duration::ZERO, clear);
+    let signal = invoked.next().unwrap().unwrap();
+    let said: (u32, String) = signal.body().deserialize().unwrap();
+    assert_eq!(said, (id, "reply".to_owned()));
+    // Gone, the window has the keyboard back.
+    assert!(
+        keyboard(&mut session, &mut client, true),
+        "back to the window"
+    );
+}
+
+#[test]
+fn a_notification_with_the_keyboard_gives_it_up_to_a_click_and_is_dismissed_with_escape() {
+    let daemon = Daemon::start();
+    let mut session = Session::new();
+    let mut client = session.connect();
+    let _window = session.open(&mut client, "app", (200, 100), crate::windows::RED);
+    let mut notifier = notifier(&mut session, &daemon);
+    let peer = daemon.peer();
+    let mut closed = hearing(&peer, "NotificationClosed");
+    let id = mail(&peer, vec!["reply", "Reply"]);
+    until(&mut session, &mut notifier, Duration::ZERO, showing);
+
+    // A click on the window takes the keyboard back to it.
+    focus_notifications(&mut session);
+    notifier.turn(Duration::ZERO).unwrap();
+    session.step();
+    session
+        .compositor_mut()
+        .input(Input::Motion { x: 10.0, y: 10.0 }, 0);
+    for pressed in [true, false] {
+        let press = Input::Button {
+            button: LEFT,
+            pressed,
+        };
+        session.compositor_mut().input(press, 0);
+    }
+    notifier.turn(Duration::ZERO).unwrap();
+    assert!(
+        keyboard(&mut session, &mut client, true),
+        "back to the window"
+    );
+    // Given it again, moved through with the arrows and a key that does
+    // nothing, it is dismissed with Escape, and nothing is chosen.
+    focus_notifications(&mut session);
+    for key in [106, 105, 30, 1] {
+        notifier.turn(Duration::ZERO).unwrap();
+        session.step();
+        tap(&mut session, key);
+    }
+    until(&mut session, &mut notifier, Duration::ZERO, clear);
+    let gone = closed.next().unwrap().unwrap();
+    assert_eq!(gone.body().deserialize::<(u32, u32)>().unwrap(), (id, 2));
+}
+
+#[test]
+fn with_no_notification_the_keyboard_stays_where_it_was() {
+    let mut session = Session::new();
+    let mut client = session.connect();
+    let _window = session.open(&mut client, "app", (200, 100), crate::windows::RED);
+    client.take_events();
+    focus_notifications(&mut session);
+    assert!(
+        !keyboard(&mut session, &mut client, false),
+        "still the window's"
+    );
+}
+
+#[test]
 fn a_program_can_take_its_notification_back() {
     let daemon = Daemon::start();
     let mut session = Session::new();
