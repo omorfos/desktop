@@ -285,7 +285,11 @@ goes.
   blurred as one picture however many rectangles it
   comes to, as a region with rounded corners is told as many. A panel
   whose part the theme makes glass has that, and not what its program
-  asks for too, which would blur the same twice.
+  asks for too, which would blur the same twice. A pop-up, as a menu,
+  is given what it asks for as a window is, cut to the pop-up proper,
+  or to all of its surface where it says nothing of where that is; what
+  is behind it is everything under it, the window or panel it is of
+  among it, and a menu opened from a menu has that menu in its picture.
 
 ### When they are not drawn
 

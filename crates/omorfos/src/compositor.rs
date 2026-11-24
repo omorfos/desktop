@@ -54,7 +54,9 @@ use smithay::backend::renderer::utils::with_renderer_surface_state;
 use smithay::backend::renderer::{
     Color32F, ExportMem, ImportAll, ImportMem, Offscreen, Renderer, RendererSuper, Texture,
 };
-use smithay::desktop::utils::{send_frames_surface_tree, with_surfaces_surface_tree};
+use smithay::desktop::utils::{
+    bbox_from_surface_tree, send_frames_surface_tree, with_surfaces_surface_tree,
+};
 use smithay::desktop::{LayerMap, LayerSurface, PopupManager, Space, Window, layer_map_for_output};
 use smithay::input::keyboard::{KeyboardHandle, XkbConfig};
 use smithay::input::pointer::{
@@ -3697,7 +3699,8 @@ impl Compositor {
                 chrome.grounded(view, &mut elements);
             }
             if !portrait.shaded {
-                self.window_elements(renderer, view, (portrait, false, false), &mut elements);
+                let drawn = (&mut elements, &mut Vec::new());
+                self.window_elements(renderer, view, (portrait, false, false), drawn);
             }
             let shadow = chrome.and_then(|chrome| chrome.shadow.as_ref());
             if let Some(shadow) = shadow {
@@ -4255,7 +4258,7 @@ impl Compositor {
                 // Under glass that blurs it, its menus are left out: they
                 // reach past its frame, where nothing blurs them.
                 let alone = matches!(veil, Some(Veil::Blurred));
-                self.window_elements(renderer, view, (shown, true, alone), elements);
+                self.window_elements(renderer, view, (shown, true, alone), (elements, panes));
                 // What is behind it, blurred where its program asks, is
                 // under it.
                 glass.extend(self.window_backdrop(view, shown, elements.len()));
@@ -4343,7 +4346,7 @@ impl Compositor {
         renderer: &mut R,
         view: View,
         (shown, noted, alone): (&Shown, bool, bool),
-        elements: &mut Vec<Element<R>>,
+        (elements, panes): (&mut Vec<Element<R>>, &mut Vec<Pane>),
     ) where
         R: Renderer + ImportAll + ImportMem,
         R::TextureId: Clone + Texture + Send + 'static,
@@ -4383,7 +4386,8 @@ impl Compositor {
         // stretched with the window, as they are placed by where it is.
         if !alone {
             let placed = (shown.origin, view, shown.seen.opacity);
-            popup_elements(renderer, &shown.surface, placed, elements, &mut noting);
+            let drawn = (&mut *elements, &mut *panes);
+            self.menu_elements(renderer, &shown.surface, placed, drawn, &mut noting);
         }
         let first = elements.len();
         let Some(chrome) = rounded else {
@@ -4469,6 +4473,49 @@ impl Compositor {
         )
     }
 
+    /// Adds the pop-ups of `root`, topmost first, a menu opened from a menu
+    /// before the one it came from, each placed from `proper`, where in the
+    /// space `root`'s window proper begins, as `view` draws them at
+    /// `opacity`, and noted as `noting` says; and under each, the glass its
+    /// program asks for behind it (`ext-background-effect`), cut to the
+    /// pop-up proper, behind which is everything under the pop-up, the
+    /// window or the panel it is of among it.
+    fn menu_elements<R>(
+        &self,
+        renderer: &mut R,
+        root: &WlSurface,
+        (proper, view, opacity): (Point<i32, Logical>, View, f32),
+        (elements, panes): (&mut Vec<Element<R>>, &mut Vec<Pane>),
+        noting: &mut Noting<R::TextureId>,
+    ) where
+        R: Renderer + ImportAll + ImportMem,
+        R::TextureId: Clone + Texture + Send + 'static,
+    {
+        let scale = view.scale.factor();
+        for (popup, offset) in PopupManager::popups_for_surface(root) {
+            let geometry = popup.geometry();
+            let origin = proper + offset - geometry.loc;
+            let kind = Kind::Unspecified;
+            let at = view.pixel(origin.to_f64());
+            let picture: Vec<WaylandSurfaceRenderElement<R>> =
+                surfaces::tree(renderer, popup.wl_surface(), at, scale, opacity, kind);
+            for surface in &picture {
+                noting.add(surface, noting.paint(surface.texture()));
+            }
+            elements.extend(picture.into_iter().map(Element::Surface));
+            // Not the shadow a menu draws round itself on its surface; one
+            // that says nothing of where it is in its surface is all of it,
+            // as xdg-shell has it.
+            let said = Some(geometry).filter(|geometry| !geometry.is_empty());
+            let geometry =
+                said.unwrap_or_else(|| bbox_from_surface_tree(popup.wl_surface(), (0, 0)));
+            let bounds = [view.pixels(Rectangle::new(origin + geometry.loc, geometry.size))];
+            let drawn = (elements.len(), opacity);
+            let pane = self.backdrop(popup.wl_surface(), (origin, view), Some(&bounds), drawn);
+            panes.extend(pane.map(|pane| pane.under(elements.len())));
+        }
+    }
+
     /// Begins noting what something is drawn from, if it is a `part` that
     /// takes time to go.
     fn noting<T: Clone + 'static>(&self, view: View, part: Part) -> Noting<T> {
@@ -4510,6 +4557,8 @@ impl Compositor {
         let height = self.heads.get(index).map_or(0, |head| head.area().size.h);
         let mut shadows = Vec::new();
         let mut glass = Vec::new();
+        // The glass of their pop-ups, which is over them and their shadows.
+        let mut raised = Vec::new();
         for surface in layers.layers_on(layer).rev().filter(wanted) {
             // The wallpaper goes with the workspaces as they slide, drawn
             // once for each the output draws; whatever else is on a layer
@@ -4519,6 +4568,7 @@ impl Compositor {
             let shifts = self.desktop.shifts(index).filter(|_| carried);
             for across in still.chain(shifts) {
                 let (first, cast, laid) = (elements.len(), shadows.len(), glass.len());
+                let lifted = raised.len();
                 // A panel is placed within its own output, and drawn as far
                 // from there as it has to come yet.
                 let area = layers.layer_geometry(surface).unwrap_or_default();
@@ -4536,13 +4586,8 @@ impl Compositor {
                 );
                 // Its pop-ups over it, as a window's are.
                 let placed = (at, view, opacity);
-                popup_elements(
-                    renderer,
-                    surface.wl_surface(),
-                    placed,
-                    elements,
-                    &mut noting,
-                );
+                let drawn = (&mut *elements, &mut raised);
+                self.menu_elements(renderer, surface.wl_surface(), placed, drawn, &mut noting);
                 let kind = Kind::Unspecified;
                 let pixel = view.pixel(at.to_f64());
                 let scale = view.scale.factor();
@@ -4601,12 +4646,14 @@ impl Compositor {
                 scaling::scale(elements, first, around);
                 scaling::scale(&mut shadows, cast, around);
                 scaling::scale_panes(&mut glass, laid, around);
+                scaling::scale_panes(&mut raised, lifted, around);
             }
         }
         elements.append(&mut shadows);
         // What is behind each begins under all of their shadows.
         let under = elements.len();
         panes.extend(glass.into_iter().map(|pane| pane.under(under)));
+        panes.append(&mut raised);
     }
 
     /// Tells what is on `output` that a frame was shown there, so that it
@@ -6080,33 +6127,6 @@ impl Painted {
 /// too, and begins further left or up than the surface when one of them
 /// reaches out past it, as a line of text wider than the screen does: taken
 /// for where the surface is, it put all of it that much out of place.
-/// Adds the pop-ups of `root`, topmost first, a menu opened from a menu
-/// before the one it came from, each placed from `proper`, where in the
-/// space `root`'s window proper begins, as `view` draws them at `opacity`,
-/// and noted as `noting` says.
-fn popup_elements<R>(
-    renderer: &mut R,
-    root: &WlSurface,
-    (proper, view, opacity): (Point<i32, Logical>, View, f32),
-    elements: &mut Vec<Element<R>>,
-    noting: &mut Noting<R::TextureId>,
-) where
-    R: Renderer + ImportAll + ImportMem,
-    R::TextureId: Clone + Texture + Send + 'static,
-{
-    let scale = view.scale.factor();
-    for (popup, offset) in PopupManager::popups_for_surface(root) {
-        let at = view.pixel((proper + offset - popup.geometry().loc).to_f64());
-        let kind = Kind::Unspecified;
-        let picture: Vec<WaylandSurfaceRenderElement<R>> =
-            surfaces::tree(renderer, popup.wl_surface(), at, scale, opacity, kind);
-        for surface in &picture {
-            noting.add(surface, noting.paint(surface.texture()));
-        }
-        elements.extend(picture.into_iter().map(Element::Surface));
-    }
-}
-
 pub(crate) fn layer_origin(layers: &LayerMap, layer: &LayerSurface) -> Point<i32, Logical> {
     let all = layers.layer_geometry(layer).unwrap_or_default();
     all.loc - layer.bbox().loc

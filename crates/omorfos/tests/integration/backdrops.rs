@@ -6,6 +6,8 @@ use wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_surface_v1::{
     Anchor, KeyboardInteractivity,
 };
 
+use wayland_client::protocol::wl_surface;
+
 use crate::common::{Client, LayerShape, Session, Toplevel, WIDTH};
 use crate::windows::{BACKGROUND, RED};
 
@@ -319,4 +321,138 @@ fn what_is_behind_a_window_is_not_blurred_beyond_its_edges_in_the_shadow_it_draw
         "blurred within it"
     );
     assert_eq!(picture.at(204, 200), BACKGROUND, "and not in its shadow");
+}
+
+/// A session with [`BLURRED`], a red window 200 by 400, and a menu of it
+/// that cannot be seen at all, 100 by 100 from 150 across and 100 down in
+/// the window, so over its right edge, which asks for what is behind all
+/// of it blurred, as `ask` asks. Where the window is on the screen, from
+/// its corner.
+fn a_clear_menu_over_the_edge_of_a_red_window(
+    ask: fn(&Client, &wl_surface::WlSurface),
+) -> (Session, Client, (i32, i32)) {
+    let mut session = Session::with_config(&[("theme.css", BLURRED)]);
+    session.blurring();
+    let mut program = session.connect();
+    let window = session.open(&mut program, "red", (200, 400), RED);
+    let (menu, _, _menu) = program.popup_of(&window.xdg_surface, (150, 100), (100, 100));
+    session.roundtrip(&mut program);
+    ask(&program, &menu);
+    program.fill(&menu, (100, 100), 0);
+    session.roundtrip(&mut program);
+    session.roundtrip(&mut program);
+    // Where it is, as the frame the desktop has for it says.
+    let frames = session.compositor().desktop().frames();
+    let origin = frames.map(|frame| frame.client().origin).next();
+    let origin = origin.unwrap_or_default();
+    (session, program, (origin.x, origin.y))
+}
+
+#[test]
+fn a_menu_that_can_be_seen_through_has_what_is_behind_it_blurred_its_window_among_it() {
+    let (mut session, _program, (x, y)) =
+        a_clear_menu_over_the_edge_of_a_red_window(|program, menu| {
+            program.blur_behind(menu, &[(0, 0, 100, 100)]);
+        });
+    let picture = session.draw();
+    // Past the window's edge, within the menu: the red of the window
+    // under the menu, blurred out across it.
+    let past = picture.at(x + 204, y + 150);
+    assert!(
+        red(past) > red(BACKGROUND) + 8,
+        "blurred past the edge: {past:#x}"
+    );
+    assert_eq!(
+        picture.at(x + 260, y + 150),
+        BACKGROUND,
+        "the desktop, beside it"
+    );
+    assert_eq!(
+        picture.at(x + 100, y + 300),
+        RED,
+        "the window, below it, sharp"
+    );
+    assert!(session.compositor().blurs() > 0);
+}
+
+#[test]
+fn what_is_behind_a_menu_is_not_blurred_in_the_shadow_it_draws_round_itself() {
+    let mut session = Session::with_config(&[("theme.css", BLURRED)]);
+    session.blurring();
+    let mut program = session.connect();
+    let window = session.open(&mut program, "red", (200, 400), RED);
+    // A surface 140 by 140, of which the menu proper is 100 by 100 from
+    // 20 across and down: it draws its shadow in the 20 round it.
+    let (menu, menu_xdg, _menu) = program.popup_of(&window.xdg_surface, (150, 100), (100, 100));
+    menu_xdg.set_window_geometry(20, 20, 100, 100);
+    session.roundtrip(&mut program);
+    let _effect = program.blur_behind(&menu, &[(0, 0, 140, 140)]);
+    program.fill(&menu, (140, 140), 0);
+    session.roundtrip(&mut program);
+    session.roundtrip(&mut program);
+    let frame = session.compositor().desktop().frames().next().unwrap();
+    let (x, y) = (frame.client().origin.x, frame.client().origin.y);
+    let picture = session.draw();
+    assert!(
+        red(picture.at(x + 204, y + 150)) > red(BACKGROUND) + 8,
+        "within it"
+    );
+    // Its shadow, past its bottom, over the window's edge.
+    assert_eq!(
+        picture.at(x + 204, y + 210),
+        BACKGROUND,
+        "and not in its shadow"
+    );
+}
+
+#[test]
+fn a_menu_of_a_panel_has_what_is_behind_it_blurred_where_it_asks() {
+    let mut session = Session::with_config(&[("theme.css", BLURRED)]);
+    session.blurring();
+    let mut program = session.connect();
+    let _window = session.open(&mut program, "red", (200, 400), RED);
+    let frame = session.compositor().desktop().frames().next().unwrap();
+    let x = frame.client().origin.x;
+    let mut client = session.connect();
+    let panel = LayerShape {
+        layer: Layer::Top,
+        anchor: Anchor::Top | Anchor::Left | Anchor::Right,
+        size: (0, 30),
+        exclusive_zone: 0,
+        keyboard: KeyboardInteractivity::None,
+    };
+    let (_surface, role) = session.open_layer(&mut client, &panel, (WIDTH, 30), 0xff00_00ff);
+    // Hanging from the bar over the red window's right edge.
+    let (menu, _popup) = client.layer_popup(&role, (x + 150, 30), (100, 100));
+    session.roundtrip(&mut client);
+    let _effect = client.blur_behind(&menu, &[(0, 0, 100, 100)]);
+    client.fill(&menu, (100, 100), 0);
+    session.roundtrip(&mut client);
+    session.roundtrip(&mut client);
+    let picture = session.draw();
+    let past = picture.at(x + 204, 80);
+    assert!(
+        red(past) > red(BACKGROUND) + 8,
+        "blurred past the edge: {past:#x}"
+    );
+    assert_eq!(picture.at(x + 100, 300), RED, "the window, below it, sharp");
+}
+
+#[test]
+fn a_menu_that_asks_through_kdes_protocol_has_all_of_it_blurred_behind() {
+    let (mut session, _program, (x, y)) =
+        a_clear_menu_over_the_edge_of_a_red_window(|program, menu| {
+            program.kde_blur(menu, None);
+        });
+    let picture = session.draw();
+    let past = picture.at(x + 204, y + 150);
+    assert!(
+        red(past) > red(BACKGROUND) + 8,
+        "blurred past the edge: {past:#x}"
+    );
+    assert_eq!(
+        picture.at(x + 100, y + 300),
+        RED,
+        "the window, below it, sharp"
+    );
 }
