@@ -3414,6 +3414,71 @@ its own. It found one high, five medium and four low findings:
       preserve named actions, show them accessibly and emit the selected
       identifier; do not remove the capability as a stopgap.
 
+The pull requests merged on 23 November 2026, #67 to #102, reviewed on
+24 November by eight reviewers at once, with every gate run on `main`
+as they left it, are written up in
+[reviews/2026-11-24-the-pull-requests-merged-on-23-november.md](reviews/2026-11-24-the-pull-requests-merged-on-23-november.md),
+in the order to take it. `main` passes every gate with all of it in:
+
+- [x] High: one region set on many surfaces is counted once by the
+      relay and copied into each by the compositor, so one program can
+      still fill the compositor's memory, #68's bound notwithstanding
+      ([finding 1](reviews/2026-11-24-the-pull-requests-merged-on-23-november.md#1-one-region-set-on-many-surfaces-is-counted-once-by-the-relay-and-copied-into-each-surface-by-the-compositor-so-one-program-can-still-fill-the-compositors-memory)):
+      each naming counted, and a program that takes a number withheld
+      from it let go, by which the count could be got past
+      ([the fixes, read again](reviews/2026-11-24-the-pull-requests-merged-on-23-november.md#the-fixes-read-again))
+      (#104).
+- [x] Medium: a window over one in a frame of ours no longer eases where
+      it is sent, and every turn makes three maps anew
+      ([finding 2](reviews/2026-11-24-the-pull-requests-merged-on-23-november.md#2-a-window-over-one-in-a-frame-of-ours-no-longer-eases-where-it-is-sent-and-every-turn-makes-three-maps-anew-that-it-then-throws-away)):
+      #102 taken back, and the gate's ceiling lowered to what a turn
+      allocates (#103).
+- [x] Medium: a locked frame drawn and then refused by the card still
+      counts its screen as showing nothing of the session
+      ([finding 3](reviews/2026-11-24-the-pull-requests-merged-on-23-november.md#3-a-locked-frame-that-was-drawn-and-then-refused-by-the-card-still-counts-its-screen-as-showing-nothing-of-the-session)):
+      not shown, on any failure to draw (#105).
+- [x] Medium: the launcher, the screenshot tool and the welcome card
+      still start from the files on disk, and nothing holds the lock
+      screen, as it is started, to the copy
+      ([finding 4](reviews/2026-11-24-the-pull-requests-merged-on-23-november.md#4-the-launcher-the-screenshot-tool-and-the-welcome-card-still-start-from-the-files-on-disk-and-nothing-holds-the-lock-screen-as-it-is-started-to-the-copy)):
+      one way in for every program but the compositor, and a test that
+      reads each program's source for one that opens the configuration
+      without the copy (#106).
+- [x] Low: an ordinary notification that comes while eight critical ones
+      show is itself the one to go
+      ([finding 5](reviews/2026-11-24-the-pull-requests-merged-on-23-november.md#5-an-ordinary-notification-that-comes-while-eight-critical-ones-show-is-itself-the-one-to-go-and-is-never-seen)):
+      what has just come is never the one to go (#107).
+- [x] Low: a configuration directory's changes still missed, or
+      mistaken, four ways
+      ([finding 6](reviews/2026-11-24-the-pull-requests-merged-on-23-november.md#6-a-configuration-directorys-changes-are-still-missed-or-mistaken-four-ways)):
+      three of the four, with what sleeps until its watcher can be
+      read woken to look again for a link's directory; the directory
+      above said in ADR 3 (#108).
+- [x] Low: what every peer asks in a turn read into memory before any of
+      it is answered
+      ([finding 7](reviews/2026-11-24-the-pull-requests-merged-on-23-november.md#7-what-every-peer-asks-in-a-turn-is-now-read-into-memory-before-any-of-it-is-answered)) (#109).
+- [x] Low: six of the day's fixes held by no test
+      ([finding 8](reviews/2026-11-24-the-pull-requests-merged-on-23-november.md#8-six-of-the-days-fixes-are-run-by-the-tests-and-held-by-none)):
+      #69 in #108, #85 in #105, the other four in #110.
+- [x] Low: a program let go for what it added in all told it added too
+      much to one object
+      ([finding 9](reviews/2026-11-24-the-pull-requests-merged-on-23-november.md#9-a-program-let-go-for-what-it-added-over-all-its-objects-is-told-it-added-too-much-to-one)) (#104).
+- [x] Low: the check of `omorfos_shell::pixels` that function's alone
+      ([finding 10](reviews/2026-11-24-the-pull-requests-merged-on-23-november.md#10-the-check-97-gave-omorfos_shellpixels-is-that-functions-alone)):
+      taken by all five, and by the stream's own shared memory (#111).
+- [ ] Low: what the review of 23 November says that is not so
+      ([finding 11](reviews/2026-11-24-the-pull-requests-merged-on-23-november.md#11-the-review-merged-in-101-says-six-things-that-are-not-so)).
+- [x] Low: documents and comments the day's changes left behind
+      ([finding 12](reviews/2026-11-24-the-pull-requests-merged-on-23-november.md#12-documents-and-comments-the-days-changes-left-behind)):
+      the three reviews with this write-up, and the rest in #109, #113
+      and #114.
+- [ ] Low: a pull request's fix-ups squashed before it is rebased onto
+      `main`, and why `committed` passes a subject of 74
+      ([finding 13](reviews/2026-11-24-the-pull-requests-merged-on-23-november.md#13-six-commit-messages-do-not-hold-to-agentsmd-or-do-not-stand-alone-on-main)).
+- [x] The gates' `commit` tier building `omorfos-pinentry` where it tests
+      `omorfos` in a build folder with nothing in it
+      ([seen in passing](reviews/2026-11-24-the-pull-requests-merged-on-23-november.md#seen-in-passing-for-later)) (#112).
+
 ## 9. For others to build on
 
 Asked for on 14 November 2026: a way for other projects and repositories
