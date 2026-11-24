@@ -25,10 +25,50 @@ another WSL shell is told it by hand:
 WAYLAND_DISPLAY=wayland-1 foot
 ```
 
-Windows keeps for itself the chords of the Windows key that it uses, as
-`Win+L` and `Win+Tab`, and omorfos never sees them. The menu opens with
-a right click on the desktop, with no key, and `keys.yaml` can bind what
-Windows takes to another.
+## The Windows key
+
+Windows keeps the Windows key for itself, and the chords made with it, as
+`Win+L` and `Win+Tab`: omorfos's window never sees them, so none of the
+bindings with Super can be had with it. WSLg has no setting that would
+hand it on, and omorfos cannot ask Windows for it; that it should is
+[microsoft/wslg#672](https://github.com/microsoft/wslg/issues/672).
+
+What omorfos can do is make another key Super, as it reads the keys
+itself, by the layout of its own configuration. In `config.yaml`:
+
+```yaml
+keyboard: { options: 'caps:super' }
+```
+
+has Caps Lock act as Super, and `altwin:menu_win` the Menu key, with
+every binding as it was: `Caps Lock+Return` starts a terminal.
+
+An option that puts Super on Alt, as `altwin:swap_lalt_lwin`, does so
+too, but is less help than Caps Lock or the Menu key. Windows keeps
+some chords of Alt for itself, `Alt+Tab` among them, and those never
+arrive.
+
+`Alt+F4` is WSLg's, too: it closes the window it is pressed in, which is
+the whole of omorfos, with every program inside it. `Super+q` closes one
+window, as everywhere.
+
+There are ways on the Windows side as well. They have not been tried
+with omorfos, and none of them is supported:
+
+- PowerToys' Keyboard Manager, or AutoHotkey, can turn a chord with the
+  Windows key into another, for `msrdc.exe` alone, which is the program
+  WSLg's windows are shown by. `Win+L` and `Ctrl+Alt+Del` can never be
+  turned into anything else, and programs that hook the keyboard so are
+  known to leave keys held down in WSLg
+  ([microsoft/wslg#1421](https://github.com/microsoft/wslg/issues/1421)).
+- WSLg can show its whole desktop in one window instead, with
+  `WSL2_WESTON_SHELL_DESKTOP=true` under `[system-distro-env]` in
+  `%USERPROFILE%\.wslgconfig`. Full screen, that window is handed the
+  chords with the Windows key, but WSLg's own desktop keeps some of them
+  for itself, `Super+Tab` among them, before omorfos is told.
+
+The menu opens with a right click on the desktop, with no key at all,
+and `keys.yaml` can bind what Windows takes to other keys.
 
 ## The graphics card
 
