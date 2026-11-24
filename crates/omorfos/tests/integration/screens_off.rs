@@ -1,6 +1,8 @@
 //! A screen that is off: it stands nowhere, shows nothing, and programs
 //! are not told of it; but not every screen plugged in is ever off.
 
+use std::time::Duration;
+
 use crate::common::{HEIGHT, Left, Session, WIDTH};
 use crate::windows::{BACKGROUND, BLUE};
 
@@ -98,4 +100,20 @@ fn a_window_is_told_it_has_left_a_screen_before_the_screen_goes() {
     let left = &client.state.outputs_left;
     assert_eq!(left.first(), Some(&Left::Surface), "{left:?}");
     assert!(left.contains(&Left::Gone), "{left:?}");
+}
+
+#[test]
+fn what_was_told_of_a_screen_turned_off_is_let_go_of_when_due_on_a_quiet_session() {
+    let mut session = Session::new();
+    let second = session.add_output((800, 600));
+    session.settle();
+    session.write_config("config.yaml", OFF);
+    session.eventually(|session| session.compositor().is_dark(&second));
+    // Turned off by the turn that reloaded the configuration, and timed by
+    // it: no turn after it is needed to say when it goes.
+    let due = session.now + Duration::from_secs(5);
+    session.advance(Duration::from_secs(2));
+    assert_eq!(session.compositor().deadline(), Some(due));
+    session.advance(Duration::from_secs(3));
+    assert_eq!(session.compositor().deadline(), None, "and it is gone");
 }
