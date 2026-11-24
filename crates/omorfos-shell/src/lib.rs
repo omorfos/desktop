@@ -63,14 +63,19 @@ where
 /// had or written to.
 pub fn pixels<S>(
     shm: &wl_shm::WlShm,
-    (width, height): (u32, u32),
+    size: (u32, u32),
     bytes: &[u8],
     handle: &QueueHandle<S>,
 ) -> io::Result<wl_buffer::WlBuffer>
 where
     S: Dispatch<wl_shm_pool::WlShmPool, ()> + Dispatch<wl_buffer::WlBuffer, ()> + 'static,
 {
-    let (width, height, stride, length) = checked_layout((width, height), bytes.len())?;
+    let Layout {
+        width,
+        height,
+        stride,
+        length,
+    } = checked_layout(size, bytes.len())?;
     let memory = memfd_create("omorfos-picture", MemfdFlags::CLOEXEC);
     let memory = memory.map(File::from).map_err(io::Error::from);
     let written = memory.and_then(|mut memory| memory.write_all(bytes).map(|()| memory));
@@ -83,26 +88,62 @@ where
     })
 }
 
-/// Checks the dimensions and byte length before declaring a Wayland pool.
-fn checked_layout(
-    (width, height): (u32, u32),
-    byte_length: usize,
-) -> io::Result<(i32, i32, i32, i32)> {
-    let invalid = || io::Error::new(io::ErrorKind::InvalidInput, "invalid shared pixel buffer");
-    if width == 0 || height == 0 {
-        return Err(invalid());
+/// How pixels four bytes each, row after row with nothing between, lie in
+/// memory shared with the compositor, in the signed numbers Wayland gives
+/// a pool and a buffer: how many there are across and down, how far apart
+/// the rows are in bytes, and how many bytes there are in all.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Layout {
+    /// How many pixels there are across.
+    pub width: i32,
+    /// How many pixels there are down.
+    pub height: i32,
+    /// How far apart the rows are, in bytes.
+    pub stride: i32,
+    /// How many bytes there are in all.
+    pub length: i32,
+}
+
+impl Layout {
+    /// How pixels `size` large lie in memory.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if `size` is empty, or too large for any of
+    /// Wayland's numbers.
+    pub fn of((width, height): (u32, u32)) -> io::Result<Self> {
+        let invalid = || io::Error::new(io::ErrorKind::InvalidInput, "invalid shared pixel buffer");
+        let width = i32::try_from(width).ok().filter(|width| *width > 0);
+        let height = i32::try_from(height).ok().filter(|height| *height > 0);
+        let sides = width.zip(height);
+        let stride = sides.and_then(|(width, _)| width.checked_mul(4));
+        let length = stride
+            .zip(height)
+            .and_then(|(stride, height)| stride.checked_mul(height));
+        let layout = sides.zip(stride).zip(length);
+        layout
+            .map(|(((width, height), stride), length)| Self {
+                width,
+                height,
+                stride,
+                length,
+            })
+            .ok_or_else(invalid)
     }
-    let width = i32::try_from(width).map_err(|_| invalid())?;
-    let height = i32::try_from(height).map_err(|_| invalid())?;
-    let stride = width.checked_mul(4).ok_or_else(invalid)?;
-    let length = i32::try_from(byte_length).map_err(|_| invalid())?;
-    // Both values are positive signed 32-bit integers, so the product is
-    // strictly less than `u64::MAX`.
-    let expected = u64::from(stride.cast_unsigned()) * u64::from(height.cast_unsigned());
-    if u64::from(length.cast_unsigned()) != expected {
-        return Err(invalid());
-    }
-    Ok((width, height, stride, length))
+}
+
+/// How pixels `size` large lie in memory, as [`Layout::of`] says, once it
+/// is known that there are exactly `byte_length` bytes of them.
+///
+/// # Errors
+///
+/// Returns an error if `size` is empty or too large for Wayland, or the
+/// bytes are not exactly four for each pixel.
+pub fn checked_layout(size: (u32, u32), byte_length: usize) -> io::Result<Layout> {
+    let layout = Layout::of(size)?;
+    let fits = usize::try_from(layout.length).is_ok_and(|length| length == byte_length);
+    fits.then_some(layout)
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "invalid shared pixel buffer"))
 }
 
 /// Connects to the compositor: over the connection the compositor made
@@ -194,7 +235,22 @@ mod tests {
 
     #[test]
     fn a_well_formed_pixel_buffer_has_a_checked_wayland_layout() {
-        assert_eq!(checked_layout((2, 3), 24).unwrap(), (2, 3, 8, 24));
+        let layout = Layout {
+            width: 2,
+            height: 3,
+            stride: 8,
+            length: 24,
+        };
+        assert_eq!(checked_layout((2, 3), 24).unwrap(), layout);
+        assert_eq!(Layout::of((2, 3)).unwrap(), layout);
+    }
+
+    #[test]
+    fn pixels_whose_bytes_are_too_many_for_wayland_lie_in_no_layout() {
+        assert_eq!(
+            Layout::of((1 << 15, 1 << 14)).unwrap_err().kind(),
+            io::ErrorKind::InvalidInput
+        );
     }
 
     #[test]
