@@ -268,7 +268,7 @@ push() {
     if ! (
         cd "$worktree" &&
             export CARGO_TARGET_DIR="$top/target/commits" &&
-            if built "$reach"; then checked && rest; else light "$reach"; fi
+            if built "$reach"; then checked && rest && fuzzing "$reach"; else light "$reach"; fi
     ); then
         git worktree remove --force "$worktree"
         rmdir "${worktree%/*}"
@@ -350,6 +350,7 @@ reaching() {
     case "$1" in
         everything)
             step tested cargo test --workspace --all-features --locked
+            fuzzing everything
             return
             ;;
         *[![:space:]]*) ;;
@@ -369,6 +370,25 @@ reaching() {
         esac
     done
     [ ${#crates[@]} -eq 0 ] || step tested cargo test --all-features --locked "${crates[@]}"
+    fuzzing "$1"
+}
+
+# The fuzzers, a workspace of their own that CI builds with a nightly
+# toolchain and nothing else here builds, checked with the project's own
+# where what `reached` said is what they call: a change to the relay's
+# keeping left one unbuilt on 23 November 2026, and only CI found it.
+fuzzing() {
+    local word
+    # One word to each, as in `reaching`.
+    for word in $1; do
+        case "$word" in
+            everything | omorfos-relay | omorfos-ipc | omorfos-config)
+                step cargo check --manifest-path fuzz/Cargo.toml --target-dir "$top/target/fuzz" \
+                    --bins --locked
+                return
+                ;;
+        esac
+    done
 }
 
 # The scripts of the gates, the hooks and the packaging, by shellcheck,
