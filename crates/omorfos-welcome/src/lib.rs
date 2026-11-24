@@ -63,7 +63,8 @@ const MINIATURE: (u32, u32) = (192, 108);
 /// `variable` looks a variable of the environment up, so that this can be
 /// used and tested without touching the environment: the Wayland socket is
 /// `WAYLAND_DISPLAY` in `XDG_RUNTIME_DIR`, the configuration is where
-/// `XDG_CONFIG_HOME` or `HOME` says, the mark of its having been closed
+/// `XDG_CONFIG_HOME` or `HOME` says, a file of it that does not load as
+/// the compositor keeps it in `XDG_RUNTIME_DIR`, the mark of its having been closed
 /// where `XDG_STATE_HOME` or `HOME` does, the wallpapers where
 /// `XDG_DATA_HOME` and `XDG_DATA_DIRS` do, and it speaks the language
 /// `LANGUAGE`, `LC_ALL`, `LC_MESSAGES` or `LANG` asks for.
@@ -96,7 +97,13 @@ pub fn start(variable: &dyn Fn(&str) -> Option<OsString>, first: bool) -> Result
     let languages = omorfos_i18n::languages(&|name| get(name)?.into_string().ok());
     let words = Words::in_languages(&omorfos_i18n::WELCOME, &languages);
     let offered = offered(&places);
-    let (loaded, _) = omorfos_config::Config::load(&config, &omorfos_config::Config::default());
+    // What it shows is what is in effect: the keys, scheme and wallpaper
+    // the compositor goes by, which, where a file has gone wrong since it
+    // last loaded, are of the copy it kept. A choice is still saved to the
+    // file on disk, and where that does not load it is refused, the card
+    // saying that the mistake is to be mended first.
+    let store = omorfos_config::Store::open_in_session(&config, runtime.as_deref());
+    let loaded = store.current();
     let home = home.map(PathBuf::from);
     let in_use = (
         in_use(
