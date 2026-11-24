@@ -34,7 +34,8 @@ once. Sleep never asks: nothing is lost by it, and it locks first.
 - **Left alone, it is done after a minute,** counting the seconds down,
   as GNOME's is: the maintainer asked for it (15 November 2026), since
   whoever walked away from a machine being turned off meant it to go off.
-  The minute is fixed until the defaults are reviewed together.
+  The minute is fixed, and stays so: the review of the defaults left it
+  as it is (ADR 101, 24 November 2026).
 - **The session is sealed round it as round a prompt for a secret**
   (ADR 48): dimmed and blurred as `sealed` says, the card casting a
   question's shadow and wearing its glass if the theme makes it glass.

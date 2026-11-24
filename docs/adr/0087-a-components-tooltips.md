@@ -49,8 +49,8 @@ none.
   `box-shadow`: its surface is only as large as the box, as a popover's
   is. The compositor's tooltip over the mark has one, as it draws shadows
   itself.
-- Half a second is fixed, not a setting; the defaults are to be reviewed
-  together.
+- Half a second is fixed, not a setting, and stays so: the review of the
+  defaults left it as it is (ADR 101, 24 November 2026).
 - The panel lists every window by its title, a private one's too, and a
   cut title is whole in its tooltip: both are in pictures of the screen
   (ADR 84), as the panel is not told which windows are private.

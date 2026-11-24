@@ -3,7 +3,9 @@
 - Status: accepted
 - Date: 2026-11-18
 - Taken up by: [ADR 105](0105-a-titlebars-buttons-in-their-window-controls.md),
-  for how a theme styles the buttons with the pointer among them
+  for how a theme styles the buttons with the pointer among them; and
+  [ADR 107](0107-the-side-of-a-titlebars-buttons-is-a-setting.md), for
+  the side they stand on
 
 ## Context
 

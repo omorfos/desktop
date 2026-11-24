@@ -1,6 +1,6 @@
 # 101. Super drives the desktop, and the ordinary way is a setting
 
-- Status: proposed
+- Status: accepted, as changed below, on 24 November 2026
 - Date: 2026-11-20
 - Takes up: [ADR 78](0078-super-belongs-to-the-desktop.md)
 
@@ -147,6 +147,38 @@ as the user's. What is kept on the clipboard stays for the session
 (`clipboard.forget: 0`), and the launcher's icons and descriptions stay
 on.
 
+## As accepted
+
+The maintainer went through the proposal on 24 November 2026 and took all
+of it, as written above, but for these:
+
+- **Super+W** is the program's, as proposed; to be clear about it, it
+  reaches the program as the Ctrl+W it knows, the program deciding what
+  that does, as a Mac's app decides what Cmd+W does. A raw Super+W would
+  reach programs that bind nothing to it. Ctrl+W typed is the program's
+  as typed.
+- **The next layout has no chord by default**: Super+Alt+Space is not
+  bound, and the user binds one in `keys.yaml`, or in Settings once there
+  is one. `XF86Keyboard`, a key that is there for nothing else, keeps it.
+- **The root menu has no chord by default**: Super+Escape is no longer
+  bound to it. It opens on a right click on the desktop, and the bar's
+  menu of stage 5 takes its place for the system's things (ADR 108).
+- **Reloading the configuration has no chord by default**: Super+Shift+R
+  is no longer bound to it, as it is Ctrl+Shift+R in a browser, a reload
+  without the cache, and Cmd+Shift+R on a Mac. The configuration is read
+  again as its files are saved, and `reload_config` stays in the menu.
+- **Super+F1 has the screens stand the next way**, beside the Display key
+  (`XF86Display`), which many keyboards have not: the Mac's Cmd+F1 turns
+  mirroring on and off.
+
+And what the proposal left to the review:
+
+- The side of a titlebar's buttons becomes a setting (ADR 107).
+- The question's minute (ADR 88) and a tooltip's half second (ADR 87)
+  stay as they are, fixed.
+- `Super+Return`, the terminal, and `Super+Ctrl+N`, a new workspace, stay
+  as they are.
+
 ## Alternatives
 
 - **The best of each**, GNOME's overview on a tap of Super, KDE's three
@@ -192,6 +224,5 @@ on.
   stays as it is; if it is taken out later, that release is marked
   breaking (ADR 73) and the key is passed over with a notice.
 - Every chord is to be tested in both ways, as the roadmap asks.
-- Nothing of this is built. Each line above is a choice for the
-  maintainer, who may take some and not others; until then ADR 78
-  stands.
+- Nothing of this is built yet; until it is, the bindings are ADR 78's.
+  The roadmap's stage 4 lists what is to be built.

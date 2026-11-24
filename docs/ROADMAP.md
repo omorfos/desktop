@@ -4,8 +4,9 @@ What omorfos is to become, in the order it is to be built. Stages are
 worked top to bottom and one at a time; within a stage the order is a
 suggestion. Tick items as they land and keep the "Next" pointer current.
 
-**Next:** what closes stage 4: the rest of
-the redesign of windows (ADR 97) and the defaults reviewed together. Stage 5, the bar and the dock, follows, wearing that look.
+**Next:** what closes stage 4, decided on 24 November 2026 and to be
+built: the keys and gestures of ADR 101 as accepted, and the rest of the
+redesign of windows (ADR 97, ADR 107). Stage 5, the bar and the dock, follows, wearing that look.
 What else is left of stages 3 and 4 is known gaps, taken as the code
 beside them is touched. Of what is taken from stage 8 ahead of its turn,
 the first release waits, there being no hurry for it, as do packages
@@ -918,11 +919,11 @@ what only games and touchpads need last.
 - [x] Nothing sliding with `appearance.reduce_motion`: the keys change
       the workspace at once, and three fingers carry nothing, changing it
       as they lift if they went far enough or fast enough (ADR 71).
-- [ ] Whether four fingers as well as three, which is for the review of
-      the defaults: three or four, as a Mac, is proposed in ADR 101, with
-      down for the program's windows, a pinch for every program and a
-      spread for the desktop, and a page of settings that shows each
-      gesture and changes it.
+- [ ] Four fingers as well as three, decided with ADR 101 on 24 November
+      2026: three or four, as a Mac, with down for the program's
+      windows, a pinch for every program and a spread for the desktop,
+      and a page of settings that shows each gesture and changes it;
+      built with the keys of stage 4.
 - [x] The session outliving the compositor (ADR 60), the holder first,
       `omorfos-hold`: a small program that binds the socket and starts
       the compositor with it, and again when it ends, with a new version
@@ -1075,7 +1076,10 @@ what only games and touchpads need last.
       before; a program on Wayland that holds a connection to the X server all the same, as
       Firefox ESR does wherever `DISPLAY` is set, as it always is in a session, closes as the
       compositor goes, Xlib ending it as the X server goes with it (#124), which the check of
-      real programs does not show, as it starts each with no `DISPLAY`; a global the next compositor offers
+      real programs does not show, as it starts each with no `DISPLAY`
+      (to do, decided on 24 November 2026: that check given the X server,
+      for the loss to show; and keeping the X server through a change of
+      compositor the first item under "Programs written for X11"); a global the next compositor offers
       once the relay's registries are answered, while it makes the rest
       again, is not told to the program, and is taken for one of the
       compositor after's; and on real hardware only `foot`, ghostty and
@@ -1593,9 +1597,9 @@ the first than on the last.
       found by its file's name, not by the desktop entry whose `Exec`
       starts it, so that `flatpak run` and Ghostty need an `icon`; a
       change of icon theme is seen in an open menu only once it is drawn
-      again; and whether the root menu stays something to arrange in
-      `menu.yaml` once the bar has a menu of its own (stage 5) is to be
-      decided, and `icon` with it.
+      again. The root menu stays the user's to arrange in `menu.yaml`,
+      `icon` with it, once the bar has a menu of its own, which is the
+      system's, fixed (ADR 108, stage 5).
 - Movement. Windows that open and close with a slight change of size as
   well as of opacity, and workspaces that slide, were there already
   (above, and in stage 3). The rest, in this order:
@@ -1717,13 +1721,19 @@ the first than on the last.
       it draws its own titlebar is left to, and GTK 3 is told to read
       the portal. Settled by the maintainer in a mock and on real
       hardware, on 18 November 2026.
-- [ ] What is left of the redesign of windows: whether "About" and the
-      welcome card, which had a window's close button each and now have
-      none, are to say on themselves how they are put away; whether the
-      switcher's
-      pictures show a window's frame, which they do not; whether the
-      side is a setting (the review of the defaults). Google Chrome puts
-      its buttons where it is told, as tried on 18 November 2026.
+- [ ] What is left of the redesign of windows, decided on 24 November
+      2026; Google Chrome puts its buttons where it is told, as tried on
+      18 November 2026:
+      - [ ] "About" says how it is put away, in a faint line of help at
+            its foot, translated, as the screenshot picker's is: Escape
+            or a click outside. No sign of its own to press, as no other
+            card has one. The welcome card, which has Skip and Finish,
+            stays as it is.
+      - [ ] The switcher's pictures show a window in its frame, as it
+            will be when chosen, every program alike; as a window alone
+            is drawn for pictures of it.
+      - [ ] The side of a titlebar's buttons a setting,
+            `appearance.buttons`, `left` or `right` (ADR 107).
 - [x] A theme able to style the button under the pointer apart from the
       other two (ADR 105): the three are in `windowcontrols`, `:hover`
       while the pointer is on any of them, and each is `:hover` only
@@ -1755,9 +1765,13 @@ the first than on the last.
       the Mac's keys first with Super for Command, for what it went
       through in [ADR 101](adr/0101-super-drives-the-desktop-and-the-ordinary-way-is-a-setting.md),
       for the maintainer to decide; the theme's parts are left to the
-      design review, and what was not gone through (the titlebar's side,
-      the question's minute, the tooltip's delay, the other built-in
-      bindings) is listed there.
+      design review. Decided on 24 November 2026: ADR 101 accepted, but
+      for the next layout and the root menu having no key by default, and
+      reloading the configuration none; `Super+F1` beside the Display key
+      for the screens; the question's minute and the tooltip's half
+      second fixed, as they are; `Super+Return` and `Super+Ctrl+N` as
+      they are. To build, as ADR 101's "As accepted" says, in the next
+      item.
 - [ ] Super as the key omorfos is driven by, everywhere, and a way back to
       Ctrl and Alt as Windows, GNOME and KDE have them (asked on
       15 November 2026). ADR 78 gave Super to the desktop, and hands a
@@ -1783,6 +1797,26 @@ the first than on the last.
         at once, and perhaps asked on the welcome card;
       - decided with the review of the defaults above, as an ADR that
         takes up ADR 78, and tested chord by chord in both ways.
+
+      Decided on 24 November 2026, in ADR 101 as accepted: the Mac's
+      keys, Super for Command, and `defaults: ordinary` in `keys.yaml`
+      for the other way. To build, each tested chord by chord in both
+      ways:
+      - [ ] the seven new actions, `switch_programs`,
+            `switch_programs_back`, `next_window`, `previous_window`,
+            `close_program`, `hide_program` and `hide_others`, the
+            switcher showing programs;
+      - [ ] the built-in bindings moved as ADR 101 has them, and as it
+            was accepted: no key for the next layout but `XF86Keyboard`,
+            none for the root menu, none for reloading, `Super+F1` for
+            the screens;
+      - [ ] the shell's fields reading Super as Command, Ctrl left for
+            the line;
+      - [ ] the touchpad's three or four fingers, a pinch for every
+            program and a spread for the desktop; a page of settings for
+            the gestures, for stage 7;
+      - [ ] `defaults: ordinary`, and the release that moves the keys
+            saying which.
 
 ## 5. The shell: a bar and a dock
 
@@ -2714,8 +2748,11 @@ was a pull request of its own, built and tested before it was merged:
       link to one pointed elsewhere, never watched again by any program
       ([finding 2](reviews/2026-11-22-the-whole-tree-again.md#2-a-configuration-directory-taken-away-and-put-back-or-a-link-to-one-pointed-elsewhere-is-never-watched-again-by-any-program-of-the-session)): the directory it is in is watched for its name, and it is watched again wherever its path leads (#69).
 - [ ] Medium: a window's frame decided again by each compositor, so a
-      tab can come back with two titlebars; the place text's version is
-      a decision ([finding 3](reviews/2026-11-22-the-whole-tree-again.md#3-a-windows-frame-is-decided-again-by-each-compositor-so-a-framed-window-can-come-back-without-one-and-a-tab-with-two-titlebars)).
+      tab can come back with two titlebars; the place text's version,
+      decided on 24 November 2026: what is added is read by a compositor
+      before it as today, which knows nothing of the frame and does as
+      it does now, since an older build is installed often to try one
+      ([finding 3](reviews/2026-11-22-the-whole-tree-again.md#3-a-windows-frame-is-decided-again-by-each-compositor-so-a-framed-window-can-come-back-without-one-and-a-tab-with-two-titlebars)).
 - [x] Low: the test of the question after a withdrawn picture gives up
       after about 350 ms, which the tick of finding 16 of 19 November
       does not say ([finding 4](reviews/2026-11-22-the-whole-tree-again.md#4-the-test-said-to-wait-however-long-that-takes-after-a-withdrawn-picture-gives-up-after-about-350-ms)): it asks until the question goes up, for as long as ten seconds (#76).
@@ -2891,10 +2928,17 @@ Reports and recovery:
 
 Programs written for X11:
 
-- [ ] Windows written for X11 kept when the compositor is started again
-      (ADR 60): the X server is kept by the relay, but Smithay's window
-      manager takes up only windows made after it starts. Waits on:
-      Smithay.
+- [ ] The X server kept when the compositor is started again, and the
+      windows written for X11 with it (ADR 60), an item of its own as
+      the maintainer decided on 24 November 2026 (#124): the X server is
+      the compositor's today and goes with it, as the gap below says, so
+      every program written for X11 goes, and every program on Wayland
+      that holds a connection to it, as Firefox ESR does wherever
+      `DISPLAY` is set. To keep it, it would be held as the socket of
+      Wayland is, and taken up by each compositor as its window manager;
+      but Smithay's window manager takes up only windows made after it
+      starts. Waits on: Smithay. Weighed against the rest before it is
+      begun.
 - [ ] Known gap in what goes with the X server, found on 18 November
       2026: the X server is the compositor's and is started anew with
       each (ADR 61 has a program written for X11 close with it, and a
