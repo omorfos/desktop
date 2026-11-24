@@ -57,7 +57,9 @@ use smithay::backend::renderer::{
 use smithay::desktop::utils::{
     bbox_from_surface_tree, send_frames_surface_tree, with_surfaces_surface_tree,
 };
-use smithay::desktop::{LayerMap, LayerSurface, PopupManager, Space, Window, layer_map_for_output};
+use smithay::desktop::{
+    LayerMap, LayerSurface, PopupKind, PopupManager, Space, Window, layer_map_for_output,
+};
 use smithay::input::keyboard::{KeyboardHandle, XkbConfig};
 use smithay::input::pointer::{
     CursorIcon, CursorImageAttributes, CursorImageStatus, PointerHandle,
@@ -2943,7 +2945,41 @@ impl Compositor {
                         place: Rectangle::new(at, size),
                     }
                 });
+                let menus = present.as_ref().map(|present| present.place.loc);
                 animation.layers.extend(present);
+                // Its pop-ups are drawn as its menus are, the popover.
+                let popups = menus.into_iter().flat_map(|at| {
+                    PopupManager::popups_for_surface(surface).map(move |found| (at, found))
+                });
+                for (at, (popup, offset)) in popups {
+                    let surface = popup.wl_surface();
+                    let drawn =
+                        with_renderer_surface_state(surface, |state| state.buffer().is_some());
+                    if drawn != Some(true) {
+                        continue;
+                    }
+                    let own = menu_proper(&popup);
+                    let place =
+                        Rectangle::new(at + offset - popup.geometry().loc + own.loc, own.size);
+                    let style = theme.style(Part::Popover, States::NONE);
+                    let had = animation
+                        .before
+                        .iter_mut()
+                        .find(|was| was.surface == *surface);
+                    let had = had.and_then(|was| was.shadow.take());
+                    let (x, y, size) = (place.loc.x, place.loc.y, place.size);
+                    let area = (x, y, size.w.unsigned_abs(), size.h.unsigned_abs());
+                    let shadow = animation.shades.cast(&style, head.scale, area, had);
+                    let key = glass::key(&surface.id());
+                    animation.layers.push(Present {
+                        surface: surface.clone(),
+                        part: Part::Popover,
+                        layer: layer.layer(),
+                        seen: animation.motion.presence(theme, Part::Popover, key),
+                        shadow,
+                        place,
+                    });
+                }
             }
         }
         let mut before = std::mem::take(&mut animation.before);
@@ -4479,7 +4515,10 @@ impl Compositor {
     /// `opacity`, and noted as `noting` says; and under each, the glass its
     /// program asks for behind it (`ext-background-effect`), cut to the
     /// pop-up proper, behind which is everything under the pop-up, the
-    /// window or the panel it is of among it.
+    /// window or panel it is of among it. A pop-up of a component's panel is
+    /// drawn as its part, `popover`, is, as [`Compositor::fade_layers`]
+    /// finds it: its glass and shadow, coming and going over its part's
+    /// time, and noted by itself, to fade out by once it goes.
     fn menu_elements<R>(
         &self,
         renderer: &mut R,
@@ -4493,26 +4532,56 @@ impl Compositor {
     {
         let scale = view.scale.factor();
         for (popup, offset) in PopupManager::popups_for_surface(root) {
-            let geometry = popup.geometry();
-            let origin = proper + offset - geometry.loc;
+            let surface = popup.wl_surface();
+            let origin = proper + offset - popup.geometry().loc;
+            let own = menu_proper(&popup);
+            let area = Rectangle::new(origin + own.loc, own.size);
+            let mut known = self.animation.layers.iter();
+            let known = known.find(|known| known.surface == *surface);
+            let opacity = known.map_or(opacity, |known| known.seen.opacity);
+            let mut apart = known.map(|known| self.noting(view, known.part));
+            let noted = match apart.as_mut() {
+                Some(apart) => apart,
+                None => &mut *noting,
+            };
+            let first = elements.len();
             let kind = Kind::Unspecified;
             let at = view.pixel(origin.to_f64());
             let picture: Vec<WaylandSurfaceRenderElement<R>> =
-                surfaces::tree(renderer, popup.wl_surface(), at, scale, opacity, kind);
-            for surface in &picture {
-                noting.add(surface, noting.paint(surface.texture()));
+                surfaces::tree(renderer, surface, at, scale, opacity, kind);
+            for drawn in &picture {
+                noted.add(drawn, noted.paint(drawn.texture()));
             }
             elements.extend(picture.into_iter().map(Element::Surface));
-            // Not the shadow a menu draws round itself on its surface; one
-            // that says nothing of where it is in its surface is all of it,
-            // as xdg-shell has it.
-            let said = Some(geometry).filter(|geometry| !geometry.is_empty());
-            let geometry =
-                said.unwrap_or_else(|| bbox_from_surface_tree(popup.wl_surface(), (0, 0)));
-            let bounds = [view.pixels(Rectangle::new(origin + geometry.loc, geometry.size))];
-            let drawn = (elements.len(), opacity);
-            let pane = self.backdrop(popup.wl_surface(), (origin, view), Some(&bounds), drawn);
-            panes.extend(pane.map(|pane| pane.under(elements.len())));
+            let Some(known) = known else {
+                // Not the shadow a menu draws round itself on its surface.
+                let bounds = [view.pixels(area)];
+                let drawn = (elements.len(), opacity);
+                let pane = self.backdrop(surface, (origin, view), Some(&bounds), drawn);
+                panes.extend(pane.map(|pane| pane.under(elements.len())));
+                continue;
+            };
+            self.animation.note(surface, apart.and_then(Noting::done));
+            // Its part's glass goes under it, and what is behind that
+            // begins under its shadow.
+            let style = self.config().theme.style(known.part, States::NONE);
+            let under = elements.len();
+            if let Some(shadow) = known.shadow.as_ref() {
+                shadow.elements(renderer, opacity, view, elements);
+            }
+            let key = glass::key(&surface.id());
+            let pane = Pane::of(&style, (area, view), (key, under, 0), opacity);
+            let pane = pane.map(|pane| pane.under(elements.len()));
+            // Made larger or smaller about its middle as it comes and goes.
+            let around = scaling::around(known.seen.scale, || {
+                let middle = area.loc + Point::from((area.size.w / 2, area.size.h / 2));
+                view.pixel(middle.to_f64())
+            });
+            scaling::scale(elements, first, around);
+            panes.extend(pane.map(|pane| match around {
+                Some(around) => pane.scaled(around),
+                None => pane,
+            }));
         }
     }
 
@@ -6127,6 +6196,14 @@ impl Painted {
 /// too, and begins further left or up than the surface when one of them
 /// reaches out past it, as a line of text wider than the screen does: taken
 /// for where the surface is, it put all of it that much out of place.
+/// Where in its surface a pop-up proper is: where it says, or all of the
+/// surface if it says nothing of it, as xdg-shell has it. Smithay gives
+/// one that said nothing an empty rectangle.
+fn menu_proper(popup: &PopupKind) -> Rectangle<i32, Logical> {
+    let said = Some(popup.geometry()).filter(|geometry| !geometry.is_empty());
+    said.unwrap_or_else(|| bbox_from_surface_tree(popup.wl_surface(), (0, 0)))
+}
+
 pub(crate) fn layer_origin(layers: &LayerMap, layer: &LayerSurface) -> Point<i32, Logical> {
     let all = layers.layer_geometry(layer).unwrap_or_default();
     all.loc - layer.bbox().loc

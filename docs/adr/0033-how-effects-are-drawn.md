@@ -255,6 +255,13 @@ goes.
 - Surfaces on one layer stand at one height: their shadows are all drawn
   under all of them, so that the shadow of one notification falls under
   the next and not on it.
+- A pop-up of a component's surface, as the month that hangs from the
+  bar's clock, is the `popover` part, and is drawn as the components'
+  surfaces are: its glass, cut to the pop-up proper and rounded as the
+  part is, and its shadow, both just under it and over the surface it
+  hangs from, which is in its picture; and it comes and goes over the
+  part's time. It is known by the surface it hangs from, not by a name
+  of its own, which a pop-up has none of.
 - The prompt that asks for a secret (ADR 48) is known by its program's
   role, not its layer's name, and the compositor draws it itself over the
   dim. Its surface is wider than its box, for the room the box shakes in,

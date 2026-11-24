@@ -21,6 +21,13 @@ the maintainer. An agent starting work reminds them of what is here, and
 an item goes once it has been tried: what was wrong goes to its stage as
 a known gap.
 
+- The bar's month and its other popovers (stage 4, #119): opened over a
+  window, what is behind the month is blurred, the bar's edge and the
+  window under it among it, and its corners are rounded with the glass
+  cut to them; it fades in and out over the popover's time, its glass
+  with it. A program's menu that asks for blur, as one of KDE's does,
+  has what is behind it blurred, and none in the shadow it draws round
+  itself. With "Reduce transparency" on, the month is solid.
 ## Where this is going
 
 omorfos is small, fast and driven by text files, but what is being asked
@@ -1390,6 +1397,14 @@ the first than on the last.
       notice's is 95. The bar's glass keeps within
       the room its theme gives it. The tests' screen blurs only where a
       test asks.
+- [x] Glass behind pop-ups (#119): the bar's popovers were drawn see
+      through with nothing blurred behind them, as were the menus of
+      programs that asked for blur. A pop-up of a component's panel is
+      the `popover` part, with its glass, its shadow and its coming and
+      going; any program's pop-up has what it asks for through
+      `ext-background-effect` or KDE's protocol, cut to the pop-up
+      proper. What is behind a pop-up is all that is under it, the window
+      or panel it hangs from among it.
 - [ ] Known gaps in a frame whose theme takes its edge away: the
       window's bottom corners are cut to the curve with nothing drawn
       along it, so they are not smoothed; and a frame at the edge of

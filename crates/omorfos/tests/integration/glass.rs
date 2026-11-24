@@ -11,6 +11,8 @@ use omorfos_ui::Blur;
 use smithay::backend::renderer::element::RenderElement;
 use smithay::backend::renderer::pixman::PixmanRenderer;
 use smithay::utils::{Physical, Rectangle, Size};
+use wayland_client::protocol::wl_surface::WlSurface;
+use wayland_protocols::xdg::shell::client::xdg_popup::XdgPopup;
 use wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_shell_v1::Layer;
 use wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_surface_v1::{
     Anchor, KeyboardInteractivity,
@@ -685,4 +687,107 @@ fn a_blur_that_could_not_be_made_leaves_glass_solid_and_says_why() {
         .unwrap();
     assert!(said.contains("could not be made (no shader)"), "{said}");
     assert_eq!(session.compositor().events().count(), 1);
+}
+
+/// A theme in which a component's pop-up is the popover, glass white at
+/// half over what is behind it blurred by 8 pixels, square and with no
+/// edge, and `more`.
+fn popover(more: &str) -> String {
+    format!(
+        "{GLASS}popover {{ background: rgba(255, 255, 255, 0.5); backdrop-filter: blur(8px); \
+         box-shadow: none; border: none; border-radius: 0; }}\n{more}"
+    )
+}
+
+/// A session with `theme`, a red window 200 by 100 in the top left corner,
+/// the panel of [`over_a_red_window`], and a pop-up of the panel 100 by
+/// 100 hanging from it at 150 across, so over the window's right edge,
+/// tinted as the panel draws a popover and asking for nothing. The
+/// window's program, the panel's, and the pop-up.
+fn a_popover_over_a_red_window(theme: &str) -> (Session, [Client; 2], (WlSurface, XdgPopup)) {
+    let mut session = Session::with_config(&[("theme.css", theme)]);
+    session.blurring();
+    let mut window = session.connect();
+    session.open(&mut window, "app", (200, 100), RED);
+    let mut panel = session.connect();
+    panel.layer_name = "panel";
+    let (_bar, role) = session.open_layer(&mut panel, &across(30), (WIDTH, 30), TINT);
+    let (menu, popup) = panel.layer_popup(&role, (150, 30), (100, 100));
+    session.roundtrip(&mut panel);
+    panel.fill(&menu, (100, 100), TINT);
+    session.roundtrip(&mut panel);
+    session.roundtrip(&mut panel);
+    (session, [window, panel], (menu, popup))
+}
+
+#[test]
+fn a_pop_up_of_a_components_panel_is_glass_as_the_theme_has_the_popover() {
+    let (mut session, _programs, _menu) = a_popover_over_a_red_window(&popover(""));
+    let picture = session.draw();
+    // Past the window's edge, under the pop-up: the window, blurred out.
+    let (past, beside) = (picture.at(204, 60), picture.at(240, 120));
+    assert!(red(past) > red(beside) + 8, "{past:#x} {beside:#x}");
+}
+
+#[test]
+fn a_pop_up_of_a_components_panel_is_not_glass_where_the_theme_says_none() {
+    let theme = popover("popover { backdrop-filter: none; }\n");
+    let (mut session, _programs, _menu) = a_popover_over_a_red_window(&theme);
+    let picture = session.draw();
+    assert_eq!(
+        picture.at(204, 60),
+        picture.at(240, 120),
+        "the desktop, tinted"
+    );
+}
+
+#[test]
+fn a_pop_up_of_a_components_panel_casts_the_shadow_of_the_popover() {
+    let theme = popover("popover { box-shadow: 0 8px 8px black; }\n");
+    let (mut session, _programs, _menu) = a_popover_over_a_red_window(&theme);
+    let picture = session.draw();
+    // Just below it, over the desktop.
+    let (shaded, clear) = (picture.at(240, 134), picture.at(400, 134));
+    assert_ne!(shaded, clear, "a shadow below it");
+}
+
+#[test]
+fn a_pop_up_of_a_components_panel_fading_out_keeps_its_glass_as_it_goes() {
+    let theme = popover("popover { transition: 100ms linear; }\n");
+    let (mut session, [_window, mut panel], (menu, popup)) = a_popover_over_a_red_window(&theme);
+    session.advance(Duration::from_millis(100));
+    drop(session.draw());
+    popup.destroy();
+    menu.destroy();
+    session.roundtrip(&mut panel);
+    session.step();
+    session.advance(Duration::from_millis(50));
+    let picture = session.draw();
+    let (past, beside) = (picture.at(204, 60), picture.at(240, 120));
+    assert!(red(past) > red(beside) + 8, "{past:#x} {beside:#x}");
+    // And is gone once it has.
+    session.advance(Duration::from_millis(100));
+    let picture = session.draw();
+    assert_eq!(picture.at(240, 120), BACKGROUND);
+}
+
+#[test]
+fn a_pop_up_of_a_components_panel_comes_in_as_large_as_the_popover_does_glass_and_all() {
+    let theme = popover(
+        "popover { transition: 100ms linear; }\n\
+         @starting-style { popover { scale: 50%; } }\n",
+    );
+    let (mut session, _programs, _menu) = a_popover_over_a_red_window(&theme);
+    session.advance(Duration::from_millis(50));
+    let picture = session.draw();
+    // Three quarters as large, about its middle, 200 across and 80 down:
+    // its bottom right corner is not reached yet, its middle is, with what
+    // is behind it blurred.
+    assert_eq!(
+        picture.at(247, 127),
+        BACKGROUND,
+        "not yet as far as its corner"
+    );
+    let (past, beside) = (picture.at(204, 60), picture.at(235, 110));
+    assert!(red(past) > red(beside) + 8, "{past:#x} {beside:#x}");
 }

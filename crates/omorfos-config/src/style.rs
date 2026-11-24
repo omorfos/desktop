@@ -92,7 +92,9 @@ pub enum Part {
     /// The time on the panel.
     Clock,
     /// What hangs from a bar, as the month from the clock: a box drawn as
-    /// its program draws it, placed by the compositor.
+    /// its program draws it, placed by the compositor, which draws its glass
+    /// and shadow under it, and has it come and go over its transition.
+    /// It is any pop-up of a component's panel.
     Popover,
     /// A row, a button or a heading in a popover, [`State::Hovered`]
     /// under the pointer.
