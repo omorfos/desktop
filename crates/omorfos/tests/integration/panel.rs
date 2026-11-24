@@ -764,12 +764,17 @@ fn on_the_clock() -> (i32, i32) {
 /// A panel on a session of four workspaces, on 14 November 2026, which
 /// has six weeks from Monday; settled.
 fn dated() -> (Session, Panel) {
-    let mut session = Session::with_workspaces();
+    let files = [("config.yaml", FOUR_WORKSPACES), ("theme.css", UNSHADED)];
+    let mut session = Session::with_config(&files);
     let mut panel = panel(&mut session);
     panel.date(omorfos_shell::month::Date::new(2026, 11, 14).unwrap());
     settle(&mut session, &mut panel);
     (session, panel)
 }
+
+/// A theme in which the month casts no shadow, which would reach above it
+/// and be taken for it where how tall it is is measured.
+const UNSHADED: &str = "popover { box-shadow: none; }\n";
 
 /// Whether anything is drawn in the column `x` of the screen, `up` units
 /// above the bar.
@@ -1025,10 +1030,10 @@ fn a_theme_saved_while_the_month_is_open_closes_it_and_it_opens_again_as_the_the
     open_month(&mut session, &mut panel);
     assert!(above_the_bar(&mut session, WIDTH - 100, tall - 4));
     assert!(!above_the_bar(&mut session, WIDTH - wide - 10, 20));
-    session.write_config(
-        "theme.css",
-        "popover-day, popover-day-outside { height: 40px; min-width: 40px; }\n",
+    let theme = format!(
+        "{UNSHADED}popover-day, popover-day-outside {{ height: 40px; min-width: 40px; }}\n"
     );
+    session.write_config("theme.css", &theme);
     let panel = RefCell::new(panel);
     session.eventually(|session| {
         settle(session, &mut panel.borrow_mut());

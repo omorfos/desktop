@@ -1357,6 +1357,18 @@ mod tests {
     }
 
     #[test]
+    fn the_built_in_popover_floats_as_a_menu_does_and_casts_its_shadow() {
+        let theme = Theme::default();
+        let (popover, menu) = (
+            theme.style(Part::Popover, States::NONE),
+            theme.style(Part::Menu, States::NONE),
+        );
+        assert_eq!(popover.shadow, menu.shadow);
+        assert_eq!(popover.inset, menu.inset);
+        assert!(popover.shadow.blur > 0, "it casts one");
+    }
+
+    #[test]
     fn the_built_in_buttons_all_show_their_signs_once_the_pointer_is_on_any_of_them() {
         let theme = Theme::default();
         let hovered = States::NONE.with(State::Hovered);

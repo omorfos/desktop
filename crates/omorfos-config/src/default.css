@@ -295,6 +295,7 @@ popover {
   color: var(--text);
   border: var(--edge);
   border-radius: 10px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.36), inset 0 1px var(--glass-rim);
 }
 popover-item {
   color: var(--text);
