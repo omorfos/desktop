@@ -790,6 +790,9 @@ fn turn(
                     let _ = writeln!(stderr(), "omorfos: cannot draw on {name}: {error}");
                 }
                 screen.picture = Picture::Stale;
+                // What was drawn, if anything, is not on the screen: a
+                // locked frame is not to count as hiding the session.
+                compositor.not_shown(&screen.output);
                 refused = true;
                 // As though something had been drawn: nothing is to be
                 // told to draw again on the strength of this.
