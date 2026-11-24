@@ -3338,12 +3338,16 @@ stages it belongs to:
       in a frame that holds it, on a workspace and a screen there are,
       that each screen shows a workspace it has, and that at most one
       window has the keyboard. Ten minutes found nothing.
-- [ ] Who may use the IPC socket, written down in `SECURITY.md`: any
+- [x] Who may use the IPC socket, written down in `SECURITY.md`: any
       program of the user's outside a sandbox may have programs started,
       windows closed and the clipboard written, which is no more than it
       can do as the user, and a sandbox reaches the socket only if given
       `xdg-run`. Requests held to a role, should components of others
-      come, to be weighed then.
+      come, to be weighed then. Written down under "Who is trusted",
+      with what was found in writing it: a peer may `spawn` a program
+      with any role, which is no more than writing `keys.yaml` gives it,
+      and a sandbox given write access to `~/.config/omorfos` is as good
+      as outside it.
 - [ ] How long frames take kept over time by the compositor, its middle
       and its slowest, for `omorfosctl frames` to say, in place of the
       last frame alone, which measuring glass on 23 November needed a
