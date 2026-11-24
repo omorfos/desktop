@@ -10,9 +10,19 @@ use jiff::civil::Date;
 /// time and the day agree at midnight too.
 #[must_use]
 pub fn now() -> (String, Duration, Date) {
-    let now = Zoned::now();
-    let (time, changes) = reading(now.hour(), now.minute(), now.second(), now.millisecond());
-    (time, changes, now.date())
+    of(&Zoned::now())
+}
+
+/// How a moment reads on the bar, how long until it reads differently, and
+/// the day it is in: what [`now`] says of the moment it reads.
+fn of(moment: &Zoned) -> (String, Duration, Date) {
+    let (time, changes) = reading(
+        moment.hour(),
+        moment.minute(),
+        moment.second(),
+        moment.millisecond(),
+    );
+    (time, changes, moment.date())
 }
 
 /// How the moment `seconds` after the Unix epoch reads on the bar, where
@@ -64,6 +74,34 @@ mod tests {
         assert_eq!((read.len(), &read[2..3]), (5, ":"), "{read}");
         assert_eq!(at(u64::MAX), None, "past where time is counted");
         assert_eq!(at(1 << 40), None, "past where calendars go");
+    }
+
+    #[test]
+    fn the_time_and_the_day_are_of_one_moment_across_midnight() {
+        let utc = jiff::tz::TimeZone::UTC;
+        let before = jiff::civil::date(2026, 11, 23)
+            .at(23, 59, 59, 999_000_000)
+            .to_zoned(utc)
+            .unwrap();
+        assert_eq!(
+            of(&before),
+            (
+                "23:59".to_owned(),
+                Duration::from_millis(1),
+                jiff::civil::date(2026, 11, 23)
+            )
+        );
+        let after = before
+            .checked_add(jiff::Span::new().milliseconds(1))
+            .unwrap();
+        assert_eq!(
+            of(&after),
+            (
+                "00:00".to_owned(),
+                Duration::from_secs(60),
+                jiff::civil::date(2026, 11, 24)
+            )
+        );
     }
 
     #[test]
