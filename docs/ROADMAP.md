@@ -31,6 +31,10 @@ a known gap.
   was not this login's, which is a fault of its own (stage 8).
 - A screen that changes size while it is shared (stage 3), with a
   screen that has modes of more than one size.
+- A screen shared, in a call or by OBS, while something busy changes on
+  it (stage 8, finding 4 of 23 November): the sharing goes on, and what
+  is seen is what the screen shows. Not tried under WSL, where a screen
+  cannot be shared; to be tried on real hardware.
 ## Where this is going
 
 omorfos is small, fast and driven by text files, but what is being asked
@@ -3377,10 +3381,25 @@ its own. It found one high, five medium and four low findings:
       eased where it was sent, and a turn with nothing changing took as
       long with it as without, measured in an optimised build: 70 µs
       with 32 framed windows and 0.9 ms with 256.
-- [ ] Medium: what is captured is worked out, and written, rectangle by
+- [x] Medium: what is captured is worked out, and written, rectangle by
       rectangle
       ([finding 4](reviews/2026-11-23-the-whole-tree-for-safety-speed-and-use.md#4-what-is-captured-is-worked-out-and-written-rectangle-by-rectangle)):
-      the benchmark first.
+      measured first, in an optimised build, with 1, 4 and 16 programs
+      taking pictures of a window that says 1, 16, 256 and 4096 pixels
+      changed. The cost followed the rectangles, about 0.8 µs each for
+      each picture, a write of its own: 13 ms a frame with four programs
+      and 4096; and sixteen programs were told 65,536 rectangles in one
+      turn, more than their connection held, and were let go. Finding
+      what is captured by session and screen was not borne out: sixteen
+      programs and one rectangle cost 0.1 ms more than one, and is left
+      as it is. A picture is now written in, and its program told, no
+      more than sixteen rectangles: more are joined row by row, and then
+      where they are least far apart, never beyond the rectangle round
+      them all; four programs and 4096 take 2.4 ms, and sixteen 7.2 ms.
+- [ ] What is left of that: each program taking pictures has Smithay's
+      tracker of what changed go through every rectangle a window says,
+      most of the 7.2 ms; one tracker for those taking the same drawing,
+      measured first.
 - [x] Low: the tests' Wayland client took a connection it could not read
       for one with nothing to read
       ([finding 5](reviews/2026-11-23-the-whole-tree-for-safety-speed-and-use.md#5-the-tests-wayland-client-took-a-connection-it-could-not-read-for-one-with-nothing-to-read)) (#98).

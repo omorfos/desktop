@@ -13,7 +13,7 @@ use wayland_protocols::ext::image_copy_capture::v1::client::{
     ext_image_copy_capture_session_v1::ExtImageCopyCaptureSessionV1,
 };
 
-use crate::common::{Client, Event, HEIGHT, Picture, Session, WIDTH, mapped, open_on};
+use crate::common::{Client, Event, HEIGHT, Picture, Session, Toplevel, WIDTH, mapped, open_on};
 use crate::windows::{BACKGROUND, BLUE, GREEN, RED, SENT};
 use wayland_protocols::wp::cursor_shape::v1::client::wp_cursor_shape_device_v1::Shape;
 
@@ -347,6 +347,110 @@ fn a_picture_after_the_first_waits_for_something_to_change() {
             .all(|(.., width, height)| *width <= 200 && *height <= 100),
         "{changed:?}"
     );
+}
+
+/// What a picture holds before anything is written into it.
+const UNWRITTEN: u32 = 0x1234_5678;
+
+/// Where `count` pixels apart from each other go, in rows, in a square
+/// `side` pixels wide from the top left corner.
+fn dots(count: i32, side: i32) -> impl Iterator<Item = (i32, i32)> {
+    let across = count.isqrt();
+    let step = side / across;
+    (0..count).map(move |each| ((each % across) * step, (each / across) * step))
+}
+
+/// Shows `color` in `window`, of `size`, saying that only the pixels at
+/// `changed` have changed, as a program may that draws many small things.
+fn change(
+    session: &mut Session,
+    app: &mut Client,
+    window: &Toplevel,
+    (size, color): ((i32, i32), u32),
+    changed: impl Iterator<Item = (i32, i32)>,
+) {
+    let surface = &window.surface;
+    surface.attach(Some(&app.buffer(size, color)), 0, 0);
+    for (each, (x, y)) in changed.enumerate() {
+        surface.damage_buffer(x, y, 1, 1);
+        // Read as it goes, as the client and the compositor here take
+        // turns on one thread.
+        if each % 1024 == 1023 {
+            session.roundtrip(app);
+        }
+    }
+    surface.commit();
+    session.roundtrip(app);
+}
+
+#[test]
+fn many_small_changes_are_told_and_written_in_a_few_rectangles_to_every_program_taking_pictures() {
+    let mut session = Session::new();
+    let mut app = session.connect();
+    let window = session.open(&mut app, "app", (400, 400), RED);
+    let mut camera = camera(&mut session);
+    let takings: Vec<Taking> = (0..16).map(|_| camera.capture(0, false)).collect();
+    for taking in &takings {
+        snap(&mut session, &mut camera, taking);
+    }
+    let frame = session.compositor().desktop().frames().next().unwrap();
+    let at = frame.client().origin;
+    let at = (at.x, at.y);
+
+    let buffers: Vec<_> = takings
+        .iter()
+        .map(|taking| {
+            let (file, buffer) = camera.shot_buffer((WIDTH, HEIGHT));
+            let unwritten = UNWRITTEN.to_le_bytes().repeat((WIDTH * HEIGHT) as usize);
+            file.write_all_at(&unwritten, 0).unwrap();
+            let frame = camera.shot(taking);
+            frame.attach_buffer(&buffer);
+            frame.capture();
+            (file, frame)
+        })
+        .collect();
+    session.roundtrip(&mut camera);
+    // Four thousand pixels, each its own rectangle, which told to sixteen
+    // takings is more than a connection holds.
+    change(
+        &mut session,
+        &mut app,
+        &window,
+        ((400, 400), GREEN),
+        dots(4096, 384),
+    );
+    session.render();
+    let mut events = Vec::new();
+    while events
+        .iter()
+        .filter(|event| **event == Event::ShotReady)
+        .count()
+        < takings.len()
+    {
+        session.roundtrip(&mut camera);
+        events.extend(camera.take_events());
+    }
+
+    let told = events
+        .iter()
+        .filter(|event| matches!(event, Event::ShotDamage(..)));
+    assert!(told.count() <= 16 * takings.len(), "each is told a few");
+    for (file, _) in &buffers {
+        let shot = picture(file);
+        for (x, y) in dots(4096, 384) {
+            assert_eq!(
+                shot.at(at.0 + x, at.1 + y),
+                GREEN,
+                "what changed is written"
+            );
+        }
+        // Nothing of the window beyond the rectangle round what changed,
+        // though it is all green now.
+        for (x, y) in [(390, 10), (10, 390)] {
+            let (x, y) = (at.0 + x, at.1 + y);
+            assert_eq!(shot.at(x, y), UNWRITTEN, "nothing is written at {x}, {y}");
+        }
+    }
 }
 
 #[test]

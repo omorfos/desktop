@@ -81,6 +81,53 @@ pub(crate) const MARGIN: i32 = 8;
 /// What has changed on a screen, in its pixels.
 type Damage = Vec<Rectangle<i32, Physical>>;
 
+/// The most rectangles a picture is written in, and a program told have
+/// changed in it. Each costs a write of its own, and a program is told of
+/// each: as many as a window says, or a program says are stale, and over
+/// every program taking pictures, are more than a connection holds, and
+/// the program is let go.
+const MANY: usize = 16;
+
+/// `parts`, as they are if there are no more than `MANY`; or else joined
+/// into `MANY` or fewer, each the rectangle round those it holds. Those
+/// that share a row are joined, and then those least far apart, so that
+/// as little is added as can be, and nothing beyond the rectangle round
+/// them all: writing a pixel more costs far less than another write.
+fn joined(mut parts: Damage) -> Damage {
+    if parts.len() <= MANY {
+        return parts;
+    }
+    let bottom = |part: &Rectangle<i32, Physical>| part.loc.y + part.size.h;
+    parts.sort_unstable_by_key(|part| part.loc.y);
+    let mut bands: Damage = Vec::new();
+    for part in parts {
+        match bands.last_mut() {
+            Some(band) if part.loc.y <= bottom(band) => *band = band.merge(part),
+            _ => bands.push(part),
+        }
+    }
+    // The rows between each band and the next, and the bands that, joined
+    // to the next, add fewest.
+    let apart: Vec<i32> = bands
+        .windows(2)
+        .map(|pair| pair[1].loc.y - bottom(&pair[0]))
+        .collect();
+    let mut nearest: Vec<usize> = (0..apart.len()).collect();
+    nearest.sort_by_key(|&gap| apart[gap]);
+    let mut onto = vec![false; bands.len()];
+    for &gap in nearest.iter().take(bands.len().saturating_sub(MANY)) {
+        onto[gap + 1] = true;
+    }
+    let mut joined: Damage = Vec::with_capacity(MANY);
+    for (band, onto) in bands.into_iter().zip(onto) {
+        match joined.last_mut() {
+            Some(last) if onto => *last = last.merge(band),
+            _ => joined.push(band),
+        }
+    }
+    joined
+}
+
 /// What pictures are taken of.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum Subject {
@@ -604,7 +651,7 @@ impl Capture {
                 damage.retain(|part| !part.is_empty());
                 damage
             });
-            let changed = changed.filter(|damage| !damage.is_empty());
+            let changed = changed.filter(|damage| !damage.is_empty()).map(joined);
             let damage = if taking.taken {
                 changed
             } else {
@@ -616,6 +663,7 @@ impl Capture {
             due.extend(damage.map(|damage| {
                 let write = damage.iter().chain(stale);
                 let write = write.filter_map(|part| part.intersection(whole)).collect();
+                let write = joined(write);
                 Due {
                     shot,
                     damage,
@@ -1432,5 +1480,41 @@ mod tests {
         let mut turned = Vec::new();
         turn(&[1, 2, 3, 4, 10, 20, 30, 40], &mut turned, true);
         assert_eq!(turned, [3, 2, 1, 4, 30, 20, 10, 40]);
+    }
+
+    fn part(x: i32, y: i32, width: i32, height: i32) -> Rectangle<i32, Physical> {
+        Rectangle::new((x, y).into(), (width, height).into())
+    }
+
+    #[test]
+    fn a_few_parts_are_kept_as_they_are() {
+        let few: Damage = (0..16).map(|each| part(each * 10, 0, 1, 1)).collect();
+        assert_eq!(joined(few.clone()), few);
+    }
+
+    #[test]
+    fn many_parts_in_a_few_rows_are_joined_row_by_row() {
+        // Twenty dots along each of two rows, the second overlapping a tall
+        // part in the middle of the first.
+        let mut many: Damage = (0..20).map(|each| part(each * 10, 5, 1, 1)).collect();
+        many.extend((0..20).map(|each| part(each * 10 + 3, 100, 2, 1)));
+        many.push(part(50, 0, 1, 10));
+        assert_eq!(joined(many), [part(0, 0, 191, 10), part(3, 100, 192, 1)]);
+    }
+
+    #[test]
+    fn many_rows_are_joined_where_least_far_apart_into_a_few() {
+        // Thirty-two rows, every other one further from the next.
+        let rows = (0..32).map(|row| row * 10 - (row % 2) * 3);
+        let many: Damage = rows.map(|y| part(0, y, 4, 1)).collect();
+        let joined = joined(many.clone());
+        assert_eq!(joined.len(), MANY);
+        // Each pair of rows nearer each other is joined, and none further.
+        let pairs: Damage = (0..16).map(|pair| part(0, pair * 20, 4, 8)).collect();
+        assert_eq!(joined, pairs);
+        assert!(
+            many.iter()
+                .all(|part| joined.iter().any(|joined| joined.contains_rect(*part)))
+        );
     }
 }
