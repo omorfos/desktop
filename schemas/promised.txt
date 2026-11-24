@@ -247,6 +247,7 @@ keys.yaml bindings[].action.open = "browser"
 keys.yaml bindings[].action.open = "editor"
 keys.yaml bindings[].action.open = "files"
 keys.yaml bindings[].action.open = "settings"
+keys.yaml bindings[].action.open = "terminal"
 keys.yaml bindings[].action.spawn
 keys.yaml bindings[].action.spawn.may
 keys.yaml bindings[].action.spawn.may[] = "ask"
@@ -326,6 +327,7 @@ menu.yaml items[].action.open = "browser"
 menu.yaml items[].action.open = "editor"
 menu.yaml items[].action.open = "files"
 menu.yaml items[].action.open = "settings"
+menu.yaml items[].action.open = "terminal"
 menu.yaml items[].action.spawn
 menu.yaml items[].action.spawn.may
 menu.yaml items[].action.spawn.may[] = "ask"

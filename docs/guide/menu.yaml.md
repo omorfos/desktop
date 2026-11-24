@@ -21,8 +21,12 @@ shutting down, said in the user's language; the last three ask first, as
 `power.ask` in `config.yaml` says. Browser, Files and Editor open
 whatever your system has as the default for web links, folders and plain
 text, as its `mimeapps.list` says (the action `open`, of `browser`,
-`files`, `editor` or `settings`); with none set, or for Settings, which
-omorfos does not have yet, a notice in the corner says so. So is an entry of `menu.yaml` named and
+`files`, `editor`, `terminal` or `settings`); with none set, or for
+Settings, which omorfos does not have yet, a notice in the corner says
+so. Terminal opens the first terminal an `xdg-terminals.list` in
+`~/.config` or `/etc/xdg` names, as `xdg-terminal-exec` reads it, with
+one named `omorfos-xdg-terminals.list` read before it; with none named,
+`foot`. So is an entry of `menu.yaml` named and
 doing just as one of those, as `{ label: Sleep, action: sleep }` is; one named otherwise is shown as it is named, in whatever language it
 is written.
 

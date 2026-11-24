@@ -23,7 +23,8 @@ use std::path::{Path, PathBuf};
 use omorfos_brand::{DESIGNS, Design, Scheme};
 use omorfos_config::edit::{self, Value};
 use omorfos_config::{
-    Accent, Action, Command, Keys, Part, Picture, Scheme as Colours, SchemeChoice, States, Theme,
+    Accent, Action, Application, Keys, Part, Picture, Scheme as Colours, SchemeChoice, States,
+    Theme,
 };
 use omorfos_i18n::{Value as Given, Words};
 use omorfos_ipc::help::About;
@@ -293,7 +294,7 @@ pub fn openers(
 #[must_use]
 pub fn rows(keys: &Keys, super_as_ctrl: bool, words: &Words) -> Vec<(String, String)> {
     let wanted = [
-        (Action::Spawn(Command::terminal().into()), "terminal"),
+        (Action::Open(Application::Terminal), "terminal"),
         (Action::ShowLauncher, "launcher"),
         (Action::ShowMenu, "menu"),
         (Action::SwitchWindows, "switcher"),
@@ -447,7 +448,7 @@ mod tests {
         let there = folder();
         let bound = |unbound: &str| {
             let written = format!(
-                "bindings:\n  - {{ keys: Super+t, action: {{ spawn: [foot] }} }}\nunbind: [Super+Return, {unbound}]\n"
+                "bindings:\n  - {{ keys: Super+t, action: {{ open: terminal }} }}\nunbind: [Super+Return, {unbound}]\n"
             );
             fs::write(there.path().join("keys.yaml"), written).unwrap();
             let (config, problems) = Config::load(there.path(), &Config::default());

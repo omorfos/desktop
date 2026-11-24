@@ -277,6 +277,7 @@ pub fn mark(action: &Action, on: Toggled) -> Mark {
         Action::Open(Application::Browser) => Mark::Sign(Sign::Browser),
         Action::Open(Application::Files) => Mark::Sign(Sign::Files),
         Action::Open(Application::Editor) => Mark::Sign(Sign::Editor),
+        Action::Open(Application::Terminal) => Mark::Sign(Sign::Terminal),
         Action::Open(Application::Settings) => Mark::Sign(Sign::Settings),
         Action::Restart => Mark::Sign(Sign::Restart),
         Action::ShutDown => Mark::Sign(Sign::ShutDown),
@@ -582,7 +583,7 @@ rules:
     fn the_menu_carries_over_with_its_submenus_and_what_stands_before_each_label() {
         let yaml = "
 items:
-  - { label: Terminal, action: { spawn: [foot] } }
+  - { label: Terminal, action: { open: terminal } }
   - separator
   - label: Session
     items:
@@ -601,7 +602,7 @@ items:
                 Keycap::Text("E".to_owned()),
             ],
         };
-        let spawn = Action::Spawn(Command::terminal().into());
+        let terminal = Action::Open(Application::Terminal);
         let on = Toggled {
             standing: Standing::default(),
             maximized: false,
@@ -616,8 +617,8 @@ items:
             [
                 Item::Entry {
                     label: "Terminal".to_owned(),
-                    action: spawn,
-                    mark: Mark::Program("foot".to_owned()),
+                    action: terminal,
+                    mark: Mark::Sign(Sign::Terminal),
                     keys: vec![Keycap::Sign(Sign::Super), Keycap::Sign(Sign::Enter)],
                 },
                 Item::Separator,
@@ -811,7 +812,7 @@ items:
     fn bindings_trigger_on_the_unshifted_key_with_the_named_modifiers() {
         let (mut bindings, _) = bindings(&Keys::default(), Path::new("keys.yaml"));
         let terminal = chord(Modifiers::SUPER, Keysym::Return);
-        let spawn_terminal = Action::Spawn(Command::terminal().into());
+        let spawn_terminal = Action::Open(Application::Terminal);
         assert_eq!(
             bindings.press(terminal),
             KeyOutcome::Triggered(&spawn_terminal)
@@ -932,6 +933,7 @@ bindings:
             (Action::NewWorkspace, Sign::Add),
             (Action::MoveToNewWorkspace, Sign::Add),
             (Action::ShowLauncher, Sign::Search),
+            (Action::Open(Application::Terminal), Sign::Terminal),
             (Action::ReloadConfig, Sign::Reload),
             (Action::About, Sign::About),
             (Action::Lock, Sign::Lock),

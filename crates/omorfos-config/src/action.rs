@@ -43,6 +43,9 @@ pub enum Application {
     Files,
     /// What opens plain text (`text/plain`).
     Editor,
+    /// The terminal: the first that `xdg-terminals.list` names, as
+    /// `xdg-terminal-exec` reads it, or `foot` where none is named.
+    Terminal,
     /// omorfos's settings, which are not there yet.
     Settings,
 }
@@ -55,6 +58,7 @@ impl Application {
             Self::Browser => "browser",
             Self::Files => "files",
             Self::Editor => "editor",
+            Self::Terminal => "terminal",
             Self::Settings => "settings",
         }
     }
@@ -410,6 +414,7 @@ mod tests {
             Application::Browser,
             Application::Files,
             Application::Editor,
+            Application::Terminal,
             Application::Settings,
         ];
         for application in all {

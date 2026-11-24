@@ -82,6 +82,8 @@ pub enum Sign {
     Files,
     /// A pen on a page: the text editor.
     Editor,
+    /// A prompt and a line: the terminal.
+    Terminal,
     /// A cog: the settings.
     Settings,
 }

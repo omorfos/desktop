@@ -108,11 +108,55 @@ pub fn command(
         .filter_map(|path| std::fs::read_to_string(path).ok())
         .collect();
     let named = default_for(types, &texts)?;
-    let text = entry(&named, data).and_then(|path| std::fs::read_to_string(path).ok())?;
+    run(&named, data)
+}
+
+/// The command the desktop entry `named` runs, found among `data`: its
+/// `Exec`, split into the program and its arguments. None if it is not
+/// there or runs nothing.
+fn run(named: &str, data: &[PathBuf]) -> Option<(String, Vec<String>)> {
+    let text = entry(named, data).and_then(|path| std::fs::read_to_string(path).ok())?;
     let mut fields = crate::fields(&text);
     let exec = fields.find_map(|(field, value)| (field == "Exec").then_some(value))?;
     let mut words = crate::arguments(exec).into_iter();
     words.next().map(|program| (program, words.collect()))
+}
+
+/// The desktop entries a `xdg-terminals.list` names, in its order, as
+/// `xdg-terminal-exec` reads one: an entry to a line, any action after a
+/// `:` left aside, a `+` before one taken off, and lines that are empty, a
+/// comment after `#`, or one left out with a `-` passed over.
+#[must_use]
+pub fn terminals(list: &str) -> Vec<&str> {
+    let lines = list.lines().map(str::trim);
+    let named = lines.filter(|line| !line.is_empty() && !line.starts_with(['#', '-']));
+    let named = named.map(|line| line.trim_start_matches('+'));
+    named
+        .map(|line| line.split_once(':').map_or(line, |(entry, _)| entry).trim())
+        .collect()
+}
+
+/// The terminal to open, as `xdg-terminal-exec` chooses it: the first
+/// desktop entry the `xdg-terminals.list` files of `config` name, in each
+/// place omorfos's own, `omorfos-xdg-terminals.list`, before the one every
+/// desktop reads, that is among `data`, run as its `Exec` says; or, if
+/// none is named or none named is there, `fallback`, the program and its
+/// arguments.
+#[must_use]
+pub fn terminal(
+    (config, data): (&[PathBuf], &[PathBuf]),
+    (program, arguments): (&str, &[String]),
+) -> (String, Vec<String>) {
+    let named = ["omorfos-xdg-terminals.list", "xdg-terminals.list"];
+    let lists = config
+        .iter()
+        .flat_map(|place| named.map(|name| place.join(name)));
+    let texts: Vec<String> = lists
+        .filter_map(|path| std::fs::read_to_string(path).ok())
+        .collect();
+    let mut entries = texts.iter().flat_map(|text| terminals(text));
+    let found = entries.find_map(|entry| run(entry, data));
+    found.unwrap_or_else(|| (program.to_owned(), arguments.to_vec()))
 }
 
 /// The places of configuration, as the specification has them: the user's
@@ -198,6 +242,57 @@ mod tests {
             configuration(None, None, Some("")),
             [PathBuf::from("/etc/xdg")]
         );
+    }
+
+    #[test]
+    fn a_list_of_terminals_names_one_to_a_line_leaving_aside_comments_actions_and_those_left_out() {
+        let list = "# mine\n\n  kitty.desktop  \n-foot.desktop\n+alacritty.desktop:new-window\n";
+        assert_eq!(terminals(list), ["kitty.desktop", "alacritty.desktop"]);
+        assert_eq!(terminals(""), Vec::<&str>::new());
+    }
+
+    /// A place of data with an entry for each of `entries` that runs the
+    /// program of its name, with `--here`.
+    fn installed(entries: &[&str]) -> tempfile::TempDir {
+        let data = tempfile::TempDir::new().unwrap();
+        let applications = data.path().join("applications");
+        fs::create_dir(&applications).unwrap();
+        for name in entries {
+            let entry = format!("[Desktop Entry]\nName={name}\nExec={name} --here\n");
+            fs::write(applications.join(format!("{name}.desktop")), entry).unwrap();
+        }
+        data
+    }
+
+    #[test]
+    fn the_terminal_is_the_first_named_that_is_there_omorfoss_own_list_first_in_each_place() {
+        let (mine, system) = (
+            tempfile::TempDir::new().unwrap(),
+            tempfile::TempDir::new().unwrap(),
+        );
+        let data = installed(&["kitty", "alacritty", "wezterm"]);
+        let config = [mine.path().to_owned(), system.path().to_owned()];
+        let data = [data.path().to_owned()];
+        let foot = ("foot", &[][..]);
+        let chosen = || terminal((&config, &data), foot);
+        let place = |dir: &tempfile::TempDir, name: &str, list: &str| {
+            fs::write(dir.path().join(name), list).unwrap();
+        };
+
+        // Nothing named: the fallback.
+        assert_eq!(chosen(), ("foot".to_owned(), Vec::new()));
+        // The system's list names one.
+        place(&system, "xdg-terminals.list", "wezterm.desktop\n");
+        assert_eq!(chosen().0, "wezterm");
+        // One not there is passed over for the next that is.
+        place(&mine, "xdg-terminals.list", "gone.desktop\nkitty.desktop\n");
+        assert_eq!(chosen(), ("kitty".to_owned(), vec!["--here".to_owned()]));
+        // omorfos's own before the one every desktop reads.
+        place(&mine, "omorfos-xdg-terminals.list", "alacritty.desktop\n");
+        assert_eq!(chosen().0, "alacritty");
+        // And with none there of all those named, the fallback.
+        let nothing = [tempfile::TempDir::new().unwrap().path().to_owned()];
+        assert_eq!(terminal((&config, &nothing), foot).0, "foot");
     }
 
     #[test]

@@ -59,7 +59,7 @@ as `overview` or `lock`, has no key until you bind one.
 <!-- The built-in bindings, made by a test: OMORFOS_BLESS=1 cargo test --workspace --all-features manual_page -->
 | Keys | Action | What it does |
 |---|---|---|
-| `Super+Return` | `{ spawn: [foot] }` | Start a program, with no shell |
+| `Super+Return` | `{ open: terminal }` | Open the default application of KIND |
 | `Super+space` | `show_launcher` | Open the launcher |
 | `Super+Escape` | `show_menu` | Open the root menu at the pointer |
 | `Super+q` | `close` | Ask the focused window to close |

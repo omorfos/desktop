@@ -228,6 +228,7 @@ const fn drawing(sign: Sign) -> &'static str {
         Sign::Browser => include_str!("../signs/globe.svg"),
         Sign::Files => include_str!("../signs/folder.svg"),
         Sign::Editor => include_str!("../signs/file-pen.svg"),
+        Sign::Terminal => include_str!("../signs/terminal.svg"),
         Sign::Settings => include_str!("../signs/settings.svg"),
     }
 }
@@ -850,7 +851,7 @@ mod tests {
     }
 
     /// Every sign there is.
-    const SIGNS: [Sign; 39] = [
+    const SIGNS: [Sign; 40] = [
         Sign::Close,
         Sign::Minimize,
         Sign::Fullscreen,
@@ -889,6 +890,7 @@ mod tests {
         Sign::Browser,
         Sign::Files,
         Sign::Editor,
+        Sign::Terminal,
         Sign::Settings,
     ];
 

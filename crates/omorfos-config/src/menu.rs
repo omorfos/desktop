@@ -6,7 +6,7 @@ use serde::Deserialize;
 use serde::de::value::MapAccessDeserializer;
 use serde::de::{Deserializer, Error, MapAccess, Unexpected, Visitor};
 
-use crate::{Action, Application, Command};
+use crate::{Action, Application};
 
 /// The contents of `menu.yaml`.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -30,7 +30,7 @@ impl Default for Menu {
                 entry("Browser", Action::Open(Application::Browser)),
                 entry("Files", Action::Open(Application::Files)),
                 entry("Editor", Action::Open(Application::Editor)),
-                entry("Terminal", Action::Spawn(Command::terminal().into())),
+                entry("Terminal", Action::Open(Application::Terminal)),
                 entry("Settings", Action::Open(Application::Settings)),
                 MenuItem::Separator,
                 entry("Stay awake", Action::StayAwake),
@@ -145,6 +145,7 @@ impl<'de> Visitor<'de> for MenuItemVisitor {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Command;
 
     fn parse(yaml: &str) -> Result<Menu, String> {
         serde_saphyr::from_str(yaml).map_err(|error| error.without_snippet().to_string())

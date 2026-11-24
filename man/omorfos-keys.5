@@ -17,7 +17,7 @@ It is read again as soon as it is saved. If it has a mistake, its contents befor
 There before anything is written, and kept unless \fBdefaults: false\fR is: a binding of yours on the same keys, or on keys that begin with them, takes the place of one, and \fBunbind\fR does without one.
 .TP
 \fBSuper+Return\fR
-\fB{ spawn: [foot] }\fR: Start a program, with no shell
+\fB{ open: terminal }\fR: Open the default application of KIND
 .TP
 \fBSuper+space\fR
 \fBshow_launcher\fR: Open the launcher
@@ -357,6 +357,9 @@ What opens folders (\fBinode/directory\fR).
 .TP
 \fBeditor\fR
 What opens plain text (\fBtext/plain\fR).
+.TP
+\fBterminal\fR
+The terminal: the first that \fBxdg\-terminals.list\fR names, as \fBxdg\-terminal\-exec\fR reads it, or \fBfoot\fR where none is named.
 .TP
 \fBsettings\fR
 omorfos's settings, which are not there yet.

@@ -944,13 +944,23 @@ impl Compositor {
             Application::Browser => omorfos_entries::defaults::KINDS[0].1,
             Application::Files => &["inode/directory"],
             Application::Editor => &["text/plain"],
-            // Until omorfos has settings, nothing opens them.
-            Application::Settings => &[],
+            // The terminal is chosen otherwise, below; and until omorfos
+            // has settings, nothing opens them.
+            Application::Terminal | Application::Settings => &[],
         };
         let (config, data) = &self.on_demand.applications;
-        if let Some((program, arguments)) =
+        let found = if kind == Application::Terminal {
+            // `foot`, where none is named.
+            let foot = omorfos_config::Command::terminal();
+            let fallback = (foot.program(), foot.arguments());
+            Some(omorfos_entries::defaults::terminal(
+                (config, data),
+                fallback,
+            ))
+        } else {
             omorfos_entries::defaults::command(types, (config, data))
-        {
+        };
+        if let Some((program, arguments)) = found {
             let program = OsStr::new(&program);
             let named = omorfos_journal::name(program);
             let how = (Roles::NONE, false, Relaying::Users);

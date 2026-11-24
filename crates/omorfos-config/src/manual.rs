@@ -628,7 +628,7 @@ mod tests {
         assert!(built_in < keys.find(".SH KEYS\n").unwrap(), "first: {keys}");
         assert!(
             keys.contains(
-                "\n.TP\n\\fBSuper+Return\\fR\n\\fB{ spawn: [foot] }\\fR: Start a program"
+                "\n.TP\n\\fBSuper+Return\\fR\n\\fB{ open: terminal }\\fR: Open the default application of KIND"
             ),
             "{keys}"
         );
@@ -646,7 +646,7 @@ mod tests {
             "{menu}"
         );
         assert!(
-            menu.contains("\n  \\- { label: Terminal, action: { spawn: [foot] } }\n"),
+            menu.contains("\n  \\- { label: Terminal, action: { open: terminal } }\n"),
             "{menu}"
         );
         let rules = &pages[2].1;

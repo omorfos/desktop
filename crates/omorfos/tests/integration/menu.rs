@@ -643,3 +643,15 @@ fn each_entry_has_a_sign_of_what_it_does_or_the_icon_of_the_program_it_starts() 
     open_menu(&mut session);
     assert_ne!(pressed(&session.draw(), 3), PANEL, "pressed in");
 }
+
+#[test]
+fn an_entry_starting_a_program_with_no_icon_anywhere_has_nothing_before_its_label() {
+    let menu = "items:\n  - { label: Iconless, action: { spawn: [omorfos-test-iconless] } }\n";
+    let mut session = Session::with_config(&[("menu.yaml", menu)]);
+    let data = tempfile::TempDir::new().unwrap();
+    session
+        .compositor_mut()
+        .set_data_directories(vec![data.path().to_owned()]);
+    open_menu(&mut session);
+    assert_eq!(signed(&session.draw(), 0), 0);
+}

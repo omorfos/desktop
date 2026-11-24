@@ -1579,6 +1579,13 @@ the first than on the last.
       one that starts it, or one `menu.yaml` names; and the sign of what
       is on in the accent, on a faint square of it, in place of wording
       that changes; and a submenu lying a little over its menu (ADR 70).
+- [x] The root menu's Terminal row as its others (#120): `open:
+      terminal`, the first terminal an `xdg-terminals.list` names, as
+      `xdg-terminal-exec` reads it, and `foot` where none is, with
+      Lucide's `terminal` sign, where it showed foot's own icon in full
+      colour beside the signs of the rows round it; and `Super+Return`
+      with it, which the row shows again. A row of `menu.yaml` that
+      starts a program keeps that program's icon.
 - [ ] Known gaps in icons in menus: a program started from the menu is
       found by its file's name, not by the desktop entry whose `Exec`
       starts it, so that `flatpak run` and Ghostty need an `icon`; a

@@ -23,7 +23,7 @@ items:
   \- { label: Browser, action: { open: browser } }
   \- { label: Files, action: { open: files } }
   \- { label: Editor, action: { open: editor } }
-  \- { label: Terminal, action: { spawn: [foot] } }
+  \- { label: Terminal, action: { open: terminal } }
   \- { label: Settings, action: { open: settings } }
   \- separator
   \- { label: Stay awake, action: stay_awake }
@@ -200,6 +200,9 @@ What opens folders (\fBinode/directory\fR).
 .TP
 \fBeditor\fR
 What opens plain text (\fBtext/plain\fR).
+.TP
+\fBterminal\fR
+The terminal: the first that \fBxdg\-terminals.list\fR names, as \fBxdg\-terminal\-exec\fR reads it, or \fBfoot\fR where none is named.
 .TP
 \fBsettings\fR
 omorfos's settings, which are not there yet.

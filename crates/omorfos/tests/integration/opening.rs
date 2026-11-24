@@ -1,5 +1,6 @@
-//! The root menu's Browser, Files, Editor and Settings: each opens the
-//! application the system has as the default for it, or says none is set.
+//! The root menu's Browser, Files, Editor, Terminal and Settings: each
+//! opens the application the system has as the default for it, or says
+//! none is set; the terminal is `foot` where none is named.
 #![expect(
     clippy::unwrap_used,
     reason = "test support code fails the test on any error"
@@ -83,4 +84,31 @@ fn with_nothing_set_to_open_it_the_user_is_told_each_time() {
         .filter(|said| said.contains("no settings"))
         .count();
     assert_eq!(again, 2, "told again");
+}
+
+#[test]
+fn the_terminal_opened_is_the_first_an_xdg_terminals_list_names_as_its_entry_says() {
+    let (mut session, directory, _opened) = session();
+    let (config, data) = (
+        directory.path().join("config"),
+        directory.path().join("data"),
+    );
+    let started = directory.path().join("started");
+    let program = directory.path().join("terminal");
+    runnable(
+        &program,
+        &format!("#!/bin/sh\necho \"$@\" >> '{}'\n", started.display()),
+    );
+    let entry = format!(
+        "[Desktop Entry]\nName=Terminal\nExec={} --login\n",
+        program.display()
+    );
+    fs::write(data.join("applications").join("terminal.desktop"), entry).unwrap();
+    let list = "# not there\ngone.desktop\nterminal.desktop\n";
+    fs::write(config.join("xdg-terminals.list"), list).unwrap();
+    session
+        .compositor_mut()
+        .perform(&Action::Open(Application::Terminal));
+    let said = || fs::read_to_string(&started).unwrap_or_default();
+    session.eventually(|_| said() == "--login\n");
 }

@@ -5,7 +5,7 @@ use std::str::FromStr;
 
 use serde::Deserialize;
 
-use crate::{Action, Command, Half, Position, Started, WorkspaceNumber};
+use crate::{Action, Application, Command, Half, Position, Started, WorkspaceNumber};
 
 /// The contents of `keys.yaml`: the bindings written there, and the
 /// built-in ones on keys they leave alone.
@@ -117,7 +117,7 @@ impl Keys {
 impl Default for Keys {
     fn default() -> Self {
         let mut bindings = vec![
-            bind("Super+Return", Action::Spawn(Command::terminal().into())),
+            bind("Super+Return", Action::Open(Application::Terminal)),
             bind("Super+space", Action::ShowLauncher),
             bind("Super+Escape", Action::ShowMenu),
             bind("Super+q", Action::Close),
@@ -655,7 +655,7 @@ bindings:
         let action_for = |text: &str| action_for(&keys, text);
         assert_eq!(
             action_for("Super+Return"),
-            Some(Action::Spawn(Command::terminal().into()))
+            Some(Action::Open(Application::Terminal))
         );
         assert_eq!(action_for("Super+q"), Some(Action::Close));
         // A picture of the screen is taken by a program that may.

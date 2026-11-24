@@ -347,6 +347,11 @@
           "type": "string"
         },
         {
+          "const": "terminal",
+          "description": "The terminal: the first that `xdg-terminals.list` names, as\n`xdg-terminal-exec` reads it, or `foot` where none is named.",
+          "type": "string"
+        },
+        {
           "const": "settings",
           "description": "omorfos's settings, which are not there yet.",
           "type": "string"
