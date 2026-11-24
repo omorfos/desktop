@@ -74,8 +74,7 @@ pub fn start(variable: &dyn Fn(&str) -> Option<OsString>) -> Result<(), Failure>
         Some(((wayland, socket), config)) => {
             let asked = omorfos_i18n::asked(&|name| get(name)?.into_string().ok());
             let locales = omorfos_entries::locales(&asked);
-            let numeric = omorfos_i18n::locale("LC_NUMERIC", &|name| get(name)?.into_string().ok());
-            let numbers = Numbers::of_locale(&numeric.unwrap_or_default());
+            let numbers = numbers(&|name| get(name)?.into_string().ok());
             let offered = (installed(&places, &locales), Icons::new(icons), numbers);
             client::run(&wayland, &socket, (&config, kept.as_deref()), offered)
         }
@@ -87,9 +86,34 @@ pub fn start(variable: &dyn Fn(&str) -> Option<OsString>) -> Result<(), Failure>
     }
 }
 
+/// How numbers are written, as the locale the environment asks for them
+/// has it; `get` looks a variable up.
+fn numbers(get: &dyn Fn(&str) -> Option<String>) -> Numbers {
+    let numeric = omorfos_i18n::locale("LC_NUMERIC", get);
+    Numbers::of_locale(&numeric.unwrap_or_default())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Looks a variable up among `set`.
+    fn among<'a>(set: &'a [(&'a str, &'a str)]) -> impl Fn(&str) -> Option<String> + 'a {
+        |name| {
+            let found = set.iter().find(|(key, _)| *key == name);
+            found.map(|(_, value)| (*value).to_owned())
+        }
+    }
+
+    #[test]
+    fn numbers_are_written_as_the_numeric_locale_has_them() {
+        let numeric = [("LANG", "en_GB.UTF-8"), ("LC_NUMERIC", "pl_PL.UTF-8")];
+        assert_eq!(numbers(&among(&numeric)), Numbers::Comma);
+        let messages = [("LANG", "en_GB.UTF-8"), ("LC_MESSAGES", "pl_PL.UTF-8")];
+        assert_eq!(numbers(&among(&messages)), Numbers::Point);
+        let messages = [("LC_MESSAGES", "pl_PL.UTF-8")];
+        assert_eq!(numbers(&among(&messages)), Numbers::Point);
+    }
 
     #[test]
     fn outside_a_session_the_launcher_says_so() {
