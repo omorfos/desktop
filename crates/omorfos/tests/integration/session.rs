@@ -186,3 +186,17 @@ fn a_sleeping_session_is_woken_when_a_program_it_started_exits() {
     let started = Instant::now();
     session.run_until(|_| started.elapsed() >= Duration::from_millis(250));
 }
+
+#[test]
+fn what_falls_due_while_a_turn_waits_is_done_in_that_turn() {
+    let mut session = Session::with_config(&[("config.yaml", "idle: { screen_off: 1 }\n")]);
+    session.step();
+    let due = session.compositor().deadline().unwrap();
+    // A turn woken before it is due, by what the session has still to
+    // take in, is not the one this is about: the one that ends after it is.
+    while Instant::now() < due {
+        let wait = due.saturating_duration_since(Instant::now()) + Duration::from_millis(20);
+        session.inner().dispatch_now(Some(wait)).unwrap();
+    }
+    assert!(!session.compositor().screens_on(), "not the turn after");
+}
