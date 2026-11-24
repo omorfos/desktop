@@ -1757,7 +1757,7 @@ mod tests {
                 break;
             }
         }
-        assert_eq!(read, Err(Ended::Broken(wire::ADDED_TOO_MUCH)));
+        assert_eq!(read, Err(Ended::Broken(wire::ADDED_TOO_MUCH_IN_ALL)));
     }
 
     #[test]
