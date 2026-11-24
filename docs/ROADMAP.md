@@ -35,6 +35,11 @@ a known gap.
   it (stage 8, finding 4 of 23 November): the sharing goes on, and what
   is seen is what the screen shows. Not tried under WSL, where a screen
   cannot be shared; to be tried on real hardware.
+- Windows moved between screens, maximized and their tabs switched, and a
+  window a rule makes private still hidden in a screen shared (stage 8,
+  finding 3 of 23 November): how a frame is hidden is now worked out with
+  the frames, and windows are mapped again only when something moved. Not
+  tried under WSL.
 ## Where this is going
 
 omorfos is small, fast and driven by text files, but what is being asked
@@ -3373,14 +3378,40 @@ its own. It found one high, five medium and four low findings:
       are too many
       ([finding 2](reviews/2026-11-23-the-whole-tree-for-safety-speed-and-use.md#2-a-critical-notification-can-be-the-one-to-go-when-there-are-too-many)):
       the oldest that is not critical goes, while there is one (#100).
-- [ ] Medium: each refresh looks every window up in two lists, so a
+- [x] Medium: each refresh looks every window up in two lists, so a
       quiet turn costs as the square of the windows
       ([finding 3](reviews/2026-11-23-the-whole-tree-for-safety-speed-and-use.md#3-each-refresh-looks-every-window-up-in-two-lists-so-a-quiet-turn-costs-as-the-square-of-the-windows)):
       the benchmark first. #102 looked two of them up in maps made anew
       each turn, and was taken back: a window over a framed one no longer
       eased where it was sent, and a turn with nothing changing took as
       long with it as without, measured in an optimised build: 70 µs
-      with 32 framed windows and 0.9 ms with 256.
+      with 32 framed windows and 0.9 ms with 256. The measure is kept, in
+      `quiet.rs`, run by hand. Timed part by part, the two lists were not
+      what grew: Smithay's `map_element`, which searches and sorts what
+      the space holds for each window mapped, was a clean square (2.5 µs
+      at 32 windows, 138 µs at 256); and whether a window is private,
+      asked by its id twice for each, looked for its frame through every
+      workspace. Windows are mapped again only when the space does not
+      hold the scene's, in its order and where each was mapped; and how a
+      frame is hidden is worked out once, from the frame, as the frames
+      are known (`Desktop::hidden`). A turn with nothing changing, framed
+      windows: 66 µs at 32, 0.72 ms at 256; windows drawing their own
+      frames, 57 to 54 µs and 0.70 to 0.52 ms. Nothing tested that a
+      window is told the screen it is on: with the space never mapped
+      again, every test passed. One does now.
+- [ ] What is left of that: three walks still go as the square of the
+      windows, about 0.1 ms at 256 and nothing that shows at 32: the
+      frame looked for by each window, the titlebar painted before looked
+      for by each frame's tabs (`painted`), and, of windows drawing their
+      own frames, whether each that was shown still is (`leave`). The two
+      last are tied by `painted` taking what it finds out of the scene
+      before, which is how #102 went wrong; changed only with a test of a
+      window over a framed one, as #103's.
+- [ ] A turn with nothing changing doing about 2.7 µs of work for each
+      window, as each is eased where it is, its picture's stretch worked
+      out, its titlebar asked whether it looks as it did, its program told
+      how it is placed, and Smithay told which screens it is on: the third
+      priority says no work when nothing changes, measured first.
 - [x] Medium: what is captured is worked out, and written, rectangle by
       rectangle
       ([finding 4](reviews/2026-11-23-the-whole-tree-for-safety-speed-and-use.md#4-what-is-captured-is-worked-out-and-written-rectangle-by-rectangle)):

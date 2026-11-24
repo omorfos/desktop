@@ -2155,8 +2155,7 @@ impl Desktop {
     /// windows as they are now, so a title that comes to match hides one.
     #[must_use]
     pub fn private(&self, id: WindowId) -> bool {
-        let hidden = |private| matches!(private, Some(Private::Blank | Private::Blur));
-        self.said_private(id).any(hidden)
+        self.hidden_with(id) != Private::Not
     }
 
     /// Whether a private window is blurred in pictures taken of the
@@ -2165,19 +2164,33 @@ impl Desktop {
     /// The frame is hidden as much as any window in it is to be.
     #[must_use]
     pub fn blurred(&self, id: WindowId) -> bool {
-        let mut said = self.said_private(id).flatten();
-        let blank = said.clone().any(|private| private == Private::Blank);
-        !blank && said.any(|private| private == Private::Blur)
+        self.hidden_with(id) == Private::Blur
     }
 
-    /// What the rules say of each window in the frame window `id` is in,
-    /// as it is now, of whether it is private.
-    fn said_private(&self, id: WindowId) -> impl Iterator<Item = Option<Private>> + Clone {
+    /// How a frame whose windows are `tabs` is hidden in pictures taken
+    /// of the screen, as [`Desktop::private`] and [`Desktop::blurred`]
+    /// say of each window in it: as much as any of them is to be, a blank
+    /// before a blur. For one that has its frame at hand, as each in
+    /// [`Desktop::frames`] does, without looking for the frame again.
+    #[must_use]
+    pub fn hidden(&self, tabs: &[Window]) -> Private {
+        let said = tabs
+            .iter()
+            .filter_map(|window| resolve(&self.rules, &window.app_id, &window.title).private);
+        said.fold(Private::Not, |most, said| match (most, said) {
+            (Private::Blank, _) | (_, Private::Blank) => Private::Blank,
+            (Private::Blur, _) | (_, Private::Blur) => Private::Blur,
+            (Private::Not, Private::Not) => Private::Not,
+        })
+    }
+
+    /// How the frame window `id` is in is hidden, as [`Desktop::hidden`]
+    /// says; not at all, if it is in none.
+    fn hidden_with(&self, id: WindowId) -> Private {
         let frame = self.locate(id);
         let tabs =
             frame.map(|at| &self.sets[at.set].workspaces[at.workspace].groups[at.group].tabs);
-        let said = |window: &Window| resolve(&self.rules, &window.app_id, &window.title).private;
-        tabs.into_iter().flatten().map(said)
+        tabs.map_or(Private::Not, |tabs| self.hidden(tabs))
     }
 
     /// Every window on every workspace of every output, in the order frames

@@ -26,7 +26,7 @@ use omorfos_config::{
 use omorfos_core::geometry::{Point as DomainPoint, Rect, Size as DomainSize};
 use omorfos_core::{
     Button, Decoration, Desktop, Frame, Home, Item, Mark, Menu, MenuMetrics, Monitor, Place,
-    Screen, Showing, Sign, Standing, System, WindowId, WorkspaceId,
+    Private, Screen, Showing, Sign, Standing, System, WindowId, WorkspaceId,
 };
 use omorfos_ipc::handing::Handing;
 use omorfos_ui::{Area, Seen};
@@ -2659,9 +2659,10 @@ impl Compositor {
             // on.
             let head = self.head_for(frame.geometry);
             let scale = head.map_or(Scale::ONE, |head| head.scale);
+            let hidden = self.desktop.hidden(frame.tabs);
             match frames.get_mut(count) {
-                Some(known) => known.renew(&frame, scale, over),
-                None => frames.push(FrameInfo::of(&frame, scale, over)),
+                Some(known) => known.renew(&frame, (scale, hidden), over),
+                None => frames.push(FrameInfo::of(&frame, (scale, hidden), over)),
             }
             count += 1;
         }
@@ -2738,8 +2739,10 @@ impl Compositor {
                         Chrome::paint(tools, &config.theme, cached, frame, decoration)
                     });
                     let origin = (frame.client.origin.x, frame.client.origin.y).into();
-                    let private = self.desktop.private(*id);
-                    let blurred = self.desktop.blurred(*id);
+                    // As the frame is hidden: looked for again by each
+                    // window's id, it is as the square of the windows.
+                    let private = frame.hidden != Private::Not;
+                    let blurred = frame.hidden == Private::Blur;
                     let seen = presence(motion, &config.theme, (&frame.tabs, *id), sliding);
                     scene.push((
                         order,
@@ -2840,7 +2843,8 @@ impl Compositor {
             })
             .map(|(mapped, frame)| {
                 let scale = self.portrait_head(frame.geometry).map(|head| head.scale);
-                let frame = FrameInfo::of(&frame, scale.unwrap_or(Scale::ONE), over);
+                let hidden = self.desktop.hidden(frame.tabs);
+                let frame = FrameInfo::of(&frame, (scale.unwrap_or(Scale::ONE), hidden), over);
                 (frame, mapped.window.clone(), mapped.surface.clone())
             })
             .collect();
@@ -6529,6 +6533,9 @@ struct FrameInfo {
     shown: WindowId,
     /// The scale of the output most of the frame is on.
     scale: Scale,
+    /// How it is hidden in pictures of the screen, as the rules say of
+    /// the windows in it.
+    hidden: Private,
     geometry: Rect,
     client: Rect,
     maximized: bool,
@@ -6593,20 +6600,26 @@ impl FrameInfo {
         })
     }
 
-    /// What is known of a frame, drawn at `scale`, with the pointer `over`
-    /// a button of some frame's titlebar or of none.
-    fn of(frame: &Frame<'_>, scale: Scale, over: Option<(WindowId, Button)>) -> Self {
-        Self::with((Vec::new(), Vec::new()), frame, scale, over)
+    /// What is known of a frame, `drawn` at a scale and hidden in pictures
+    /// as the rules say, with the pointer `over` a button of some frame's
+    /// titlebar or of none.
+    fn of(frame: &Frame<'_>, drawn: (Scale, Private), over: Option<(WindowId, Button)>) -> Self {
+        Self::with((Vec::new(), Vec::new()), frame, drawn, over)
     }
 
     /// Makes it what [`FrameInfo::of`] would, in the room it has for the
     /// tabs and their titles.
-    fn renew(&mut self, frame: &Frame<'_>, scale: Scale, over: Option<(WindowId, Button)>) {
+    fn renew(
+        &mut self,
+        frame: &Frame<'_>,
+        drawn: (Scale, Private),
+        over: Option<(WindowId, Button)>,
+    ) {
         let room = (
             std::mem::take(&mut self.tabs),
             std::mem::take(&mut self.titles),
         );
-        *self = Self::with(room, frame, scale, over);
+        *self = Self::with(room, frame, drawn, over);
     }
 
     /// What is known of a frame, as [`FrameInfo::of`], with its tabs and
@@ -6614,7 +6627,7 @@ impl FrameInfo {
     fn with(
         (mut tabs, mut titles): (Vec<WindowId>, Vec<String>),
         frame: &Frame<'_>,
-        scale: Scale,
+        (scale, hidden): (Scale, Private),
         over: Option<(WindowId, Button)>,
     ) -> Self {
         tabs.clear();
@@ -6635,6 +6648,7 @@ impl FrameInfo {
             within: frame.within,
             shown,
             scale,
+            hidden,
             geometry: frame.geometry,
             client: frame.client(),
             maximized: frame.maximized,
