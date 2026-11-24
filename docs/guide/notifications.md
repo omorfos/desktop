@@ -9,8 +9,9 @@ notification brings up its tab; a click with the right button dismisses it
 without that. Otherwise it goes after as long as its sender asked for, or
 after `notifications.timeout` seconds. One its sender marked as critical
 stays until it is clicked, unless more than eight of programs' are shown:
-then the oldest goes to make room, one not marked critical while there is
-one, and its program is told it has gone.
+then the oldest of the others goes to make room for the one that has just
+come, one not marked critical while there is one, and its program is told
+it has gone. What has just come is always shown.
 
 Each comes and goes over the theme's `notification` transition, and those
 around it make room for it, or take the room it leaves, by gliding there
