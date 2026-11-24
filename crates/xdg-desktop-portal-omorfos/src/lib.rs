@@ -118,20 +118,27 @@ pub fn start(variable: &dyn Fn(&str) -> Option<OsString>) -> Failure {
     let session = omorfos_shell::connect(&wayland);
     let session = session.map_err(|error| Failure::from(format!("{}: {error}", wayland.display())));
     let (asked, kept_asked) = (config.clone(), kept.clone());
-    let portal = session.and_then(|session| {
+    // The bus joined first, which fails at once where there is none; then
+    // the compositor, and what is watched and read, made ready before the
+    // name is taken on the bus, so that once it is the portal is ready: a
+    // program that asks, or a test that waits for the name, finds it so,
+    // rather than one still starting.
+    let joined = session.and_then(|session| Portal::join(address).map(|bus| (session, bus)));
+    let desk = joined.and_then(|(session, bus)| {
+        let desk = Desk::new(session, Store::open(&config).starting_from(kept.as_deref()));
+        desk.map(|desk| (desk, bus))
+    });
+    let ready = desk.map(|(desk, bus)| ((desk, watching((&config, kept.as_deref()))), bus));
+    let portal = ready.and_then(|(ready, bus)| {
         let keep = keeper(socket.clone());
         let looked = move || look((&asked, kept_asked.as_deref()));
-        let portal = Portal::open(address, Box::new(looked), keep);
-        portal.map(|portal| (portal, session))
-    });
-    let portal = portal.and_then(|(portal, session)| {
-        let desk = Desk::new(session, Store::open(&config).starting_from(kept.as_deref()));
-        desk.map(|desk| (portal, desk))
+        let portal = Portal::with(bus, Box::new(looked), keep);
+        portal.map(|portal| (portal, ready))
     });
     match portal {
-        Ok((portal, desk)) => {
+        Ok((portal, ready)) => {
             let config = (config.as_path(), kept.as_deref());
-            serve(&portal, config, desk, (&folder, remote, entries, socket))
+            serve(&portal, config, ready, (&folder, remote, entries, socket))
         }
         Err(failure) => failure,
     }
@@ -881,22 +888,31 @@ impl Backend<'_> {
     }
 }
 
+/// What the portal watches for the look of the desktop changing, from the
+/// configuration in `config`, starting from what was kept in `kept`: the
+/// configuration, its watcher, and the look it gives now.
+type Watching = (Store, Option<Watcher>, Appearance);
+
+/// Makes ready what [`Watching`] says.
+fn watching((config, kept): (&Path, Option<&Path>)) -> Watching {
+    // A folder that is not there cannot be watched for what is put in it.
+    let _ = fs::create_dir_all(config);
+    // Its own, for the watcher to wake when the scheme may change, if it
+    // goes by the time of day: what it looks is read afresh each time.
+    let store = Store::open(config).starting_from(kept);
+    let watcher = Watcher::of(&store).ok();
+    (store, watcher, look((config, kept)))
+}
+
 /// Answers what waits on the user, keeps what is shared going, and tells
 /// applications when the look of the desktop changes, until the bus or the
 /// session has gone.
 fn serve(
     portal: &Portal,
     (config, kept): (&Path, Option<&Path>),
-    desk: Desk,
+    (desk, (mut store, mut watcher, mut last)): (Desk, Watching),
     (folder, remote, entries, socket): (&Path, Option<String>, Vec<PathBuf>, Option<PathBuf>),
 ) -> Failure {
-    // A folder that is not there cannot be watched for what is put in it.
-    let _ = fs::create_dir_all(config);
-    // Its own, for the watcher to wake when the scheme may change, if it
-    // goes by the time of day: what it looks is read afresh each time.
-    let mut store = Store::open(config).starting_from(kept);
-    let mut watcher = Watcher::of(&store).ok();
-    let mut last = look((config, kept));
     let mut backend = Backend {
         portal,
         desk,

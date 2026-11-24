@@ -4,8 +4,7 @@ What omorfos is to become, in the order it is to be built. Stages are
 worked top to bottom and one at a time; within a stage the order is a
 suggestion. Tick items as they land and keep the "Next" pointer current.
 
-**Next:** what is left of the review of 23 November 2026 (stage 8):
-the portal that is slow to end; then what closes stage 4: the rest of
+**Next:** what closes stage 4: the rest of
 the redesign of windows (ADR 97) and the defaults reviewed together. Stage 5, the bar and the dock, follows, wearing that look.
 What else is left of stages 3 and 4 is known gaps, taken as the code
 beside them is touched. Of what is taken from stage 8 ahead of its turn,
@@ -3441,11 +3440,18 @@ its own. It found one high, five medium and four low findings:
       ([finding 7](reviews/2026-11-23-the-whole-tree-for-safety-speed-and-use.md#7-the-relayed-clipboard-tests-last-assertion-holds-whatever-the-keeper-does)) (#99).
 - [x] Low: three documents said what is not so
       ([finding 8](reviews/2026-11-23-the-whole-tree-for-safety-speed-and-use.md#8-three-documents-said-what-is-not-so)) (#96).
-- [ ] Why the portal sometimes waits more than five seconds to end
+- [x] Why the portal sometimes waits more than five seconds to end
       once the bus has gone, failing
       `it_ends_when_the_bus_does_and_needs_no_configuration_it_can_watch`
       in full runs
       ([seen in passing](reviews/2026-11-23-the-whole-tree-for-safety-speed-and-use.md#seen-in-passing)).
+      It took its name on the bus before most of its starting: joining
+      the compositor, which starts the text and the keyboard's layouts,
+      and loading the configuration and the theme twice. It notices the
+      bus gone only in its loop, after all that, which took over four
+      seconds in 106 of 200 runs sixteen at once. Taking its name last,
+      once ready, none took over four, ten over two; alone it ends in
+      a tenth of a second rather than a quarter.
 - [x] High: a same-user process can make the sealed prompt ask for its
       passphrase
       ([finding 9](reviews/2026-11-23-the-whole-tree-for-safety-speed-and-use.md#9-a-same-user-process-can-make-the-sealed-prompt-ask-for-its-passphrase)):

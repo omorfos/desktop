@@ -282,9 +282,30 @@ impl Portal {
     /// Returns an error if the bus cannot be joined, if another program
     /// already has the name, or if the bus does not answer in time.
     pub fn open(address: Option<&str>, look: Look, keep: Keep) -> Result<Self, Failure> {
+        Self::join(address).and_then(|connection| Self::with(connection, look, keep))
+    }
+
+    /// Joins the bus at `address`, or the session's own if there is none
+    /// given, without taking any name on it yet.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the bus cannot be joined.
+    pub fn join(address: Option<&str>) -> Result<Connection, Failure> {
         let builder = address.map_or_else(Builder::session, Builder::address);
         let builder = builder.map(|builder| builder.max_queued(QUEUED).method_timeout(PATIENCE));
-        let connection = builder.and_then(Builder::build).map_err(Failure::from);
+        builder.and_then(Builder::build).map_err(Failure::from)
+    }
+
+    /// Takes the names on the bus `connection` is joined to, as
+    /// [`Portal::open`] says.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if another program already has the name, or if the
+    /// bus does not answer in time.
+    pub fn with(connection: Connection, look: Look, keep: Keep) -> Result<Self, Failure> {
+        let connection: Result<Connection, Failure> = Ok(connection);
         let pipe = || pipe_with(PipeFlags::CLOEXEC | PipeFlags::NONBLOCK).map_err(Failure::from);
         let pipes = pipe().and_then(|gone| pipe().map(|asking| (gone, asking)));
         let joined = connection.and_then(|connection| pipes.map(|pipes| (connection, pipes)));
