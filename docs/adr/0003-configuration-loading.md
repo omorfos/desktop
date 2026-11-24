@@ -88,7 +88,24 @@ shell, so nothing in a configuration file is subject to shell expansion.
 - The directory itself may be taken away and put back, or be a link
   pointed elsewhere: the directory it is in is watched for its name, and
   the directory watched again wherever its path then leads (finding 2 of
-  the review of 22 November 2026).
+  the review of 22 November 2026). Its going, or its being moved aside,
+  is a change, and what it became is not watched. A link may lead nowhere
+  for a while, as when the directory it points at is made again, and
+  nothing need say when it leads somewhere again: so while it leads
+  nowhere it is tried again each time the watcher is drained, and the
+  watcher wakes of itself once a second meanwhile, so that it is. The
+  compositor drains it every turn of its loop; the bar, the wallpaper,
+  the notifications and the portal sleep until it can be read, and would
+  otherwise stay with the defaults its going left them. It wakes so only
+  where nothing else would say, for a link, or where the directory above
+  may not be watched: a directory that is simply not there, as where
+  nothing was ever configured, wakes nothing, and its name is heard of
+  when it comes (finding 6 of the review of the pull requests merged on
+  23 November 2026).
+- The directory above being replaced, as `~/.config` moved aside and put
+  back, is not seen: both watches stay on what was there before, and an
+  edit is next seen when a program is started again. Seeing it would take
+  watching every directory up to the root.
 - Key names are not yet checked against real keysyms; that needs
   libxkbcommon and arrives with the compositor.
 - `serde-saphyr` brings `encoding_rs` for input decoding, its largest
