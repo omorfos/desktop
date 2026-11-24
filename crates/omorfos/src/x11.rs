@@ -569,14 +569,13 @@ impl Compositor {
     /// it could not be, and why where that is known.
     fn started_x11(&mut self, started: io::Result<(XWayland, Client)>) {
         // Only a start that failed needs to know why, which takes a read of
-        // the kernel's release and a look at the sockets' directory.
-        let said = if started.is_err() {
+        // the kernel's release and a look at the sockets' directory; one
+        // that did not names no problem.
+        let said = started.as_ref().err().map(|_| {
             let release = std::fs::read_to_string(KERNEL).unwrap_or_default();
             cannot_run(std::path::Path::new(SOCKETS), &release)
-        } else {
-            "x11-cannot-run"
-        };
-        let started = self.or_problem(said, started);
+        });
+        let started = self.or_problem(said.unwrap_or_default(), started);
         self.x11.server = started.map(|(process, client)| Server {
             // The loop is woken when the X server says it is ready, which
             // is noticed the next time round.
