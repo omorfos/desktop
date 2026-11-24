@@ -46,13 +46,18 @@ across sessions, where one could be run long after the file it came from was
 changed: a new session loads what is on disk. Each file stands alone, as in
 a reload; a copy is read as any file is, and one that does not load is the
 defaults. The directory is handed to the store by the hardware backend, not
-read from the environment by it, so that tests keep their own. The parts of
-the session the compositor starts and starts again (ADR 28), and the portal
-and the password box, start from the copies too, found from the
-`XDG_RUNTIME_DIR` each is given, but write none: the compositor, which runs
-for as long as they do, is the one that keeps them, and a part that opens
-the configuration each time it is asked, as the portal does, does not write
-files each time.
+read from the environment by it, so that tests keep their own. Every other
+program of the session starts from the copies too: the parts the compositor
+starts and starts again (ADR 28), the portal, the password box, the lock
+screen, the launcher, the screenshot tool and the welcome card. Each finds
+them from the `XDG_RUNTIME_DIR` it is given, by one way in,
+`Store::open_in_session`, or is handed where they are by whoever found them
+so, and writes none: the compositor, which runs for as long as they do, is
+the one that keeps them, and a part that opens the configuration each time
+it is asked, as the portal does, does not write files each time. The
+welcome card shows what is chosen as the copies have it, as the desktop
+behind it goes by them, but saves a choice to the file on disk alone, which
+refuses it while the file does not load.
 
 **Files are capped at 1 MiB**, checked while reading.
 
