@@ -760,6 +760,33 @@ impl Session {
         result.damage.is_some()
     }
 
+    /// Draws a frame on one of the outputs, counted as
+    /// [`Session::draw_on`] counts them, that fails, as one may on a card,
+    /// and returns that it did. The tests' renderer does not fail, so the
+    /// frame is drawn by a damage tracker of an output with no mode.
+    pub(crate) fn fail_to_draw_on(&mut self, index: usize) -> bool {
+        let properties = smithay::output::PhysicalProperties {
+            size: (0, 0).into(),
+            subpixel: smithay::output::Subpixel::Unknown,
+            make: String::new(),
+            model: String::new(),
+        };
+        let modeless = Output::new("modeless".to_owned(), properties);
+        let mut tracker = OutputDamageTracker::from_output(&modeless);
+        let monitor = &mut self.monitors[index];
+        let mut target = self.renderer.bind(&mut monitor.image).unwrap();
+        self.inner
+            .compositor_mut()
+            .render::<_, Drawn>(
+                &monitor.output,
+                &mut self.renderer,
+                &mut target,
+                (&mut tracker, 1),
+                self.frosting.as_deref_mut(),
+            )
+            .is_err()
+    }
+
     /// Draws a frame on one of the outputs, counted in the order they were
     /// added, and returns what is on it.
     pub(crate) fn draw_on(&mut self, index: usize) -> Picture {
