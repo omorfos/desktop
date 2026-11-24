@@ -586,9 +586,11 @@ impl Journal {
             .kept
             .get(&object)
             .is_some_and(|kept| kept.adding.len() >= most);
-        let in_all = self.added >= MOST_ADDED_IN_ALL;
-        if rule == Rule::Adding && (full || in_all) {
+        if rule == Rule::Adding && full {
             return Err(wire::ADDED_TOO_MUCH);
+        }
+        if rule == Rule::Adding && self.added >= MOST_ADDED_IN_ALL {
+            return Err(wire::ADDED_TOO_MUCH_IN_ALL);
         }
         self.name(object, &message.names);
         let dropped = self.kept.get_mut(&object).and_then(|kept| match rule {

@@ -66,9 +66,18 @@ pub const HOLDING_TOO_MANY: Broken = Broken("more descriptors than any program h
 /// More added to one object, as rectangles to a region, than any program
 /// adds.
 pub const ADDED_TOO_MUCH: Broken = Broken("more added to one object than any program adds");
+/// More added to all of a program's objects together than any program
+/// adds, though to none of them too much.
+pub const ADDED_TOO_MUCH_IN_ALL: Broken =
+    Broken("more added to all of its objects than any program adds");
 
 /// What a program breaks by asking the relay to keep more than it does.
-const MORE_THAN_KEPT: [Broken; 3] = [TOO_MANY_DESCRIPTORS, HOLDING_TOO_MANY, ADDED_TOO_MUCH];
+const MORE_THAN_KEPT: [Broken; 4] = [
+    TOO_MANY_DESCRIPTORS,
+    HOLDING_TOO_MANY,
+    ADDED_TOO_MUCH,
+    ADDED_TOO_MUCH_IN_ALL,
+];
 
 /// What a program breaks by naming an object that is not there, or one
 /// that cannot be made: as a sandbox, by one inside one, whose compositor
@@ -363,6 +372,11 @@ pub(crate) mod tests {
             "more held than any program holds"
         );
         assert_eq!(ADDED_TOO_MUCH.code(), 2, "more added than any program adds");
+        assert_eq!(
+            ADDED_TOO_MUCH_IN_ALL.code(),
+            2,
+            "more added in all than any program adds"
+        );
         assert_eq!(SHORT.code(), 1, "what cannot be read");
     }
 
