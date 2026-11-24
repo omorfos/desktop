@@ -179,6 +179,35 @@ fn a_locker_is_told_the_session_is_locked_only_once_nothing_of_it_shows() {
 }
 
 #[test]
+fn a_locked_frame_the_screen_refused_is_not_taken_as_shown() {
+    let (mut session, _app) = busy();
+    let mut locker = session.connect();
+    let lock = locker.lock();
+    let surface = locker.lock_surface(&lock);
+    session.roundtrip(&mut locker);
+    locker.fill(&surface, (WIDTH, HEIGHT), GREEN);
+    session.roundtrip(&mut locker);
+
+    // Drawn, and then refused by the card, as when another virtual
+    // terminal took the screen a moment before we were told: what the
+    // screen shows is still the session.
+    assert_eq!(session.draw().at(50, 50), GREEN);
+    let output = session.output();
+    session.compositor_mut().not_shown(&output);
+    session.send_frames(Duration::from_millis(16));
+    session.roundtrip(&mut locker);
+    assert!(
+        !locker.take_events().contains(&Event::Locked),
+        "the window may still be on the screen"
+    );
+
+    show_frame(&mut session);
+    session.roundtrip(&mut locker);
+    assert_eq!(locker.take_events(), [Event::Locked]);
+    drop(lock);
+}
+
+#[test]
 fn the_lockers_surface_covers_the_screen_and_is_all_that_is_drawn() {
     let mut session = Session::with_config(&[("theme.css", ":root { --accent: nope; }\n")]);
     let mut app = session.connect();

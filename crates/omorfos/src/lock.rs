@@ -338,7 +338,8 @@ impl Compositor {
 
     /// Tells the locker that the session is locked, if it has not been told
     /// and a frame showing nothing of the session has been drawn on every
-    /// output since it asked, or every screen is off.
+    /// output since it asked, and none was then refused, or every screen
+    /// is off.
     pub(crate) fn confirm_lock(&mut self) {
         // A screen that mirrors another shows the session as much as that
         // one does; one that is off shows nothing.
@@ -384,6 +385,18 @@ impl Compositor {
     pub fn screens_turned_off(&mut self) {
         if self.presence.screens == Screens::ToBeOff {
             self.presence.screens = Screens::Off;
+        }
+    }
+
+    /// Says that the last frame drawn for `output` was not shown, as when
+    /// the card refused it, so that a locked frame drawn there does not
+    /// count as showing nothing of the session: what the screen shows is
+    /// what it showed before. The next frame that is drawn counts again.
+    pub fn not_shown(&mut self, output: &Output) {
+        let mirrors = self.aside.mirrors.iter().map(|mirror| &mirror.head);
+        let shown = self.heads.iter().chain(mirrors);
+        for head in shown.filter(|head| head.output == *output) {
+            head.blanked.set(false);
         }
     }
 
