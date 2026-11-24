@@ -17,7 +17,7 @@ use omorfos_config::Action;
 use smithay::reexports::wayland_server::ListeningSocket;
 
 use crate::common::{HEIGHT, Session, WIDTH, key};
-use crate::windows::BACKGROUND;
+use crate::windows::{BACKGROUND, RED};
 
 /// A program that stands in for the card: it leaves a mark, saying what it
 /// was started with, and stays until it is told to go.
@@ -346,6 +346,46 @@ fn the_card_is_drawn_again_for_a_denser_screen_and_done_with_when_its_screen_goe
         !marked.exists(),
         "gone with its screen, it is not marked closed"
     );
+}
+
+#[test]
+fn a_card_started_after_the_theme_went_wrong_is_drawn_as_the_session_kept_it() {
+    let mut session = Session::new();
+    let runtime = session.config.path().to_owned();
+    let socket = ListeningSocket::bind_absolute(runtime.join("wayland-kept")).unwrap();
+    session
+        .inner()
+        .serve(socket, omorfos::Roles::OVERLAY)
+        .unwrap();
+    // The theme went wrong after the compositor last kept it, red.
+    let config = runtime.join(".config/omorfos");
+    std::fs::create_dir_all(&config).unwrap();
+    std::fs::write(config.join("theme.css"), "launcher { color: huge; }\n").unwrap();
+    let kept = runtime.join("omorfos/last-good");
+    std::fs::create_dir_all(&kept).unwrap();
+    let red = "launcher { background: #ff0000; backdrop-filter: none; }\n";
+    std::fs::write(kept.join("theme.css"), red).unwrap();
+    let variables = [
+        ("XDG_RUNTIME_DIR", runtime.clone().into_os_string()),
+        ("WAYLAND_DISPLAY", OsString::from("wayland-kept")),
+        ("HOME", runtime.into_os_string()),
+    ];
+    let card = std::thread::spawn(move || {
+        let variable = |name: &str| {
+            let found = variables.iter().find(|(known, _)| *known == name);
+            found.map(|(_, value)| value.clone())
+        };
+        omorfos_welcome::start(&variable, false).map_err(|failure| failure.to_string())
+    });
+    // The card is centred; inside its left edge, in its padding, is its
+    // background.
+    let (width, _) = omorfos_welcome::Card::size(&omorfos_config::Theme::default());
+    let left = (WIDTH - width.cast_signed()) / 2;
+    session.eventually(|session| session.draw().at(left + 8, HEIGHT / 2) == RED);
+
+    drop(session);
+
+    assert!(card.join().unwrap().is_err());
 }
 
 #[test]
