@@ -68,7 +68,9 @@ pub struct Launcher {
 impl Launcher {
     /// A launcher on the Wayland connection `wayland`, offering `apps` with
     /// their pictures from `icons`, themed and set up from the
-    /// configuration in `config`, reading sums as `numbers`. What is picked
+    /// configuration in `config`, a file of it that does not load as the
+    /// compositor keeps it in `kept`, if that says where, reading sums as
+    /// `numbers`. What is picked
     /// is asked for over `commands`, a connection to the compositor's own
     /// socket.
     ///
@@ -78,7 +80,7 @@ impl Launcher {
     pub fn new(
         wayland: UnixStream,
         commands: Ipc,
-        config: &Path,
+        (config, kept): (&Path, Option<&Path>),
         apps: Vec<App>,
         icons: Icons,
         numbers: Numbers,
@@ -87,7 +89,7 @@ impl Launcher {
         connection.map_err(Failure::from).map(|connection| {
             let queue = connection.new_event_queue();
             connection.display().get_registry(&queue.handle(), ());
-            let store = Store::open(config);
+            let store = Store::open(config).starting_from(kept);
             let config = store.current();
             let picker = Picker::new(apps, config.general.launcher, numbers);
             let mut icons = icons;
@@ -178,11 +180,12 @@ impl Launcher {
 
 /// Runs a launcher offering `apps`, with their pictures from `icons`, in
 /// the session whose Wayland socket is at `wayland` and whose own socket is
-/// at `socket`, themed and set up from `config`, reading sums as `numbers`.
+/// at `socket`, themed and set up from the configuration and what is kept
+/// of it, `config`, reading sums as `numbers`.
 pub(crate) fn run(
     wayland: &Path,
     socket: &Path,
-    config: &Path,
+    config: (&Path, Option<&Path>),
     (apps, icons, numbers): (Vec<App>, Icons, Numbers),
 ) -> Result<(), Failure> {
     let streams = omorfos_shell::connect(wayland);

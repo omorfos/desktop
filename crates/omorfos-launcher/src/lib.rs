@@ -46,7 +46,8 @@ pub const ABOUT: About = About {
 /// that this can be used and tested without touching the environment. The
 /// Wayland socket is `WAYLAND_DISPLAY` in `XDG_RUNTIME_DIR`; the
 /// compositor's own socket and the configuration directory are found as
-/// `omorfosctl` and the compositor find them; programs are looked for
+/// `omorfosctl` and the compositor find them, a file of it that does not
+/// load as the compositor keeps it in `XDG_RUNTIME_DIR`; programs are looked for
 /// where `XDG_DATA_HOME` and `XDG_DATA_DIRS` say, and named in the
 /// language `LANGUAGE`, `LC_ALL`, `LC_MESSAGES` or `LANG` asks for.
 ///
@@ -64,6 +65,7 @@ pub fn start(variable: &dyn Fn(&str) -> Option<OsString>) -> Result<(), Failure>
     let socket = omorfos_ipc::socket_path(socket.as_deref(), runtime, display);
     let config = get("XDG_CONFIG_HOME");
     let config = omorfos_config::config_dir(config.as_deref(), home.as_deref());
+    let kept = omorfos_config::kept_dir(runtime);
     let data = (get("XDG_DATA_HOME"), get("XDG_DATA_DIRS"));
     let (data_home, data_dirs) = (data.0.as_deref(), data.1.as_deref());
     let places = directories(data_home, home.as_deref(), data_dirs);
@@ -75,7 +77,7 @@ pub fn start(variable: &dyn Fn(&str) -> Option<OsString>) -> Result<(), Failure>
             let numeric = omorfos_i18n::locale("LC_NUMERIC", &|name| get(name)?.into_string().ok());
             let numbers = Numbers::of_locale(&numeric.unwrap_or_default());
             let offered = (installed(&places, &locales), Icons::new(icons), numbers);
-            client::run(&wayland, &socket, &config, offered)
+            client::run(&wayland, &socket, (&config, kept.as_deref()), offered)
         }
         None => Err(
             "this is not an omorfos session: XDG_RUNTIME_DIR, WAYLAND_DISPLAY or HOME \
