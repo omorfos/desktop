@@ -165,8 +165,9 @@ pub fn run(
 ///
 /// `variable` looks up an environment variable. The compositor is found
 /// by `XDG_RUNTIME_DIR` and `WAYLAND_DISPLAY`, unless it handed over a
-/// connection; the configuration by `XDG_CONFIG_HOME` and `HOME`; and
-/// the folder for pictures by what `user-dirs.dirs` there says.
+/// connection; the configuration by `XDG_CONFIG_HOME` and `HOME`, a file
+/// of it that does not load as the compositor keeps it in
+/// `XDG_RUNTIME_DIR`; and the folder for pictures by what `user-dirs.dirs` there says.
 ///
 /// # Errors
 ///
@@ -194,7 +195,7 @@ pub fn start(
     let beside = config.parent().map(|above| above.join("user-dirs.dirs"));
     let named = beside.and_then(|file| fs::read_to_string(file).ok());
     let folder = pictures(named.as_deref(), &home).join("Screenshots");
-    let store = Store::open(config);
+    let store = Store::open_in_session(config, get("XDG_RUNTIME_DIR").as_deref());
     let kept = store.current().general.screenshots.destination;
     let kept = told.to.unwrap_or(kept);
     let socket = get("OMORFOS_SOCKET");

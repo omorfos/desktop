@@ -375,6 +375,30 @@ fn the_configuration_says_where_a_picture_goes_when_nothing_else_does() {
 }
 
 #[test]
+fn with_the_configuration_gone_wrong_a_picture_goes_where_the_session_kept_it_going() {
+    let mut session = Session::new();
+    let mut app = session.connect();
+    session.open(&mut app, "app", (200, 100), GREEN);
+    let home = session.config.path().to_owned();
+    // The file went wrong after the compositor last kept it, which says
+    // pictures go to the clipboard alone.
+    std::fs::create_dir_all(home.join(".config/omorfos")).unwrap();
+    std::fs::write(home.join(".config/omorfos/config.yaml"), "screenshots: [\n").unwrap();
+    let kept = home.join("omorfos/last-good");
+    std::fs::create_dir_all(&kept).unwrap();
+    let config = "screenshots: { destination: clipboard }\n";
+    std::fs::write(kept.join("config.yaml"), config).unwrap();
+
+    let tool = start(&mut session, BOTH, &[]);
+    assert_eq!(pasted(&mut session, &mut app, (10, 10)), GREEN);
+    app.copy("something else");
+    session.roundtrip(&mut app);
+    let paths = finish(&mut session, tool).unwrap();
+    assert_eq!(paths, Vec::<PathBuf>::new());
+    assert!(!home.join("Pictures").exists(), "and nothing was saved");
+}
+
+#[test]
 fn without_leave_to_set_the_clipboard_it_says_how_it_could_be_let() {
     let mut session = Session::new();
     let tool = start_with(&mut session, Roles::CAPTURE, &[], &["--to", "clipboard"]);
