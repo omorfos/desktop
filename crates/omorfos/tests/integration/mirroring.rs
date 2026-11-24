@@ -171,6 +171,32 @@ fn a_locked_session_is_hidden_on_a_mirror_before_it_is_said_to_be_locked() {
 }
 
 #[test]
+fn a_locked_frame_that_failed_to_draw_on_a_mirror_is_not_taken_as_shown() {
+    let mut session = Session::with_config(&[("config.yaml", MIRRORED)]);
+    session.add_output((WIDTH, HEIGHT));
+    let mut locker = session.connect();
+    let lock = locker.lock();
+    let surface = locker.lock_surface(&lock);
+    session.roundtrip(&mut locker);
+    locker.fill(&surface, (WIDTH, HEIGHT), GREEN);
+    session.roundtrip(&mut locker);
+    session.draw();
+    assert!(session.fail_to_draw_on(1));
+    session.send_frames(Duration::from_millis(16));
+    session.roundtrip(&mut locker);
+    assert!(
+        !locker.take_events().contains(&Event::Locked),
+        "the mirror may still show the session"
+    );
+
+    session.draw_on(1);
+    session.send_frames(Duration::from_millis(32));
+    session.roundtrip(&mut locker);
+    assert!(locker.take_events().contains(&Event::Locked));
+    drop(lock);
+}
+
+#[test]
 fn a_locked_frame_a_mirror_refused_is_not_taken_as_shown() {
     let mut session = Session::with_config(&[("config.yaml", MIRRORED)]);
     let mirror = session.add_output((WIDTH, HEIGHT));

@@ -179,6 +179,31 @@ fn a_locker_is_told_the_session_is_locked_only_once_nothing_of_it_shows() {
 }
 
 #[test]
+fn a_locked_frame_that_failed_to_draw_is_not_taken_as_shown() {
+    let (mut session, _app) = busy();
+    let mut locker = session.connect();
+    let lock = locker.lock();
+    let surface = locker.lock_surface(&lock);
+    session.roundtrip(&mut locker);
+    locker.fill(&surface, (WIDTH, HEIGHT), GREEN);
+    session.roundtrip(&mut locker);
+
+    // A frame that failed may leave the last of the session on the screen.
+    assert!(session.fail_to_draw_on(0));
+    session.send_frames(Duration::from_millis(16));
+    session.roundtrip(&mut locker);
+    assert!(
+        !locker.take_events().contains(&Event::Locked),
+        "the window may still be on the screen"
+    );
+
+    show_frame(&mut session);
+    session.roundtrip(&mut locker);
+    assert_eq!(locker.take_events(), [Event::Locked]);
+    drop(lock);
+}
+
+#[test]
 fn a_locked_frame_the_screen_refused_is_not_taken_as_shown() {
     let (mut session, _app) = busy();
     let mut locker = session.connect();
