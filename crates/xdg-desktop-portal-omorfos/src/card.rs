@@ -108,13 +108,14 @@ impl Card {
 }
 
 /// What the compositor is to know memory by: memory of the card, in the
-/// `layout` agreed, through `cards`; or what `otherwise` names it.
+/// `layout` agreed, through `cards`; or what `otherwise` names it, if
+/// anything does.
 pub(crate) fn name<D>(
     (cards, handle): (Option<&ZwpLinuxDmabufV1>, &QueueHandle<D>),
     memory: &Memory,
     ((width, height), layout): ((u32, u32), Option<u64>),
-    otherwise: impl FnOnce() -> WlBuffer,
-) -> WlBuffer
+    otherwise: impl FnOnce() -> Option<WlBuffer>,
+) -> Option<WlBuffer>
 where
     D: wayland_client::Dispatch<
             wayland_protocols::wp::linux_dmabuf::zv1::client::zwp_linux_buffer_params_v1::ZwpLinuxBufferParamsV1,
@@ -140,8 +141,5 @@ where
         params.destroy();
         named
     });
-    match card {
-        Some(named) => named,
-        None => otherwise(),
-    }
+    card.or_else(otherwise)
 }
