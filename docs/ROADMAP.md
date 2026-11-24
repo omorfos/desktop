@@ -21,13 +21,6 @@ the maintainer. An agent starting work reminds them of what is here, and
 an item goes once it has been tried: what was wrong goes to its stage as
 a known gap.
 
-- The bar's month and its other popovers (stage 4, #119): opened over a
-  window, what is behind the month is blurred, the bar's edge and the
-  window under it among it, and its corners are rounded with the glass
-  cut to them; it fades in and out over the popover's time, its glass
-  with it. A program's menu that asks for blur, as one of KDE's does,
-  has what is behind it blurred, and none in the shadow it draws round
-  itself. With "Reduce transparency" on, the month is solid.
 ## Where this is going
 
 omorfos is small, fast and driven by text files, but what is being asked
