@@ -337,6 +337,53 @@ fn the_lock_screen_runs_by_itself_in_the_session_it_is_started_in() {
 }
 
 #[test]
+fn the_lock_screen_started_after_the_configuration_went_wrong_honours_what_the_session_kept() {
+    let mut session = Session::new();
+    let runtime = session.config.path().to_owned();
+    let socket = ListeningSocket::bind_absolute(runtime.join("wayland-lock")).unwrap();
+    session.inner().serve(socket, omorfos::Roles::LOCK).unwrap();
+    // The files went wrong after the compositor last kept them, with only
+    // the password to unlock by and the screen behind red. Their defaults
+    // would offer a finger as well, and one is on the reader all along.
+    let config = runtime.join("omorfos");
+    let kept = config.join("last-good");
+    std::fs::create_dir_all(&kept).unwrap();
+    std::fs::write(config.join("config.yaml"), "lock: [\n").unwrap();
+    std::fs::write(config.join("theme.css"), "desktop { color: huge; }\n").unwrap();
+    let only = "lock: { fingerprint: false, key: false }\n";
+    std::fs::write(kept.join("config.yaml"), only).unwrap();
+    std::fs::write(kept.join("theme.css"), "desktop { background: #ff0000; }\n").unwrap();
+    let there = tempfile::TempDir::new().unwrap();
+    std::fs::write(there.path().join("finger"), "").unwrap();
+    let user = omorfos_lock::who("", 0, Some(there.path().as_os_str()), None);
+    let running = std::thread::spawn(move || {
+        let runtime = Some(runtime.as_os_str());
+        let display = Some(std::ffi::OsStr::new("wayland-lock"));
+        omorfos_lock::start((runtime, display), (runtime, None), (helper(), user))
+            .map_err(|failure| failure.to_string())
+    });
+    session.eventually(|session| {
+        let picture = session.draw();
+        session.compositor().is_locked() && picture.at(2, 2) == RED
+    });
+    // As long as a finger would take to be read, and longer.
+    for _ in 0..100 {
+        session.step();
+        session.draw();
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    assert!(session.compositor().is_locked(), "a finger does not unlock");
+    session.eventually(|session| {
+        session.draw();
+        typed(session, &EMPTIED);
+        typed(session, &[key::A, key::T, key::X, key::RETURN]);
+        !session.compositor().is_locked()
+    });
+    session.eventually(|_| running.is_finished());
+    assert_eq!(running.join().unwrap(), Ok(()));
+}
+
+#[test]
 fn a_helper_that_cannot_be_started_leaves_the_session_locked() {
     let mut session = Session::new();
     let (ours, theirs) = UnixStream::pair().unwrap();
