@@ -309,8 +309,10 @@ area() {
         fi
     done
     [ ${#crates[@]} -eq 0 ] || step cargo test --all-features --locked "${crates[@]}"
-    [ ${#tests[@]} -eq 0 ] ||
+    [ ${#tests[@]} -eq 0 ] || {
+        pinentry
         step tested cargo test -p omorfos --all-features --locked --test integration -- "${tests[@]}"
+    }
 }
 
 # The crates a change from `from` to `to`, two trees or commits, can
@@ -342,6 +344,15 @@ commit() {
     reaching "$crates"
 }
 
+# The integration tests of `omorfos` start `omorfos-pinentry` from beside
+# their own binary, which `cargo test -p omorfos` does not build: only a
+# test of the whole workspace does. Built first wherever they are run
+# alone, so that a build folder with nothing in it fails no test of
+# `ask::` for want of it.
+pinentry() {
+    step cargo build --all-features --locked -p omorfos-ask --bin omorfos-pinentry
+}
+
 # Once, without the coverage gate, the tests of what `reached` said: each
 # crate, one of a crate's tests where that is all a path is read by, and
 # the checks of the scripts and of the workflows.
@@ -365,7 +376,15 @@ reaching() {
             scripts) scripts ;;
             workflows) workflows ;;
             *:lib) step tested cargo test --all-features --locked -p "${word%:lib}" --lib ;;
+            omorfos:integration)
+                pinentry
+                step tested cargo test --all-features --locked -p omorfos --test integration
+                ;;
             *:*) step tested cargo test --all-features --locked -p "${word%%:*}" --test "${word#*:}" ;;
+            omorfos)
+                pinentry
+                crates+=(-p "$word")
+                ;;
             *) crates+=(-p "$word") ;;
         esac
     done
