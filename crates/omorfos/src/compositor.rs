@@ -4379,6 +4379,12 @@ impl Compositor {
         // geometry, where it draws its own shadows.
         let location = shown.origin - surfaces::proper(&shown.window).loc;
         let rounded = shown.chrome.as_ref().filter(|chrome| chrome.radius > 0);
+        // Pop-ups reach beyond the frame and are not cut to it, nor
+        // stretched with the window, as they are placed by where it is.
+        if !alone {
+            let placed = (shown.origin, view, shown.seen.opacity);
+            popup_elements(renderer, &shown.surface, placed, elements, &mut noting);
+        }
         let first = elements.len();
         let Some(chrome) = rounded else {
             let at = view.pixel(location.to_f64());
@@ -4400,7 +4406,9 @@ impl Compositor {
                     }
                 }
             } else {
-                let surfaces = surfaces::of(renderer, &shown.window, at, scale, opacity);
+                let kind = Kind::Unspecified;
+                let surfaces: Vec<WaylandSurfaceRenderElement<R>> =
+                    surfaces::tree(renderer, &shown.surface, at, scale, opacity, kind);
                 for surface in &surfaces {
                     noting.add(surface, noting.paint(surface.texture()));
                 }
@@ -4412,25 +4420,7 @@ impl Compositor {
             self.animation.note(&shown.surface, noting.done());
             return;
         };
-        // Pop-ups reach beyond the frame and are not cut to it.
-        let popups = PopupManager::popups_for_surface(&shown.surface);
-        for (popup, offset) in popups.filter(|_| !alone) {
-            let at = location + surfaces::proper(&shown.window).loc + offset - popup.geometry().loc;
-            let picture: Vec<WaylandSurfaceRenderElement<R>> = surfaces::tree(
-                renderer,
-                popup.wl_surface(),
-                view.pixel(at.to_f64()),
-                scale,
-                shown.seen.opacity,
-                Kind::Unspecified,
-            );
-            for surface in &picture {
-                noting.add(surface, noting.paint(surface.texture()));
-            }
-            elements.extend(picture.into_iter().map(Element::Surface));
-        }
         // What lands on each strip of the frame, once stretched.
-        let first = elements.len();
         let strips = chrome.cut(view);
         let cut = strips.iter().map(|area| {
             let by = shown.stretch.map_or((1.0, 1.0), |stretched| stretched.by);
@@ -4538,18 +4528,30 @@ impl Compositor {
                 // is drawn from is noted, to fade it out by when it goes.
                 let mut known = self.animation.layers.iter();
                 let known = known.find(|known| known.surface == *surface.wl_surface());
-                let surfaces = surfaces::of(
-                    renderer,
-                    surface,
-                    view.pixel(at.to_f64()),
-                    view.scale.factor(),
-                    known.map_or(1.0, |known| known.seen.opacity),
+                let opacity = known.map_or(1.0, |known| known.seen.opacity);
+                let faded = known.filter(|known| fades(known.part));
+                let mut noting = faded.map_or_else(
+                    || Noting::new(false, view.origin, view.scale.factor()),
+                    |known| self.noting(view, known.part),
                 );
-                if let Some(known) = known.filter(|known| fades(known.part)) {
-                    let mut noting = self.noting(view, known.part);
-                    for surface in &surfaces {
-                        noting.add(surface, noting.paint(surface.texture()));
-                    }
+                // Its pop-ups over it, as a window's are.
+                let placed = (at, view, opacity);
+                popup_elements(
+                    renderer,
+                    surface.wl_surface(),
+                    placed,
+                    elements,
+                    &mut noting,
+                );
+                let kind = Kind::Unspecified;
+                let pixel = view.pixel(at.to_f64());
+                let scale = view.scale.factor();
+                let surfaces: Vec<WaylandSurfaceRenderElement<R>> =
+                    surfaces::tree(renderer, surface.wl_surface(), pixel, scale, opacity, kind);
+                for surface in &surfaces {
+                    noting.add(surface, noting.paint(surface.texture()));
+                }
+                if let Some(known) = faded {
                     self.animation.note(&known.surface, noting.done());
                 }
                 elements.extend(surfaces.into_iter().map(Element::Surface));
@@ -6078,6 +6080,33 @@ impl Painted {
 /// too, and begins further left or up than the surface when one of them
 /// reaches out past it, as a line of text wider than the screen does: taken
 /// for where the surface is, it put all of it that much out of place.
+/// Adds the pop-ups of `root`, topmost first, a menu opened from a menu
+/// before the one it came from, each placed from `proper`, where in the
+/// space `root`'s window proper begins, as `view` draws them at `opacity`,
+/// and noted as `noting` says.
+fn popup_elements<R>(
+    renderer: &mut R,
+    root: &WlSurface,
+    (proper, view, opacity): (Point<i32, Logical>, View, f32),
+    elements: &mut Vec<Element<R>>,
+    noting: &mut Noting<R::TextureId>,
+) where
+    R: Renderer + ImportAll + ImportMem,
+    R::TextureId: Clone + Texture + Send + 'static,
+{
+    let scale = view.scale.factor();
+    for (popup, offset) in PopupManager::popups_for_surface(root) {
+        let at = view.pixel((proper + offset - popup.geometry().loc).to_f64());
+        let kind = Kind::Unspecified;
+        let picture: Vec<WaylandSurfaceRenderElement<R>> =
+            surfaces::tree(renderer, popup.wl_surface(), at, scale, opacity, kind);
+        for surface in &picture {
+            noting.add(surface, noting.paint(surface.texture()));
+        }
+        elements.extend(picture.into_iter().map(Element::Surface));
+    }
+}
+
 pub(crate) fn layer_origin(layers: &LayerMap, layer: &LayerSurface) -> Point<i32, Logical> {
     let all = layers.layer_geometry(layer).unwrap_or_default();
     all.loc - layer.bbox().loc

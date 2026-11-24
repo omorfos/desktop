@@ -2052,6 +2052,32 @@ impl Client {
         (popup, positioner)
     }
 
+    /// Creates a popup of `parent`, the `xdg_surface` of a window or of
+    /// another popup, as a submenu is of its menu, and makes its initial
+    /// commit: its surface, its `xdg_surface` and the popup.
+    pub(crate) fn popup_of(
+        &self,
+        parent: &xdg_surface::XdgSurface,
+        position: (i32, i32),
+        size: (i32, i32),
+    ) -> (
+        wl_surface::WlSurface,
+        xdg_surface::XdgSurface,
+        xdg_popup::XdgPopup,
+    ) {
+        let wm_base = self.state.wm_base.as_ref().unwrap();
+        let positioner = wm_base.create_positioner(&self.handle(), ());
+        positioner.set_size(size.0, size.1);
+        positioner.set_anchor_rect(position.0, position.1, 1, 1);
+        positioner.set_anchor(xdg_positioner::Anchor::TopLeft);
+        positioner.set_gravity(xdg_positioner::Gravity::BottomRight);
+        let surface = self.surface();
+        let xdg_surface = wm_base.get_xdg_surface(&surface, &self.handle(), ());
+        let popup = xdg_surface.get_popup(Some(parent), &positioner, &self.handle(), ());
+        surface.commit();
+        (surface, xdg_surface, popup)
+    }
+
     /// Creates a popup on a layer-shell surface, such as a panel's menu,
     /// and makes its initial commit.
     pub(crate) fn layer_popup(

@@ -212,6 +212,36 @@ fn nested_menus_are_dismissed_together() {
 }
 
 #[test]
+fn a_menu_opened_from_a_menu_is_drawn_over_it_and_both_over_the_window() {
+    let mut session = Session::new();
+    let mut client = session.connect();
+    let window = session.open(&mut client, "app", (200, 100), RED);
+    let (menu, menu_xdg, _menu) = client.popup_of(&window.xdg_surface, (10, 20), (60, 40));
+    session.roundtrip(&mut client);
+    client.fill(&menu, (60, 40), GREEN);
+    session.roundtrip(&mut client);
+    // A submenu from the menu's right edge, partly over it.
+    let (submenu, _, _submenu) = client.popup_of(&menu_xdg, (50, 10), (60, 40));
+    session.roundtrip(&mut client);
+    client.fill(&submenu, (60, 40), BLUE);
+    session.roundtrip(&mut client);
+    session.roundtrip(&mut client);
+
+    let frame = session.compositor().desktop().frames().next().unwrap();
+    let origin = frame.client().origin;
+    let at = |x: i32, y: i32| (origin.x + x, origin.y + y);
+    let picture = session.draw();
+    let (x, y) = at(15, 25);
+    assert_eq!(picture.at(x, y), GREEN, "the menu, over the window");
+    let (x, y) = at(65, 35);
+    assert_eq!(picture.at(x, y), BLUE, "the submenu, over the menu");
+    let (x, y) = at(115, 60);
+    assert_eq!(picture.at(x, y), BLUE, "and over the window beyond it");
+    let (x, y) = at(150, 90);
+    assert_eq!(picture.at(x, y), RED, "the window, where neither is");
+}
+
+#[test]
 fn a_panels_menu_is_shown_and_dismissed_like_any_other() {
     let mut session = Session::new();
     let mut client = session.connect();
