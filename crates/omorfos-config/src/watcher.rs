@@ -17,6 +17,10 @@ use rustix::time::{
 
 use crate::{FILES, Store};
 
+/// How long the watcher waits before it has a directory whose path leads
+/// nowhere looked for again, where nothing would say it leads somewhere.
+const LOOKS_AGAIN: Duration = Duration::from_secs(1);
+
 /// Watches the configuration directory for changes to its files.
 ///
 /// The watcher is a file descriptor that becomes readable when something in
@@ -32,9 +36,19 @@ use crate::{FILES, Store};
 /// itself is replaced, not when its target is edited in place.
 ///
 /// The directory itself may be taken away and put back, as a backup is
-/// restored, or be a link pointed elsewhere, as home-manager does: the
-/// directory it is in is watched for its name, and it is watched again
-/// wherever its path then leads.
+/// restored, moved aside, or be a link pointed elsewhere, as home-manager
+/// does, or one to a directory that is itself taken away or moved and made
+/// again: the directory it is in is watched for its name, and it is
+/// watched again wherever its path then leads. Its going is a change, and
+/// what it became, if it was moved, is not watched; while its path leads
+/// nowhere it is tried again at each [`Watcher::drain`], and its coming
+/// back is a change too. Where nothing would say that it has come back,
+/// as nothing does of a link, whose name stays as it was, the watcher
+/// becomes readable of itself every second meanwhile, so that what sleeps
+/// until it is drains it, and so looks again.
+///
+/// The directory above it being replaced, as `~/.config` moved aside and
+/// put back, is not seen: both are still watched where they were.
 ///
 /// It also wakes when it is told to, as though a file had changed: when the
 /// scheme goes by the time of day, at the time it may change.
@@ -42,15 +56,20 @@ use crate::{FILES, Store};
 pub struct Watcher {
     inotify: Inotify,
     buffer: Vec<u8>,
-    /// The directory, and what watches it, made again when it comes back.
+    /// The directory, and what watches it, made again when it comes back:
+    /// none while its path leads nowhere.
     directory: PathBuf,
-    watched: WatchDescriptor,
+    watched: Option<WatchDescriptor>,
     /// What watches the directory it is in, for its name coming and going,
     /// if that may be watched.
     parent: Option<WatchDescriptor>,
     /// Readable once the time it was told to wake at has come.
     timer: OwnedFd,
-    /// Readable when either of them is.
+    /// Readable once it is time to look again for a directory whose path
+    /// leads nowhere, and how long it waits before that.
+    looking: OwnedFd,
+    looks_again: Duration,
+    /// Readable when any of them is.
     either: OwnedFd,
 }
 
@@ -83,27 +102,35 @@ impl Watcher {
                 // set, as after a suspend, for the time to be asked anew.
                 let flags = TimerfdFlags::NONBLOCK | TimerfdFlags::CLOEXEC;
                 let timer = timerfd_create(TimerfdClockId::Realtime, flags);
+                // Looked for again by how long has passed, whatever the
+                // clock on the wall is set to meanwhile.
+                let looking = timerfd_create(TimerfdClockId::Monotonic, flags);
+                let timers = timer.and_then(|timer| looking.map(|looking| (timer, looking)));
                 let either = epoll::create(epoll::CreateFlags::CLOEXEC);
-                let both = timer.and_then(|timer| {
+                let all = timers.and_then(|(timer, looking)| {
                     either.and_then(|either| {
                         let readable = epoll::EventFlags::IN;
-                        let first = epoll::EventData::new_u64(0);
-                        let second = epoll::EventData::new_u64(1);
-                        let added = epoll::add(&either, &inotify, first, readable);
+                        let numbered = epoll::EventData::new_u64;
+                        let added = epoll::add(&either, &inotify, numbered(0), readable);
                         let added =
-                            added.and_then(|()| epoll::add(&either, &timer, second, readable));
-                        added.map(|()| (timer, either))
+                            added.and_then(|()| epoll::add(&either, &timer, numbered(1), readable));
+                        let added = added
+                            .and_then(|()| epoll::add(&either, &looking, numbered(2), readable));
+                        added.map(|()| (timer, looking, either))
                     })
                 });
-                both.map_err(io::Error::from).map(|(timer, either)| Self {
-                    inotify,
-                    buffer,
-                    directory: directory.to_owned(),
-                    watched,
-                    parent,
-                    timer,
-                    either,
-                })
+                all.map_err(io::Error::from)
+                    .map(|(timer, looking, either)| Self {
+                        inotify,
+                        buffer,
+                        directory: directory.to_owned(),
+                        watched: Some(watched),
+                        parent,
+                        timer,
+                        looking,
+                        looks_again: LOOKS_AGAIN,
+                        either,
+                    })
             })
         })
     }
@@ -171,10 +198,13 @@ impl Watcher {
 
     /// Consumes all pending events without blocking.
     ///
-    /// Returns `true` if any of them concerned a configuration file, or it
-    /// is the time it was told to wake at, meaning a reload is worthwhile.
-    /// Changes to other files in the directory, such as editor swap files,
-    /// are ignored.
+    /// Returns `true` if any of them concerned a configuration file, or
+    /// the directory itself came, went or was moved, or it came back after
+    /// its path led nowhere, or it is the time it was told to wake at,
+    /// meaning a reload is worthwhile. Changes to other files in the
+    /// directory, such as editor swap files, are ignored, and so is its
+    /// having been time to look for the directory again where it was not
+    /// found.
     ///
     /// # Errors
     ///
@@ -191,13 +221,24 @@ impl Watcher {
                         again |= parent && event.name == self.directory.file_name();
                         // The directory gone, or moved, and its watch with it.
                         let gone = EventMask::IGNORED | EventMask::MOVE_SELF;
-                        again |= event.wd == self.watched && event.mask.intersects(gone);
+                        let own = self.watched.as_ref() == Some(&event.wd);
+                        again |= own && event.mask.intersects(gone);
+                        // Its going may be among what the kernel dropped.
+                        again |= event.mask.contains(EventMask::Q_OVERFLOW);
                         changed |= !parent && is_relevant(event.mask, event.name);
                     }
                 }
                 Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
-                    let back = again && self.watch_again();
-                    return Ok(changed | back | self.rang());
+                    // Tried again until its path leads somewhere, as nothing
+                    // may say when it does: a link's name stays as it was.
+                    let lost = self.watched.is_none();
+                    let back = (again || lost) && self.watch_again();
+                    // Only then: a turn with nothing changed asks the
+                    // kernel nothing more for it.
+                    if again || lost {
+                        self.look_again();
+                    }
+                    return Ok(changed | again | back | self.rang());
                 }
                 Err(error) => return Err(error),
             }
@@ -205,16 +246,42 @@ impl Watcher {
     }
 
     /// Watches the directory again, wherever its path now leads, and lets
-    /// go of what watched it before if that was another. Returns whether
-    /// it is there to be watched, and so is to be loaded again.
+    /// go of what watched it before if that was another, or if it leads
+    /// nowhere: what was moved aside is no longer it. Returns whether it is
+    /// there to be watched, and so is to be loaded again.
     fn watch_again(&mut self) -> bool {
-        let watched = self.inotify.watches().add(&self.directory, mask());
-        watched.is_ok_and(|watched| {
-            let before = replace(&mut self.watched, watched);
-            let elsewhere = before != self.watched;
-            let _ = elsewhere.then(|| self.inotify.watches().remove(before));
-            true
-        })
+        let watched = self.inotify.watches().add(&self.directory, mask()).ok();
+        let before = replace(&mut self.watched, watched);
+        let other = before.filter(|before| self.watched.as_ref() != Some(before));
+        let _ = other.map(|before| self.inotify.watches().remove(before));
+        self.watched.is_some()
+    }
+
+    /// Has the watcher become readable in a while, for the directory to be
+    /// looked for again by whoever drains it then, if its path leads
+    /// nowhere and nothing would say when it leads somewhere: its name is
+    /// a link's, which stays as it was while what it leads to comes back,
+    /// or the directory it is in is not watched. Not otherwise, nor once it
+    /// is found: a name that comes back where it is watched for is heard
+    /// of, and nothing wakes to look for it.
+    fn look_again(&mut self) {
+        // Whether or not it was time yet, it has just been looked for.
+        let mut count = [0; 8];
+        let _rang = rustix::io::read(&self.looking, &mut count);
+        let named = std::fs::symlink_metadata(&self.directory);
+        let link = named.is_ok_and(|named| named.is_symlink());
+        let unheard = self.parent.is_none() | link;
+        let wait = (self.watched.is_none() & unheard).then_some(self.looks_again);
+        // To the kernel no time at all is not to wake.
+        let wait = wait.unwrap_or_default();
+        let when = Itimerspec {
+            it_interval: Timespec::default(),
+            it_value: Timespec {
+                tv_sec: i64::try_from(wait.as_secs()).unwrap_or(i64::MAX),
+                tv_nsec: i64::from(wait.subsec_nanos()),
+            },
+        };
+        let _told = timerfd_settime(&self.looking, TimerfdTimerFlags::empty(), &when);
     }
 }
 
@@ -359,6 +426,168 @@ mod tests {
         assert!(changed(&mut watcher), "where it leads now is watched");
         fs::write(before.join("keys.yaml"), "").unwrap();
         assert!(!changed(&mut watcher), "and where it led is not");
+    }
+
+    #[test]
+    fn a_directory_that_is_a_link_whose_directory_is_made_again_is_watched_again() {
+        let parent = TempDir::new().unwrap();
+        // Elsewhere, as in a checkout of dotfiles: nothing of it is heard
+        // by what watches the directory the link is in.
+        let elsewhere = TempDir::new().unwrap();
+        let target = elsewhere.path().join("omorfos");
+        fs::create_dir(&target).unwrap();
+        let directory = parent.path().join("omorfos");
+        std::os::unix::fs::symlink(&target, &directory).unwrap();
+        let mut watcher = Watcher::new(&directory).unwrap();
+
+        fs::remove_dir(&target).unwrap();
+        assert!(changed(&mut watcher), "it is gone, to be loaded");
+        assert!(!changed(&mut watcher), "and still gone");
+        fs::create_dir(&target).unwrap();
+        assert!(changed(&mut watcher), "made again, it is to be loaded");
+        assert!(!changed(&mut watcher));
+        fs::write(target.join("config.yaml"), "").unwrap();
+        assert!(changed(&mut watcher), "and is watched again");
+    }
+
+    /// A link, in a directory of its own, to a directory elsewhere, as in
+    /// a checkout of dotfiles, and a watcher of it that looks again soon.
+    fn linked() -> (TempDir, TempDir, PathBuf, Watcher) {
+        let parent = TempDir::new().unwrap();
+        let elsewhere = TempDir::new().unwrap();
+        let target = elsewhere.path().join("omorfos");
+        fs::create_dir(&target).unwrap();
+        let directory = parent.path().join("omorfos");
+        std::os::unix::fs::symlink(&target, &directory).unwrap();
+        let mut watcher = Watcher::new(&directory).unwrap();
+        watcher.looks_again = Duration::from_millis(20);
+        (parent, elsewhere, target, watcher)
+    }
+
+    #[test]
+    fn a_link_whose_directory_has_gone_is_looked_for_again_without_being_drained() {
+        let (_parent, _elsewhere, target, mut watcher) = linked();
+
+        fs::remove_dir(&target).unwrap();
+        assert!(changed(&mut watcher), "it is gone, to be loaded");
+        // Nothing says when a link leads somewhere again, so what sleeps
+        // until the watcher can be read is woken to look.
+        assert!(readable(&watcher, 5000), "woken to look again");
+        assert!(!changed(&mut watcher), "still gone, which is no change");
+        fs::create_dir(&target).unwrap();
+        assert!(readable(&watcher, 5000), "and woken again");
+        assert!(changed(&mut watcher), "made again, it is to be loaded");
+        // Found, it is looked for no longer, and heard of as it was.
+        assert!(!readable(&watcher, 200), "nothing wakes for it now");
+        fs::write(target.join("config.yaml"), "").unwrap();
+        assert!(readable(&watcher, 5000));
+        assert!(changed(&mut watcher), "and it is watched again");
+    }
+
+    #[test]
+    fn a_directory_gone_whose_name_would_be_heard_of_is_not_looked_for_again() {
+        let parent = TempDir::new().unwrap();
+        let directory = parent.path().join("omorfos");
+        fs::create_dir(&directory).unwrap();
+        let mut watcher = Watcher::new(&directory).unwrap();
+        watcher.looks_again = Duration::from_millis(20);
+
+        // The directory it is in says when the name is back: nothing wakes
+        // to look meanwhile, however long there is no configuration.
+        fs::remove_dir(&directory).unwrap();
+        assert!(changed(&mut watcher), "it is gone, to be loaded");
+        assert!(!readable(&watcher, 200), "nothing wakes for it");
+        // Nor for a file put where it was, which is no link.
+        fs::write(&directory, "").unwrap();
+        assert!(changed(&mut watcher));
+        assert!(!readable(&watcher, 200), "nor for what is no link");
+        fs::remove_file(&directory).unwrap();
+        fs::create_dir(&directory).unwrap();
+        assert!(readable(&watcher, 5000), "its name is heard of");
+        assert!(changed(&mut watcher), "put back, it is to be loaded");
+    }
+
+    #[test]
+    fn a_directory_gone_from_one_that_is_not_watched_is_looked_for_again() {
+        let parent = TempDir::new().unwrap();
+        let directory = parent.path().join("omorfos");
+        fs::create_dir(&directory).unwrap();
+        let mut watcher = Watcher::new(&directory).unwrap();
+        watcher.looks_again = Duration::from_millis(20);
+        // As where the directory it is in may not be read.
+        let above = watcher.parent.take().unwrap();
+        watcher.inotify.watches().remove(above).unwrap();
+
+        fs::remove_dir(&directory).unwrap();
+        assert!(changed(&mut watcher), "it is gone, to be loaded");
+        assert!(readable(&watcher, 5000), "woken to look again");
+        assert!(!changed(&mut watcher), "still gone");
+        fs::create_dir(&directory).unwrap();
+        assert!(readable(&watcher, 5000), "and woken again");
+        assert!(changed(&mut watcher), "made again, it is to be loaded");
+        assert!(!readable(&watcher, 200), "and looked for no longer");
+    }
+
+    #[test]
+    fn a_directory_that_is_a_link_whose_directory_is_renamed_away_is_let_go_of() {
+        let parent = TempDir::new().unwrap();
+        let elsewhere = TempDir::new().unwrap();
+        let target = elsewhere.path().join("omorfos");
+        let aside = elsewhere.path().join("omorfos.aside");
+        fs::create_dir(&target).unwrap();
+        let directory = parent.path().join("omorfos");
+        std::os::unix::fs::symlink(&target, &directory).unwrap();
+        let mut watcher = Watcher::new(&directory).unwrap();
+
+        fs::rename(&target, &aside).unwrap();
+        assert!(changed(&mut watcher), "it is gone, to be loaded");
+        fs::write(aside.join("config.yaml"), "").unwrap();
+        assert!(!changed(&mut watcher), "what it became is not watched");
+        fs::create_dir(&target).unwrap();
+        assert!(changed(&mut watcher), "made again, it is to be loaded");
+        fs::write(target.join("config.yaml"), "").unwrap();
+        assert!(changed(&mut watcher), "and is watched again");
+    }
+
+    #[test]
+    fn a_directory_moved_aside_is_a_change_and_what_it_became_is_not_watched() {
+        let parent = TempDir::new().unwrap();
+        let directory = parent.path().join("omorfos");
+        let aside = parent.path().join("omorfos.aside");
+        fs::create_dir(&directory).unwrap();
+        let mut watcher = Watcher::new(&directory).unwrap();
+
+        // As `mv omorfos omorfos.aside`, to try the defaults.
+        fs::rename(&directory, &aside).unwrap();
+        assert!(changed(&mut watcher), "it is gone, to be loaded");
+        fs::write(aside.join("config.yaml"), "").unwrap();
+        assert!(!changed(&mut watcher), "what it became is not watched");
+        fs::rename(&aside, &directory).unwrap();
+        assert!(changed(&mut watcher), "put back, it is to be loaded");
+        fs::write(directory.join("config.yaml"), "").unwrap();
+        assert!(changed(&mut watcher), "and is watched again");
+    }
+
+    #[test]
+    fn a_directory_made_again_while_the_queue_overflowed_is_watched_again() {
+        let parent = TempDir::new().unwrap();
+        let directory = parent.path().join("omorfos");
+        fs::create_dir(&directory).unwrap();
+        let mut watcher = Watcher::new(&directory).unwrap();
+        // Two files written by turns, as the same event twice running is
+        // queued once, until the kernel has dropped events.
+        let limit = fs::read_to_string("/proc/sys/fs/inotify/max_queued_events").unwrap();
+        let limit: usize = limit.trim().parse().unwrap();
+        let files = [directory.join("a"), directory.join("b")];
+        for index in 0..=limit {
+            fs::write(&files[index % 2], "").unwrap();
+        }
+        // Its going and coming are among what was dropped.
+        fs::remove_dir_all(&directory).unwrap();
+        fs::create_dir(&directory).unwrap();
+        assert!(changed(&mut watcher));
+        fs::write(directory.join("config.yaml"), "").unwrap();
+        assert!(changed(&mut watcher), "and it is watched again");
     }
 
     #[test]
