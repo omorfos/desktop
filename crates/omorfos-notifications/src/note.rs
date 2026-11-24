@@ -11,7 +11,7 @@ use omorfos_icons::Icons;
 use omorfos_ui::{Area, Canvas, Image, Motion, Scale, Text, inset};
 
 /// The most notifications kept at once. When there are more, the oldest
-/// goes.
+/// of the others goes to make room for the one that has just come.
 const MOST: usize = 8;
 
 /// The most lines of a notification's body that are shown.
@@ -231,6 +231,7 @@ impl Stack {
             .shown
             .iter()
             .position(|other| same(other) || tagged(other));
+        let come = shown.key;
         match place.and_then(|place| self.shown.get_mut(place)) {
             Some(other) => {
                 shown.key = other.key;
@@ -239,16 +240,18 @@ impl Stack {
             None => self.shown.insert(0, shown),
         }
         // Room is made by a program's notification going, never by one
-        // about something that is wrong; and by one its program did not
-        // mark as critical, while there is one, as a critical one stays
+        // about something that is wrong, nor by the one that has just
+        // come, which would then never be seen; and by one its program did
+        // not mark as critical, while there is one, as a critical one stays
         // until it is clicked.
         let theirs = |shown: &Shown| !shown.ours;
         let crowded = self.shown.iter().filter(|shown| theirs(shown)).count() > MOST;
+        let other = |shown: &Shown| theirs(shown) && shown.key != come;
         let oldest = self
             .shown
             .iter()
-            .rposition(|shown| theirs(shown) && !shown.urgent)
-            .or_else(|| self.shown.iter().rposition(theirs));
+            .rposition(|shown| other(shown) && !shown.urgent)
+            .or_else(|| self.shown.iter().rposition(other));
         let gone = oldest.filter(|_| crowded);
         gone.map(|oldest| self.shown.remove(oldest).id)
     }
@@ -810,6 +813,24 @@ mod tests {
             ),
             Some(1)
         );
+        assert_eq!(showing(&stack), [9, 8, 7, 6, 5, 4, 3, 2]);
+    }
+
+    #[test]
+    fn what_has_just_come_is_shown_though_every_other_is_critical() {
+        let mut stack = Stack::new(5);
+        for id in 1..=8 {
+            stack.show(
+                Note {
+                    urgent: true,
+                    ..note(id, "Critical", "")
+                },
+                START,
+            );
+        }
+
+        // The oldest critical goes, not the ordinary one that has just come.
+        assert_eq!(stack.show(note(9, "Ordinary", ""), START), Some(1));
         assert_eq!(showing(&stack), [9, 8, 7, 6, 5, 4, 3, 2]);
     }
 
