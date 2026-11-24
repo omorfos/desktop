@@ -1072,7 +1072,10 @@ what only games and touchpads need last.
       lock is made again, but the next compositor, not knowing it for the locker, may start its
       own beside it, the second to lock being refused; a program sharing the screen that holds
       the X server for it, as Firefox does, closes as the share ends, its X server having gone with the compositor
-      before; a global the next compositor offers
+      before; a program on Wayland that holds a connection to the X server all the same, as
+      Firefox ESR does wherever `DISPLAY` is set, as it always is in a session, closes as the
+      compositor goes, Xlib ending it as the X server goes with it (#124), which the check of
+      real programs does not show, as it starts each with no `DISPLAY`; a global the next compositor offers
       once the relay's registries are answered, while it makes the rest
       again, is not told to the program, and is taken for one of the
       compositor after's; and on real hardware only `foot`, ghostty and
