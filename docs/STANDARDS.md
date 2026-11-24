@@ -167,6 +167,20 @@ To wayland-protocols, or to join what is proposed there.
 
 ## Beside the compositor
 
+### The default terminal
+
+- **Today:** no type of file names the terminal, so `mimeapps.list`
+  cannot say which it is. The Default Terminal Execution proposal does,
+  in an `xdg-terminals.list` of desktop entries in order of preference,
+  read by its `xdg-terminal-exec`, which GNOME and many terminals
+  already follow. It is proposed to freedesktop's xdg-specs and not yet
+  agreed.
+- **omorfos:** reads it, omorfos's own `omorfos-xdg-terminals.list` first
+  in each place, for the root menu's Terminal row and Super+Return
+  (#120), and Settings is to write the user's (ADR 106).
+- **To raise:** nothing of our own; to join the proposal as it stands,
+  should it need a voice for agreement.
+
 ### The system tray
 
 - **Today:** `StatusNotifierItem`, KDE's, on D-Bus, which programs with
