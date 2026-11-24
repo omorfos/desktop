@@ -313,22 +313,27 @@ fn memory(layout: Option<u64>) -> String {
     card.unwrap_or_else(|| "shared memory".to_owned())
 }
 
-/// Shared memory for a picture `size` large, a file of its own.
-fn shared((width, height): (u32, u32)) -> Option<Made> {
-    let size = width * height * PIXEL;
-    let file = memfd_create(
-        "omorfos-screen",
-        MemfdFlags::CLOEXEC | MemfdFlags::ALLOW_SEALING,
-    );
-    let file = file.ok().map(File::from);
-    let file = file.filter(|file| file.set_len(u64::from(size)).is_ok());
-    file.map(|file| Made {
-        file: file.into(),
-        offset: 0,
-        stride: width * PIXEL,
-        size,
-        card: false,
-        mappable: true,
+/// Shared memory for a picture `size` large, a file of its own. None is
+/// made for a picture larger than Wayland has numbers for, or of nothing,
+/// as the compositor could not be told of it.
+fn shared(size: (u32, u32)) -> Option<Made> {
+    let layout = omorfos_shell::Layout::of(size).ok();
+    layout.and_then(|layout| {
+        let file = memfd_create(
+            "omorfos-screen",
+            MemfdFlags::CLOEXEC | MemfdFlags::ALLOW_SEALING,
+        );
+        let length = layout.length.cast_unsigned();
+        let file = file.ok().map(File::from);
+        let file = file.filter(|file| file.set_len(u64::from(length)).is_ok());
+        file.map(|file| Made {
+            file: file.into(),
+            offset: 0,
+            stride: layout.stride.cast_unsigned(),
+            size: length,
+            card: false,
+            mappable: true,
+        })
     })
 }
 
@@ -389,14 +394,18 @@ fn buffers((width, height): (u32, u32), card: bool) -> Vec<u8> {
         spa::sys::SPA_DATA_MemFd
     };
     let memory = 1 << kind;
+    // More than can be said is said as the most that can be: no memory is
+    // made for a picture so large, and nothing is put in its buffers.
+    let stride = width.saturating_mul(PIXEL);
+    let size = stride.saturating_mul(height);
     let room = Object {
         type_: spa::utils::SpaTypes::ObjectParamBuffers.as_raw(),
         id: spa::param::ParamType::Buffers.as_raw(),
         properties: vec![
             int(spa::sys::SPA_PARAM_BUFFERS_buffers, 4),
             int(spa::sys::SPA_PARAM_BUFFERS_blocks, 1),
-            int(spa::sys::SPA_PARAM_BUFFERS_size, width * height * PIXEL),
-            int(spa::sys::SPA_PARAM_BUFFERS_stride, width * PIXEL),
+            int(spa::sys::SPA_PARAM_BUFFERS_size, size),
+            int(spa::sys::SPA_PARAM_BUFFERS_stride, stride),
             int(spa::sys::SPA_PARAM_BUFFERS_dataType, memory),
         ],
     };
@@ -480,5 +489,32 @@ mod tests {
         let shared = 1 << spa::sys::SPA_DATA_MemFd;
         assert_eq!(kind(true), Some(card));
         assert_eq!(kind(false), Some(shared));
+    }
+
+    #[test]
+    fn buffers_are_said_to_be_as_large_as_the_picture_or_the_most_that_can_be_said() {
+        let int = |value: &Pod| i64::from(value.get_int().unwrap());
+        let said = |size, key| property(&buffers(size, false), key, int).map(|(said, _)| said);
+        let (bytes, apart) = (
+            spa::sys::SPA_PARAM_BUFFERS_size,
+            spa::sys::SPA_PARAM_BUFFERS_stride,
+        );
+        assert_eq!(said((640, 480), bytes), Some(640 * 480 * 4));
+        assert_eq!(said((640, 480), apart), Some(640 * 4));
+        // A screen no number says the bytes of, which no memory is made for.
+        let most = Some(i64::from(i32::MAX));
+        assert_eq!(said((1 << 30, 1 << 30), bytes), most);
+        assert_eq!(said((1 << 30, 1 << 30), apart), most);
+    }
+
+    #[test]
+    fn shared_memory_is_made_as_large_as_the_picture_and_none_that_wayland_cannot_name() {
+        let made = shared((2, 3)).unwrap();
+        assert_eq!((made.offset, made.stride, made.size), (0, 8, 24));
+        assert!(!made.card && made.mappable);
+        assert_eq!(File::from(made.file).metadata().unwrap().len(), 24);
+        // A screen too wide, and one of nothing.
+        assert!(shared((1 << 30, 1)).is_none());
+        assert!(shared((0, 0)).is_none());
     }
 }

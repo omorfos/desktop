@@ -15,6 +15,7 @@ use std::os::unix::fs::FileExt;
 
 use omorfos_pipewire::Memory;
 use omorfos_screenshot::Shared;
+use omorfos_shell::Layout;
 use rustix::fs::{MemfdFlags, memfd_create};
 use wayland_client::protocol::{
     wl_buffer, wl_output, wl_pointer, wl_registry, wl_seat, wl_shm, wl_shm_pool,
@@ -171,17 +172,8 @@ impl Region {
             width: area.width.min(width - x).max(1),
             height: area.height.min(height - y).max(1),
         };
-        let length = u64::from(width) * u64::from(height) * 4;
-        let made = memfd_create("omorfos-region", MemfdFlags::CLOEXEC);
-        let made = made.map(File::from).map_err(io::Error::from);
-        let memory = made.and_then(|file| file.set_len(length).map(|()| file));
-        memory.map_err(Failure::from).map(|memory| {
-            let bytes = i32::try_from(length).unwrap_or(i32::MAX);
-            let pool = shm.create_pool(memory.as_fd(), bytes, handle, ());
-            let (across, down) = (width.cast_signed(), height.cast_signed());
-            let format = wl_shm::Format::Xrgb8888;
-            let buffer = pool.create_buffer(0, across, down, across * 4, format, handle, ());
-            pool.destroy();
+        own("omorfos-region", size).map(|(memory, layout)| {
+            let buffer = buffer(shm, (&memory, layout), wl_shm::Format::Xrgb8888, handle);
             Self {
                 area,
                 memory,
@@ -523,21 +515,27 @@ impl Feed {
             .buffers
             .iter()
             .position(|named| named.place == memory.place);
-        let at = known.unwrap_or_else(|| self.name(memory, layout));
-        let frame = self
-            .session
-            .create_frame(&handle, Of::Screen(self.watching.begun));
-        // The compositor is told what is out of date in the memory, and
-        // writes that and what has changed: memory new to it, all of it.
-        let named = &self.buffers[at];
-        frame.attach_buffer(&named.buffer);
-        for &(x, y, wide, high) in &named.stale {
-            frame.damage_buffer(x, y, wide, high);
-        }
-        frame.capture();
+        let at = known.or_else(|| self.name(memory, layout));
+        // Memory the compositor cannot be told of no picture can be put
+        // in: the one asked for could not be.
+        self.watching.lost |= at.is_none();
+        let session = &self.session;
+        let begun = self.watching.begun;
+        let buffers = &self.buffers;
+        self.frame = at.map(|at| {
+            let frame = session.create_frame(&handle, Of::Screen(begun));
+            // The compositor is told what is out of date in the memory, and
+            // writes that and what has changed: memory new to it, all of it.
+            let named = &buffers[at];
+            frame.attach_buffer(&named.buffer);
+            for &(x, y, wide, high) in &named.stale {
+                frame.damage_buffer(x, y, wide, high);
+            }
+            frame.capture();
+            frame
+        });
         self.watching.changed.clear();
         self.asked = Some(memory.place);
-        self.frame = Some(frame);
     }
 
     /// Lets go of the picture asked for, if one is, which is not to be
@@ -555,29 +553,38 @@ impl Feed {
     /// Has the compositor know memory by a name, to put pictures in: memory
     /// of the graphics card in `layout`, if one was agreed, or shared
     /// memory. Keeps the name for the next time it is given, with all of it
-    /// out of date. Returns where it is kept.
-    fn name(&mut self, memory: &Memory, layout: Option<u64>) -> usize {
+    /// out of date. Returns where it is kept: nowhere, if it is shared
+    /// memory Wayland has no numbers for.
+    fn name(&mut self, memory: &Memory, layout: Option<u64>) -> Option<usize> {
         let (width, height) = self.size;
         let (across, down) = (width.cast_signed(), height.cast_signed());
         let handle = self.queue.handle();
         let shm = &self.shm;
         let cards = (self.watching.cards.as_ref(), &handle);
+        let placed = placed(self.size, memory).ok();
         let buffer = card::name(cards, memory, (self.size, layout), || {
-            let end = u64::from(memory.offset) + u64::from(memory.size);
-            let end = i32::try_from(end).unwrap_or(i32::MAX);
-            let pool = shm.create_pool(memory.file.as_fd(), end, &handle, ());
-            let offset = memory.offset.cast_signed();
-            let format = wl_shm::Format::Xrgb8888;
-            let buffer = pool.create_buffer(offset, across, down, across * 4, format, &handle, ());
-            pool.destroy();
-            buffer
+            placed.map(|(layout, offset, end)| {
+                let pool = shm.create_pool(memory.file.as_fd(), end, &handle, ());
+                let Layout {
+                    width,
+                    height,
+                    stride,
+                    ..
+                } = layout;
+                let format = wl_shm::Format::Xrgb8888;
+                let buffer = pool.create_buffer(offset, width, height, stride, format, &handle, ());
+                pool.destroy();
+                buffer
+            })
         });
-        self.buffers.push(Named {
-            place: memory.place,
-            buffer,
-            stale: vec![(0, 0, across, down)],
-        });
-        self.buffers.len() - 1
+        buffer.map(|buffer| {
+            self.buffers.push(Named {
+                place: memory.place,
+                buffer,
+                stale: vec![(0, 0, across, down)],
+            });
+            self.buffers.len() - 1
+        })
     }
 
     /// Takes in what the compositor has said, without waiting, and returns
@@ -855,6 +862,61 @@ impl Dispatch<ExtImageCopyCaptureFrameV1, Of> for Watching {
     }
 }
 
+/// Memory of this program's own, called `name`, for pictures `size`
+/// large, and how they lie in it. None is made for pictures larger than
+/// Wayland has numbers for, or of nothing.
+fn own(name: &str, size: (u32, u32)) -> Result<(File, Layout), Failure> {
+    let layout = Layout::of(size);
+    let made = layout.and_then(|layout| {
+        let made = memfd_create(name, MemfdFlags::CLOEXEC);
+        let made = made.map(File::from).map_err(io::Error::from);
+        let length = u64::from(layout.length.cast_unsigned());
+        made.and_then(|file| file.set_len(length).map(|()| (file, layout)))
+    });
+    made.map_err(Failure::from)
+}
+
+/// A buffer the compositor knows `memory` by, all of which is a picture
+/// laid out as `layout` says, in `format`.
+fn buffer(
+    shm: &wl_shm::WlShm,
+    (memory, layout): (&File, Layout),
+    format: wl_shm::Format,
+    handle: &QueueHandle<Watching>,
+) -> wl_buffer::WlBuffer {
+    let pool = shm.create_pool(memory.as_fd(), layout.length, handle, ());
+    let Layout {
+        width,
+        height,
+        stride,
+        ..
+    } = layout;
+    let buffer = pool.create_buffer(0, width, height, stride, format, handle, ());
+    pool.destroy();
+    buffer
+}
+
+/// How a picture of a screen `size` large lies in shared memory handed out
+/// by the stream: its layout, where in the memory it begins, and where it
+/// ends, which is as much of the memory as the compositor is told of.
+///
+/// # Errors
+///
+/// Returns an error if the memory is not as large as the picture, or the
+/// picture is too large, or begins or ends too far in, for Wayland's
+/// numbers.
+fn placed(size: (u32, u32), memory: &Memory) -> io::Result<(Layout, i32, i32)> {
+    let length = usize::try_from(memory.size).unwrap_or(usize::MAX);
+    let layout = omorfos_shell::checked_layout(size, length);
+    layout.and_then(|layout| {
+        let offset = i32::try_from(memory.offset).ok();
+        let end = offset.and_then(|offset| offset.checked_add(layout.length));
+        let invalid = || io::Error::new(io::ErrorKind::InvalidInput, "invalid shared memory");
+        let placed = offset.zip(end).map(|(offset, end)| (layout, offset, end));
+        placed.ok_or_else(invalid)
+    })
+}
+
 /// Readies what pictures of the pointer are put in, once the compositor
 /// has said how large they are: memory of this program's own.
 fn follow(
@@ -867,26 +929,16 @@ fn follow(
     ),
 ) -> Result<Following, Failure> {
     let size = watching.followed.size.unwrap_or_default();
-    let (width, height) = size;
-    let length = u64::from(width) * u64::from(height) * 4;
-    let made = memfd_create("omorfos-pointer", MemfdFlags::CLOEXEC);
-    let made = made.map(File::from).map_err(io::Error::from);
-    let memory = made.and_then(|file| file.set_len(length).map(|()| file));
-    memory.map_err(Failure::from).map(|memory| {
+    own("omorfos-pointer", size).map(|(memory, layout)| {
         let handle = queue.handle();
-        let bytes = i32::try_from(length).unwrap_or(i32::MAX);
-        let pool = shm.create_pool(memory.as_fd(), bytes, &handle, ());
-        let (across, down) = (width.cast_signed(), height.cast_signed());
-        let format = wl_shm::Format::Argb8888;
-        let buffer = pool.create_buffer(0, across, down, across * 4, format, &handle, ());
-        pool.destroy();
+        let buffer = buffer(shm, (&memory, layout), wl_shm::Format::Argb8888, &handle);
         Following {
             cursor,
             session,
             memory,
             buffer,
             size,
-            picture: vec![0; usize::try_from(length).unwrap_or_default()],
+            picture: vec![0; usize::try_from(layout.length).unwrap_or_default()],
             taken: 0,
         }
     })
@@ -952,5 +1004,46 @@ mod tests {
         let many: Vec<Part> = (0..8).map(|at| (at * 10, 5, 1, 1)).collect();
         gather(&mut stale, &many);
         assert_eq!(stale, [(0, 0, 71, 14)]);
+    }
+
+    #[test]
+    fn memory_for_pictures_of_a_screen_too_wide_for_wayland_is_refused_not_made() {
+        assert!(own("omorfos-test", (1 << 30, 1)).is_err());
+        assert!(own("omorfos-test", (0, 0)).is_err());
+    }
+
+    #[test]
+    fn memory_for_pictures_is_made_as_large_as_they_are() {
+        let (memory, layout) = own("omorfos-test", (2, 3)).unwrap();
+        assert_eq!(memory.metadata().unwrap().len(), 24);
+        assert_eq!((layout.width, layout.height, layout.stride), (2, 3, 8));
+    }
+
+    fn handed(offset: u32, size: u32) -> Memory {
+        let file = memfd_create("omorfos-test", MemfdFlags::CLOEXEC).unwrap();
+        Memory {
+            file,
+            offset,
+            size,
+            stride: 8,
+            place: (0, 0),
+        }
+    }
+
+    #[test]
+    fn memory_handed_out_is_known_from_where_the_picture_begins_to_where_it_ends() {
+        let (layout, offset, end) = placed((2, 3), &handed(16, 24)).unwrap();
+        assert_eq!((layout.stride, offset, end), (8, 16, 40));
+    }
+
+    #[test]
+    fn memory_handed_out_that_wayland_cannot_name_is_refused() {
+        // Not as large as the picture.
+        assert!(placed((2, 3), &handed(0, 23)).is_err());
+        // For a screen too wide.
+        assert!(placed((1 << 30, 1), &handed(0, 0)).is_err());
+        // Beginning, or ending, too far in.
+        assert!(placed((2, 3), &handed(1 << 31, 24)).is_err());
+        assert!(placed((2, 3), &handed(i32::MAX.cast_unsigned() - 8, 24)).is_err());
     }
 }
