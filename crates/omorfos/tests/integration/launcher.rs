@@ -103,7 +103,15 @@ fn launcher_of(session: &mut Session, names: &[&str]) -> Launcher {
     let commands = Ipc::connect(&socket).unwrap();
     let config = session.config.path().to_owned();
     let icons = omorfos_launcher::Icons::default();
-    Launcher::new(theirs, commands, &config, apps, icons, Numbers::Point).unwrap()
+    Launcher::new(
+        theirs,
+        commands,
+        (&config, None),
+        apps,
+        icons,
+        Numbers::Point,
+    )
+    .unwrap()
 }
 
 /// Lets the launcher and the compositor talk until they have nothing more
@@ -920,8 +928,15 @@ fn the_launcher_shows_icons_and_descriptions_when_the_configuration_asks() {
     let commands = Ipc::connect(&socket).unwrap();
     let config = session.config.path().to_owned();
     let icons = omorfos_launcher::Icons::default();
-    let mut launcher =
-        Launcher::new(theirs, commands, &config, vec![app], icons, Numbers::Point).unwrap();
+    let mut launcher = Launcher::new(
+        theirs,
+        commands,
+        (&config, None),
+        vec![app],
+        icons,
+        Numbers::Point,
+    )
+    .unwrap();
 
     settle(&mut session, &mut launcher);
 
@@ -1092,6 +1107,44 @@ fn a_launcher_running_by_itself_gives_up_when_the_session_ends() {
         omorfos_launcher::start(&variable).map_err(|failure| failure.to_string())
     });
     session.eventually(|session| session.draw().at(WIDTH / 2, HEIGHT / 2) == surface());
+
+    drop(session);
+
+    assert!(launcher.join().unwrap().is_err());
+}
+
+#[test]
+fn a_launcher_started_after_the_theme_went_wrong_is_drawn_as_the_session_kept_it() {
+    let mut session = Session::new();
+    let runtime = session.config.path().to_owned();
+    let socket = ListeningSocket::bind_absolute(runtime.join("wayland-test")).unwrap();
+    session
+        .inner()
+        .serve(socket, omorfos::Roles::OVERLAY)
+        .unwrap();
+    let ipc = session.listen();
+    // The theme went wrong after the compositor last kept it, red.
+    let config = runtime.join(".config/omorfos");
+    std::fs::create_dir_all(&config).unwrap();
+    std::fs::write(config.join("theme.css"), "launcher { color: huge; }\n").unwrap();
+    let kept = runtime.join("omorfos/last-good");
+    std::fs::create_dir_all(&kept).unwrap();
+    let red = "launcher { background: #ff0000; backdrop-filter: none; }\n";
+    std::fs::write(kept.join("theme.css"), red).unwrap();
+    let variables = [
+        ("XDG_RUNTIME_DIR", runtime.clone().into_os_string()),
+        ("WAYLAND_DISPLAY", OsString::from("wayland-test")),
+        ("OMORFOS_SOCKET", ipc.into_os_string()),
+        ("HOME", runtime.into_os_string()),
+    ];
+    let launcher = std::thread::spawn(move || {
+        let variable = |name: &str| {
+            let found = variables.iter().find(|(known, _)| *known == name);
+            found.map(|(_, value)| value.clone())
+        };
+        omorfos_launcher::start(&variable).map_err(|failure| failure.to_string())
+    });
+    session.eventually(|session| session.draw().at(WIDTH / 2, HEIGHT / 2) == RED);
 
     drop(session);
 
