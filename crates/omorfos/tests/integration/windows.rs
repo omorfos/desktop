@@ -567,6 +567,39 @@ fn a_window_maximized_eases_there_and_its_program_is_told_only_where_it_goes() {
 }
 
 #[test]
+fn a_window_over_one_in_a_frame_of_ours_eases_where_it_is_sent_as_one_alone_does() {
+    // Whether it is in a frame of ours itself or not.
+    for framed in [true, false] {
+        let mut session = Session::with_config(&[MOVING]);
+        let mut client = session.connect();
+        // Opened first, and so under the other and before it in the scene:
+        // its decoration is taken out of what was shown before the other
+        // is looked for there.
+        let _under = session.open_decorated(&mut client, "under", (100, 50), GREEN);
+        let window = if framed {
+            session.open_decorated(&mut client, "app", (200, 100), RED)
+        } else {
+            session.open(&mut client, "app", (200, 100), RED)
+        };
+        session.advance(Duration::from_secs(1));
+        let far = |session: &mut Session| session.draw().at(600, 400);
+        assert_eq!(far(&mut session), BACKGROUND, "framed: {framed}");
+
+        // Told how it is to be, it sets out from where it was, and is half
+        // way in half the time: not yet as far as the far corner.
+        window.role.set_maximized();
+        session.roundtrip(&mut client);
+        session.roundtrip(&mut client);
+        assert_eq!(far(&mut session), BACKGROUND, "set out, framed: {framed}");
+        session.advance(SENT / 2);
+        assert_eq!(far(&mut session), BACKGROUND, "half way, framed: {framed}");
+        // There in the end, its last picture stretched to fill it.
+        session.advance(SENT);
+        assert_eq!(far(&mut session), RED, "there, framed: {framed}");
+    }
+}
+
+#[test]
 fn with_motion_reduced_a_window_is_where_it_was_sent_at_once() {
     let reduced = ("config.yaml", "appearance: { reduce_motion: true }\n");
     let mut session = Session::with_config(&[MOVING, reduced]);

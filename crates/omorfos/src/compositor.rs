@@ -302,29 +302,6 @@ pub(crate) struct Mapped {
     pub(crate) kept_by: Option<(u32, u32)>,
 }
 
-fn by_window_id(entries: impl Iterator<Item = (usize, WindowId)>) -> HashMap<WindowId, usize> {
-    entries.map(|(index, id)| (id, index)).collect()
-}
-
-fn sync_indices(
-    frames: &[FrameInfo],
-    previous: &[Shown],
-) -> (HashMap<WindowId, usize>, HashMap<WindowId, usize>) {
-    let frames = by_window_id(
-        frames
-            .iter()
-            .enumerate()
-            .map(|(index, frame)| (index, frame.shown)),
-    );
-    let previous = by_window_id(
-        previous
-            .iter()
-            .enumerate()
-            .map(|(index, shown)| (index, shown.id)),
-    );
-    (frames, previous)
-}
-
 /// The compositor, minus the event loop and the screen.
 #[derive(Debug)]
 pub struct Compositor {
@@ -2704,7 +2681,6 @@ impl Compositor {
         let shades = self.animation.shades.begun();
 
         let mut scene = std::mem::take(&mut self.sync_room.ordered);
-        let (frame_indices, previous_indices) = sync_indices(&frames, &previous);
         for Mapped {
             id,
             window,
@@ -2713,16 +2689,19 @@ impl Compositor {
             ..
         } in &self.windows
         {
-            let frame = frame_indices
-                .get(id)
-                .and_then(|index| frames.get_mut(*index).map(|frame| (*index, frame)));
+            let frame = frames
+                .iter_mut()
+                .enumerate()
+                .find(|(_, frame)| frame.shown == *id);
             let placed = frame.as_ref().and_then(|(_, frame)| frame.placed());
             role.arrange(Some(*id) == focused, placed, surfaces::proper(window).size);
             match frame {
                 Some((order, frame)) => {
-                    let before = previous_indices
-                        .get(id)
-                        .and_then(|index| previous.get_mut(*index));
+                    // Looked for by its id each time, not by where it was
+                    // when the loop began: `painted` takes what it finds
+                    // out of `previous` as the loop goes, and the last
+                    // there is moved into the room each leaves.
+                    let before = previous.iter_mut().find(|shown| shown.id == *id);
                     let shows = surfaces::proper(window).size;
                     let clock = self.animation.clock;
                     let (way, sizes) = frame.travel(before.as_deref(), shows, (clock, moves));
@@ -2805,19 +2784,11 @@ impl Compositor {
     /// out, with the shadows in use begun.
     fn portray(&mut self, theme: &Theme) {
         let over = self.hover.button;
-        let mapped_indices = by_window_id(
-            self.windows
-                .iter()
-                .enumerate()
-                .map(|(index, mapped)| (index, mapped.id)),
-        );
         let pictured: Vec<(FrameInfo, Window, WlSurface)> = self
             .capture
             .windows()
             .filter_map(|window| {
-                let mapped = mapped_indices
-                    .get(&window)
-                    .and_then(|index| self.windows.get(*index));
+                let mapped = self.windows.iter().find(|mapped| mapped.id == window);
                 mapped.zip(self.desktop.frame_of(window))
             })
             .map(|(mapped, frame)| {
