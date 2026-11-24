@@ -13,11 +13,14 @@ use crate::layers::panel;
 
 /// The most a turn of a session with nothing changing may allocate, which
 /// is what it allocates today, with one window in a frame of ours whose
-/// titlebar is solid: 15 in drawing, what is drawn being made anew each
-/// time, much of it Smithay's elements for what the program drew; and 2
-/// in Smithay's refreshing of the space. Each is let go of within the turn. It is to come down to
-/// nothing, and is lowered as each goes; never raised.
-pub(crate) const CEILING: u64 = 17;
+/// titlebar is solid: 10 in drawing, what is drawn being made anew each
+/// time, much of it Smithay's elements for what the program drew; and 3
+/// in the turn before it, Smithay's refreshing of the space among them.
+/// Each is let go of within the turn. It is to come down to nothing, and
+/// is lowered as each goes; never raised. It is what a turn allocates and
+/// no more: with room to spare, what a change adds to every turn goes by
+/// unseen, as three maps made anew each turn did on 23 November 2026.
+pub(crate) const CEILING: u64 = 13;
 
 /// What a titlebar that is glass adds to that, for the one window: 7, in
 /// laying its sheet out, in looking at what is under it to see whether it
