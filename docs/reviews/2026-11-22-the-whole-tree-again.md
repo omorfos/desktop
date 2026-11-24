@@ -29,15 +29,16 @@ the rest. Where that differs from the rank a reviewer gave, it is said.
 The four findings of the docs reviewer were put right the same day, by a
 correction of words; they are marked **Fixed**. Changes of code to
 findings 1, 2, 5, 7, 8, 9, 10 and 12, and tests to findings 4, 13 and
-14, were written the same day but could not be built there; each is a
-pull request of its own, to be built and tested before it is taken, and
-is marked **Written, not built**.
+14, were written the same day but could not be built there; each was a
+pull request of its own, built and tested before it was taken, and all
+were merged on 23 November: each is marked with the pull request that
+put it right.
 
 ## Findings
 
 ### 1. One connection can have the relay, and the compositor behind it, keep about a thousand million rectangles or kinds
 
-**High. By reading; to be shown by the test below. Written, not built,
+**High. By reading; to be shown by the test below. Fixed in #68,
 with 65,536 as the total, which is a decision.**
 
 `wl_region.add` and `subtract`, and `offer` on the three kinds of
@@ -141,7 +142,7 @@ asking the same.
 
 ### 4. The test said to wait "however long that takes" after a withdrawn picture gives up after about 350 ms
 
-**Low. To be shown. Written, not built.** The reviewer ranked it
+**Low. To be shown. Fixed in #76.** The reviewer ranked it
 medium. Finding 16 of
 19 November is ticked as fixed, and this part of it is not.
 
@@ -160,7 +161,7 @@ naming each request as it is made.
 
 ### 5. While "About" is shown, Super with Return, space, Escape or an arrow does what "About" does, not what the key is bound to
 
-**Low. By reading. Written, not built.**
+**Low. By reading. Fixed in #70.**
 
 `about_key` (`crates/omorfos/src/input.rs:974-991`) and `about_scroll`
 (`input.rs:161-171`) look at the key alone, not at what is held, and are
@@ -203,7 +204,7 @@ with an empty `PATH`.
 
 ### 7. Today is drawn as faintly as the days of another month when the month shown is not today's
 
-**Low. By reading. Written, not built.**
+**Low. By reading. Fixed in #71.**
 
 `Month::day` gives today `State::Active` in any cell
 (`crates/omorfos-shell/src/month.rs:260`), those spilled in from the
@@ -223,7 +224,7 @@ one paints 3 November as `PopoverDay` active is painted.
 
 ### 8. A screen's global, kept five seconds after the screen goes, is let go of only when something else wakes the compositor
 
-**Low. By reading. Written, not built.** Found by the components and
+**Low. By reading. Fixed in #72.** Found by the components and
 tests reviewers, and
 seen by the docs reviewer against ADR 15.
 
@@ -245,7 +246,7 @@ is. The test then asks the deadline, with nothing else due.
 
 ### 9. The user's locale is looked up by five copies of one lookup, and the fix of 21 November went into one
 
-**Low. By reading. Written, not built.** Worse than the "fourth copy"
+**Low. By reading. Fixed in #75.** Worse than the "fourth copy"
 the review of pull
 requests 44 to 48 recorded.
 
@@ -263,7 +264,7 @@ by their callers, which depend on `omorfos-i18n` already.
 
 ### 10. How many kinds a copy may come in, and how long each may be, is said in four places, and nothing holds the relay's and the compositor's alike
 
-**Low. By reading. Written, not built.**
+**Low. By reading. Fixed in #74.**
 
 `MOST_KINDS` and `LONGEST_KIND` are 256 and 255 in the relay
 (`journal.rs:58-60`) and again in the compositor (`handlers.rs:666-667`),
@@ -295,7 +296,7 @@ allocations counted, and the count held below what it is today.
 
 ### 12. Every start of the X server reads `/proc` and looks at `/tmp/.X11-unix`, though only a start that failed needs them
 
-**Low. By reading. Written, not built.** Seen by four reviewers.
+**Low. By reading. Fixed in #73.** Seen by four reviewers.
 
 `started_x11` (`x11.rs:572-573`), since `37d015b`, reads
 `/proc/sys/kernel/osrelease` and asks whether the sockets' directory can
@@ -306,7 +307,7 @@ To change: work out what is said only when the start failed.
 
 ### 13. A program that offers too many short kinds is never shown to be refused by the compositor
 
-**Low. To be shown. Written, not built.** The reviewer ranked it
+**Low. To be shown. Fixed in #77.** The reviewer ranked it
 medium.
 
 With the count taken out of `within` (`handlers.rs:690-691`), every test

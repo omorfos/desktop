@@ -2689,7 +2689,7 @@ The review of 22 November 2026, of the whole tree again, by eight
 reviewers at once, is written up in
 [reviews/2026-11-22-the-whole-tree-again.md](reviews/2026-11-22-the-whole-tree-again.md),
 in the order to take it; what was written but could not be built there
-is a pull request of its own, to be built and tested first:
+was a pull request of its own, built and tested before it was merged:
 
 - [x] High: one connection has the relay, and the compositor behind it,
       keep about a thousand million rectangles or kinds, the bound on
@@ -3258,7 +3258,7 @@ What the coverage gate leaves out, reviewed on 23 November 2026 as the
 maintainer asked
 ([reviews/2026-11-23-what-the-coverage-gate-leaves-out.md](reviews/2026-11-23-what-the-coverage-gate-leaves-out.md)):
 the seven files ADR 2 excludes are 2.7% of the code that is not tests,
-and hold about a hundred decisions ADR 2 says they do not, most in the
+and hold about seventy decisions ADR 2 says they do not, most in the
 hardware backend; in the order worth taking:
 
 - [ ] Low: nothing stops a decision being put into an excluded file
@@ -3466,8 +3466,9 @@ in the order to take it. `main` passes every gate with all of it in:
 - [x] Low: the check of `omorfos_shell::pixels` that function's alone
       ([finding 10](reviews/2026-11-24-the-pull-requests-merged-on-23-november.md#10-the-check-97-gave-omorfos_shellpixels-is-that-functions-alone)):
       taken by all five, and by the stream's own shared memory (#111).
-- [ ] Low: what the review of 23 November says that is not so
-      ([finding 11](reviews/2026-11-24-the-pull-requests-merged-on-23-november.md#11-the-review-merged-in-101-says-six-things-that-are-not-so)).
+- [x] Low: what the review of 23 November says that is not so
+      ([finding 11](reviews/2026-11-24-the-pull-requests-merged-on-23-november.md#11-the-review-merged-in-101-says-six-things-that-are-not-so)):
+      put right with this write-up.
 - [x] Low: documents and comments the day's changes left behind
       ([finding 12](reviews/2026-11-24-the-pull-requests-merged-on-23-november.md#12-documents-and-comments-the-days-changes-left-behind)):
       the three reviews with this write-up, and the rest in #109, #113
