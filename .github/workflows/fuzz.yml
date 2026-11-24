@@ -3,14 +3,15 @@ name: Fuzz
 # What reads untrusted input is fuzzed, a target for each: the relay's
 # reader, which reads what programs send before the compositor does (ADR
 # 61), and its link for a program, which reads it from the socket, the
-# configuration, and what crosses omorfos's own sockets; for two
-# minutes on each change to what they read with, and for an hour every
-# night. cargo-fuzz needs a nightly toolchain, which nothing else here
+# configuration, and what crosses omorfos's own sockets; and the desktop,
+# done to in any order and checked whole after each. For two minutes on
+# each change to what they run, and for an hour every night. cargo-fuzz needs a nightly toolchain, which nothing else here
 # uses; the project's own is stable.
 on:
   push:
     branches: [main]
     paths:
+      - "crates/omorfos-core/**"
       - "crates/omorfos-relay/**"
       - "crates/omorfos-ipc/**"
       - "crates/omorfos-config/**"
@@ -18,6 +19,7 @@ on:
       - ".github/workflows/fuzz.yml"
   pull_request:
     paths:
+      - "crates/omorfos-core/**"
       - "crates/omorfos-relay/**"
       - "crates/omorfos-ipc/**"
       - "crates/omorfos-config/**"
@@ -48,7 +50,7 @@ jobs:
       # Each is run whatever another finds.
       fail-fast: false
       matrix:
-        target: [messages, link, configuration, ipc]
+        target: [messages, link, desktop, configuration, ipc]
     steps:
       - uses: actions/checkout@v7.0.1
         with:

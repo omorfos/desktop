@@ -267,12 +267,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "omorfos-core"
+version = "0.1.0"
+
+[[package]]
 name = "omorfos-fuzz"
 version = "0.0.0"
 dependencies = [
  "jiff",
  "libfuzzer-sys",
  "omorfos-config",
+ "omorfos-core",
  "omorfos-ipc",
  "omorfos-relay",
  "rustix",

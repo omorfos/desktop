@@ -1,8 +1,9 @@
 # What reads untrusted input fuzzed: the relay's reader and its link for a
 # program (ADR 61), the configuration, and what crosses omorfos's own
-# sockets. A workspace of its own, outside the project's, as cargo-fuzz
-# needs a nightly toolchain and the project is built with a stable one; run
-# as `cargo +nightly fuzz run messages`, `link`, `configuration` or `ipc`.
+# sockets; and the desktop, done to in any order. A workspace of its own,
+# outside the project's, as cargo-fuzz needs a nightly toolchain and the
+# project is built with a stable one; run as `cargo +nightly fuzz run
+# messages`, `link`, `desktop`, `configuration` or `ipc`.
 [package]
 name = "omorfos-fuzz"
 version = "0.0.0"
@@ -16,6 +17,7 @@ cargo-fuzz = true
 # The moment a configuration is loaded at, as the compositor's.
 jiff = { version = "0.2.38", default-features = false, features = ["std"] }
 libfuzzer-sys = "0.4.10"
+omorfos-core = { path = "../crates/omorfos-core" }
 omorfos-config = { path = "../crates/omorfos-config" }
 omorfos-ipc = { path = "../crates/omorfos-ipc" }
 omorfos-relay = { path = "../crates/omorfos-relay" }
@@ -35,6 +37,13 @@ bench = false
 [[bin]]
 name = "link"
 path = "fuzz_targets/link.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "desktop"
+path = "fuzz_targets/desktop.rs"
 test = false
 doc = false
 bench = false

@@ -382,7 +382,7 @@ fuzzing() {
     # One word to each, as in `reaching`.
     for word in $1; do
         case "$word" in
-            everything | omorfos-relay | omorfos-ipc | omorfos-config)
+            everything | omorfos-core | omorfos-relay | omorfos-ipc | omorfos-config)
                 step cargo check --manifest-path fuzz/Cargo.toml --target-dir "$top/target/fuzz" \
                     --bins --locked
                 return

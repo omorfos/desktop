@@ -3329,9 +3329,15 @@ stages it belongs to:
       bounds on what is kept to be written. `link` drives the relay's
       link for a program as the relay does, over sockets, with
       descriptors.
-- [ ] Arbitrary sequences of what can be done to windows, workspaces and
+- [x] Arbitrary sequences of what can be done to windows, workspaces and
       screens, run against `omorfos-core` and the desktop checked to be
       whole after each: as a fuzz target, which needs no new dependency.
+      `desktop` adds and takes away windows and screens, moves, tiles,
+      arranges, attaches and focuses windows, and switches and slides
+      workspaces, checking after each that every window is listed once,
+      in a frame that holds it, on a workspace and a screen there are,
+      that each screen shows a workspace it has, and that at most one
+      window has the keyboard. Ten minutes found nothing.
 - [ ] Who may use the IPC socket, written down in `SECURITY.md`: any
       program of the user's outside a sandbox may have programs started,
       windows closed and the clipboard written, which is no more than it

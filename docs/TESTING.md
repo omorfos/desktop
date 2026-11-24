@@ -497,6 +497,10 @@ What reads untrusted input is fuzzed, each by a target of its own:
   socket: what the program and the compositor send, in pieces of any
   size with descriptors beside them, read and written as the relay does,
   the compositor going now and then and the next joined;
+- `desktop`: what can be done to windows, workspaces and screens, done
+  to the desktop of `omorfos-core` in any order, the desktop checked to
+  be whole after each: each window in one frame, on a workspace and a
+  screen there are, and at most one with the keyboard;
 - `configuration`: the configuration's files, a byte choosing which, read
   as the compositor reads them, and read again over what that made, as a
   reload is;
