@@ -312,8 +312,9 @@ impl Compositor {
 
     /// Accepts new peers and answers the requests that have arrived.
     pub(crate) fn serve_ipc(&mut self) {
-        // The server is moved out while requests are answered, because
-        // answering needs the whole compositor.
+        // The server is moved out while peers are taken on, because each
+        // is listened to by the compositor's event loop, and put back
+        // before what they ask is read.
         let Some(mut server) = self.ipc.take() else {
             return;
         };
@@ -336,62 +337,69 @@ impl Compositor {
             let said = self.words.say("no-descriptors", &[]);
             self.refused.say(&said);
         }
-        // What each peer asked, in the order asked, answered once the
-        // server is back: an answer may start a program, which is to be
-        // told where the socket is, or ask what the peers keep the session
-        // from.
-        let mut asked = Vec::new();
-        for (at, peer) in server.peers.iter_mut().enumerate() {
-            for line in peer.read_lines() {
-                let request = String::from_utf8(line).map_err(|error| error.to_string());
-                asked.push((at, request.and_then(|line| decode::<Request>(&line))));
-            }
-        }
+        let peers = server.peers.len();
         self.ipc = Some(server);
-        for (at, request) in asked {
-            let reply = match request {
-                // Answered when the state is next published, moments from
-                // now, so that it is sent once and not twice.
-                Ok(Request::Subscribe) => {
-                    self.with_peer(at, |peer| {
-                        peer.follows = peer.follows.or(Some(Follows::State));
-                        peer.waiting = true;
-                    });
-                    None
-                }
-                Ok(Request::ShowProblems) => {
-                    self.with_peer(at, |peer| {
-                        peer.follows = Some(Follows::Problems);
-                        peer.waiting = true;
-                    });
-                    None
-                }
-                Ok(Request::Hold { idle, sleep }) => {
-                    self.with_peer(at, |peer| peer.kept = Kept { idle, sleep });
-                    Some(Reply::Done)
-                }
-                Ok(Request::Radios { radios }) => {
-                    // Kept with the compositor too, as the state is made
-                    // while the server is out of its hands.
-                    self.radios.clone_from(&radios);
-                    self.with_peer(at, |peer| peer.radios = Some(radios));
-                    Some(Reply::Done)
-                }
-                Ok(request) => Some(self.answer(request)),
-                Err(message) => Some(Reply::Error { message }),
-            };
-            let _ = reply.map(|reply| self.with_peer(at, |peer| peer.queue(&reply)));
+        // What each peer asked is answered with the server back, as an
+        // answer may start a program, which is to be told where the socket
+        // is, or ask what the peers keep the session from. Each request is
+        // read and answered before the next is decoded, so that no more
+        // than one peer's lines and one request are held at a time.
+        for at in 0..peers {
+            let lines = self.with_peer(at, Peer::read_lines);
+            for line in lines.into_iter().flatten() {
+                self.answer_line(at, line);
+            }
         }
     }
 
+    /// Answers what the peer at `at` asked in `line`, or tells it why that
+    /// is not a request.
+    fn answer_line(&mut self, at: usize, line: Vec<u8>) {
+        let request = String::from_utf8(line).map_err(|error| error.to_string());
+        let request = request.and_then(|line| decode::<Request>(&line));
+        let reply = match request {
+            // Answered when the state is next published, moments from
+            // now, so that it is sent once and not twice.
+            Ok(Request::Subscribe) => {
+                self.with_peer(at, |peer| {
+                    peer.follows = peer.follows.or(Some(Follows::State));
+                    peer.waiting = true;
+                });
+                None
+            }
+            Ok(Request::ShowProblems) => {
+                self.with_peer(at, |peer| {
+                    peer.follows = Some(Follows::Problems);
+                    peer.waiting = true;
+                });
+                None
+            }
+            Ok(Request::Hold { idle, sleep }) => {
+                self.with_peer(at, |peer| peer.kept = Kept { idle, sleep });
+                Some(Reply::Done)
+            }
+            Ok(Request::Radios { radios }) => {
+                // Kept with the compositor too, as the state is made in
+                // `publish_ipc`, while the server is out of its hands.
+                self.radios.clone_from(&radios);
+                self.with_peer(at, |peer| peer.radios = Some(radios));
+                Some(Reply::Done)
+            }
+            Ok(request) => Some(self.answer(request)),
+            Err(message) => Some(Reply::Error { message }),
+        };
+        let _ = reply.map(|reply| self.with_peer(at, |peer| peer.queue(&reply)));
+    }
+
     /// Does `done` to the peer at `at`, which is there: peers are only
-    /// taken on, or let go of, while the server is out.
-    fn with_peer(&mut self, at: usize, done: impl FnOnce(&mut Peer)) {
+    /// taken on, or let go of, while the server is out, which it never is
+    /// while they are answered.
+    fn with_peer<T>(&mut self, at: usize, done: impl FnOnce(&mut Peer) -> T) -> Option<T> {
         let peer = self
             .ipc
             .as_mut()
             .and_then(|server| server.peers.get_mut(at));
-        let _ = peer.map(done);
+        peer.map(done)
     }
 
     /// Sends subscribers the state if it changed, and sends everyone what
