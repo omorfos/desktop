@@ -9,6 +9,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use omorfos_ipc::handing::Handing;
+use omorfos_shell::Layout;
 use rustix::fs::{MemfdFlags, memfd_create};
 use wayland_client::protocol::{
     wl_buffer, wl_callback, wl_output, wl_registry, wl_seat, wl_shm, wl_shm_pool,
@@ -141,11 +142,17 @@ impl State {
     }
 }
 
-/// Memory of `length` bytes to share with the compositor.
-fn memory(length: u64) -> io::Result<File> {
-    let made = memfd_create("omorfos-screenshot", MemfdFlags::CLOEXEC);
-    let made = made.map(File::from).map_err(io::Error::from);
-    made.and_then(|file| file.set_len(length).map(|()| file))
+/// Memory to share with the compositor for a picture `size` large, and
+/// how the picture lies in it. None is made for a picture larger than
+/// Wayland has numbers for, or of nothing.
+fn memory(size: (u32, u32)) -> io::Result<(File, Layout)> {
+    let layout = Layout::of(size);
+    layout.and_then(|layout| {
+        let made = memfd_create("omorfos-screenshot", MemfdFlags::CLOEXEC);
+        let made = made.map(File::from).map_err(io::Error::from);
+        let length = u64::from(layout.length.cast_unsigned());
+        made.and_then(|file| file.set_len(length).map(|()| (file, layout)))
+    })
 }
 
 /// Connects to the compositor at `socket`, or to the one that handed this
@@ -440,24 +447,22 @@ impl Dispatch<ExtImageCopyCaptureSessionV1, usize> for State {
                 session::Event::Done => {
                     // The size is known: the picture is asked for, in
                     // memory made to that size.
-                    let (width, height) = screen.size;
-                    let length = u64::from(width) * u64::from(height) * 4;
-                    let sizes = (
-                        i32::try_from(length),
-                        i32::try_from(width),
-                        i32::try_from(height),
-                    );
-                    let sizes = sizes.0.ok().zip(sizes.1.ok()).zip(sizes.2.ok());
-                    let made = memory(length).ok().zip(sizes).zip(shm.as_ref());
+                    let made = memory(screen.size).ok().zip(shm.as_ref());
                     let format = if screen.see_through {
                         wl_shm::Format::Argb8888
                     } else {
                         wl_shm::Format::Xrgb8888
                     };
-                    screen.memory = made.map(|((memory, ((length, width), height)), shm)| {
+                    screen.memory = made.map(|((memory, layout), shm)| {
+                        let Layout {
+                            width,
+                            height,
+                            stride,
+                            length,
+                        } = layout;
                         let pool = shm.create_pool(memory.as_fd(), length, handle, ());
                         let buffer =
-                            pool.create_buffer(0, width, height, width * 4, format, handle, ());
+                            pool.create_buffer(0, width, height, stride, format, handle, ());
                         pool.destroy();
                         let frame = taking.create_frame(handle, *index);
                         frame.attach_buffer(&buffer);
@@ -580,3 +585,21 @@ delegate_noop!(State: ignore wl_buffer::WlBuffer);
 delegate_noop!(State: ExtOutputImageCaptureSourceManagerV1);
 delegate_noop!(State: ExtImageCaptureSourceV1);
 delegate_noop!(State: ExtImageCopyCaptureManagerV1);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn memory_for_a_picture_too_large_for_wayland_is_refused_not_made() {
+        assert!(memory((1 << 30, 1)).is_err());
+        assert!(memory((0, 0)).is_err());
+    }
+
+    #[test]
+    fn memory_for_a_picture_is_made_as_large_as_it_is() {
+        let (memory, layout) = memory((2, 3)).unwrap();
+        assert_eq!(memory.metadata().unwrap().len(), 24);
+        assert_eq!(layout.stride, 8);
+    }
+}
