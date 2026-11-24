@@ -133,6 +133,52 @@ fn a_session_with_nothing_changing_does_no_more_for_glass_the_more_windows_are_u
     );
 }
 
+/// How long a turn with nothing changing takes, with 1 to 256 windows open,
+/// in frames of ours and drawing their own: the least, and the middle, of
+/// 41 times 200 turns. A measure, not a gate, as how long anything takes
+/// depends on the machine and what else it is doing; run by hand in an
+/// optimised build:
+///
+/// ```sh
+/// cargo test --profile nightly -p omorfos --all-features --test integration \
+///     how_long_a_turn -- --ignored --nocapture
+/// ```
+#[test]
+#[ignore = "a measurement, run by hand in an optimised build"]
+fn how_long_a_turn_with_nothing_changing_takes_as_windows_are_added() {
+    for framed in [true, false] {
+        for windows in [1_usize, 8, 32, 128, 256] {
+            let mut session = Session::with_config(&[("theme.css", SOLID)]);
+            let mut client = session.connect();
+            let _windows: Vec<_> = (0..windows)
+                .map(|each| {
+                    let (app, size, color) = (format!("app{each}"), (200, 100), 0xff00_ff00);
+                    if framed {
+                        session.open_decorated(&mut client, &app, size, color)
+                    } else {
+                        session.open(&mut client, &app, size, color)
+                    }
+                })
+                .collect();
+            session.eventually(|session| !session.render());
+            let mut samples = Vec::new();
+            for _ in 0..41 {
+                let started = std::time::Instant::now();
+                for _ in 0..200 {
+                    session.advance(Duration::from_millis(16));
+                }
+                samples.push(started.elapsed() / 200);
+            }
+            samples.sort();
+            let said = format!(
+                "{windows} windows, framed {framed}: least {:?}, middle {:?}\n",
+                samples[0], samples[20]
+            );
+            std::io::Write::write_all(&mut std::io::stderr(), said.as_bytes()).unwrap();
+        }
+    }
+}
+
 /// Whether anything on the session's screen waits to be told that a frame
 /// was shown there.
 fn awaited(session: &Session) -> bool {

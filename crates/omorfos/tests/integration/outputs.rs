@@ -12,7 +12,7 @@ use wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_surface_v1::{
     Anchor, KeyboardInteractivity,
 };
 
-use crate::common::{Client, Event, HEIGHT, LayerShape, Session, WIDTH, key};
+use crate::common::{Client, Event, HEIGHT, LayerShape, Left, Session, WIDTH, key};
 use crate::windows::{BACKGROUND, BLUE, GREEN, RED, shaded};
 
 const BLACK: u32 = 0xff00_0000;
@@ -608,6 +608,31 @@ fn a_window_that_is_not_shown_is_still_told_the_scale_of_its_own_output() {
     session.roundtrip(&mut client);
     assert_eq!(client.state.told.buffer_scale, Some(1));
     assert_eq!(client.state.told.scale, Some(120));
+}
+
+#[test]
+fn a_window_is_told_the_screen_it_is_on_as_it_comes_and_as_it_is_moved() {
+    let (mut session, _second) = two_screens();
+    let mut first = session.connect();
+    let _first = session.open(&mut first, "first", (200, 100), RED);
+    assert_eq!(first.state.told.entered, 1, "on the first screen");
+
+    // One that comes after, while the first stays as it is, is told too.
+    let mut next = session.connect();
+    let _next = session.open(&mut next, "next", (200, 100), GREEN);
+    assert_eq!(next.state.told.entered, 1, "on the first screen too");
+
+    // Moved to the second screen, it is told it left one and is on the
+    // other.
+    perform(&mut session, &Action::MoveToNextOutput);
+    session.eventually(|session| {
+        session.roundtrip(&mut next);
+        next.state.told.entered == 2
+    });
+    assert_eq!(next.state.outputs_left, [Left::Surface]);
+    session.roundtrip(&mut first);
+    assert_eq!(first.state.told.entered, 1, "the first is where it was");
+    assert_eq!(first.state.outputs_left, []);
 }
 
 #[test]

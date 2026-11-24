@@ -2769,9 +2769,18 @@ impl Compositor {
         self.sync_room.frames = frames;
         self.order_scene(scene);
         self.lay_lines(moves);
-        for shown in &self.scene {
-            self.space
-                .map_element(shown.window.clone(), shown.origin, false);
+        // Mapping a window searches what the space holds and sorts it, so
+        // mapping each is as the square of the windows: where the space
+        // holds the scene's windows already, in its order and where they
+        // were mapped, as in a turn with nothing changing, it is left so.
+        if !self.mapped_as_shown() {
+            for shown in &self.scene {
+                self.space
+                    .map_element(shown.window.clone(), shown.origin, false);
+            }
+            let mapped = &mut self.sync_room.mapped;
+            mapped.clear();
+            mapped.extend(self.scene.iter().map(|shown| shown.origin));
         }
         self.animation.leave(&mut previous, &self.scene);
         self.sync_room.spare = previous;
@@ -2785,6 +2794,20 @@ impl Compositor {
         self.announce_scale();
         self.update_idle_inhibition();
         self.sync_keyboard_focus(focused);
+    }
+
+    /// Whether the space holds the windows of the scene, and nothing else,
+    /// in its order, each where it was last mapped, and where it is now.
+    fn mapped_as_shown(&self) -> bool {
+        let mut held = self.space.elements();
+        let mapped = &self.sync_room.mapped;
+        let same = self.scene.len() == mapped.len()
+            && self
+                .scene
+                .iter()
+                .zip(mapped)
+                .all(|(shown, at)| held.next() == Some(&shown.window) && shown.origin == *at);
+        same && held.next().is_none()
     }
 
     /// How the frames whose places have changed since the last sync got
@@ -6495,6 +6518,9 @@ struct SyncRoom {
     ordered: Vec<(usize, Shown)>,
     /// The scene before last, emptied, to be the next.
     spare: Vec<Shown>,
+    /// Where each window of the scene was last mapped in the space, in
+    /// its order.
+    mapped: Vec<Point<i32, Logical>>,
 }
 
 /// What `sync` needs to know about a frame, copied out of the desktop.
