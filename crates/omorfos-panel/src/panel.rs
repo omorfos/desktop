@@ -157,8 +157,7 @@ impl Panel {
     pub fn serve(&mut self) -> Failure {
         let started = Instant::now();
         // As the locale of the time asks, as the panel was started.
-        let time = omorfos_i18n::locale("LC_TIME", &|name| std::env::var(name).ok());
-        self.weeks_from(month::first_weekday(&time.unwrap_or_default()));
+        self.weeks_from(first_weekday(&|name| std::env::var(name).ok()));
         loop {
             let (time, changes, today) = omorfos_shell::clock::now();
             self.date(today);
@@ -1124,9 +1123,34 @@ fn date(words: &Words, today: month::Date) -> String {
     words.say("date", &given)
 }
 
+/// The day the month's weeks begin on, as the locale the environment asks
+/// for the time has it; `get` looks a variable up.
+fn first_weekday(get: &dyn Fn(&str) -> Option<String>) -> month::Weekday {
+    let time = omorfos_i18n::locale("LC_TIME", get);
+    month::first_weekday(&time.unwrap_or_default())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Looks a variable up among `set`.
+    fn among<'a>(set: &'a [(&'a str, &'a str)]) -> impl Fn(&str) -> Option<String> + 'a {
+        |name| {
+            let found = set.iter().find(|(key, _)| *key == name);
+            found.map(|(_, value)| (*value).to_owned())
+        }
+    }
+
+    #[test]
+    fn the_weeks_begin_as_the_locale_of_the_time_has_it() {
+        let time = [("LANG", "pl_PL.UTF-8"), ("LC_TIME", "en_US.UTF-8")];
+        assert_eq!(first_weekday(&among(&time)), month::Weekday::Sunday);
+        let messages = [("LANG", "pl_PL.UTF-8"), ("LC_MESSAGES", "en_US.UTF-8")];
+        assert_eq!(first_weekday(&among(&messages)), month::Weekday::Monday);
+        let messages = [("LC_MESSAGES", "en_US.UTF-8")];
+        assert_eq!(first_weekday(&among(&messages)), month::Weekday::Monday);
+    }
 
     #[test]
     fn a_tooltip_on_the_bar_says_the_date_what_a_click_does_or_a_whole_label() {
