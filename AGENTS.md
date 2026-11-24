@@ -115,10 +115,13 @@ Work goes on at two machines at once, and each has its part:
 They hand work over like this:
 
 1. **Claim before starting.** Before taking an item, look at
-   `gh pr list`. An item is taken by pushing its branch and opening a draft
-   pull request as soon as work on it begins, with the item named in its
-   title: this, and only this, is pushed without being asked. One that
-   is not finished is closed, so that the item is free again.
+   `gh issue list` and `gh pr list`. An item is taken by opening an issue
+   that names it as soon as work on it begins, which needs nothing
+   pushed; then, with the first commit, by pushing its branch and opening
+   a draft pull request that closes the issue (`Fixes #n`). The branch
+   and that pull request, and only they, are pushed without being asked.
+   Work given up is said so on the issue, which is closed, so that the
+   item is free again.
 2. **From building to trying.** A change merged that has not been tried
    on real hardware adds what to try, and what should be seen, to "To
    be tried by hand".
