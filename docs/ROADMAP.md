@@ -29,15 +29,6 @@ a known gap.
   was not this login's, which is a fault of its own (stage 8).
 - A screen that changes size while it is shared (stage 3), with a
   screen that has modes of more than one size.
-- A screen shared, in a call or by OBS, while something busy changes on
-  it (stage 8, finding 4 of 23 November): the sharing goes on, and what
-  is seen is what the screen shows. Not tried under WSL, where a screen
-  cannot be shared; to be tried on real hardware.
-- Windows moved between screens, maximized and their tabs switched, and a
-  window a rule makes private still hidden in a screen shared (stage 8,
-  finding 3 of 23 November): how a frame is hidden is now worked out with
-  the frames, and windows are mapped again only when something moved. Not
-  tried under WSL.
 ## Where this is going
 
 omorfos is small, fast and driven by text files, but what is being asked
