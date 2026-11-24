@@ -1383,7 +1383,7 @@ the first than on the last.
       numbers say.
 - [ ] What a glass titlebar allocates where nothing changes, brought
       down: 7 times a turn for each, counted by the tests of a quiet
-      session beside the 17 of a window in a solid frame, in laying its
+      session beside the 13 of a window in a solid frame, in laying its
       sheet out, in looking at what is under it and in cutting it to its
       corners. Both are to come down to nothing.
 - [x] One hairline and one blur for every surface (ADR 97): `--edge`
@@ -2821,12 +2821,12 @@ Hardware and performance:
       where it is replaced said in the guide.
 - [ ] A turn with nothing changing allocating nothing, the gate's ceiling
       lowered as each goes. With one window in a frame of ours, as `quiet::`
-      has it since the X11 work showed the frame was being left out, 18:
-      16 in drawing, where what is drawn is made anew each time, as lists
+      has it since the X11 work showed the frame was being left out, 13:
+      10 in drawing, where what is drawn is made anew each time, as lists
       of elements, much of it Smithay's for what the program drew, which
       keeping them from frame to frame would take a rework of drawing and
-      part of it Smithay's; and 2 in Smithay's refreshing of the space,
-      which waits on Smithay.
+      part of it Smithay's; and 3 in the turn before it, Smithay's
+      refreshing of the space among them, which waits on Smithay.
 - [ ] What is claimed of speed made by a script, and each number kept
       with the commit, the card, its driver and how many runs it is of.
 - [ ] A window on another desktop (the nested backend) that does no work
