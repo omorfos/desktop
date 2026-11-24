@@ -113,9 +113,9 @@ pub fn start(variable: &dyn Fn(&str) -> Option<OsString>) -> Failure {
         variable("XDG_CONFIG_HOME").as_deref(),
         variable("HOME").as_deref(),
     );
-    let kept = omorfos_config::kept_dir(variable("XDG_RUNTIME_DIR").as_deref());
+    let runtime = variable("XDG_RUNTIME_DIR");
     let forget = config.map_or(0, |config| {
-        let store = omorfos_config::Store::open(&config).starting_from(kept.as_deref());
+        let store = omorfos_config::Store::open_in_session(config, runtime.as_deref());
         store.current().general.clipboard.forget.get()
     });
     let forget = (forget > 0).then(|| Duration::from_secs(u64::from(forget)));
