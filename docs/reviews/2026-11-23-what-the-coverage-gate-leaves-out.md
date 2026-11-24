@@ -23,14 +23,18 @@ Measured first, by counting:
 
 | File | Lines of code | `if` and `match` | `?` |
 |---|---|---|---|
-| `crates/omorfos/src/backend/hardware.rs` | 977 | 68 | 60 |
-| `crates/omorfos/src/shader.rs` | 324 | 10 | 7 |
-| `crates/omorfos/src/backend/winit.rs` | 314 | 12 | 11 |
-| `crates/xdg-desktop-portal-omorfos/src/card.rs` | 111 | 5 | 4 |
+| `crates/omorfos/src/backend/hardware.rs` | 977 | 56 | 60 |
+| `crates/omorfos/src/shader.rs` | 324 | 0 | 7 |
+| `crates/omorfos/src/backend/winit.rs` | 314 | 8 | 11 |
+| `crates/xdg-desktop-portal-omorfos/src/card.rs` | 111 | 2 | 4 |
 | `crates/omorfos-hold/src/seat.rs` | 49 | 3 | 0 |
-| `crates/omorfos-hold/src/exec.rs` | 31 | 5 | 0 |
+| `crates/omorfos-hold/src/exec.rs` | 31 | 2 | 0 |
 | `crates/omorfos/src/gpu.rs` | 25 | 0 | 0 |
-| **All seven** | **1,831** | **103** | **82** |
+| **All seven** | **1,831** | **71** | **82** |
+
+The `if` and `match` are those of Rust, not counting comments and the
+shader's own GLSL: as first written, the table counted those too, and
+said 103 (put right on 24 November).
 
 Of the 97,357 lines of code under the crates' `src`, 29,713 are test
 modules, which count as covered by running. Of the 67,644 that are not,

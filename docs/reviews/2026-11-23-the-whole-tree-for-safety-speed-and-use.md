@@ -9,7 +9,7 @@ the test to write first.
 
 ## What was asked, and of whom
 
-Eight read-only reviewer agents read the tree at `7f27ec2`, each told
+Eight read-only reviewer agents read the tree at or near `861a4fd`, each told
 the open findings of the earlier reviews in this folder and the
 roadmap's open items, so as not to find them again. Nothing was built or
 run by them; every finding came **by reading**. The agent that started
@@ -18,8 +18,8 @@ each fix, so where a finding says **shown**, a test now fails without
 its fix. Line numbers are those of `a266d9b`, where they had not moved.
 
 The original proposed fixes for two findings were not suitable, and are
-under "Invalid proposed fixes", with why. The findings remain open:
-the review skill's **high** rank stops or ends the session, or gives away
+under "Invalid proposed fixes", with why; the findings themselves
+remain open. Ranks are the review skill's: **high** stops or ends the session, or gives away
 what is private; **medium** costs without bound, or breaks a promise;
 **low**, the rest.
 
@@ -90,13 +90,13 @@ The test to write first: a benchmark of a quiet refresh with 1, 8, 32,
 `wanted` walks every shot and every taking, and keeps them apart with
 `Vec::contains` (`crates/omorfos/src/capture.rs:555`); `due` walks
 every shot for each taking (`:580`); and `hand` turns and writes each
-damaged rectangle by itself, emptying its scratch space for each
+damaged rectangle by itself, emptying its scratch space, which is kept
+(`capture.rs:399-401`), for each
 (`:642`). Many programs capturing, or a damage of many small rectangles,
 converts and writes the same pixels again and again, though capture was
 made to send only what changed.
 
-What to change: what is captured found by session and screen; scratch
-space kept; and damage joined into the rectangle round it where many
+What to change: what is captured found by session and screen; and damage joined into the rectangle round it where many
 small ones would cost more.
 
 The test to write first: a benchmark with 1, 4 and 16 sessions and 1,
@@ -131,6 +131,7 @@ from the width, turning each to Wayland's signed numbers with
 `unwrap_or(i32::MAX)` (`crates/omorfos-shell/src/lib.rs:73`). Bytes
 short of the size make a pool the compositor refuses, and it sends the
 program away. Every caller today passes a canvas's own size and bytes,
+or the wallpaper's cache's, which are checked (`cache.rs:75`),
 so this is a promise the function does not keep, not a fault seen.
 
 What to change: refuse an empty size, one too large for Wayland, and
@@ -192,8 +193,14 @@ What to research before changing code: whether the desktop can establish
 an authenticated relationship with the agent it configured, rather than
 trusting parent identity; whether the agent's socket and `GETINFO pid`
 can provide a useful binding; and whether that would wrongly reject a
-legitimate agent using another GnuPG home. Amend ADR 58 with the chosen
-same-user threat boundary before implementing anything.
+legitimate agent using another GnuPG home.
+
+[ADR 58](../adr/0058-passphrases-asked-in-our-words.md) already records
+this and accepts it: the check on the parent "raises the bar, and is not
+the boundary". Whether to go back on that decision was the maintainer's,
+who decided on 24 November 2026 to keep ADR 58 as it is: a program running
+as the user, outside a sandbox, is trusted ([SECURITY.md](../SECURITY.md),
+"Who is trusted").
 
 ### 10. The notification service advertises actions it does not provide
 
@@ -201,7 +208,8 @@ same-user threat boundary before implementing anything.
 
 `GetCapabilities` advertises `actions` (`crates/omorfos-notifications/src/bus.rs:42`),
 but only whether a notification has the `default` action is retained and
-the UI emits `ActionInvoked("default")` for every left click. Named
+the UI emits `ActionInvoked("default")` for a left click on one whose
+program offered `default` (`client.rs:680`). Named
 Reply, Snooze or Open actions are neither displayed nor emitted.
 
 The Desktop Notifications specification says that `actions` means the
@@ -222,7 +230,7 @@ not a finding to drop.
 - **Checking the pinentry parent with `/proc/<pid>/exe`.** This was the
   first attempted fix. It rejects the genuine GnuPG agent because it
   hides that link, while accepting an attacker that launches the genuine
-  binary. It was reverted; the finding above remains open for an ADR and
+  binary. It was tried and never merged; the finding above remains open for an ADR and
   design research.
 - **Removing `actions` immediately.** This was considered as a stopgap,
   but would make some clients stop sending the default clickable action.
@@ -270,8 +278,11 @@ Each is for its own ADR before it is begun.
 - `omorfos-core` knows nothing of I/O, the clock or Smithay, and depends
   on no other crate of the workspace.
 - The configuration is checked as it is read, and the copy of what last
-  loaded is kept by the compositor and started from by every part but
-  the lock screen (finding 1).
+  loaded is kept by the compositor and started from by the parts it
+  starts again, the portal, the clipboard's keeper and the password box;
+  not by the lock screen (finding 1), nor, as was found the next day, by
+  the launcher, the screenshot tool and the welcome card (finding 4 of
+  [the review of 24 November](2026-11-24-the-pull-requests-merged-on-23-november.md)).
 - Who may do what by their role, what is asked before a screen is
   captured, the signs that something is, and how a screenshot's file is
   made, are as the security model says.
