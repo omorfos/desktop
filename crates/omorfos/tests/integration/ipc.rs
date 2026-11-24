@@ -622,6 +622,39 @@ fn connections_beyond_the_limit_are_turned_away() {
 }
 
 #[test]
+fn what_every_peer_asks_in_a_turn_is_not_all_held_at_once() {
+    let mut session = Session::new();
+    let path = session.listen();
+    let mut peers: Vec<UnixStream> = (0..32)
+        .map(|_| UnixStream::connect(&path).unwrap())
+        .collect();
+    session.step();
+    // An action as long as a message may be, of the smallest values, which
+    // read take up far more than they were written in.
+    // Each zero is written in two bytes, with the comma after it.
+    let zeros = (omorfos_ipc::MAX_MESSAGE - 64) / 2;
+    let action = serde_json::Value::Array(vec![json!(0); zeros]);
+    let line = omorfos_ipc::encode(&Request::Perform { action });
+    assert!(line.len() <= omorfos_ipc::MAX_MESSAGE, "a message still");
+    for peer in &mut peers {
+        peer.write_all(line.as_bytes()).unwrap();
+    }
+
+    let made = allocation_counter::measure(|| session.step());
+    let most = 8 * 1024 * 1024;
+    assert!(
+        made.bytes_max < most,
+        "the turn held {} bytes at once, more than {most}",
+        made.bytes_max
+    );
+    // And every peer was answered all the same.
+    for peer in peers {
+        let mut peer = Client::from_stream(peer);
+        assert_matches!(peer.receive().unwrap(), Reply::Error { .. });
+    }
+}
+
+#[test]
 fn programs_started_by_the_compositor_are_told_where_the_socket_is() {
     let mut session = Session::new();
     let path = session.listen();
