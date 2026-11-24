@@ -1760,6 +1760,58 @@ mod tests {
         assert_eq!(read, Err(Ended::Broken(wire::ADDED_TOO_MUCH_IN_ALL)));
     }
 
+    /// Has the program make the surface `surface` and set the region 4 as
+    /// what of it is opaque; says how what it sent was read.
+    fn opaque(
+        link: &mut Link,
+        program: &UnixStream,
+        compositor: &UnixStream,
+        surface: u32,
+    ) -> Result<(), Ended> {
+        let mut made = message(3, 0, &words(&[surface]));
+        made.extend(message(surface, 4, &words(&[4])));
+        send(program, &made, &[]);
+        read_through(link, compositor)
+    }
+
+    /// Has the program make the region 4, set it on the surface 5 and
+    /// destroy it, and the compositor say its number is free: it is kept
+    /// while the surface names it, and that word is kept from the program.
+    fn withheld(link: &mut Link, program: &UnixStream, compositor: &UnixStream) {
+        send(program, &message(3, 1, &words(&[4])), &[]);
+        assert_eq!(read_through(link, compositor), Ok(()));
+        assert_eq!(opaque(link, program, compositor, 5), Ok(()));
+        send(program, &message(4, 0, &[]), &[]);
+        assert_eq!(read_through(link, compositor), Ok(()));
+        send(compositor, &message(1, 1, &words(&[4])), &[]);
+        assert_eq!(link.read(Way::Down), Ok(()));
+        assert_eq!(received(program).0, [0_u8; 0], "not told it is free");
+    }
+
+    #[test]
+    fn a_program_may_not_take_a_number_again_before_it_is_told_it_is_free() {
+        let (mut link, program, compositor) = composing();
+        withheld(&mut link, &program, &compositor);
+        // Taken again all the same, what names the old region would name
+        // the new.
+        send(&program, &message(3, 1, &words(&[4])), &[]);
+        let read = read_through(&mut link, &compositor);
+        assert_eq!(read, Err(Ended::Broken(wire::NUMBER_TAKEN)));
+    }
+
+    #[test]
+    fn a_program_told_a_number_is_free_may_take_it_again() {
+        let (mut link, program, compositor) = composing();
+        withheld(&mut link, &program, &compositor);
+        // The surface gone, nothing names the region: the program is told
+        // its number is free, and may take it for another.
+        send(&program, &message(5, 0, &[]), &[]);
+        assert_eq!(read_through(&mut link, &compositor), Ok(()));
+        assert_eq!(received(&program).0, message(1, 1, &words(&[4])));
+        send(&program, &message(3, 1, &words(&[4])), &[]);
+        assert_eq!(read_through(&mut link, &compositor), Ok(()));
+    }
+
     #[test]
     fn what_was_added_to_an_object_let_go_of_no_longer_counts_against_a_program() {
         let (mut link, program, compositor) = composing();

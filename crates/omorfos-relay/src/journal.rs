@@ -14,7 +14,8 @@
 //! made again with the rest, and destroyed again once the rest has been.
 //! Its number is not given back to the program, which the compositor says
 //! by `wl_display.delete_id`, until nothing kept names it any more, so that
-//! the program cannot take it for something else meanwhile.
+//! the program cannot take it for something else meanwhile: one that takes
+//! it all the same, untold, is let go.
 //!
 //! What lasts only a moment, a popup, a token to hand focus on or word of a
 //! picture being shown, is not made again: it is let go of as the
@@ -460,9 +461,10 @@ impl Journal {
     ///
     /// Returns why the program is to be let go if it has added more to one
     /// object than any program adds, [`MOST_ADDED`], more to all of them
-    /// together than [`MOST_ADDED_IN_ALL`], or offered what it
+    /// together than [`MOST_ADDED_IN_ALL`], offered what it
     /// copied in more kinds than [`MOST_KINDS`] or one longer than
-    /// [`LONGEST_KIND`].
+    /// [`LONGEST_KIND`], or made an object with a number it has not been
+    /// told is free.
     pub fn request(
         &mut self,
         header: Header,
@@ -472,6 +474,13 @@ impl Journal {
         described: &MessageDesc,
     ) -> Result<(), Broken> {
         if let Some((made, interface, version)) = read.made {
+            // A number still kept is one the program has not been told is
+            // free: what had it is gone, and named yet. Taken again all
+            // the same, what names the old would name the new, and be
+            // made again so for the next compositor.
+            if self.kept.contains_key(&made) {
+                return Err(wire::NUMBER_TAKEN);
+            }
             let message = Message::kept(bytes, fds, described);
             self.stacked(made, interface.name, &message.names);
             self.name(made, &message.names);
@@ -490,10 +499,6 @@ impl Journal {
                 committed: Vec::new(),
                 named: 0,
             };
-            // In place of anything kept by that number, which a program
-            // may name again before it is told it may: what was added to
-            // that is no longer counted.
-            let _ = self.remove(made);
             self.kept.insert(made, kept);
             return Ok(());
         }
