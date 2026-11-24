@@ -359,5 +359,6 @@ reduced, through the settings portal, so that applications can match.
 4. Does every piece of text meet 4.5 to 1, with the tint at its least?
 5. What does it look like with focus, under the pointer, under the
    keyboard, disabled, and urgent?
-6. What does it do under each of the three settings above?
+6. What does it do under each of the settings above, and under high
+   contrast once there is one?
 7. Can it be worked with the keyboard alone?

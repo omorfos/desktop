@@ -78,7 +78,9 @@ others:
   desktop's parts are to be written.
 - **Settings for those who need them**: high contrast and larger text as
   settings of their own, which applications are told of, rather than by
-  writing a theme, as reduced motion is.
+  writing a theme, as reduced motion is. High contrast is to be black and
+  white surfaces, `--border-strong` for every edge, a ring on the window
+  with focus, and signs on the titlebar's buttons always.
 - **A magnifier**, **sticky keys** and **slow keys**.
 - **An on-screen keyboard.**
 - **Everything from the keyboard**: notifications are dismissed with the
