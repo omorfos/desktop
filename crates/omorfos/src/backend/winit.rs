@@ -25,6 +25,8 @@ use smithay::backend::renderer::{Frame as _, Renderer as _};
 use smithay::backend::winit::{self, WinitEvent, WinitGraphicsBackend};
 use smithay::output::Output;
 use smithay::reexports::wayland_server::ListeningSocket;
+use smithay::reexports::winit::dpi::LogicalSize;
+use smithay::reexports::winit::window::Window as WinitWindow;
 use smithay::utils::Transform;
 
 use crate::Roles;
@@ -62,9 +64,17 @@ pub fn run(_start: Start) -> Result<(), Box<dyn Error>> {
     )
     .ok_or("cannot find the configuration directory: set HOME or XDG_CONFIG_HOME")?;
 
-    // The usual reason is that there is no session to open a window on,
-    // which the error itself does not say.
-    let (mut backend, winit) = winit::init::<GlesRenderer>().map_err(|error| {
+    // Smithay's own way of opening it calls the window "Smithay", which is
+    // what the host's taskbar would show; it is made as that one is, but
+    // for its title.
+    let window = WinitWindow::default_attributes()
+        .with_inner_size(LogicalSize::new(1280.0, 800.0))
+        .with_title("omorfos")
+        .with_visible(true);
+    let opened = winit::init_from_attributes::<GlesRenderer>(window);
+    // The usual reason it cannot be is that there is no session to open a
+    // window on, which the error itself does not say.
+    let (mut backend, winit) = opened.map_err(|error| {
         format!(
             "cannot open a window: {error}. omorfos runs inside a Wayland or X11 session for \
              now: start it from one, where WAYLAND_DISPLAY or DISPLAY is set"
