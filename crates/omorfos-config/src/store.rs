@@ -1,5 +1,6 @@
 //! The configuration in effect.
 
+use std::ffi::OsStr;
 use std::fs::{self, DirBuilder, OpenOptions};
 use std::io::{self, Write};
 use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
@@ -76,6 +77,23 @@ impl Store {
         }
     }
 
+    /// Loads the configuration in `directory` for a part of the session
+    /// the compositor runs in `xdg_runtime_dir` (`XDG_RUNTIME_DIR`): a
+    /// file that does not load is given the copy of it the compositor
+    /// keeps there ([`kept_dir`]), as [`Store::starting_from`] gives it.
+    ///
+    /// This is how every program of the session but the compositor opens
+    /// the configuration, so that each comes up with what is in effect
+    /// though a file has gone wrong since it last loaded (ADR 3). Outside a
+    /// session, with nothing kept, it is [`Store::open`].
+    ///
+    /// [`kept_dir`]: crate::kept_dir
+    #[must_use]
+    pub fn open_in_session(directory: impl Into<PathBuf>, xdg_runtime_dir: Option<&OsStr>) -> Self {
+        let kept = crate::kept_dir(xdg_runtime_dir);
+        Self::open(directory).starting_from(kept.as_deref())
+    }
+
     /// Keeps a copy of each file that loads in `kept`, from now on, and
     /// loads the configuration again with a file that fails to load given
     /// the copy kept of it, where there is one, in place of the built-in
@@ -102,6 +120,8 @@ impl Store {
     /// but keeping nothing itself: for the parts of the session the
     /// compositor starts, which start again as it does but leave the
     /// keeping to it, the one program that runs for as long as they do.
+    /// Such a part opens it with [`Store::open_in_session`], which finds
+    /// `kept` itself, unless it has been handed where that is.
     #[must_use]
     pub fn starting_from(mut self, kept: Option<&Path>) -> Self {
         if let Some(kept) = kept {
@@ -370,6 +390,26 @@ mod tests {
         write(&directory, "keys.yaml", "bindings: [\n");
         let alone = Store::open(directory.path()).starting_from(None);
         assert_eq!(alone.current().keys, Config::default().keys);
+    }
+
+    #[test]
+    fn a_part_opened_in_the_session_starts_from_what_the_compositor_keeps_there() {
+        let (directory, runtime) = (TempDir::new().unwrap(), TempDir::new().unwrap());
+        let kept = crate::kept_dir(Some(runtime.path().as_os_str())).unwrap();
+        write(&directory, "keys.yaml", GOOD_KEYS);
+        let good = Arc::clone(keeping(&directory, &kept).current());
+
+        write(&directory, "keys.yaml", "bindings: [\n");
+        let part = Store::open_in_session(directory.path(), Some(runtime.path().as_os_str()));
+        assert_eq!(part.directory(), directory.path());
+        assert_eq!(part.current().keys, good.keys, "the bindings that loaded");
+        assert_eq!(part.diagnostics().len(), 1, "and what is wrong");
+        // Outside a session, or in one said to be somewhere that is no
+        // place, a file that does not load is the defaults.
+        for runtime in [None, Some(OsStr::new("relative"))] {
+            let alone = Store::open_in_session(directory.path(), runtime);
+            assert_eq!(alone.current().keys, Config::default().keys, "{runtime:?}");
+        }
     }
 
     #[test]
