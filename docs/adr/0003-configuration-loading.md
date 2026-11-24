@@ -57,7 +57,10 @@ the one that keeps them, and a part that opens the configuration each time
 it is asked, as the portal does, does not write files each time. The
 welcome card shows what is chosen as the copies have it, as the desktop
 behind it goes by them, but saves a choice to the file on disk alone, which
-refuses it while the file does not load.
+refuses it while the file does not load. That none opens the configuration
+without the copies is held by a test that reads every program's source
+(`crates/omorfos-config/tests/kept_copies.rs`): three once did, each by a
+line that read as right alone.
 
 **Files are capped at 1 MiB**, checked while reading.
 
