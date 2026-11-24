@@ -2,6 +2,8 @@
 
 - Status: accepted
 - Date: 2026-11-18
+- Taken up by: [ADR 105](0105-a-titlebars-buttons-in-their-window-controls.md),
+  for how a theme styles the buttons with the pointer among them
 
 ## Context
 
@@ -82,7 +84,9 @@ have their colours then, with focus or without. A button's place is
 learnt; the signs are for telling which is which before pressing, and
 that is wanted as the pointer arrives among them, not on the one it
 happens to be on. All three are `:hover` together: a theme cannot
-style the one under the pointer apart from the others any more.
+style the one under the pointer apart from the others any more. (Since
+ADR 105, the box that holds them is `:hover` instead, and each button
+only under the pointer.)
 
 **A title alone stands in the middle of the titlebar**: of what the
 buttons leave of it, less as much again at the other end, so that it

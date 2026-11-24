@@ -172,8 +172,10 @@ tab:active:focus {
 /* The buttons at the left of a titlebar: close, minimize, maximize. Each
  * is a box in its share of the titlebar, as wide as its min-width with its
  * margin around it, and its color is that of the sign drawn on it. They
- * are :focus with their frame, and all three are :hover while the pointer
- * is on any of them. Give one a min-width of 0 to do without it. */
+ * are :focus with their frame, and each is :hover while the pointer is on
+ * it. They are in windowcontrols, which is :hover while the pointer is on
+ * any of them: named before a button, as below, it has all three show
+ * their signs at once. Give one a min-width of 0 to do without it. */
 button-close, button-minimize, button-maximize {
   min-width: 16px;
   margin: 16px 4px;
@@ -183,10 +185,15 @@ button-close, button-minimize, button-maximize {
   color: transparent;
 }
 button-close { margin-left: 12px; }
-button-close:focus, button-close:hover { background: var(--close); }
-button-minimize:focus, button-minimize:hover { background: var(--minimize); }
-button-maximize:focus, button-maximize:hover { background: var(--maximize); }
-button-close:hover, button-minimize:hover, button-maximize:hover {
+button-close:focus, windowcontrols:hover button-close { background: var(--close); }
+button-minimize:focus, windowcontrols:hover button-minimize {
+  background: var(--minimize);
+}
+button-maximize:focus, windowcontrols:hover button-maximize {
+  background: var(--maximize);
+}
+windowcontrols:hover button-close, windowcontrols:hover button-minimize,
+windowcontrols:hover button-maximize {
   color: var(--on-button);
 }
 
@@ -688,7 +695,7 @@ workspace, task {
 workspace:active, task:active { border-bottom: none; }
 ```
 
-**Parts** are `desktop`, `window`, `tile-line`, `offer`, `titlebar`, `tab`, `button-close`,
+**Parts** are `desktop`, `window`, `tile-line`, `offer`, `titlebar`, `tab`, `windowcontrols`, `button-close`,
 `button-maximize`, `button-minimize`, `menu`, `menu-item`,
 `menu-separator`, `menu-sign`, `menu-keys`, `notice`, `notice-heading`, `capture`, `capture-border`, `tooltip`, `panel`,
 `workspace`, `task`,
@@ -708,6 +715,18 @@ a row of the menu whose window or session is so), `:hover` (the
 pointer is over it), `:urgent` (a notification its sender marked as
 critical) and `:closing` (it is going from the screen). A part can be in
 several: `tab:active:focus`.
+
+**A part within another.** The three buttons of a titlebar are in
+`windowcontrols`, as GTK calls the box that holds them, and a rule can
+name it before one of them, as CSS writes a part within another, to say
+how the button looks while that box is in some states:
+`windowcontrols:hover button-close` is the close button while the pointer
+is on any of the three, as the built-in theme has all three show their
+signs then, and `button-close:hover` is the close button with the
+pointer on it alone. Nothing of `windowcontrols` itself is drawn. No
+other part is in another, and a rule names a part and the one it is in
+and no more. Of two rules that name as many states, the one that names
+the part it is in wins.
 
 **Coming and going.** A part that comes and goes, as a window, the menu,
 the notice or a component's panel, notification or launcher does, comes
@@ -855,8 +874,9 @@ Not every part uses every property yet:
 - The buttons of a titlebar are drawn from `background`, `border`,
   `border-radius` and `color`, which is the colour of the sign on each: a
   cross, a bar and a plus. They stand at the left, the cross outermost,
-  and programs that draw their own titlebars are told the same. All
-  three are `:hover` while the pointer is on any of them.
+  and programs that draw their own titlebars are told the same. Each is
+  `:hover` while the pointer is on it, and `windowcontrols`, which holds
+  them, while it is on any of them.
 - `padding` is honoured by `tab`, `menu-item`, `menu-sign`, `notice`,
   `panel`, `workspace`, `task`, `clock`, `question` (the room round what
   a box that asks holds) and `question-button` (the room either side of

@@ -157,8 +157,10 @@ tab:active:focus {
 /* The buttons at the left of a titlebar: close, minimize, maximize. Each
  * is a box in its share of the titlebar, as wide as its min-width with its
  * margin around it, and its color is that of the sign drawn on it. They
- * are :focus with their frame, and all three are :hover while the pointer
- * is on any of them. Give one a min-width of 0 to do without it. */
+ * are :focus with their frame, and each is :hover while the pointer is on
+ * it. They are in windowcontrols, which is :hover while the pointer is on
+ * any of them: named before a button, as below, it has all three show
+ * their signs at once. Give one a min-width of 0 to do without it. */
 button-close, button-minimize, button-maximize {
   min-width: 16px;
   margin: 16px 4px;
@@ -168,10 +170,15 @@ button-close, button-minimize, button-maximize {
   color: transparent;
 }
 button-close { margin-left: 12px; }
-button-close:focus, button-close:hover { background: var(--close); }
-button-minimize:focus, button-minimize:hover { background: var(--minimize); }
-button-maximize:focus, button-maximize:hover { background: var(--maximize); }
-button-close:hover, button-minimize:hover, button-maximize:hover {
+button-close:focus, windowcontrols:hover button-close { background: var(--close); }
+button-minimize:focus, windowcontrols:hover button-minimize {
+  background: var(--minimize);
+}
+button-maximize:focus, windowcontrols:hover button-maximize {
+  background: var(--maximize);
+}
+windowcontrols:hover button-close, windowcontrols:hover button-minimize,
+windowcontrols:hover button-maximize {
   color: var(--on-button);
 }
 

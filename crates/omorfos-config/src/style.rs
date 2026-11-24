@@ -31,12 +31,18 @@ pub enum Part {
     /// is the window being shown, and [`State::Focused`] with its frame.
     /// Its border is the line between it and the tab before it.
     Tab,
+    /// What holds a titlebar's three buttons, as GTK calls the same box.
+    /// Nothing of it is drawn: it is there to be named before a button,
+    /// as in `windowcontrols:hover button-close`, for the button to look
+    /// as the three do together. It is [`State::Focused`] with its frame,
+    /// and [`State::Hovered`] while the pointer is on any of its buttons.
+    WindowControls,
     /// The button at the left of a titlebar that closes the window. Like
     /// the two after it, it is a box in its share of the titlebar: its
     /// width is its `min-width` and its margin is the room around it, and
-    /// its text colour is that of the sign drawn on it. It is
-    /// [`State::Focused`] with its frame, and [`State::Hovered`] while the
-    /// pointer is on any of the three, as they all show their signs then.
+    /// its text colour is that of the sign drawn on it. It is in
+    /// [`Part::WindowControls`], is [`State::Focused`] with its frame, and
+    /// is [`State::Hovered`] while the pointer is on it.
     /// One with no width is not there.
     ButtonClose,
     /// The button that makes the frame fill its screen, or puts it back.
@@ -203,13 +209,14 @@ pub enum Part {
 
 impl Part {
     /// Every part there is.
-    pub const ALL: [Self; 56] = [
+    pub const ALL: [Self; 57] = [
         Self::Desktop,
         Self::Window,
         Self::TileLine,
         Self::Offer,
         Self::Titlebar,
         Self::Tab,
+        Self::WindowControls,
         Self::ButtonClose,
         Self::ButtonMaximize,
         Self::ButtonMinimize,
@@ -272,6 +279,7 @@ impl Part {
             Self::Offer => "offer",
             Self::Titlebar => "titlebar",
             Self::Tab => "tab",
+            Self::WindowControls => "windowcontrols",
             Self::ButtonClose => "button-close",
             Self::ButtonMaximize => "button-maximize",
             Self::ButtonMinimize => "button-minimize",
@@ -324,6 +332,32 @@ impl Part {
             Self::AboutButton => "about-button",
         }
     }
+
+    /// The part this one is in, which a rule may name before it, as in
+    /// `windowcontrols:hover button-close`, to give it a look for while
+    /// that part is in some states: the three buttons of a titlebar are in
+    /// [`Part::WindowControls`]. Nothing, for a part in no other.
+    #[must_use]
+    pub const fn holder(self) -> Option<Self> {
+        match self {
+            Self::ButtonClose | Self::ButtonMaximize | Self::ButtonMinimize => {
+                Some(Self::WindowControls)
+            }
+            _ => None,
+        }
+    }
+
+    /// The parts that are in another, as [`Part::holder`] says, in order.
+    pub const HELD: [Self; 3] = [
+        Self::ButtonClose,
+        Self::ButtonMaximize,
+        Self::ButtonMinimize,
+    ];
+
+    /// The states a part that holds others, as [`Part::holder`] says, can
+    /// be in: [`Part::WindowControls`] is focused with its frame, and
+    /// hovered with the pointer on any of its buttons, and nothing else.
+    pub const HOLDER_STATES: [State; 2] = [State::Focused, State::Hovered];
 }
 
 /// A state a part can be in.
@@ -813,6 +847,7 @@ mod tests {
                 "offer",
                 "titlebar",
                 "tab",
+                "windowcontrols",
                 "button-close",
                 "button-maximize",
                 "button-minimize",

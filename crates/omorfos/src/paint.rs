@@ -78,8 +78,9 @@ impl Looks {
     /// How the frame showing the window numbered `shown` looks, with a tab
     /// for each of the windows numbered `tabs`, of which `active` is the
     /// one being shown, and the pointer over the button `hovered`, if over
-    /// any, which has all three look as under it, so that each says what
-    /// it does once the pointer is among them (ADR 97). Whatever has just
+    /// any: that button is `:hover`, and so are the window controls all
+    /// three are in, by which the built-in theme has each say what it does
+    /// once the pointer is among them (ADR 97). Whatever has just
     /// changed state is as far on its way as
     /// `motion` has it. The tabs' looks are worked out in the room `room`
     /// has, so that a frame with as many tabs as before costs nothing to
@@ -94,9 +95,10 @@ impl Looks {
         focused: bool,
     ) -> Self {
         let states = States::NONE.when(State::Focused, focused);
+        let controls = states.when(State::Hovered, hovered.is_some());
         let buttons = Button::ALL.map(|button| {
-            let states = states.when(State::Hovered, hovered.is_some());
-            motion.style(theme, button_part(button), shown, states)
+            let own = states.when(State::Hovered, hovered == Some(button));
+            motion.style_in(theme, button_part(button), shown, (own, controls))
         });
         let tabs = tabs.enumerate().map(|(index, window)| {
             let states = Self::tab_states(focused, index == active);
@@ -1838,7 +1840,13 @@ mod tests {
         let theme = solid();
         let mut text = Text::new();
         let hovered = States::NONE.with(State::Hovered);
-        let ink = argb(theme.style(Part::ButtonClose, hovered).color);
+        // The sign, as the built-in theme has it with the pointer among
+        // the three.
+        let ink = argb(
+            theme
+                .style_in(Part::ButtonClose, States::NONE, hovered)
+                .color,
+        );
         let mut hovering = |button: Option<Button>, focused: bool| {
             let looks = Looks::of_in(
                 Vec::new(),

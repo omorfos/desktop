@@ -231,10 +231,24 @@ impl Theme {
     }
 
     /// How `part` looks while it is in `states`. States a part cannot be
-    /// in make no difference to it.
+    /// in make no difference to it. A part that is in another, as
+    /// [`Part::holder`] says, looks as it does while that one is in no
+    /// state: see [`Theme::style_in`].
     #[must_use]
     pub fn style(&self, part: Part, states: States) -> Style {
         let look = self.table.looks.get(index(part, states));
+        look.map_or(Style::NONE, |look| look.style)
+    }
+
+    /// How `part` looks while it is in `states` and the part it is in,
+    /// [`Part::holder`], is in `holder`: as rules for it say, and as those
+    /// that name that part before it say for those states, as in
+    /// `windowcontrols:hover button-close`. For a part in no other, as
+    /// [`Theme::style`] says.
+    #[must_use]
+    pub fn style_in(&self, part: Part, states: States, holder: States) -> Style {
+        let held = index_in(part, states, holder);
+        let look = self.table.looks.get(held.unwrap_or(index(part, states)));
         look.map_or(Style::NONE, |look| look.style)
     }
 
@@ -295,6 +309,36 @@ impl Theme {
 /// Where in the table a part in some states is.
 const fn index(part: Part, states: States) -> usize {
     part as usize * States::COMBINATIONS + states.index()
+}
+
+/// How many combinations of [`Part::HOLDER_STATES`] there are.
+const HOLDER_COMBINATIONS: usize = 1 << Part::HOLDER_STATES.len();
+
+/// Where in the table a part that is in another is, in some states, while
+/// the part it is in is in `holder`: after every part's looks, a look for
+/// each combination of its states with those the other can be in,
+/// [`Part::HOLDER_STATES`], of which `holder` is taken to have no more.
+/// Nothing, for a part in no other.
+fn index_in(part: Part, states: States, holder: States) -> Option<usize> {
+    let slot = Part::HELD.iter().position(|held| *held == part)?;
+    let every = States::COMBINATIONS;
+    let held = Part::ALL.len() * every + slot * HOLDER_COMBINATIONS * every;
+    let bits = Part::HOLDER_STATES.iter().enumerate();
+    let combination = bits.fold(0, |at, (bit, state)| {
+        at | usize::from(holder.has(*state)) << bit
+    });
+    Some(held + combination * every + states.index())
+}
+
+/// Each combination of [`Part::HOLDER_STATES`], in the order `index_in`
+/// finds them.
+fn holder_combinations() -> impl Iterator<Item = States> {
+    (0..HOLDER_COMBINATIONS).map(|combination| {
+        let bits = Part::HOLDER_STATES.iter().enumerate();
+        bits.fold(States::NONE, |states, (bit, state)| {
+            states.when(*state, combination >> bit & 1 == 1)
+        })
+    })
 }
 
 /// The built-in stylesheet in `scheme` with `accent`, taken apart.
@@ -396,8 +440,10 @@ fn declared(sheet: &Sheet, by_user: bool) -> impl Iterator<Item = Variable<'_>> 
 struct Ranked<'a> {
     selector: Selector,
     /// The user's rules outrank the built-in ones; then a rule for a part
-    /// outranks one for every part; then the one naming more states wins.
-    rank: (bool, bool, u32),
+    /// outranks one for every part; then the one naming more states, its
+    /// own and those of the part it is in; then, as CSS has it, one that
+    /// names the part it is in as well.
+    rank: (bool, bool, u32, bool),
     settings: &'a [Setting],
 }
 
@@ -427,21 +473,34 @@ fn build(built_in: &Sheet, own: &Sheet) -> Result<Table, Problem> {
     });
     let monospace = monospace.transpose()?.unwrap_or_default();
 
-    let mut looks = Vec::with_capacity(Part::ALL.len() * States::COMBINATIONS);
+    let every = States::COMBINATIONS;
+    let held = Part::HELD.len() * HOLDER_COMBINATIONS;
+    let mut looks = Vec::with_capacity((Part::ALL.len() + held) * every);
     let mut starting = Vec::with_capacity(Part::ALL.len());
+    let look = |part, states, holder| {
+        let mut look = Look {
+            style: Style::NONE,
+            font: Font::default(),
+        };
+        let mut opacity = u8::MAX;
+        look.apply(&resting, (part, states, holder), &mut opacity);
+        look.fade(opacity);
+        look
+    };
     for part in Part::ALL {
         for states in States::every() {
-            let mut look = Look {
-                style: Style::NONE,
-                font: Font::default(),
-            };
-            let mut opacity = u8::MAX;
-            look.apply(&resting, (part, states), &mut opacity);
-            look.fade(opacity);
+            let look = look(part, states, States::NONE);
             if states == States::NONE {
                 starting.push(look.arriving(&arriving, part));
             }
             looks.push(look);
+        }
+    }
+    // Then each part that is in another, as that one is in each of the
+    // states it can be in, in the order `index_in` finds them.
+    for part in Part::HELD {
+        for holder in holder_combinations() {
+            looks.extend(States::every().map(|states| look(part, states, holder)));
         }
     }
     Ok(Table {
@@ -491,7 +550,12 @@ fn ranked<'a>(understood: &'a Understood) -> Vec<Ranked<'a>> {
         .flat_map(|(by_user, selectors, settings)| {
             selectors.iter().map(move |selector| Ranked {
                 selector: *selector,
-                rank: (*by_user, selector.part.is_some(), selector.states.count()),
+                rank: (
+                    *by_user,
+                    selector.part.is_some(),
+                    selector.states.count() + selector.within.map_or(0, States::count),
+                    selector.within.is_some(),
+                ),
                 settings,
             })
         });
@@ -524,10 +588,18 @@ fn on<T>(edges: &mut Edges<T>, side: Option<Side>, mut change: impl FnMut(&mut T
 
 impl Look {
     /// Makes what each of `ranked` that applies to `part` in `states` says.
-    fn apply(&mut self, ranked: &[Ranked], (part, states): (Part, States), opacity: &mut u8) {
+    fn apply(
+        &mut self,
+        ranked: &[Ranked],
+        (part, states, holder): (Part, States, States),
+        opacity: &mut u8,
+    ) {
         let applies = |rule: &&Ranked| {
             let selector = rule.selector;
-            selector.part.is_none_or(|named| named == part) && selector.states.within(states)
+            let within = selector.within.is_none_or(|within| within.within(holder));
+            selector.part.is_none_or(|named| named == part)
+                && selector.states.within(states)
+                && within
         };
         for rule in ranked.iter().filter(applies) {
             for setting in rule.settings {
@@ -542,7 +614,7 @@ impl Look {
     fn arriving(&self, arriving: &[Ranked], part: Part) -> Presence {
         let mut look = self.clone();
         let mut opacity = look.style.presence.opacity;
-        look.apply(arriving, (part, States::NONE), &mut opacity);
+        look.apply(arriving, (part, States::NONE, States::NONE), &mut opacity);
         Presence {
             opacity,
             ..look.style.presence
@@ -1222,6 +1294,106 @@ mod tests {
         .unwrap();
         assert_eq!(ranked.starting(Part::Clock).scale, 900);
         assert_eq!(ranked.starting(Part::Workspace).scale, 500);
+    }
+
+    #[test]
+    fn a_button_looks_as_a_rule_for_it_within_its_controls_says_while_they_are_in_its_states() {
+        let theme = Theme::parse(
+            "button-close { background: #000 }\n\
+             windowcontrols:hover button-close { background: #f00 }\n\
+             button-close:hover { color: #00f }",
+        )
+        .unwrap();
+        let hovered = States::NONE.with(State::Hovered);
+        let close = |states, holder| theme.style_in(Part::ButtonClose, states, holder);
+        let black = Color::rgb(0, 0, 0);
+        let blue = Color::rgb(0, 0, 255);
+        // The pointer on another of the three: as the controls are.
+        assert_eq!(close(States::NONE, hovered).background, RED);
+        assert_ne!(close(States::NONE, hovered).color, blue);
+        // On it: as the controls are, and as it is itself.
+        assert_eq!(close(hovered, hovered).background, RED);
+        assert_eq!(close(hovered, hovered).color, blue);
+        // Nowhere near: neither.
+        assert_eq!(close(States::NONE, States::NONE).background, black);
+        // Asked without the controls, they are in no state.
+        assert_eq!(theme.style(Part::ButtonClose, hovered).background, black);
+        assert_eq!(theme.style(Part::ButtonClose, hovered).color, blue);
+        // The others are not the close button.
+        let minimize = theme.style_in(Part::ButtonMinimize, States::NONE, hovered);
+        assert_ne!(minimize.background, RED);
+        // A part in no other is as it is, whatever is asked of the other.
+        let tab = Theme::parse("tab { background: #f00 }").unwrap();
+        assert_eq!(
+            tab.style_in(Part::Tab, States::NONE, hovered).background,
+            RED
+        );
+    }
+
+    #[test]
+    fn a_rule_naming_the_part_a_button_is_in_outranks_one_naming_as_many_states_without() {
+        let hovered = States::NONE.with(State::Hovered);
+        for stylesheet in [
+            "windowcontrols:hover button-close { background: #f00 }\n\
+             button-close:hover { background: #000 }",
+            "button-close:hover { background: #000 }\n\
+             windowcontrols:hover button-close { background: #f00 }",
+        ] {
+            let theme = Theme::parse(stylesheet).unwrap();
+            let close = theme.style_in(Part::ButtonClose, hovered, hovered);
+            assert_eq!(close.background, RED, "{stylesheet}");
+        }
+        // One naming more states wins all the same.
+        let theme = Theme::parse(
+            "windowcontrols:hover button-close { background: #000 }\n\
+             button-close:hover:focus { background: #f00 }",
+        )
+        .unwrap();
+        let both = hovered.with(State::Focused);
+        assert_eq!(
+            theme.style_in(Part::ButtonClose, both, hovered).background,
+            RED
+        );
+    }
+
+    #[test]
+    fn the_built_in_buttons_all_show_their_signs_once_the_pointer_is_on_any_of_them() {
+        let theme = Theme::default();
+        let hovered = States::NONE.with(State::Hovered);
+        for part in Part::HELD {
+            let among = theme.style_in(part, States::NONE, hovered);
+            let on = theme.style_in(part, hovered, hovered);
+            let away = theme.style_in(part, States::NONE, States::NONE);
+            assert_eq!(among, on, "{part:?} is as it is under the pointer");
+            assert_ne!(among.color, away.color, "{part:?} shows its sign");
+            assert_eq!(away.color.alpha, 0, "{part:?} shows none away from them");
+        }
+    }
+
+    #[test]
+    fn a_part_named_within_one_it_is_not_in_is_an_error() {
+        for (stylesheet, expected) in [
+            ("windowcontrols tab { color: red }", "only button-close"),
+            ("tab button-close { color: red }", "only button-close"),
+            ("* button-close { color: red }", "only button-close"),
+            ("windowcontrols * { color: red }", "only button-close"),
+            (
+                "windowcontrols button-close menu { color: red }",
+                "and no more",
+            ),
+            ("windowcontrols nope { color: red }", "expected `{`"),
+            (
+                "windowcontrols:active button-close { color: red }",
+                "only ever :focus",
+            ),
+            (
+                "@starting-style { windowcontrols button-close { opacity: 0 } }",
+                "nor the part it is in",
+            ),
+        ] {
+            let message = problem(stylesheet);
+            assert!(message.contains(expected), "{stylesheet}: {message}");
+        }
     }
 
     #[test]

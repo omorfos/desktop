@@ -33,8 +33,8 @@ pub struct Motion {
 /// One part as it was last drawn.
 #[derive(Debug)]
 struct Changing {
-    /// The states it was in.
-    states: States,
+    /// The states it was in, and those the part it is in was in.
+    states: (States, States),
     /// The look it set out from and when, while it is on its way.
     from: Option<(Style, Duration)>,
     /// Whether it is in the picture being drawn.
@@ -151,8 +151,23 @@ impl Motion {
     /// One whose state has changed since it was last drawn sets out from
     /// how it looked then.
     pub fn style(&mut self, theme: &Theme, part: Part, key: u64, states: States) -> Style {
+        self.style_in(theme, part, key, (states, States::NONE))
+    }
+
+    /// How the `part` that goes by `key` looks in the picture being drawn,
+    /// now that it is in `states` and the part it is in in `holder`, as
+    /// [`Theme::style_in`] says: as [`Motion::style`], setting out from how
+    /// it looked when either changes.
+    pub fn style_in(
+        &mut self,
+        theme: &Theme,
+        part: Part,
+        key: u64,
+        (states, holder): (States, States),
+    ) -> Style {
         let now = self.now;
-        let to = theme.style(part, states);
+        let states = (states, holder);
+        let to = theme.style_in(part, states.0, states.1);
         let changing = self.parts.entry((part, key)).or_insert(Changing {
             states,
             from: None,
@@ -160,7 +175,7 @@ impl Motion {
         });
         changing.seen = true;
         if changing.states != states {
-            let was = theme.style(part, changing.states);
+            let was = theme.style_in(part, changing.states.0, changing.states.1);
             changing.from = Some((shown(was, changing.from, now), now));
             changing.states = states;
         }
@@ -275,6 +290,28 @@ mod tests {
         assert!(moving);
         assert_eq!(drawn(&mut motion, Part::Task, HOVERED, 1100), (BLUE, false));
         assert_eq!(drawn(&mut motion, Part::Task, HOVERED, 9000), (BLUE, false));
+    }
+
+    #[test]
+    fn a_button_gets_to_its_look_over_time_when_the_controls_it_is_in_change_state() {
+        let theme = Theme::parse(
+            "button-close { background: #f00; transition: 100ms linear; }\n\
+             windowcontrols:hover button-close { background: #00f; }",
+        )
+        .unwrap();
+        let mut motion = Motion::new();
+        let mut drawn = |holder, at| {
+            motion.begin(millis(at));
+            let style = motion.style_in(&theme, Part::ButtonClose, 1, (States::NONE, holder));
+            (style.background, motion.end())
+        };
+        drawn(States::NONE, 0);
+        // The pointer comes onto another of the three: it sets out at once.
+        assert_eq!(drawn(HOVERED, 0), (RED, true));
+        let (half, moving) = drawn(HOVERED, 50);
+        assert!(near(half, PURPLE), "{half:?}");
+        assert!(moving);
+        assert_eq!(drawn(HOVERED, 100), (BLUE, false));
     }
 
     #[test]

@@ -1721,10 +1721,14 @@ the first than on the last.
       none, are to say on themselves how they are put away; whether the
       switcher's
       pictures show a window's frame, which they do not; whether the
-      side is a setting (the review of the defaults); and a theme unable
-      to style the button under the pointer apart from the other two.
-      Google Chrome puts its buttons where it is told, as tried on
-      18 November 2026.
+      side is a setting (the review of the defaults). Google Chrome puts
+      its buttons where it is told, as tried on 18 November 2026.
+- [x] A theme able to style the button under the pointer apart from the
+      other two (ADR 105): the three are in `windowcontrols`, `:hover`
+      while the pointer is on any of them, and each is `:hover` only
+      under it; a rule names the controls before a button, as CSS writes a
+      part within another, `windowcontrols:hover button-close`, and the
+      built-in theme does, so that it looks as it did.
 - [ ] Titlebars with controls in them, for omorfos's own programs (stage
       7), as GNOME Files and the Finder have: back and forward, where
       one is, a field to search in, where a plain window has its title.

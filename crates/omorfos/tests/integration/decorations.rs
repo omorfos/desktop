@@ -941,6 +941,31 @@ fn the_buttons_are_coloured_with_the_pointer_on_any_whether_or_not_their_frame_h
 }
 
 #[test]
+fn a_theme_can_style_the_button_under_the_pointer_apart_from_the_other_two() {
+    let white = 0xffff_ffff;
+    let theme = "button-close:hover { background: #fff; }";
+    let mut session = Session::with_config(&[("theme.css", theme)]);
+    let mut client = session.connect();
+    session.open_decorated(&mut client, "first", (200, 100), RED);
+    let buttons = |session: &mut Session| {
+        let picture = session.draw();
+        [CLOSE, MINIMIZE, MAXIMIZE].map(|(x, y)| picture.at(x - 6, y))
+    };
+
+    // On another of the three, the close button is as the built-in theme
+    // has it with the pointer among them, and not as under the pointer.
+    point(&mut session, MINIMIZE);
+    session.step();
+    assert_eq!(buttons(&mut session), BUTTONS);
+
+    point(&mut session, CLOSE);
+    session.step();
+    let [close, minimize, maximize] = buttons(&mut session);
+    assert_eq!(close, white, "the one under the pointer");
+    assert_eq!([minimize, maximize], [BUTTONS[1], BUTTONS[2]]);
+}
+
+#[test]
 fn a_double_click_on_a_titlebar_maximizes_the_frame_and_another_puts_it_back() {
     let mut session = Session::new();
     let mut client = session.connect();

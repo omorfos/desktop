@@ -12,7 +12,7 @@ omorfos\-theme \- theme.css, how the omorfos desktop looks
 The theme is a stylesheet, in a small part of CSS. A rule names parts of the desktop, perhaps in some state, and gives them properties. Yours is laid over the built\-in theme, so you only write what you want changed. A rule of yours always wins over a built\-in one; among your own, the one that names more states wins, and then the later one. It is read again as soon as it is saved, and kept as it was before if it has a mistake.
 .SH PARTS
 .PP
-\fBdesktop\fR, \fBwindow\fR, \fBtile\-line\fR, \fBoffer\fR, \fBtitlebar\fR, \fBtab\fR, \fBbutton\-close\fR, \fBbutton\-maximize\fR, \fBbutton\-minimize\fR, \fBmenu\fR, \fBmenu\-item\fR, \fBmenu\-separator\fR, \fBmenu\-sign\fR, \fBmenu\-keys\fR, \fBnotice\fR, \fBnotice\-heading\fR, \fBcapture\fR, \fBcapture\-border\fR, \fBtooltip\fR, \fBpanel\fR, \fBworkspace\fR, \fBtask\fR, \fBclock\fR, \fBpopover\fR, \fBpopover\-item\fR, \fBpopover\-day\fR, \fBpopover\-day\-outside\fR, \fBlauncher\fR, \fBlauncher\-input\fR, \fBlauncher\-item\fR, \fBlauncher\-description\fR, \fBlauncher\-backdrop\fR, \fBnotification\fR, \fBnotification\-title\fR, \fBnotification\-body\fR, \fBnotification\-level\fR, \fBquestion\fR, \fBquestion\-detail\fR, \fBquestion\-button\fR, \fBquestion\-input\fR, \fBswitcher\fR, \fBswitcher\-item\fR, \fBswitcher\-title\fR, \fBswitcher\-window\fR, \fBswitcher\-backdrop\fR, \fBoverview\-window\fR, \fBoverview\-title\fR, \fBoverview\-workspace\fR, \fBoverview\-add\fR, \fBoverview\-backdrop\fR, \fBpicker\fR, \fBsealed\fR, \fBabout\fR, \fBabout\-heading\fR, \fBabout\-detail\fR, \fBabout\-button\fR
+\fBdesktop\fR, \fBwindow\fR, \fBtile\-line\fR, \fBoffer\fR, \fBtitlebar\fR, \fBtab\fR, \fBwindowcontrols\fR, \fBbutton\-close\fR, \fBbutton\-maximize\fR, \fBbutton\-minimize\fR, \fBmenu\fR, \fBmenu\-item\fR, \fBmenu\-separator\fR, \fBmenu\-sign\fR, \fBmenu\-keys\fR, \fBnotice\fR, \fBnotice\-heading\fR, \fBcapture\fR, \fBcapture\-border\fR, \fBtooltip\fR, \fBpanel\fR, \fBworkspace\fR, \fBtask\fR, \fBclock\fR, \fBpopover\fR, \fBpopover\-item\fR, \fBpopover\-day\fR, \fBpopover\-day\-outside\fR, \fBlauncher\fR, \fBlauncher\-input\fR, \fBlauncher\-item\fR, \fBlauncher\-description\fR, \fBlauncher\-backdrop\fR, \fBnotification\fR, \fBnotification\-title\fR, \fBnotification\-body\fR, \fBnotification\-level\fR, \fBquestion\fR, \fBquestion\-detail\fR, \fBquestion\-button\fR, \fBquestion\-input\fR, \fBswitcher\fR, \fBswitcher\-item\fR, \fBswitcher\-title\fR, \fBswitcher\-window\fR, \fBswitcher\-backdrop\fR, \fBoverview\-window\fR, \fBoverview\-title\fR, \fBoverview\-workspace\fR, \fBoverview\-add\fR, \fBoverview\-backdrop\fR, \fBpicker\fR, \fBsealed\fR, \fBabout\fR, \fBabout\-heading\fR, \fBabout\-detail\fR, \fBabout\-button\fR
 .SH STATES
 .PP
 \fB:focus\fR, \fB:active\fR, \fB:hover\fR, \fB:urgent\fR, \fB:closing\fR
@@ -181,8 +181,10 @@ tab:active:focus {
 /* The buttons at the left of a titlebar: close, minimize, maximize. Each
  * is a box in its share of the titlebar, as wide as its min\-width with its
  * margin around it, and its color is that of the sign drawn on it. They
- * are :focus with their frame, and all three are :hover while the pointer
- * is on any of them. Give one a min\-width of 0 to do without it. */
+ * are :focus with their frame, and each is :hover while the pointer is on
+ * it. They are in windowcontrols, which is :hover while the pointer is on
+ * any of them: named before a button, as below, it has all three show
+ * their signs at once. Give one a min\-width of 0 to do without it. */
 button\-close, button\-minimize, button\-maximize {
   min\-width: 16px;
   margin: 16px 4px;
@@ -192,10 +194,15 @@ button\-close, button\-minimize, button\-maximize {
   color: transparent;
 }
 button\-close { margin\-left: 12px; }
-button\-close:focus, button\-close:hover { background: var(\-\-close); }
-button\-minimize:focus, button\-minimize:hover { background: var(\-\-minimize); }
-button\-maximize:focus, button\-maximize:hover { background: var(\-\-maximize); }
-button\-close:hover, button\-minimize:hover, button\-maximize:hover {
+button\-close:focus, windowcontrols:hover button\-close { background: var(\-\-close); }
+button\-minimize:focus, windowcontrols:hover button\-minimize {
+  background: var(\-\-minimize);
+}
+button\-maximize:focus, windowcontrols:hover button\-maximize {
+  background: var(\-\-maximize);
+}
+windowcontrols:hover button\-close, windowcontrols:hover button\-minimize,
+windowcontrols:hover button\-maximize {
   color: var(\-\-on\-button);
 }
 

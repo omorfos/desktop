@@ -48,12 +48,18 @@ pub(crate) fn position(source: &str, offset: usize) -> Position {
     }
 }
 
-/// What a rule applies to: a part, or every part, in at least some states.
+/// What a rule applies to: a part, or every part, in at least some states,
+/// and, where it is written after the part it is in, while that part is in
+/// at least some states.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Selector {
     /// The part, or `None` for `*`, which is every part.
     pub(crate) part: Option<Part>,
     pub(crate) states: States,
+    /// The states the part it is in has to be in, where the rule names
+    /// that part before it: `windowcontrols:hover button-close`. That part
+    /// is always the one [`Part::holder`] says.
+    pub(crate) within: Option<States>,
 }
 
 /// A property and what it was given, as written.
@@ -182,15 +188,77 @@ impl<'a> Reader<'a> {
         let mut selectors = Vec::new();
         loop {
             self.skip_blank()?;
+            // A selector is read with the blanks after it.
             selectors.push(self.selector()?);
-            self.skip_blank()?;
             if !self.take(",") {
                 return Ok(selectors);
             }
         }
     }
 
+    /// Reads a selector: a part in some states, or one after the part it
+    /// is in, as CSS writes a part within another; and the blanks after it.
     fn selector(&mut self) -> Result<Selector, Fault> {
+        let start = self.at;
+        let (part, states) = self.compound()?;
+        let named = |c: char| c.is_ascii_alphanumeric() || c == '*';
+        self.skip_blank()?;
+        if !self.rest().starts_with(named) {
+            return Ok(Selector {
+                part,
+                states,
+                within: None,
+            });
+        }
+        let inner = self.at;
+        // A name that is no part is more likely a property, written before
+        // the `{` that was to begin the properties, than a part mistyped.
+        let next = self.name();
+        let known = Part::ALL.iter().any(|part| part.name() == next);
+        self.at = inner;
+        if !known && !self.rest().starts_with('*') {
+            let message = format!(
+                "expected `{{` here, to begin the properties: `{next}` is not a part, to be \
+                 named within the one before it"
+            );
+            return Err(self.fault(message));
+        }
+        let (held, held_states) = self.compound()?;
+        let holder = held.and_then(Part::holder);
+        if part.is_none() || holder != part {
+            let held: Vec<&str> = Part::HELD.iter().map(|part| part.name()).collect();
+            let message = format!(
+                "a part is named after the part it is in, and only {} are in another, \
+                 `{}`",
+                held.join(", "),
+                Part::WindowControls.name()
+            );
+            return Err(Fault::new(inner, message));
+        }
+        let can = Part::HOLDER_STATES.iter();
+        let may = can.fold(States::NONE, |may, state| may.with(*state));
+        if !states.within(may) {
+            let message = format!(
+                "`{}` is only ever :focus, with its frame, and :hover, with the pointer on \
+                 any of its buttons",
+                Part::WindowControls.name()
+            );
+            return Err(Fault::new(start, message));
+        }
+        self.skip_blank()?;
+        if self.rest().starts_with(named) {
+            let message = "a rule names a part, or a part and the one it is in, and no more";
+            return Err(self.fault(message));
+        }
+        Ok(Selector {
+            part: held,
+            states: held_states,
+            within: Some(states),
+        })
+    }
+
+    /// Reads a part, or `*`, and the states after it.
+    fn compound(&mut self) -> Result<(Option<Part>, States), Fault> {
         let start = self.at;
         let part = if self.take("*") {
             None
@@ -221,7 +289,7 @@ impl<'a> Reader<'a> {
             };
             states = states.with(known.ok_or_else(unknown)?);
         }
-        Ok(Selector { part, states })
+        Ok((part, states))
     }
 
     /// Reads `@starting-style` and the rules it holds, the one at-rule
@@ -257,9 +325,10 @@ impl<'a> Reader<'a> {
             }
             let at = self.at;
             let selectors = self.selectors()?;
-            if selectors.iter().any(|one| one.states != States::NONE) {
-                let message =
-                    "a part arrives in no state, so a rule in `@starting-style` names none";
+            let stated = |one: &Selector| one.states != States::NONE || one.within.is_some();
+            if selectors.iter().any(stated) {
+                let message = "a part arrives in no state, so a rule in `@starting-style` names \
+                               none, nor the part it is in";
                 return Err(Fault::new(at, message));
             }
             let declarations = self.block()?;
@@ -324,6 +393,31 @@ mod tests {
     }
 
     #[test]
+    fn a_part_is_named_after_the_part_it_is_in_with_the_states_of_each() {
+        let sheet = Sheet::parse(
+            "windowcontrols:hover /* the pointer among them */ button-close:focus, \
+             button-minimize { color: #fff }",
+        )
+        .unwrap();
+        let hovered = States::NONE.with(State::Hovered);
+        assert_eq!(
+            sheet.rules[0].selectors,
+            [
+                Selector {
+                    part: Some(Part::ButtonClose),
+                    states: States::NONE.with(State::Focused),
+                    within: Some(hovered),
+                },
+                Selector {
+                    part: Some(Part::ButtonMinimize),
+                    states: States::NONE,
+                    within: None,
+                },
+            ]
+        );
+    }
+
+    #[test]
     fn a_rule_gives_properties_to_the_parts_it_names() {
         let sheet = Sheet::parse("tab { color: #fff; height: 20px }").unwrap();
         assert_eq!(sheet.variables, []);
@@ -332,6 +426,7 @@ mod tests {
         let tab = Selector {
             part: Some(Part::Tab),
             states: States::NONE,
+            within: None,
         };
         assert_eq!(rule.selectors, [tab]);
         let given = rule.declarations.iter();
@@ -425,6 +520,19 @@ mod tests {
             ("tab,\n { }", 2, 2, "`` is not a part"),
             ("tab:pressed { }", 1, 5, "`:pressed` is not a state"),
             ("tab color: #fff;", 1, 5, "expected `{`"),
+            ("tab /* never", 1, 5, "never closed"),
+            (
+                "windowcontrols button-close:nope { }",
+                1,
+                29,
+                "`:nope` is not a state",
+            ),
+            (
+                "windowcontrols button-close /* never",
+                1,
+                29,
+                "never closed",
+            ),
             ("tab { color #fff; }", 1, 13, "expected `:` after `color`"),
             ("tab { : #fff; }", 1, 7, "expected a property"),
             ("tab { color: ; }", 1, 14, "`color` is given no value"),
