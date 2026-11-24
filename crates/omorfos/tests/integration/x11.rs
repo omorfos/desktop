@@ -1310,7 +1310,11 @@ fn a_kind_a_program_written_for_x11_offers_that_no_kind_is_written_as_is_not_pas
             offered(client, false)
         });
         let formats = client.state.formats.clone();
-        assert!(formats.iter().all(|kind| kind.len() <= 255), "{formats:?}");
+        let longest = omorfos_ipc::copied::LONGEST_KIND;
+        assert!(
+            formats.iter().all(|kind| kind.len() <= longest),
+            "{formats:?}"
+        );
         // And it is still there to be offered more.
         session.roundtrip(&mut client);
         assert!(offered(&client, false));
