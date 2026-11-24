@@ -53,8 +53,11 @@ pub const MOST_ADDED: usize = 4096;
 
 /// The most a program may add over all of its objects together: without it,
 /// the most for each object would be multiplied by the most objects a
-/// program may hold. Far more than any program adds, and few enough that
-/// what is kept of it stays some megabytes.
+/// program may hold. What is added to an object counts once for the object
+/// and once again for each thing kept that names it, as a region set on
+/// surfaces, as the compositor holds a copy for each. Far more than any
+/// program adds, and few enough that what is kept of it stays some
+/// megabytes.
 pub const MOST_ADDED_IN_ALL: usize = 65_536;
 
 pub use omorfos_ipc::copied::{LONGEST_KIND, MOST_KINDS};
@@ -448,7 +451,8 @@ pub struct Journal {
     /// again on its own later, or not at all: what pictures of a window are
     /// taken through, until the window is back.
     held: HashSet<u32>,
-    /// How many requests that added to an object are kept, over all of them.
+    /// How many requests that added to an object are kept, over all of them,
+    /// each counted once more for each message kept that names the object.
     added: usize,
 }
 
@@ -473,11 +477,33 @@ impl Journal {
         read: &Read,
         described: &MessageDesc,
     ) -> Result<(), Broken> {
+        self.take(header, bytes, fds, read, described)?;
+        // Counted once it is taken in, as what is added to an object counts
+        // again for each that names it, and a request may both name and
+        // let go of what names.
+        if self.added > MOST_ADDED_IN_ALL {
+            return Err(wire::ADDED_TOO_MUCH_IN_ALL);
+        }
+        Ok(())
+    }
+
+    /// Takes in the request, as [`Journal::request`] says, but for the
+    /// bound on what is added in all.
+    fn take(
+        &mut self,
+        header: Header,
+        bytes: &[u8],
+        fds: &[Rc<OwnedFd>],
+        read: &Read,
+        described: &MessageDesc,
+    ) -> Result<(), Broken> {
         if let Some((made, interface, version)) = read.made {
             // A number still kept is one the program has not been told is
             // free: what had it is gone, and named yet. Taken again all
             // the same, what names the old would name the new, and be
-            // made again so for the next compositor.
+            // made again so for the next compositor; and what was added to
+            // either would be counted for the other, or for neither, while
+            // the compositor holds a copy for each.
             if self.kept.contains_key(&made) {
                 return Err(wire::NUMBER_TAKEN);
             }
@@ -594,15 +620,12 @@ impl Journal {
         if rule == Rule::Adding && full {
             return Err(wire::ADDED_TOO_MUCH);
         }
-        if rule == Rule::Adding && self.added >= MOST_ADDED_IN_ALL {
-            return Err(wire::ADDED_TOO_MUCH_IN_ALL);
-        }
         self.name(object, &message.names);
         let dropped = self.kept.get_mut(&object).and_then(|kept| match rule {
             Rule::Lasting => replace(&mut kept.lasting, message),
             Rule::Adding => {
                 kept.adding.push(message);
-                self.added += 1;
+                self.added += 1 + kept.named;
                 None
             }
             // What is pending is all that is left: a commit is taken in
@@ -1099,21 +1122,27 @@ impl Journal {
         ordered
     }
 
-    /// Counts each object in `names` but `owner` as named once more.
+    /// Counts each object in `names` but `owner` as named once more, and
+    /// what was added to it once more in all.
     fn name(&mut self, owner: u32, names: &[u32]) {
         for named in names.iter().filter(|named| **named != owner) {
             if let Some(kept) = self.kept.get_mut(named) {
                 kept.named += 1;
+                self.added += kept.adding.len();
             }
         }
     }
 
-    /// Counts each object in `names` but `owner` as named once less, and lets
-    /// go of one gone that nothing names any more.
+    /// Counts each object in `names` but `owner` as named once less, and
+    /// what was added to it once less in all, and lets go of one gone that
+    /// nothing names any more.
     fn unname(&mut self, owner: u32, names: &[u32]) {
         for named in names.iter().filter(|named| **named != owner) {
             let unnamed = self.kept.get_mut(named).map(|kept| {
-                kept.named = kept.named.saturating_sub(1);
+                let was = kept.named;
+                kept.named = was.saturating_sub(1);
+                let less = kept.adding.len() * (was - kept.named);
+                self.added = self.added.saturating_sub(less);
                 kept.named == 0 && kept.gone.is_some()
             });
             if unnamed == Some(true) {
@@ -1123,10 +1152,13 @@ impl Journal {
     }
 
     /// Takes `object` out of what is kept, and what was added to it out of
-    /// the count of all that was.
+    /// the count of all that was, as often as it was counted.
     fn remove(&mut self, object: u32) -> Option<Kept> {
         let kept = self.kept.remove(&object);
-        self.added -= kept.as_ref().map_or(0, |kept| kept.adding.len());
+        let counted = kept
+            .as_ref()
+            .map_or(0, |kept| kept.adding.len() * (1 + kept.named));
+        self.added = self.added.saturating_sub(counted);
         kept
     }
 

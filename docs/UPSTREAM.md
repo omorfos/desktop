@@ -27,17 +27,30 @@ S=$(ls -d ~/.cargo/registry/src/*/smithay-$(awk '/^name = "smithay"/{getline; pr
   (`RegionAttributes::rects`) and every kind a clipboard source offers,
   with no most: a program that adds a million costs the compositor a
   million. The protocols set no most, but a compositor may end a program
-  that asks for more than it will keep, with `no_memory`.
+  that asks for more than it will keep, with `no_memory`. And a region
+  is copied whole into each surface it is set on, as what is opaque of
+  it or what takes input, and again as the surface is committed
+  (`RegionAttributes` is a `Vec`, cloned), so one region of 4096
+  rectangles set on a thousand surfaces is kept a few thousand times
+  over. Held in an `Arc`, a region set on many surfaces would be kept
+  once.
 - **Meanwhile:** the relay ends a program that adds more than 4096 to one
   object (`journal::MOST_ADDED`, finding 5 of
   `docs/reviews/2026-11-15-what-a-client-can-cost.md`), or more than
   65,536 to all of its objects together (`journal::MOST_ADDED_IN_ALL`,
-  finding 1 of `docs/reviews/2026-11-22-the-whole-tree-again.md`), so a
-  program connected through it never reaches Smithay with more. One connected
-  without the relay, as in the nested backend or once the relay has been
-  given up, is not held to it.
+  finding 1 of `docs/reviews/2026-11-22-the-whole-tree-again.md`). What
+  is added to an object is counted against the second once more for each
+  thing kept that names the object, a surface its region is set on among
+  them (finding 1 of
+  `docs/reviews/2026-11-24-the-pull-requests-merged-on-23-november.md`),
+  so that the copies are counted too. A program connected through the
+  relay reaches Smithay with no more than that, which is some megabytes.
+  One connected without the relay, as in the nested backend or once the
+  relay has been given up, is not held to it.
 - **Check:** `grep -n 'rects.push\|fn add' "$S"/src/wayland/compositor/handlers.rs "$S"/src/wayland/selection/*/source.rs`
-  shows whether anything counts them first.
+  shows whether anything counts them first, and
+  `grep -n 'region.*clone\|attributes_mutex.lock().unwrap().clone()' "$S"/src/wayland/compositor/handlers.rs`
+  whether a region is still copied into each surface.
 
 ### Every kind a program offers is sent on, however many and however long
 

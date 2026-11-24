@@ -1774,6 +1774,54 @@ mod tests {
         read_through(link, compositor)
     }
 
+    #[test]
+    fn a_program_may_not_add_more_in_all_than_any_adds_by_naming_one_object_from_many() {
+        let (mut link, program, compositor) = composing();
+        assert_eq!(fill(&mut link, &program, &compositor, 4), Ok(()));
+        // The compositor holds a copy of the region for each surface it is
+        // set on, besides its own: as many surfaces may have it as there is
+        // room for more regions as full.
+        let room = u32::try_from(journal::MOST_ADDED_IN_ALL / journal::MOST_ADDED).unwrap();
+        for surface in 5..4 + room {
+            assert_eq!(opaque(&mut link, &program, &compositor, surface), Ok(()));
+        }
+        let read = opaque(&mut link, &program, &compositor, 4 + room);
+        assert_eq!(read, Err(Ended::Broken(wire::ADDED_TOO_MUCH_IN_ALL)));
+    }
+
+    #[test]
+    fn what_names_an_object_let_go_of_no_longer_counts_what_was_added_to_it_again() {
+        let (mut link, program, compositor) = composing();
+        assert_eq!(fill(&mut link, &program, &compositor, 4), Ok(()));
+        let room = u32::try_from(journal::MOST_ADDED_IN_ALL / journal::MOST_ADDED).unwrap();
+        // As many surfaces as may have the region, destroyed, and as many
+        // again, three times over.
+        let mut next = 5;
+        for round in 0..3 {
+            let surfaces = next..next + room - 1;
+            for surface in surfaces.clone() {
+                assert_eq!(opaque(&mut link, &program, &compositor, surface), Ok(()));
+            }
+            if round == 2 {
+                // The last time, the region destroyed first, kept while
+                // they name it.
+                send(&program, &message(4, 0, &[]), &[]);
+                assert_eq!(read_through(&mut link, &compositor), Ok(()));
+            }
+            for surface in surfaces {
+                send(&program, &message(surface, 0, &[]), &[]);
+                assert_eq!(read_through(&mut link, &compositor), Ok(()));
+            }
+            next += room - 1;
+        }
+        // With the last surface the region was let go of too: there is as
+        // much room as there was at first.
+        let regions = u32::try_from(journal::MOST_ADDED_IN_ALL / journal::MOST_ADDED).unwrap();
+        for region in next..next + regions {
+            assert_eq!(fill(&mut link, &program, &compositor, region), Ok(()));
+        }
+    }
+
     /// Has the program make the region 4, set it on the surface 5 and
     /// destroy it, and the compositor say its number is free: it is kept
     /// while the surface names it, and that word is kept from the program.
