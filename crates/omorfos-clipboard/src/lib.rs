@@ -289,7 +289,8 @@ fn forget(
 
 /// The most forms of one copy that are read: more than any program offers
 /// that has something to give, as text, pictures and files. Each is a pipe
-/// read until the program has handed it all over.
+/// read until the program has handed it all over. Far fewer than a program
+/// may offer ([`omorfos_ipc::copied::MOST_KINDS`]).
 const MOST_KINDS: usize = 32;
 
 /// Reads what was copied, in each of `kinds` there is data in, all at
