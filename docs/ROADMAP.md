@@ -21,14 +21,6 @@ the maintainer. An agent starting work reminds them of what is here, and
 an item goes once it has been tried: what was wrong goes to its stage as
 a known gap.
 
-- The report (stage 8), what is left of it: `omorfosctl report` from a
-  session started by a login screen, which it has not been; and the
-  log's bound, shown only by a login that says more than 8 MiB, whose
-  `session.log` should then begin with the line saying so. Paths under
-  `/media/<you>` were left out as they should be; the journal's section
-  was not this login's, which is a fault of its own (stage 8).
-- A screen that changes size while it is shared (stage 3), with a
-  screen that has modes of more than one size.
 ## Where this is going
 
 omorfos is small, fast and driven by text files, but what is being asked
