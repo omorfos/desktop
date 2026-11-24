@@ -370,7 +370,9 @@ and fails while that is other than what 3e still has to come.
   menu's region at first, a program's Wayland library takes it for a
   fault, which Firefox ends on. A program that takes a number withheld
   from it all the same, which no Wayland library does, is let go: what
-  names the old would name the new.
+  names the old would name the new, and what is added to an object be
+  counted, against the most a program may add in all, for the wrong one
+  or for neither.
 - **A window's icon is made again but not given to the window again** (3a):
   the request that gives it names the window and is made of the manager,
   where what lasts is kept for the object a request is made of. Since 3c it
