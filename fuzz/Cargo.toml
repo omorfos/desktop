@@ -1,8 +1,8 @@
-# What reads untrusted input fuzzed: the relay's reader (ADR 61), the
-# configuration, and what crosses omorfos's own sockets. A workspace of its
-# own, outside the project's, as cargo-fuzz needs a nightly toolchain and
-# the project is built with a stable one; run as
-# `cargo +nightly fuzz run messages`, `configuration` or `ipc`.
+# What reads untrusted input fuzzed: the relay's reader and its link for a
+# program (ADR 61), the configuration, and what crosses omorfos's own
+# sockets. A workspace of its own, outside the project's, as cargo-fuzz
+# needs a nightly toolchain and the project is built with a stable one; run
+# as `cargo +nightly fuzz run messages`, `link`, `configuration` or `ipc`.
 [package]
 name = "omorfos-fuzz"
 version = "0.0.0"
@@ -19,12 +19,22 @@ libfuzzer-sys = "0.4.10"
 omorfos-config = { path = "../crates/omorfos-config" }
 omorfos-ipc = { path = "../crates/omorfos-ipc" }
 omorfos-relay = { path = "../crates/omorfos-relay" }
+# Already in the tree through the relay. Hands descriptors to the relay's
+# link beside what is sent, as a program and the compositor do.
+rustix = { version = "1.1.5", default-features = false, features = ["net", "std"] }
 # To read an action as the compositor does.
 serde = "1.0.229"
 
 [[bin]]
 name = "messages"
 path = "fuzz_targets/messages.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "link"
+path = "fuzz_targets/link.rs"
 test = false
 doc = false
 bench = false

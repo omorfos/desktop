@@ -66,7 +66,9 @@ description at or above the version listed.
 workspace, run by a CI job of its own on a nightly toolchain, which
 `cargo-fuzz` needs; everything else stays on the stable toolchain the
 project is pinned to. What the fuzzer runs is the reader, the table and
-the bounds, fed what a program might send.
+the bounds, fed what a program might send; and, since 23 November 2026,
+the link for a program as the relay drives it, over sockets, with
+descriptors beside what is sent.
 
 **The holder holds the relay as it holds the compositor.** It starts
 the relay first, hands it the socket, and keeps it running: found ended

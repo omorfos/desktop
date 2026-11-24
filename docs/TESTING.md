@@ -492,7 +492,11 @@ for i in $(seq 1 25); do "$bin" >/dev/null 2>&1 || echo "failed on run $i"; done
 What reads untrusted input is fuzzed, each by a target of its own:
 
 - `messages`: the relay's reader, which reads what programs send before
-  the compositor does (ADR 61);
+  the compositor does (ADR 61), message by message;
+- `link`: the relay's link for a program, which reads it from the
+  socket: what the program and the compositor send, in pieces of any
+  size with descriptors beside them, read and written as the relay does,
+  the compositor going now and then and the next joined;
 - `configuration`: the configuration's files, a byte choosing which, read
   as the compositor reads them, and read again over what that made, as a
   reload is;

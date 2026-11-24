@@ -258,6 +258,7 @@ dependencies = [
 name = "omorfos-config"
 version = "0.1.0"
 dependencies = [
+ "granit-parser",
  "inotify",
  "jiff",
  "rustix",
@@ -274,6 +275,7 @@ dependencies = [
  "omorfos-config",
  "omorfos-ipc",
  "omorfos-relay",
+ "rustix",
  "serde",
 ]
 

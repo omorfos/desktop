@@ -3321,10 +3321,14 @@ documents and not its code, asked for four things that hold when the code
 is looked at; the rest it asked for was done already, or is for the
 stages it belongs to:
 
-- [ ] The relay's reading of what programs send, and what it keeps of
+- [x] The relay's reading of what programs send, and what it keeps of
       them, fuzzed: it reads every byte every Wayland program sends, and
-      is the parser most open to them, but has no target of its own
-      beside those of the configuration, IPC and messages.
+      is the parser most open to them. `messages` fuzzed its reading and
+      keeping already, message by message, but never what comes from a
+      socket: a message in pieces, the descriptors beside it, and the
+      bounds on what is kept to be written. `link` drives the relay's
+      link for a program as the relay does, over sockets, with
+      descriptors.
 - [ ] Arbitrary sequences of what can be done to windows, workspaces and
       screens, run against `omorfos-core` and the desktop checked to be
       whole after each: as a fuzz target, which needs no new dependency.
