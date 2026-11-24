@@ -4,12 +4,11 @@ What omorfos is to become, in the order it is to be built. Stages are
 worked top to bottom and one at a time; within a stage the order is a
 suggestion. Tick items as they land and keep the "Next" pointer current.
 
-**Next:** what the reviews of 22 and 19 November 2026 found unsafe
-(stage 8, the first's findings in the order proposed, the second's in
-the order agreed), then what glass costs, measured (stage 4), then
-screens remembered and scaled (stage 3), then what closes stage 4: the
-rest of the redesign of windows (ADR 97) and the defaults reviewed
-together. Stage 5, the bar and the dock, follows, wearing that look.
+**Next:** what is left of the review of 23 November 2026 (stage 8):
+the notification service's actions (finding 10), the portal that is
+slow to end, then what a refresh and what is captured cost, each
+measured first (findings 3 and 4); then what closes stage 4: the rest of
+the redesign of windows (ADR 97) and the defaults reviewed together. Stage 5, the bar and the dock, follows, wearing that look.
 What else is left of stages 3 and 4 is known gaps, taken as the code
 beside them is touched. Of what is taken from stage 8 ahead of its turn,
 the first release waits, there being no hurry for it, as do packages
@@ -3399,11 +3398,16 @@ its own. It found one high, five medium and four low findings:
       `it_ends_when_the_bus_does_and_needs_no_configuration_it_can_watch`
       in full runs
       ([seen in passing](reviews/2026-11-23-the-whole-tree-for-safety-speed-and-use.md#seen-in-passing)).
-- [ ] High: a same-user process can make the sealed prompt ask for its
+- [x] High: a same-user process can make the sealed prompt ask for its
       passphrase
       ([finding 9](reviews/2026-11-23-the-whole-tree-for-safety-speed-and-use.md#9-a-same-user-process-can-make-the-sealed-prompt-ask-for-its-passphrase)):
-      research an authenticated relationship with the configured agent
-      and amend ADR 58 before changing the parent check.
+      decided on 24 November 2026 to keep ADR 58 as it is, which accepts
+      it: the check on the pinentry's parent raises the bar and is not
+      the boundary, as a program running as the user, outside a sandbox,
+      is trusted ([SECURITY.md](SECURITY.md), "Who is trusted"). Telling
+      the agent the user configured from one of its own would need a
+      binding to it that GnuPG does not give, and would close one door
+      of many such a program has.
 - [ ] Medium: the notification service advertises actions it does not
       provide
       ([finding 10](reviews/2026-11-23-the-whole-tree-for-safety-speed-and-use.md#10-the-notification-service-advertises-actions-it-does-not-provide)):
