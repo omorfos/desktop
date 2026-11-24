@@ -5,8 +5,7 @@ worked top to bottom and one at a time; within a stage the order is a
 suggestion. Tick items as they land and keep the "Next" pointer current.
 
 **Next:** what is left of the review of 23 November 2026 (stage 8):
-the portal that is slow to end, then what a refresh and what is captured cost, each
-measured first (findings 3 and 4); then what closes stage 4: the rest of
+the portal that is slow to end; then what closes stage 4: the rest of
 the redesign of windows (ADR 97) and the defaults reviewed together. Stage 5, the bar and the dock, follows, wearing that look.
 What else is left of stages 3 and 4 is known gaps, taken as the code
 beside them is touched. Of what is taken from stage 8 ahead of its turn,

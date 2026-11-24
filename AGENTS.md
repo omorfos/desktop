@@ -100,6 +100,43 @@ lists the programs; a new one is added there, and to the packaging, with
 an `About` in its library and its page among those the compositor's tests
 make.
 
+## Two machines
+
+Work goes on at two machines at once, and each has its part:
+
+- **The machine for building** (WSL, many cores, no screen of its own):
+  the changes themselves, every gate, the coverage gate among them,
+  reviews, measuring, and anything long.
+- **The machine with real hardware**: trying what is under "To be tried
+  by hand" in [docs/ROADMAP.md](docs/ROADMAP.md), what only a card, a
+  TTY, a seat or a real screen shows, judging the look by eye, and small
+  changes that touch nothing the other has open.
+
+They hand work over like this:
+
+1. **Claim before starting.** Before taking an item, look at
+   `gh pr list`. An item is taken by pushing its branch and opening a draft
+   pull request as soon as work on it begins, with the item named in its
+   title: this, and only this, is pushed without being asked. One that
+   is not finished is closed, so that the item is free again.
+2. **From building to trying.** A change merged that has not been tried
+   on real hardware adds what to try, and what should be seen, to "To
+   be tried by hand".
+3. **From trying back.** What was tried comes off that list. What went
+   wrong is opened as an issue, with what was done and what was seen,
+   not written into the roadmap: `docs/ROADMAP.md` is changed by nearly
+   every pull request, and changed at both machines at once it is where
+   they would conflict. The machine for building takes it up from the
+   issue, and puts it on the roadmap with the fix.
+4. **A word between them, where it can be had.** The pull requests and
+   the issues are all that is needed, and all that is relied on: they
+   are there whoever works at each machine, a person or an agent, and
+   whichever tool that agent is, and whether or not the other is at
+   work. Where the two can also reach each other directly, as sessions
+   of Claude Code connected by Remote Control can, one may tell the other
+   when something is ready to try or has gone wrong, to save it waiting;
+   but nothing is said only that way.
+
 ## Rules
 
 - **Coverage is 100%** of lines, functions and regions (`cargo coverage`, an
