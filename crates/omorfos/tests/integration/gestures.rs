@@ -145,6 +145,33 @@ fn the_wallpaper_goes_with_the_workspaces_drawn_once_for_each() {
 }
 
 #[test]
+fn the_wallpaper_is_drawn_on_the_workspace_a_swipe_is_to_make_before_it_is_made() {
+    let mut session = Session::with_workspaces();
+    let mut client = session.connect();
+    session.open(&mut client, "first", (200, 100), RED);
+    for _ in 0..3 {
+        session.compositor_mut().perform(&Action::NextWorkspace);
+    }
+    session.open(&mut client, "last", (200, 100), BLUE);
+    let corner = LayerShape {
+        layer: Layer::Background,
+        anchor: Anchor::Bottom | Anchor::Left,
+        size: (100, 50),
+        exclusive_zone: 0,
+        keyboard: KeyboardInteractivity::None,
+    };
+    session.open_layer(&mut client, &corner, (100, 50), GREEN);
+    // The keys' slide settled.
+    session.advance(Duration::from_secs(1));
+    let count = session.compositor().desktop().workspace_count();
+
+    // Past the last, towards a new one that is not yet there.
+    carry(&mut session, fingers(-100.0), 100);
+    assert_eq!(session.compositor().desktop().workspace_count(), count);
+    assert_eq!(session.draw().at(590, 455), GREEN, "its wallpaper already");
+}
+
+#[test]
 fn let_go_past_half_way_the_workspace_that_came_in_is_shown_and_settles() {
     let (mut session, _client) = two_windows();
     carry(&mut session, fingers(-400.0), 1000);
