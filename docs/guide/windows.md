@@ -90,7 +90,9 @@ screen's workspaces. Three fingers or four swiped up the touchpad open it, the
 windows moving up and shrinking to their places with the fingers and the
 screen dimming as they go; lift them past half way, or flick, and it
 opens the rest of the way, or short of that and it sinks back. Swiped
-down, they close it the same way. With `appearance.reduce_motion` the
+down, they close it the same way, and bring to the front the window the
+pointer is over, as clicking it would; the windows of the program in
+front, which fingers swiped down show, close the same way, swiped up. With `appearance.reduce_motion` the
 fingers carry nothing, and it opens or not as they lift. The Mission
 Control key of a Mac's keyboard (`XF86LaunchA`, F3 on a MacBook) opens
 it and closes it, and so does `Super+Ctrl+Up`, as Ctrl+Up on a Mac

@@ -734,6 +734,23 @@ fn swipe(session: &mut Session, steps: &[f64], lift: bool) {
     session.step();
 }
 
+/// Fingers already on the touchpad going on down it by each of `steps`,
+/// lifting at the end if they `lift`.
+fn swipe_on(session: &mut Session, steps: &[f64], lift: bool) {
+    let compositor = session.compositor_mut();
+    let mut time = 100;
+    for dy in steps {
+        time += 10;
+        let update = omorfos::Gesture::SwipeUpdate { dx: 0.0, dy: *dy };
+        compositor.input(Input::Gesture(update), time);
+    }
+    if lift {
+        let end = omorfos::Gesture::SwipeEnd { cancelled: false };
+        compositor.input(Input::Gesture(end), time + 10);
+    }
+    session.step();
+}
+
 /// How dark the dim has made the bottom right corner, which no window
 /// covers, against `open`, how it is with nothing over it: none, and more
 /// as the overview opens.
@@ -986,6 +1003,52 @@ fn fingers_down_carry_the_program_windows_open_and_up_close_them() {
     swipe(&mut session, &[60.0], true);
     session.advance(GLIDE);
     assert_eq!(session.compositor().overview_layout(), None);
+}
+
+#[test]
+fn fingers_closing_the_overview_go_to_the_window_under_the_pointer() {
+    let mut session = Session::with_config(&[UNBLURRED]);
+    let mut client = session.connect();
+    for (name, colour) in [("first", RED), ("second", BLUE)] {
+        session.open(&mut client, name, (180, 120), colour);
+    }
+    session.step();
+    let front = |session: &Session| {
+        let focused = session.compositor().desktop().focused();
+        focused.map(|id| name(session, id))
+    };
+    // Up, the pointer over the window behind, and down: it is in front.
+    swipe(&mut session, &[-100.0, -100.0, -100.0], true);
+    session.advance(GLIDE);
+    let (x, y) = middle(place(&session, "first"));
+    let at = Input::Motion {
+        x: f64::from(x),
+        y: f64::from(y),
+    };
+    session.compositor_mut().input(at, 0);
+    // In front as soon as the fingers begin to close it.
+    swipe(&mut session, &[100.0], false);
+    assert_eq!(front(&session).as_deref(), Some("first"));
+    swipe_on(&mut session, &[100.0, 100.0], true);
+    session.advance(GLIDE);
+    assert_eq!(session.compositor().overview_layout(), None);
+    assert_eq!(front(&session).as_deref(), Some("first"));
+    // Up, over the other, and down but cancelled: closed, the other left
+    // in front, where it was brought as the fingers began.
+    swipe(&mut session, &[-100.0, -100.0, -100.0], true);
+    session.advance(GLIDE);
+    let (x, y) = middle(place(&session, "second"));
+    let at = Input::Motion {
+        x: f64::from(x),
+        y: f64::from(y),
+    };
+    session.compositor_mut().input(at, 0);
+    swipe(&mut session, &[100.0, 100.0, 100.0], false);
+    let end = omorfos::Gesture::SwipeEnd { cancelled: true };
+    session.compositor_mut().input(Input::Gesture(end), 100);
+    session.advance(GLIDE);
+    assert_eq!(session.compositor().overview_layout(), None);
+    assert_eq!(front(&session).as_deref(), Some("second"));
 }
 
 #[test]
