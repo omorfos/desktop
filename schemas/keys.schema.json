@@ -420,6 +420,20 @@
       "minItems": 1,
       "type": "array"
     },
+    "Defaults": {
+      "oneOf": [
+        {
+          "description": "Whether the built-in bindings are kept: a Mac's, with Super for Command, if true; none if false.",
+          "type": "boolean"
+        },
+        {
+          "description": "`ordinary`: the ordinary way's, with Ctrl and Alt as Windows, GNOME and KDE have them.",
+          "enum": [
+            "ordinary"
+          ]
+        }
+      ]
+    },
     "Half": {
       "description": "A half of the screen.",
       "oneOf": [
@@ -535,9 +549,8 @@
       "type": "array"
     },
     "defaults": {
-      "default": true,
-      "description": "Whether the built-in bindings are kept, on the keys these bindings\nleave alone. They are unless this is `false`.",
-      "type": "boolean"
+      "$ref": "#/$defs/Defaults",
+      "description": "Which built-in bindings are kept, on the keys these bindings leave\nalone: a Mac's, with Super for Command, unless this is `ordinary`,\nfor the ordinary way's with Ctrl and Alt, or `false`, for none."
     },
     "unbind": {
       "description": "Built-in bindings to do without, by their keys, such as `Super+h`.",

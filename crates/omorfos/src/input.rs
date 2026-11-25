@@ -450,6 +450,14 @@ impl Compositor {
         }
     }
 
+    /// Whether a chord with Super that nothing binds reaches the program
+    /// as Ctrl (ADR 78): unless the configuration says not, or the bindings
+    /// are the ordinary way's, where it is the program's as it is (ADR 101).
+    fn super_as_ctrl(&self) -> bool {
+        let config = self.config();
+        config.general.keyboard.super_as_ctrl && !config.keys.ordinary()
+    }
+
     fn key(&mut self, code: Keycode, pressed: bool, time: u32) {
         let keyboard = self.keyboard.clone();
         let state = if pressed {
@@ -550,8 +558,8 @@ impl Compositor {
                 keysym: keysym.raw(),
             };
             // Super is the desktop's: a chord with it that nothing binds
-            // is the program's as Ctrl (ADR 78).
-            let as_ctrl = held.logo && compositor.config().general.keyboard.super_as_ctrl;
+            // is the program's as Ctrl (ADR 78), unless it is not to be.
+            let as_ctrl = held.logo && compositor.super_as_ctrl();
             let action = match compositor.bindings.press(chord) {
                 KeyOutcome::Unbound if !about && as_ctrl => {
                     compositor.taken.as_ctrl.push(code);

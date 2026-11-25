@@ -206,6 +206,27 @@ impl JsonSchema for KeyChain {
     }
 }
 
+impl JsonSchema for crate::keys::Defaults {
+    fn schema_name() -> Cow<'static, str> {
+        "Defaults".into()
+    }
+
+    fn json_schema(_: &mut SchemaGenerator) -> Schema {
+        json_schema!({
+            "oneOf": [
+                {
+                    "description": "Whether the built-in bindings are kept: a Mac's, with Super for Command, if true; none if false.",
+                    "type": "boolean",
+                },
+                {
+                    "description": "`ordinary`: the ordinary way's, with Ctrl and Alt as Windows, GNOME and KDE have them.",
+                    "enum": ["ordinary"],
+                },
+            ],
+        })
+    }
+}
+
 impl JsonSchema for Private {
     fn schema_name() -> Cow<'static, str> {
         "Private".into()

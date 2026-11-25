@@ -280,6 +280,7 @@ keys.yaml bindings[].action.tile = "top"
 keys.yaml bindings[].action.workspace
 keys.yaml bindings[].keys
 keys.yaml defaults
+keys.yaml defaults = "ordinary"
 keys.yaml unbind
 menu.yaml items
 menu.yaml items[] = "separator"

@@ -778,3 +778,12 @@ fn super_escape_takes_every_key_back_from_the_program_that_has_them() {
     session.roundtrip(&mut client);
     assert!(client.take_events().contains(&Event::Close));
 }
+
+#[test]
+fn in_the_ordinary_way_a_chord_with_super_reaches_the_program_as_it_is() {
+    // ADR 101: there, a chord with Super that nothing binds is the
+    // program's as typed, whatever `super_as_ctrl` says.
+    let config = [("keys.yaml", "defaults: ordinary\n")];
+    let chords = chord_with_super("app", false, &config);
+    assert_eq!(chords, [(C_CODE, true, LOGO), (C_CODE, false, LOGO)]);
+}

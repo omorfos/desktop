@@ -1820,8 +1820,11 @@ the first than on the last.
       - [ ] the touchpad's three or four fingers, a pinch for every
             program and a spread for the desktop; a page of settings for
             the gestures, for stage 7;
-      - [ ] `defaults: ordinary`, and the release that moves the keys
-            saying which.
+      - [x] `defaults: ordinary`, and the release that moves the keys
+            saying which (#133): those ADR 101 names, and GNOME's where it
+            names none, `Alt+F10` maximizing, `Super+h` minimizing and
+            `Ctrl+Alt+Delete` logging out; a chord with Super that nothing
+            binds reaching the program as it is.
 
 ## 5. The shell: a bar and a dock
 

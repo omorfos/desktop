@@ -16,8 +16,10 @@ working on every key you leave alone. One you write on keys a built-in
 binding uses takes its place, and so does a chain that begins with them,
 as `Super+Return t` would. `unbind` lists built-in bindings to do without,
 by their keys; one that names no built-in binding is a mistake, and said
-to be. To have none of the built-in bindings and only your own, say
-`defaults: false`.
+to be. The built-in bindings are a Mac's, with Super for Command; to have
+the ordinary way's, as Windows, GNOME and KDE have them, say `defaults:
+ordinary` (see [The ordinary way](#the-ordinary-way)); to have none of
+them and only your own, say `defaults: false`.
 
 A chord is zero or more modifiers and a key, joined by `+`. Modifiers are
 `Ctrl`, `Alt`, `Shift` and `Super` (case does not matter; `Control`, `Mod1`
@@ -40,15 +42,39 @@ a terminal, where `Ctrl+c` interrupts, it is Ctrl and Shift together,
 which terminals copy, paste and open tabs with. Which programs are
 terminals is `keyboard.terminals` in `config.yaml`, by their `app_id`,
 where `*` stands for any run of characters; `keyboard.super_as_ctrl:
-false` has a chord with Super that nothing binds reach the program as it
-is. A chord you bind with Super is no longer the program's: `Super+s`
-bound is no longer save anywhere.
+false`, or the ordinary way, has a chord with Super that nothing binds
+reach the program as it is. A chord you bind with Super is no longer the
+program's: `Super+s` bound is no longer save anywhere.
 
 A program that needs every key, as a virtual machine, a remote desktop
 or a game may, can ask for them (`keyboard-shortcuts-inhibit`), and is
 given them while its window has the keyboard, the desktop's bindings and
 Super among them; a notice says so. `Super+Escape` always takes them
 back, until the program asks again.
+
+## The ordinary way
+
+With `defaults: ordinary`, the built-in bindings are those of the way
+Windows, GNOME and KDE have keys, with Ctrl and Alt, and a chord with
+Super that nothing binds reaches the program as it is:
+
+| Keys | What they do |
+|---|---|
+| `Alt+Tab` | Switch windows; `Alt+Shift+Tab` back |
+| `Alt+F4` | Close the window |
+| `Alt+F10` | Maximize the window, or restore it |
+| `Super+h` | Minimize the window |
+| `Super+Left` | Have the window take the left half; `Super+Right` the right |
+| `Super+Page_Down` | Go to the next workspace; `Super+Page_Up` the one before |
+| `Super+1` | Go to the first workspace; `Super+Shift+1` send the window there |
+| `Super+l` | Lock the screen |
+| `Ctrl+Alt+Delete` | Log out, asking first |
+| `Super+Tab` | Switch programs; `Super+grave` the program's next window |
+| `Super+space` | Open the launcher; `Super+Up` the overview |
+
+and as the Mac's way has them: `Super+Return` for a terminal, the `Print`
+keys, the keys for the volume, the brightness and what is playing, and
+`Super+Ctrl` with the arrows between windows that share a workspace.
 
 ## Built-in bindings
 

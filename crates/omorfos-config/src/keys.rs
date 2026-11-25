@@ -16,6 +16,7 @@ use crate::{Action, Application, Command, Half, Position, Started, WorkspaceNumb
 #[serde(try_from = "RawKeys")]
 pub struct Keys {
     bindings: Vec<Binding>,
+    defaults: Defaults,
 }
 
 impl Keys {
@@ -25,6 +26,53 @@ impl Keys {
     pub fn bindings(&self) -> &[Binding] {
         &self.bindings
     }
+
+    /// Whether the built-in bindings are the ordinary way's, as Windows,
+    /// GNOME and KDE have them, in which a chord with Super that nothing
+    /// binds reaches the program as it is, and not as Ctrl (ADR 101).
+    #[must_use]
+    pub const fn ordinary(&self) -> bool {
+        matches!(self.defaults, Defaults::Ordinary)
+    }
+}
+
+/// Which built-in bindings `keys.yaml` keeps, as `defaults` says: a Mac's,
+/// with Super for Command, as when it says nothing or `true`; the ordinary
+/// way's, with Ctrl and Alt as Windows, GNOME and KDE have them, as
+/// `ordinary`; or none, as `false` (ADR 101).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
+#[serde(try_from = "DefaultsWritten")]
+pub(crate) enum Defaults {
+    /// A Mac's keys, with Super for Command.
+    #[default]
+    Super,
+    /// The ordinary way's, with Ctrl and Alt.
+    Ordinary,
+    /// None.
+    None,
+}
+
+/// `defaults` as written: yes or no, or which.
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum DefaultsWritten {
+    Said(bool),
+    Which(String),
+}
+
+impl TryFrom<DefaultsWritten> for Defaults {
+    type Error = String;
+
+    fn try_from(written: DefaultsWritten) -> Result<Self, Self::Error> {
+        match written {
+            DefaultsWritten::Said(true) => Ok(Self::Super),
+            DefaultsWritten::Said(false) => Ok(Self::None),
+            DefaultsWritten::Which(which) if which == "ordinary" => Ok(Self::Ordinary),
+            DefaultsWritten::Which(which) => Err(format!(
+                "invalid `defaults` `{which}`: expected true, false or `ordinary`"
+            )),
+        }
+    }
 }
 
 /// `keys.yaml` as written, before conflicts between bindings are checked.
@@ -33,10 +81,11 @@ impl Keys {
 #[cfg_attr(feature = "schema", schemars(rename = "Keys"))]
 #[serde(deny_unknown_fields)]
 pub(crate) struct RawKeys {
-    /// Whether the built-in bindings are kept, on the keys these bindings
-    /// leave alone. They are unless this is `false`.
-    #[serde(default = "kept")]
-    defaults: bool,
+    /// Which built-in bindings are kept, on the keys these bindings leave
+    /// alone: a Mac's, with Super for Command, unless this is `ordinary`,
+    /// for the ordinary way's with Ctrl and Alt, or `false`, for none.
+    #[serde(default)]
+    defaults: Defaults,
     /// Built-in bindings to do without, by their keys, such as `Super+h`.
     #[serde(default)]
     unbind: Vec<KeyChain>,
@@ -46,30 +95,25 @@ pub(crate) struct RawKeys {
     bindings: Vec<RawBinding>,
 }
 
-/// That the built-in bindings are kept unless `keys.yaml` says otherwise.
-const fn kept() -> bool {
-    true
-}
-
 impl TryFrom<RawKeys> for Keys {
     type Error = String;
 
     fn try_from(raw: RawKeys) -> Result<Self, Self::Error> {
         let own = Self::checked(raw.bindings.into_iter().map(Binding::from).collect())?;
-        let built_in = if raw.defaults {
-            Self::default().bindings
-        } else {
-            Vec::new()
+        let built_in = match raw.defaults {
+            Defaults::Super => super_way(),
+            Defaults::Ordinary => ordinary_way(),
+            Defaults::None => Vec::new(),
         };
         let unknown = raw.unbind.iter().find(|keys| {
             let mut built_in = built_in.iter();
             !built_in.any(|binding| binding.keys == **keys)
         });
         if let Some(unknown) = unknown {
-            let why = if raw.defaults {
-                "there is no built-in binding on it"
-            } else {
+            let why = if raw.defaults == Defaults::None {
                 "with `defaults: false` there are no built-in bindings"
+            } else {
+                "there is no built-in binding on it"
             };
             return Err(format!("`{unknown}` cannot be unbound: {why}"));
         }
@@ -77,22 +121,25 @@ impl TryFrom<RawKeys> for Keys {
         // chain that begins with them, which it would otherwise make
         // unreachable.
         let clashes = |keys: &KeyChain| {
-            let mut own = own.bindings.iter();
+            let mut own = own.iter();
             own.any(|binding| binding.keys.0.starts_with(&keys.0))
         };
         let kept: Vec<Binding> = built_in
             .into_iter()
             .filter(|binding| !raw.unbind.contains(&binding.keys) && !clashes(&binding.keys))
             .collect();
-        let mut bindings = own.bindings;
+        let mut bindings = own;
         bindings.extend(kept);
-        Ok(Self { bindings })
+        Ok(Self {
+            bindings,
+            defaults: raw.defaults,
+        })
     }
 }
 
 impl Keys {
     /// Accepts bindings only if none conflicts with another.
-    fn checked(bindings: Vec<Binding>) -> Result<Self, String> {
+    fn checked(bindings: Vec<Binding>) -> Result<Vec<Binding>, String> {
         for (index, later) in bindings.iter().enumerate() {
             for earlier in &bindings[..index] {
                 let (short, long) = if earlier.keys.0.len() <= later.keys.0.len() {
@@ -110,110 +157,178 @@ impl Keys {
                 }
             }
         }
-        Ok(Self { bindings })
+        Ok(bindings)
     }
 }
 
 impl Default for Keys {
     fn default() -> Self {
-        // The Mac's keys, with Super for Command, and Super+Ctrl where a Mac
-        // has Ctrl alone for the desktop (ADR 101, as accepted). A chord with
-        // Super that nothing here binds reaches the program as Ctrl (ADR 78):
-        // Super+W closes its tab, Super+F finds, Super+N opens a window.
-        let mut bindings = vec![
-            bind("Super+Return", Action::Open(Application::Terminal)),
-            bind("Super+space", Action::ShowLauncher),
-            bind("Super+q", Action::CloseProgram),
-            bind("Super+m", Action::Minimize),
-            bind("Super+h", Action::HideProgram),
-            bind("Super+Alt+h", Action::HideOthers),
-            bind("Super+Ctrl+f", Action::Fullscreen),
-            bind("Super+Alt+Up", Action::Maximize),
-            bind("Super+Alt+Left", Action::Tile(Half::Left)),
-            bind("Super+Alt+Right", Action::Tile(Half::Right)),
-            bind("Super+Tab", Action::SwitchPrograms),
-            bind("Super+Shift+Tab", Action::SwitchProgramsBack),
-            bind("Super+grave", Action::NextWindow),
-            bind("Super+Shift+grave", Action::PreviousWindow),
-            // A Mac goes through its windows' tabs with Ctrl+Tab, which here
-            // is the program's.
-            bind("Super+Ctrl+Tab", Action::NextTab),
-            bind("Super+Ctrl+Shift+Tab", Action::PreviousTab),
-            bind("Super+Up", Action::Overview),
-            bind("Super+Right", Action::NextWorkspace),
-            bind("Super+Left", Action::PreviousWorkspace),
-            bind("Super+Ctrl+n", Action::NewWorkspace),
-            bind("Super+Ctrl+Shift+n", Action::MoveToNewWorkspace),
-            bind("Super+Ctrl+q", Action::Lock),
-            bind("XF86ScreenSaver", Action::Lock),
-            bind("Super+Shift+q", Action::LogOut),
-            bind("Print", Action::Spawn(Started::screenshot())),
-            bind("Shift+Print", Action::Spawn(Started::screenshot_copied())),
-            bind("Alt+Print", Action::Spawn(Started::screenshot_window())),
-            bind("Super+Shift+3", Action::Spawn(Started::screenshot())),
-            bind("Super+Shift+4", Action::Spawn(Started::screenshot_picked())),
-            bind("Super+Shift+5", Action::Spawn(Started::screenshot_picked())),
-            bind(
-                "Super+Ctrl+Shift+3",
-                Action::Spawn(Started::screenshot_screens_copied()),
-            ),
-            bind(
-                "Super+Ctrl+Shift+4",
-                Action::Spawn(Started::screenshot_copied()),
-            ),
-            // The keys for the screens, the layout and Mission Control, which
-            // mean nothing else; and Super+F1, as Cmd+F1 mirrors on a Mac.
-            bind("XF86Display", Action::NextScreens),
-            bind("Super+F1", Action::NextScreens),
-            bind("XF86Keyboard", Action::NextLayout),
-            bind("XF86LaunchA", Action::Overview),
-        ];
-        // The keys a keyboard has for the volume, the brightness and what
-        // is playing, which mean nothing else.
-        let session = [
-            ("XF86AudioRaiseVolume", "volume up"),
-            ("XF86AudioLowerVolume", "volume down"),
-            ("XF86AudioMute", "volume mute"),
-            ("XF86AudioMicMute", "microphone mute"),
-            ("XF86MonBrightnessUp", "brightness up"),
-            ("XF86MonBrightnessDown", "brightness down"),
-            ("XF86AudioPlay", "media play-pause"),
-            ("XF86AudioPause", "media play-pause"),
-            ("XF86AudioNext", "media next"),
-            ("XF86AudioPrev", "media previous"),
-            ("XF86AudioStop", "media stop"),
-        ];
-        for (key, asked) in session {
-            bindings.push(bind(key, Action::Spawn(Command::session(asked).into())));
+        Self {
+            bindings: super_way(),
+            defaults: Defaults::Super,
         }
-        // Among windows that share a workspace: to the one beside, and
-        // changing places with it.
-        let beside = [
-            ("Left", Half::Left),
-            ("Right", Half::Right),
-            ("Up", Half::Top),
-            ("Down", Half::Bottom),
-        ];
-        for (key, toward) in beside {
-            bindings.push(bind(&format!("Super+Ctrl+{key}"), Action::Focus(toward)));
-            bindings.push(bind(
-                &format!("Super+Ctrl+Shift+{key}"),
-                Action::Swap(toward),
-            ));
-        }
-        for number in 1..=9 {
-            let workspace = WorkspaceNumber::clamped(number);
-            bindings.push(bind(
-                &format!("Super+{number}"),
-                Action::Workspace(workspace),
-            ));
-            // Super+Shift with 3, 4 and 5 is for pictures of the screen.
-            bindings.push(bind(
-                &format!("Super+Ctrl+{number}"),
-                Action::MoveToWorkspace(workspace),
-            ));
-        }
-        Self { bindings }
+    }
+}
+
+/// The built-in bindings of a Mac's way, with Super for Command, and
+/// Super+Ctrl where a Mac has Ctrl alone for the desktop (ADR 101, as
+/// accepted).
+fn super_way() -> Vec<Binding> {
+    // A chord with
+    // Super that nothing here binds reaches the program as Ctrl (ADR 78):
+    // Super+W closes its tab, Super+F finds, Super+N opens a window.
+    let mut bindings = vec![
+        bind("Super+Return", Action::Open(Application::Terminal)),
+        bind("Super+space", Action::ShowLauncher),
+        bind("Super+q", Action::CloseProgram),
+        bind("Super+m", Action::Minimize),
+        bind("Super+h", Action::HideProgram),
+        bind("Super+Alt+h", Action::HideOthers),
+        bind("Super+Ctrl+f", Action::Fullscreen),
+        bind("Super+Alt+Up", Action::Maximize),
+        bind("Super+Alt+Left", Action::Tile(Half::Left)),
+        bind("Super+Alt+Right", Action::Tile(Half::Right)),
+        bind("Super+Tab", Action::SwitchPrograms),
+        bind("Super+Shift+Tab", Action::SwitchProgramsBack),
+        bind("Super+grave", Action::NextWindow),
+        bind("Super+Shift+grave", Action::PreviousWindow),
+        // A Mac goes through its windows' tabs with Ctrl+Tab, which here
+        // is the program's.
+        bind("Super+Ctrl+Tab", Action::NextTab),
+        bind("Super+Ctrl+Shift+Tab", Action::PreviousTab),
+        bind("Super+Up", Action::Overview),
+        bind("Super+Right", Action::NextWorkspace),
+        bind("Super+Left", Action::PreviousWorkspace),
+        bind("Super+Ctrl+n", Action::NewWorkspace),
+        bind("Super+Ctrl+Shift+n", Action::MoveToNewWorkspace),
+        bind("Super+Ctrl+q", Action::Lock),
+        bind("XF86ScreenSaver", Action::Lock),
+        bind("Super+Shift+q", Action::LogOut),
+        bind("Print", Action::Spawn(Started::screenshot())),
+        bind("Shift+Print", Action::Spawn(Started::screenshot_copied())),
+        bind("Alt+Print", Action::Spawn(Started::screenshot_window())),
+        bind("Super+Shift+3", Action::Spawn(Started::screenshot())),
+        bind("Super+Shift+4", Action::Spawn(Started::screenshot_picked())),
+        bind("Super+Shift+5", Action::Spawn(Started::screenshot_picked())),
+        bind(
+            "Super+Ctrl+Shift+3",
+            Action::Spawn(Started::screenshot_screens_copied()),
+        ),
+        bind(
+            "Super+Ctrl+Shift+4",
+            Action::Spawn(Started::screenshot_copied()),
+        ),
+        // The keys for the screens, the layout and Mission Control, which
+        // mean nothing else; and Super+F1, as Cmd+F1 mirrors on a Mac.
+        bind("XF86Display", Action::NextScreens),
+        bind("Super+F1", Action::NextScreens),
+        bind("XF86Keyboard", Action::NextLayout),
+        bind("XF86LaunchA", Action::Overview),
+    ];
+    shared(&mut bindings);
+    for number in 1..=9 {
+        let workspace = WorkspaceNumber::clamped(number);
+        bindings.push(bind(
+            &format!("Super+{number}"),
+            Action::Workspace(workspace),
+        ));
+        // Super+Shift with 3, 4 and 5 is for pictures of the screen.
+        bindings.push(bind(
+            &format!("Super+Ctrl+{number}"),
+            Action::MoveToWorkspace(workspace),
+        ));
+    }
+    bindings
+}
+
+/// The built-in bindings of the ordinary way, with Ctrl and Alt as Windows,
+/// GNOME and KDE have them (ADR 101, as accepted): those ADR 101 names, and
+/// GNOME's where it names none. A chord with Super that nothing here binds
+/// reaches the program as it is.
+fn ordinary_way() -> Vec<Binding> {
+    let mut bindings = vec![
+        bind("Super+Return", Action::Open(Application::Terminal)),
+        bind("Super+space", Action::ShowLauncher),
+        bind("Super+Up", Action::Overview),
+        bind("XF86LaunchA", Action::Overview),
+        bind("Alt+Tab", Action::SwitchWindows),
+        bind("Alt+Shift+Tab", Action::SwitchWindowsBack),
+        bind("Super+Tab", Action::SwitchPrograms),
+        bind("Super+Shift+Tab", Action::SwitchProgramsBack),
+        bind("Super+grave", Action::NextWindow),
+        bind("Super+Shift+grave", Action::PreviousWindow),
+        bind("Super+Ctrl+Tab", Action::NextTab),
+        bind("Super+Ctrl+Shift+Tab", Action::PreviousTab),
+        bind("Alt+F4", Action::Close),
+        bind("Alt+F10", Action::Maximize),
+        bind("Super+h", Action::Minimize),
+        bind("Super+Ctrl+f", Action::Fullscreen),
+        bind("Super+Left", Action::Tile(Half::Left)),
+        bind("Super+Right", Action::Tile(Half::Right)),
+        bind("Super+Page_Up", Action::PreviousWorkspace),
+        bind("Super+Page_Down", Action::NextWorkspace),
+        bind("Super+Ctrl+n", Action::NewWorkspace),
+        bind("Super+Ctrl+Shift+n", Action::MoveToNewWorkspace),
+        bind("Super+l", Action::Lock),
+        bind("XF86ScreenSaver", Action::Lock),
+        bind("Ctrl+Alt+Delete", Action::LogOut),
+        bind("Print", Action::Spawn(Started::screenshot())),
+        bind("Shift+Print", Action::Spawn(Started::screenshot_copied())),
+        bind("Alt+Print", Action::Spawn(Started::screenshot_window())),
+        bind("XF86Display", Action::NextScreens),
+        bind("Super+F1", Action::NextScreens),
+        bind("XF86Keyboard", Action::NextLayout),
+    ];
+    shared(&mut bindings);
+    for number in 1..=9 {
+        let workspace = WorkspaceNumber::clamped(number);
+        bindings.push(bind(
+            &format!("Super+{number}"),
+            Action::Workspace(workspace),
+        ));
+        bindings.push(bind(
+            &format!("Super+Shift+{number}"),
+            Action::MoveToWorkspace(workspace),
+        ));
+    }
+    bindings
+}
+
+/// What both ways have: the keys for the volume, the brightness and what
+/// is playing, and those that go between windows that share a workspace.
+fn shared(bindings: &mut Vec<Binding>) {
+    // The keys a keyboard has for the volume, the brightness and what
+    // is playing, which mean nothing else.
+    let session = [
+        ("XF86AudioRaiseVolume", "volume up"),
+        ("XF86AudioLowerVolume", "volume down"),
+        ("XF86AudioMute", "volume mute"),
+        ("XF86AudioMicMute", "microphone mute"),
+        ("XF86MonBrightnessUp", "brightness up"),
+        ("XF86MonBrightnessDown", "brightness down"),
+        ("XF86AudioPlay", "media play-pause"),
+        ("XF86AudioPause", "media play-pause"),
+        ("XF86AudioNext", "media next"),
+        ("XF86AudioPrev", "media previous"),
+        ("XF86AudioStop", "media stop"),
+    ];
+    for (key, asked) in session {
+        bindings.push(bind(key, Action::Spawn(Command::session(asked).into())));
+    }
+    // Among windows that share a workspace: to the one beside, and
+    // changing places with it.
+    let beside = [
+        ("Left", Half::Left),
+        ("Right", Half::Right),
+        ("Up", Half::Top),
+        ("Down", Half::Bottom),
+    ];
+    for (key, toward) in beside {
+        bindings.push(bind(&format!("Super+Ctrl+{key}"), Action::Focus(toward)));
+        bindings.push(bind(
+            &format!("Super+Ctrl+Shift+{key}"),
+            Action::Swap(toward),
+        ));
     }
 }
 
@@ -581,7 +696,10 @@ bindings:
         assert_eq!(action_for(&keys, "Super+Return"), None);
         assert_eq!(action_for(&keys, "Super+Return t"), Some(Action::Close));
         assert_eq!(keys.bindings().len(), Keys::default().bindings().len());
-        assert_eq!(Keys::checked(keys.bindings().to_vec()), Ok(keys));
+        assert_eq!(
+            Keys::checked(keys.bindings().to_vec()),
+            Ok(keys.bindings().to_vec())
+        );
     }
 
     #[test]
@@ -668,6 +786,62 @@ bindings:
   - { keys: Super+y, action: maximize }
 ";
         assert_eq!(parse(yaml).unwrap().bindings().len(), 3);
+    }
+
+    #[test]
+    fn the_ordinary_way_has_ctrl_and_alt_as_windows_gnome_and_kde_have_them() {
+        let keys = parse("defaults: ordinary").unwrap();
+        assert!(keys.ordinary());
+        assert!(!Keys::default().ordinary());
+        assert!(!parse("defaults: true").unwrap().ordinary());
+        let action_for = |text: &str| action_for(&keys, text);
+        // As ADR 101 names them.
+        assert_eq!(action_for("Alt+Tab"), Some(Action::SwitchWindows));
+        assert_eq!(action_for("Alt+Shift+Tab"), Some(Action::SwitchWindowsBack));
+        assert_eq!(action_for("Alt+F4"), Some(Action::Close));
+        assert_eq!(action_for("Super+l"), Some(Action::Lock));
+        assert_eq!(action_for("Super+Left"), Some(Action::Tile(Half::Left)));
+        assert_eq!(action_for("Super+Right"), Some(Action::Tile(Half::Right)));
+        assert_eq!(action_for("Super+Page_Up"), Some(Action::PreviousWorkspace));
+        assert_eq!(action_for("Super+Page_Down"), Some(Action::NextWorkspace));
+        assert_eq!(action_for("Super+space"), Some(Action::ShowLauncher));
+        assert_eq!(action_for("Super+Up"), Some(Action::Overview));
+        // And as GNOME has them where it names none.
+        assert_eq!(action_for("Super+Tab"), Some(Action::SwitchPrograms));
+        assert_eq!(action_for("Super+grave"), Some(Action::NextWindow));
+        assert_eq!(action_for("Alt+F10"), Some(Action::Maximize));
+        assert_eq!(action_for("Super+h"), Some(Action::Minimize));
+        assert_eq!(action_for("Ctrl+Alt+Delete"), Some(Action::LogOut));
+        assert_eq!(
+            action_for("Super+Shift+3"),
+            Some(Action::MoveToWorkspace(WorkspaceNumber::clamped(3)))
+        );
+        assert_eq!(
+            action_for("XF86AudioMute"),
+            Some(Action::Spawn(Command::session("volume mute").into()))
+        );
+        // Super with a letter is the program's, as it is typed.
+        assert_eq!(action_for("Super+q"), None);
+        assert_eq!(action_for("Super+m"), None);
+        assert_eq!(
+            Keys::checked(keys.bindings().to_vec()),
+            Ok(keys.bindings().to_vec())
+        );
+        // The Mac way's keys are not there to unbind.
+        let error = parse("defaults: ordinary\nunbind: [Super+Ctrl+q]").unwrap_err();
+        assert!(
+            error.contains("there is no built-in binding on it"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn defaults_is_true_false_or_ordinary() {
+        let error = parse("defaults: windows").unwrap_err();
+        assert!(
+            error.contains("invalid `defaults` `windows`: expected true, false or `ordinary`"),
+            "{error}"
+        );
     }
 
     #[test]
@@ -833,6 +1007,9 @@ bindings:
                 &["volume".to_owned(), "up".to_owned()][..]
             )
         );
-        assert_eq!(Keys::checked(keys.bindings().to_vec()), Ok(keys));
+        assert_eq!(
+            Keys::checked(keys.bindings().to_vec()),
+            Ok(keys.bindings().to_vec())
+        );
     }
 }
