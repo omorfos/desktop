@@ -215,26 +215,27 @@ pub(crate) fn titlebar(
 
 /// Draws on a titlebar button what it does, for those who cannot tell
 /// the buttons apart by colour: a cross to close, a plus to make larger,
-/// a bar to put away. Each is half as large as the button and in the
-/// middle of it.
+/// a bar to put away. Each is half as large as the button, in the middle
+/// of it, drawn as Lucide draws its `x`, `plus` and `minus`: lines a sixth
+/// as thick as the sign is wide, with round ends, smooth at any scale.
 fn sign(canvas: &mut Canvas, button: Button, (left, top, width, height): Area, ink: Color) {
-    let size = width.min(height) / 2;
-    let x = left.saturating_add_unsigned((width - size) / 2);
-    let y = top.saturating_add_unsigned((height - size) / 2);
-    let middle = (size / 2).cast_signed();
+    let size = f64::from(width.min(height)) / 2.0;
+    let x = f64::from(left) + (f64::from(width) - size) / 2.0;
+    let y = f64::from(top) + (f64::from(height) - size) / 2.0;
+    let (middle, end) = (size / 2.0, size);
+    let thick = size / 6.0;
+    let across = [(x, y + middle), (x + end, y + middle)];
+    let mut line = |points: [(f64, f64); 2]| canvas.draw_stroke(&points, thick, ink, 1.0);
     match button {
         Button::Close => {
-            for step in 0..size.cast_signed() {
-                let across = size.cast_signed() - 1 - step;
-                canvas.fill((x + step, y + step, 1, 1), ink);
-                canvas.fill((x + across, y + step, 1, 1), ink);
-            }
+            line([(x, y), (x + end, y + end)]);
+            line([(x + end, y), (x, y + end)]);
         }
         Button::Maximize => {
-            canvas.fill((x, y + middle, size, 1), ink);
-            canvas.fill((x + middle, y, 1, size), ink);
+            line(across);
+            line([(x + middle, y), (x + middle, y + end)]);
         }
-        Button::Minimize => canvas.fill((x, y + middle, size, 1), ink),
+        Button::Minimize => line(across),
     }
 }
 
@@ -1186,6 +1187,41 @@ mod tests {
 
     use super::*;
 
+    #[test]
+    fn each_buttons_sign_is_drawn_smooth_at_any_scale() {
+        let white = Color {
+            red: 255,
+            green: 255,
+            blue: 255,
+            alpha: 255,
+        };
+        for scale in [Scale::ONE, Scale::new(1.5), Scale::new(2.0)] {
+            for button in Button::ALL {
+                let mut canvas = Canvas::scaled(16, 16, scale);
+                sign(&mut canvas, button, (0, 0, 16, 16), white);
+                let (wide, tall) = (canvas.width(), canvas.height());
+                let alphas = (0..wide).flat_map(|x| (0..tall).map(move |y| (x, y)));
+                let alphas: Vec<u32> = alphas.map(|(x, y)| canvas.at(x, y) >> 24).collect();
+                // Its round ends, and a slant all along, blend into what is
+                // under it, as a smooth line does, not a pixel at a time.
+                let partly = alphas
+                    .iter()
+                    .filter(|alpha| (1..255).contains(*alpha))
+                    .count();
+                assert!(
+                    partly >= 2,
+                    "{button:?} at {scale:?}: {partly} partly covered"
+                );
+                // And it keeps to the middle half of the button.
+                let edge = wide / 5;
+                let outside = (0..wide).filter(|x| *x < edge || *x >= wide - edge);
+                let outside = outside.flat_map(|x| (0..tall).map(move |y| (x, y)));
+                let stray = outside.filter(|(x, y)| canvas.at(*x, *y) >> 24 > 0).count();
+                assert_eq!(stray, 0, "{button:?} at {scale:?}");
+            }
+        }
+    }
+
     /// The compositor's words in English, as the tests read them.
     fn english() -> Words {
         Words::in_languages(&omorfos_i18n::COMPOSITOR, &[])
@@ -1875,15 +1911,25 @@ mod tests {
             assert_eq!(count(&plain, middle), 0, "nothing until it is pointed at");
         }
 
-        // A cross of two diagonals eight long, a bar, and a plus of two
-        // bars: on all three, whichever the pointer is on.
+        // A cross from corner to corner, a bar, and a plus: on all three,
+        // whichever the pointer is on, each drawn smooth, so told by where
+        // it is unlike its button rather than by whole pixels of its ink.
+        let marked = |canvas: &Canvas, (x, y): (u32, u32), under: u32| canvas.at(x, y) != under;
+        let colours = BUTTON_COLORS;
         for button in Button::ALL {
             let over = hovering(Some(button), true);
-            assert_eq!(count(&over, 20), 16, "{button:?}");
-            assert_eq!(over.at(16, 20), ink, "from one corner");
-            assert_eq!(over.at(23, 20), ink, "and from the other");
-            assert_eq!(count(&over, 44), 8, "{button:?}");
-            assert_eq!(count(&over, 68), 15, "{button:?}");
+            let inked = |middle: u32, under: u32| {
+                let around = (middle - 6..middle + 6).flat_map(|x| (18..30).map(move |y| (x, y)));
+                around.filter(|at| marked(&over, *at, under)).count()
+            };
+            for (middle, under) in BUTTON_MIDDLES.into_iter().zip(colours) {
+                assert!(inked(middle, under) > 8, "{button:?}: a sign at {middle}");
+            }
+            // The cross reaches its corners, where the bar does not.
+            assert!(marked(&over, (17, 21), colours[0]), "the cross's corner");
+            assert!(marked(&over, (22, 21), colours[0]), "and its other");
+            assert!(!marked(&over, (41, 21), colours[1]), "no corner to the bar");
+            assert!(marked(&over, (68, 21), colours[2]), "the plus upright");
         }
 
         // With the pointer among them the buttons have their colours
