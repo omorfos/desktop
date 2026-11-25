@@ -1729,9 +1729,14 @@ the first than on the last.
             or a click outside. No sign of its own to press, as no other
             card has one. The welcome card, which has Skip and Finish,
             stays as it is.
-      - [ ] The switcher's pictures show a window in its frame, as it
+      - [x] The switcher's pictures show a window in its frame, as it
             will be when chosen, every program alike; as a window alone
-            is drawn for pictures of it.
+            is drawn for pictures of it. In rows and in the queue, the
+            frame omorfos draws, titlebar, buttons and title, is made as
+            small as the picture with the window, its glass with it; a
+            program that draws its own frame is pictured as it draws
+            itself. A private window in a picture of the screen keeps no
+            frame, as its titlebar would say what it is (#140).
       - [ ] The side of a titlebar's buttons a setting,
             `appearance.buttons`, `left` or `right` (ADR 107).
 - [x] A theme able to style the button under the pointer apart from the

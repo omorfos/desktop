@@ -308,6 +308,251 @@ fn each_window_is_shown_small_in_its_place_and_the_one_picked_is_set_apart() {
     press(&mut session, key::ALT, false);
 }
 
+#[test]
+fn a_window_in_a_frame_of_ours_is_pictured_in_it_its_titlebar_above_what_it_draws() {
+    let mut session = Session::with_config(&[ALT_TAB, FLAT]);
+    let mut client = session.connect();
+    session.open(&mut client, "one", (200, 100), RED);
+    session.open_decorated(&mut client, "two", (300, 200), BLUE);
+    alt_tab(&mut session, 1, false);
+    let layout = session.compositor().switcher_layout().unwrap();
+    let theme = Theme::default();
+    // The frame, titlebar and all, made as small as fits the picture's room.
+    let desktop = session.compositor().desktop();
+    let framed = desktop.windows().find(|each| each.window.app_id == "two");
+    let outer = desktop
+        .frame_of(framed.unwrap().window.id)
+        .unwrap()
+        .geometry;
+    let place = layout.items[0].place;
+    let inset = theme.style(Part::SwitcherItem, States::NONE).inset();
+    let across = f64::from(place.size.width - inset.across());
+    let room = (
+        f64::from(place.origin.x) + f64::from(inset.left),
+        across * 10.0 / 16.0,
+    );
+    let factor = (across / f64::from(outer.size.width))
+        .min(room.1 / f64::from(outer.size.height))
+        .min(1.0);
+    let shown = (
+        f64::from(outer.size.width) * factor,
+        f64::from(outer.size.height) * factor,
+    );
+    let left = room.0 + (across - shown.0) / 2.0;
+    let top = f64::from(place.origin.y) + f64::from(inset.top) + (room.1 - shown.1) / 2.0;
+    #[expect(clippy::cast_possible_truncation, reason = "on the screen")]
+    let at = |x: f64, y: f64| (x.round() as i32, y.round() as i32);
+    let frame = session.draw();
+    // Its titlebar across the top, of glass over what is behind the
+    // switcher, with its buttons and its title on it: not what the window
+    // draws, which is one colour.
+    let (from, upper) = at(left, top);
+    let (to, lower) = at(left + shown.0, top + 40.0 * factor);
+    let strip = (from, upper, to, lower);
+    assert!(
+        crate::capture::colours(&frame, strip) > 2,
+        "its titlebar at the top"
+    );
+    let (x, y) = at(left + shown.0 / 2.0, top + 4.0);
+    assert_ne!(frame.at(x, y), BLUE, "not what it draws");
+    let (x, y) = at(left + shown.0 / 2.0, top + shown.1 * 3.0 / 4.0);
+    assert_eq!(frame.at(x, y), BLUE, "what it draws under it");
+    press(&mut session, key::ALT, false);
+}
+
+#[test]
+fn a_window_pictured_in_its_frame_while_its_frame_is_shown_blurs_nothing_again_when_nothing_changes()
+ {
+    use omorfos_ipc::{Client, Reply, Request};
+    let mut session = Session::with_config(&[ALT_TAB, FLAT]);
+    session.blurring();
+    let mut client = session.connect();
+    session.open(&mut client, "one", (200, 100), RED);
+    session.open_decorated(&mut client, "two", (300, 200), BLUE);
+    alt_tab(&mut session, 1, false);
+    session.advance(std::time::Duration::from_millis(400));
+    let mut peer = Client::connect(&session.listen()).unwrap();
+    let mut drawn = |session: &mut Session| match session.ask(&mut peer, &Request::Frames) {
+        Reply::Frames(frames) => frames[0].frames,
+        other => unreachable!("{other:?}"),
+    };
+    // Its titlebar's glass is on the screen and in its picture at once.
+    drop(session.draw());
+    drop(session.draw());
+    let settled = drawn(&mut session);
+    drop(session.draw());
+    assert_eq!(drawn(&mut session), settled, "a frame with nothing changed");
+    press(&mut session, key::ALT, false);
+}
+
+#[test]
+fn in_the_queue_a_window_in_a_frame_of_ours_is_pictured_in_it() {
+    let mut session = Session::with_config(&[ALT_TAB, UNBLURRED]);
+    let mut client = session.connect();
+    // The one in front, picked by the first Tab, is the one before.
+    session.open_decorated(&mut client, "one", (300, 200), BLUE);
+    session.open(&mut client, "two", (200, 100), RED);
+    alt_tab(&mut session, 1, false);
+    session.advance(std::time::Duration::from_millis(300));
+    let layout = session.compositor().switcher_layout().unwrap();
+    let card = layout.items[0].place;
+    let frame = session.draw();
+    // Down the middle of the window in front, where its picture begins,
+    // below the card's top: its titlebar first, then what it draws.
+    let (x, y) = middle(card);
+    let above = frame.at(x, card.origin.y);
+    let begins = (card.origin.y..y).find(|row| frame.at(x, *row) != above);
+    let begins = begins.expect("a picture in the card");
+    let drawn = (begins..=y).find(|row| frame.at(x, *row) == BLUE);
+    let titlebar = drawn.expect("what it draws, in the middle") - begins;
+    assert!(titlebar > 10, "its titlebar first, {titlebar} rows of it");
+    press(&mut session, key::ALT, false);
+}
+
+#[test]
+fn a_private_window_in_a_frame_of_ours_is_pictured_blank_without_its_frame_or_title() {
+    let rules = "rules:\n  - match: { app_id: two }\n    private: true\n";
+    let mut session = Session::with_config(&[ALT_TAB, FLAT, ("rules.yaml", rules)]);
+    let mut client = session.connect();
+    session.open(&mut client, "one", (200, 100), RED);
+    session.open_decorated(&mut client, "two", (300, 200), BLUE);
+    alt_tab(&mut session, 1, false);
+    let layout = session.compositor().switcher_layout().unwrap();
+    let theme = Theme::default();
+    let place = layout.items[0].place;
+    let style = theme.style(Part::SwitcherItem, States::NONE);
+    let inset = style.inset();
+    let room = (
+        place.origin.x + inset.left.cast_signed(),
+        place.origin.y + inset.top.cast_signed(),
+        place.origin.x + (place.size.width - inset.right).cast_signed(),
+        place.origin.y + (inset.top + (place.size.width - inset.across()) * 10 / 16).cast_signed(),
+    );
+    // The user sees it in its frame; a picture of the screen, nothing of
+    // it but the blank, and no title on a titlebar.
+    let screen = session.draw();
+    assert!(
+        crate::capture::colours(&screen, room) > 2,
+        "framed on the screen"
+    );
+    let shot = crate::capture::photographed(&mut session);
+    let (x, y) = picture(place, &theme);
+    assert_eq!(shot.at(x, y), blank(&theme), "blank in a picture");
+    let ground = style.ground();
+    let around = u32::from_be_bytes([ground.alpha, ground.red, ground.green, ground.blue]);
+    let seen = (room.1..room.3).flat_map(|y| (room.0..room.2).map(move |x| (x, y)));
+    let mut seen: Vec<u32> = seen.map(|(x, y)| shot.at(x, y)).collect();
+    seen.sort_unstable();
+    seen.dedup();
+    seen.retain(|colour| ![blank(&theme), around].contains(colour));
+    assert!(
+        seen.is_empty(),
+        "nothing of its frame in a picture: {seen:08x?}"
+    );
+    press(&mut session, key::ALT, false);
+}
+
+#[test]
+fn a_window_blurred_by_a_rule_in_a_frame_of_ours_is_pictured_without_its_frame() {
+    let rules = "rules:\n  - match: { app_id: two }\n    private: blur\n";
+    let mut session = Session::with_config(&[ALT_TAB, FLAT, ("rules.yaml", rules)]);
+    session.blurring();
+    let mut client = session.connect();
+    session.open(&mut client, "one", (200, 100), RED);
+    session.open_decorated(&mut client, "two", (300, 200), BLUE);
+    alt_tab(&mut session, 1, false);
+    let layout = session.compositor().switcher_layout().unwrap();
+    let theme = Theme::default();
+    let place = layout.items[0].place;
+    let inset = theme.style(Part::SwitcherItem, States::NONE).inset();
+    let across = place.size.width - inset.across();
+    let room = (
+        place.origin.x + inset.left.cast_signed(),
+        place.origin.y + inset.top.cast_signed(),
+        place.origin.x + (inset.left + across).cast_signed(),
+        place.origin.y + (inset.top + across * 10 / 16).cast_signed(),
+    );
+    let shot = crate::capture::photographed(&mut session);
+    // Blurred, it is shades of what it draws and of the switcher round it;
+    // a titlebar would bring its title, written light.
+    let light = |colour: u32| {
+        colour.to_be_bytes()[1..]
+            .iter()
+            .all(|channel| *channel > 0xa0)
+    };
+    let seen = (room.1..room.3).flat_map(|y| (room.0..room.2).map(move |x| (x, y)));
+    let titled = seen.filter(|(x, y)| light(shot.at(*x, *y))).count();
+    assert_eq!(titled, 0, "no title of a titlebar in a picture");
+    press(&mut session, key::ALT, false);
+}
+
+#[test]
+fn a_window_rolled_up_into_its_titlebar_is_pictured_as_its_titlebar_alone() {
+    let mut session = Session::with_config(&[ALT_TAB, FLAT]);
+    let mut client = session.connect();
+    session.open(&mut client, "one", (200, 100), RED);
+    session.open_decorated(&mut client, "two", (300, 200), BLUE);
+    session.compositor_mut().perform(&Action::Shade);
+    session.roundtrip(&mut client);
+    alt_tab(&mut session, 1, false);
+    let layout = session.compositor().switcher_layout().unwrap();
+    let theme = Theme::default();
+    let place = layout.items[0].place;
+    let inset = theme.style(Part::SwitcherItem, States::NONE).inset();
+    let across = place.size.width - inset.across();
+    let room = (
+        place.origin.x + inset.left.cast_signed(),
+        place.origin.y + inset.top.cast_signed(),
+        place.origin.x + (inset.left + across).cast_signed(),
+        place.origin.y + (inset.top + across * 10 / 16).cast_signed(),
+    );
+    let frame = session.draw();
+    // Its titlebar, with its buttons and title, and nothing of what it draws.
+    assert!(crate::capture::colours(&frame, room) > 2, "its titlebar");
+    let seen = (room.1..room.3).flat_map(|y| (room.0..room.2).map(move |x| (x, y)));
+    let drawn = seen.filter(|(x, y)| frame.at(*x, *y) == BLUE).count();
+    assert_eq!(drawn, 0, "nothing of what it draws");
+    press(&mut session, key::ALT, false);
+}
+
+#[test]
+fn in_the_queue_the_highlight_is_round_a_framed_windows_picture_with_no_gap() {
+    let mut session = Session::with_config(&[ALT_TAB, UNBLURRED]);
+    let mut client = session.connect();
+    session.open_decorated(&mut client, "one", (300, 200), BLUE);
+    session.open(&mut client, "two", (200, 100), RED);
+    alt_tab(&mut session, 1, false);
+    session.advance(std::time::Duration::from_millis(300));
+    let layout = session.compositor().switcher_layout().unwrap();
+    let card = layout.items[0].place;
+    let frame = session.draw();
+    let theme = Theme::default();
+    let accent = theme
+        .style(Part::SwitcherItem, States::NONE.with(State::Active))
+        .border
+        .left
+        .color;
+    let accent = u32::from_be_bytes([accent.alpha, accent.red, accent.green, accent.blue]);
+    // Across its middle, from the highlight's edge: its picture at once,
+    // the card cut to the frame's shape, not the window's within it.
+    let (_, y) = middle(card);
+    let right = card.origin.x + card.size.width.cast_signed();
+    let edge = (card.origin.x..right).find(|x| frame.at(*x, y) == accent);
+    let edge = edge.expect("the highlight");
+    let past = (edge..right).find(|x| frame.at(*x, y) != accent).unwrap();
+    let inside = frame.at(past, y);
+    let gap = (past..right)
+        .take_while(|x| frame.at(*x, y) == inside)
+        .count();
+    // The card's own room round any picture, and no more.
+    let room = theme.style(Part::SwitcherWindow, States::NONE).padding.left;
+    assert!(
+        gap <= usize::try_from(room).unwrap(),
+        "{gap} columns between the highlight and the picture, beyond its {room}"
+    );
+    press(&mut session, key::ALT, false);
+}
+
 /// The colour a private window is blank in, in a picture of the screen.
 fn blank(theme: &Theme) -> u32 {
     let blank = theme.style(Part::Capture, States::NONE).ground();
