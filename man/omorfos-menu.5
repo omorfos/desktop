@@ -53,6 +53,9 @@ What choosing the item does. Give either this or \fBitems\fR.
 \fBclose\fR
 Ask the focused window to close.
 .TP
+\fBclose_program\fR
+Ask every window of the program the focused window is of to close, as its close button would, so that the program may ask to save: as Cmd+Q quits a program on a Mac. Its program is the windows that share its application's name; one that has none is a program of its own.
+.TP
 \fBmaximize\fR
 Toggle the focused window between maximized and its normal size.
 .TP
@@ -61,6 +64,12 @@ Toggle fullscreen for the focused window.
 .TP
 \fBminimize\fR
 Hide the focused window.
+.TP
+\fBhide_program\fR
+Hide every window of the program the focused window is of, on any workspace, as Cmd+H does on a Mac.
+.TP
+\fBhide_others\fR
+Hide every window of every program but the focused window's, as Cmd+Option+H does on a Mac.
 .TP
 \fBshade\fR
 Roll the focused window up into its titlebar, or let it down again.

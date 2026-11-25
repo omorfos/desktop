@@ -33,6 +33,49 @@ fn close_asks_the_focused_window_to_close() {
 }
 
 #[test]
+fn closing_the_program_asks_each_of_its_windows_to_close_and_no_other() {
+    let mut session = Session::new();
+    let (mut term, mut web) = (session.connect(), session.connect());
+    session.open(&mut web, "web", (200, 100), BLUE);
+    session.open(&mut term, "term", (200, 100), RED);
+    session.open(&mut term, "term", (200, 100), RED);
+    term.take_events();
+    web.take_events();
+
+    session.compositor_mut().perform(&Action::CloseProgram);
+    session.roundtrip(&mut term);
+    session.roundtrip(&mut web);
+
+    let closes = |events: Vec<Event>| events.into_iter().filter(|e| *e == Event::Close).count();
+    assert_eq!(
+        closes(term.take_events()),
+        2,
+        "each of the program's windows"
+    );
+    assert_eq!(closes(web.take_events()), 0, "and none of another's");
+}
+
+#[test]
+fn hiding_the_program_or_the_others_minimizes_their_windows() {
+    let mut session = Session::new();
+    let (mut term, mut web) = (session.connect(), session.connect());
+    session.open(&mut web, "web", (200, 100), BLUE);
+    session.open(&mut term, "term", (200, 100), RED);
+    let hidden = |session: &Session, app: &str| {
+        let desktop = session.compositor().desktop();
+        let mut listed = desktop
+            .windows()
+            .filter(|listed| listed.window.app_id == app);
+        listed.all(|listed| listed.minimized)
+    };
+
+    session.compositor_mut().perform(&Action::HideOthers);
+    assert!(hidden(&session, "web") && !hidden(&session, "term"));
+    session.compositor_mut().perform(&Action::HideProgram);
+    assert!(hidden(&session, "term"));
+}
+
+#[test]
 fn maximize_and_fullscreen_toggle_the_focused_window() {
     let mut session = Session::new();
     let mut client = session.connect();

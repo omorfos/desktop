@@ -22,6 +22,11 @@
           "type": "string"
         },
         {
+          "const": "close_program",
+          "description": "Ask every window of the program the focused window is of to close,\nas its close button would, so that the program may ask to save: as\nCmd+Q quits a program on a Mac. Its program is the windows that share\nits application's name; one that has none is a program of its own.",
+          "type": "string"
+        },
+        {
           "const": "maximize",
           "description": "Toggle the focused window between maximized and its normal size.",
           "type": "string"
@@ -34,6 +39,16 @@
         {
           "const": "minimize",
           "description": "Hide the focused window.",
+          "type": "string"
+        },
+        {
+          "const": "hide_program",
+          "description": "Hide every window of the program the focused window is of, on any\nworkspace, as Cmd+H does on a Mac.",
+          "type": "string"
+        },
+        {
+          "const": "hide_others",
+          "description": "Hide every window of every program but the focused window's, as\nCmd+Option+H does on a Mac.",
           "type": "string"
         },
         {

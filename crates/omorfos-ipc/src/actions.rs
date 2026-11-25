@@ -39,6 +39,12 @@ pub const TOLD: &[Told] = &[
     told!("Windows", "close", "", "Ask the focused window to close"),
     told!(
         "Windows",
+        "close_program",
+        "",
+        "Ask the focused program's windows to close"
+    ),
+    told!(
+        "Windows",
         "maximize",
         "",
         "Maximize the focused window, or restore it",
@@ -50,6 +56,18 @@ pub const TOLD: &[Told] = &[
         "Make the focused window fullscreen, or not",
     ),
     told!("Windows", "minimize", "", "Hide the focused window"),
+    told!(
+        "Windows",
+        "hide_program",
+        "",
+        "Hide the focused program's windows"
+    ),
+    told!(
+        "Windows",
+        "hide_others",
+        "",
+        "Hide every other program's windows"
+    ),
     told!(
         "Windows",
         "shade",

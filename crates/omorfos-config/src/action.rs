@@ -79,12 +79,23 @@ pub enum Action {
     Spawn(Started),
     /// Ask the focused window to close.
     Close,
+    /// Ask every window of the program the focused window is of to close,
+    /// as its close button would, so that the program may ask to save: as
+    /// Cmd+Q quits a program on a Mac. Its program is the windows that share
+    /// its application's name; one that has none is a program of its own.
+    CloseProgram,
     /// Toggle the focused window between maximized and its normal size.
     Maximize,
     /// Toggle fullscreen for the focused window.
     Fullscreen,
     /// Hide the focused window.
     Minimize,
+    /// Hide every window of the program the focused window is of, on any
+    /// workspace, as Cmd+H does on a Mac.
+    HideProgram,
+    /// Hide every window of every program but the focused window's, as
+    /// Cmd+Option+H does on a Mac.
+    HideOthers,
     /// Roll the focused window up into its titlebar, or let it down again.
     Shade,
     /// Keep the focused window above the others, or stop keeping it there.
@@ -426,6 +437,9 @@ mod tests {
     #[test]
     fn actions_without_a_parameter_are_plain_strings() {
         assert_eq!(parse("close"), Ok(Action::Close));
+        assert_eq!(parse("close_program"), Ok(Action::CloseProgram));
+        assert_eq!(parse("hide_program"), Ok(Action::HideProgram));
+        assert_eq!(parse("hide_others"), Ok(Action::HideOthers));
         assert_eq!(parse("focus_next"), Ok(Action::FocusNext));
         assert_eq!(parse("switch_windows"), Ok(Action::SwitchWindows));
         assert_eq!(parse("overview"), Ok(Action::Overview));

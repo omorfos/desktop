@@ -1526,6 +1526,9 @@ impl Compositor {
                     mapped.role.close();
                 }
             }
+            Action::CloseProgram => self.close_program(),
+            Action::HideProgram => self.on_focused(Desktop::hide_program),
+            Action::HideOthers => self.on_focused(Desktop::hide_others),
             Action::Maximize => self.on_focused(Desktop::toggle_maximized),
             Action::Fullscreen => self.on_focused(Desktop::toggle_fullscreen),
             Action::Tile(half) => {
@@ -1756,6 +1759,16 @@ impl Compositor {
             overlap: MENU_OVERLAP,
         };
         self.menu = Some(Menu::open(items, self.pointer_position(), area, metrics));
+    }
+
+    /// Asks every window of the focused window's program to close, as its
+    /// close button would, so that the program may ask to save first.
+    fn close_program(&self) {
+        let program = self.desktop.focused().map(|id| self.desktop.program_of(id));
+        let windows = program.into_iter().flatten();
+        for mapped in windows.filter_map(|id| self.mapped(id)) {
+            mapped.role.close();
+        }
     }
 
     /// Applies an operation to the focused window, if there is one.

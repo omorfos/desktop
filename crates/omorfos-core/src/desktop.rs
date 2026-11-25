@@ -2590,6 +2590,53 @@ impl Desktop {
         }
     }
 
+    /// The windows of the program `id` is a window of: every window, on any
+    /// workspace of any output, that has its `app_id`; or `id` alone, if it
+    /// has none, as a program that says nothing of what it is cannot be
+    /// told from another. Nothing, if there is no window `id`.
+    #[must_use]
+    pub fn program_of(&self, id: WindowId) -> Vec<WindowId> {
+        let Some(app_id) = self.window(id).map(|window| window.app_id.as_str()) else {
+            return Vec::new();
+        };
+        if app_id.is_empty() {
+            return vec![id];
+        }
+        let same = self
+            .windows()
+            .filter(|listed| listed.window.app_id == app_id);
+        same.map(|listed| listed.window.id).collect()
+    }
+
+    /// Hides the program `id` is a window of, as a Mac does: minimizes every
+    /// frame on any workspace that holds a window of it, as
+    /// [`Desktop::program_of`] says, the others in a frame with it too.
+    pub fn hide_program(&mut self, id: WindowId) {
+        for window in self.program_of(id) {
+            self.minimize(window);
+        }
+    }
+
+    /// Hides every program but the one `id` is a window of: minimizes every
+    /// frame, on any workspace, that holds no window of it.
+    pub fn hide_others(&mut self, id: WindowId) {
+        let program = self.program_of(id);
+        let others: Vec<WindowId> = self
+            .windows()
+            .map(|listed| listed.window.id)
+            .filter(|window| !program.is_empty() && !program.contains(window))
+            .collect();
+        for window in others {
+            let together = self.locate(window).is_some_and(|at| {
+                let tabs = &self.sets[at.set].workspaces[at.workspace].groups[at.group].tabs;
+                tabs.iter().any(|tab| program.contains(&tab.id))
+            });
+            if !together {
+                self.minimize(window);
+            }
+        }
+    }
+
     // --- Focus -------------------------------------------------------------
 
     /// Brings a window to the user's attention: switches to its workspace,
@@ -5619,6 +5666,72 @@ mod tests {
         assert!(behind.decoration.is_some());
 
         assert_eq!(desktop.frame_of(WindowId::from_raw(99)), None);
+    }
+
+    /// Whether `id`'s frame is minimized, as the desktop lists it.
+    fn minimized(desktop: &Desktop, id: WindowId) -> bool {
+        let mut listed = desktop.windows().filter(|listed| listed.window.id == id);
+        listed.next().is_some_and(|listed| listed.minimized)
+    }
+
+    #[test]
+    fn a_program_is_its_windows_that_share_an_app_id_on_every_workspace() {
+        let mut desktop = desktop();
+        let (one, other) = (open(&mut desktop, "term"), open(&mut desktop, "web"));
+        desktop.move_to_workspace(one, 1);
+        let two = open(&mut desktop, "term");
+        let nameless = desktop.add_window("", "nameless", SIZE, POINTER, true);
+        let again = desktop.add_window("", "nameless", SIZE, POINTER, true);
+        let mut program = desktop.program_of(two);
+        program.sort();
+        let mut both = vec![one, two];
+        both.sort();
+        assert_eq!(program, both);
+        assert_eq!(desktop.program_of(other), [other]);
+        // One that says nothing of what it is is a program of its own.
+        assert_eq!(desktop.program_of(nameless), [nameless]);
+        assert_eq!(desktop.program_of(again), [again]);
+        assert_eq!(desktop.program_of(WindowId::from_raw(999)), []);
+    }
+
+    #[test]
+    fn hiding_a_program_minimizes_every_frame_of_it_and_hiding_others_every_other() {
+        let mut desktop = desktop();
+        let (term, web) = (open(&mut desktop, "term"), open(&mut desktop, "web"));
+        let away = open(&mut desktop, "term");
+        desktop.move_to_workspace(away, 1);
+        desktop.hide_program(term);
+        assert!(minimized(&desktop, term) && minimized(&desktop, away));
+        assert!(
+            !minimized(&desktop, web),
+            "another program is left as it is"
+        );
+
+        let mut desktop = self::desktop();
+        let (term, web) = (open(&mut desktop, "term"), open(&mut desktop, "web"));
+        let mail = open(&mut desktop, "mail");
+        desktop.move_to_workspace(mail, 1);
+        desktop.hide_others(term);
+        assert!(minimized(&desktop, web) && minimized(&desktop, mail));
+        assert!(!minimized(&desktop, term), "the program itself is left");
+        // Nothing for a window that is not there.
+        let mut desktop = self::desktop();
+        let web = open(&mut desktop, "web");
+        desktop.hide_others(WindowId::from_raw(999));
+        assert!(!minimized(&desktop, web));
+    }
+
+    #[test]
+    fn hiding_others_leaves_a_frame_a_window_of_the_program_shares() {
+        let mut desktop = desktop();
+        let term = open(&mut desktop, "term");
+        let web = open(&mut desktop, "web");
+        desktop.attach(web, term);
+        desktop.hide_others(term);
+        assert!(
+            !minimized(&desktop, web),
+            "its tab is in the program's frame"
+        );
     }
 
     #[test]
