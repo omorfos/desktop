@@ -65,6 +65,7 @@ launcher:
   icons: true             # show each program's icon
   descriptions: true      # show, and search, what each program says of itself
   sums: true              # work out a sum typed, its answer to copy
+  order: [programs, files, actions, clipboard, commands] # the modes, as Super+1 and on reach them
 switcher:
   style: diagonal         # the windows one behind another; or flat, in rows
 notifications:

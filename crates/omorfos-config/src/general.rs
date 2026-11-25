@@ -393,6 +393,10 @@ pub struct Launcher {
     /// Whether a sum typed is worked out as it is typed, its answer above
     /// the programs to be copied.
     pub sums: bool,
+    /// The order of the launcher's modes, as `Super+1` and on reach them
+    /// (ADR 109). A mode left out comes after those named, in the built-in
+    /// order; this only orders, and turns nothing off.
+    pub order: ModeOrder,
 }
 
 impl Default for Launcher {
@@ -403,7 +407,93 @@ impl Default for Launcher {
             icons: true,
             descriptions: true,
             sums: true,
+            order: ModeOrder::default(),
         }
+    }
+}
+
+/// One of the launcher's modes, each with what it finds alone (ADR 109).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum Mode {
+    /// Every program installed, as a grid.
+    Programs,
+    /// Files, as the programs that search them find them.
+    Files,
+    /// Actions: omorfos's own, programs' own and the user's.
+    Actions,
+    /// What was copied lately.
+    Clipboard,
+    /// A command, run in a terminal.
+    Commands,
+}
+
+impl Mode {
+    /// Every mode, in the built-in order.
+    pub const ALL: [Self; 5] = [
+        Self::Programs,
+        Self::Files,
+        Self::Actions,
+        Self::Clipboard,
+        Self::Commands,
+    ];
+
+    /// Its name, as the configuration writes it.
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Programs => "programs",
+            Self::Files => "files",
+            Self::Actions => "actions",
+            Self::Clipboard => "clipboard",
+            Self::Commands => "commands",
+        }
+    }
+}
+
+/// The launcher's modes in order: those named, then the rest in the
+/// built-in order, each once.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(try_from = "Vec<Mode>")]
+pub struct ModeOrder([Mode; 5]);
+
+impl ModeOrder {
+    /// The built-in order.
+    pub const BUILT_IN: Self = Self(Mode::ALL);
+
+    /// Every mode, in this order.
+    pub fn modes(&self) -> impl Iterator<Item = Mode> + use<> {
+        self.0.into_iter()
+    }
+}
+
+impl Default for ModeOrder {
+    fn default() -> Self {
+        Self::BUILT_IN
+    }
+}
+
+impl TryFrom<Vec<Mode>> for ModeOrder {
+    type Error = String;
+
+    fn try_from(named: Vec<Mode>) -> Result<Self, Self::Error> {
+        let twice = named
+            .iter()
+            .enumerate()
+            .find(|(at, mode)| named[..*at].contains(mode));
+        if let Some((_, mode)) = twice {
+            return Err(format!("`{}` is named twice", mode.name()));
+        }
+        let mut order = Mode::ALL;
+        let rest: Vec<Mode> = Mode::ALL
+            .into_iter()
+            .filter(|mode| !named.contains(mode))
+            .collect();
+        for (place, mode) in order.iter_mut().zip(named.into_iter().chain(rest)) {
+            *place = mode;
+        }
+        Ok(Self(order))
     }
 }
 
@@ -1356,6 +1446,44 @@ mod tests {
         assert!(error.contains("is not a day"), "{error}");
         assert!(parse("appearance: { location: { latitude: 1 } }").is_err());
         assert!(parse("appearance: { scheme: sometimes }").is_err());
+    }
+
+    #[test]
+    fn the_launchers_modes_are_in_the_built_in_order_unless_ordered() {
+        let order = General::default().launcher.order;
+        assert_eq!(order.modes().collect::<Vec<_>>(), Mode::ALL);
+        let launcher = parse("launcher: { order: [actions, programs] }")
+            .unwrap()
+            .launcher;
+        assert_eq!(
+            launcher.order.modes().collect::<Vec<_>>(),
+            [
+                Mode::Actions,
+                Mode::Programs,
+                Mode::Files,
+                Mode::Clipboard,
+                Mode::Commands
+            ]
+        );
+    }
+
+    #[test]
+    fn each_mode_is_named_as_the_configuration_writes_it() {
+        for mode in Mode::ALL {
+            let yaml = format!("launcher: {{ order: [{}] }}", mode.name());
+            let first = parse(&yaml).unwrap().launcher.order.modes().next();
+            assert_eq!(first, Some(mode));
+        }
+    }
+
+    #[test]
+    fn a_mode_named_twice_or_unknown_in_the_order_is_an_error_where_it_is() {
+        let twice = parse("launcher:\n  order: [programs, files, programs]\n").unwrap_err();
+        assert!(twice.contains("`programs` is named twice"), "{twice}");
+        assert!(twice.contains("line 2"), "{twice}");
+        let unknown = parse("launcher:\n  order: [files, windows]\n").unwrap_err();
+        assert!(unknown.contains("windows"), "{unknown}");
+        assert!(unknown.contains("line 2"), "{unknown}");
     }
 
     #[test]

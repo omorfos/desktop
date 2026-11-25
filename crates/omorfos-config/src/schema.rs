@@ -15,8 +15,9 @@ use crate::menu::RawItem;
 use crate::rules::RawMatch;
 use crate::{
     Accent, Bounded, Color, Command, General, KeyChain, Keys, MAX_WORKSPACES, Match, Menu,
-    MenuItem, NamedOutput, NamedScreens, Offset, OutputScale, Outputs, Picture, Private, Role,
-    Rules, ScreenMatch, ScreenMode, ScreenWallpaper, Screens, Speed, Started, Workspaces,
+    MenuItem, Mode, ModeOrder, NamedOutput, NamedScreens, Offset, OutputScale, Outputs, Picture,
+    Private, Role, Rules, ScreenMatch, ScreenMode, ScreenWallpaper, Screens, Speed, Started,
+    Workspaces,
 };
 
 /// Generates a schema for each configuration file.
@@ -426,6 +427,22 @@ impl JsonSchema for Screens {
             "description": "Screens by name, each named once.",
             "type": "array",
             "items": screen,
+        })
+    }
+}
+
+impl JsonSchema for ModeOrder {
+    fn schema_name() -> Cow<'static, str> {
+        "ModeOrder".into()
+    }
+
+    fn json_schema(generator: &mut SchemaGenerator) -> Schema {
+        let mode = generator.subschema_for::<Mode>();
+        json_schema!({
+            "description": "The launcher's modes in order, each named once.",
+            "type": "array",
+            "items": mode,
+            "uniqueItems": true,
         })
     }
 }

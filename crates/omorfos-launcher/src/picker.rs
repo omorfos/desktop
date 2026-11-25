@@ -908,6 +908,7 @@ mod tests {
         icons: false,
         descriptions: false,
         sums: true,
+        order: omorfos_config::ModeOrder::BUILT_IN,
     };
 
     fn app(name: &str) -> App {

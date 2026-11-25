@@ -270,6 +270,26 @@ Whether what each program says of itself is shown under its name, and looked thr
 \fBlauncher.icons\fR
 Whether each program's icon is shown beside its name. By default \fBtrue\fR.
 .TP
+\fBlauncher.order\fR
+The order of the launcher's modes, as \fBSuper+1\fR and on reach them (ADR 109). A mode left out comes after those named, in the built\-in order; this only orders, and turns nothing off.
+.RS
+.TP
+\fBprograms\fR
+Every program installed, as a grid.
+.TP
+\fBfiles\fR
+Files, as the programs that search them find them.
+.TP
+\fBactions\fR
+Actions: omorfos's own, programs' own and the user's.
+.TP
+\fBclipboard\fR
+What was copied lately.
+.TP
+\fBcommands\fR
+A command, run in a terminal.
+.RE
+.TP
 \fBlauncher.sums\fR
 Whether a sum typed is worked out as it is typed, its answer above the programs to be copied. By default \fBtrue\fR.
 .TP
@@ -717,6 +737,7 @@ launcher:
   icons: true             # show each program's icon
   descriptions: true      # show, and search, what each program says of itself
   sums: true              # work out a sum typed, its answer to copy
+  order: [programs, files, actions, clipboard, commands] # the modes, as Super+1 and on reach them
 switcher:
   style: diagonal         # the windows one behind another; or flat, in rows
 notifications:

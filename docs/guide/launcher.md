@@ -120,6 +120,23 @@ something is typed, Left and Right move in it as in any field until Down
 gives the grid the keyboard; a sum's answer has a line of its own above
 the programs. If the launcher is open already, it is left as it is.
 
+## Modes
+
+The launcher has modes, each with what it finds alone, reached with
+Super and a digit while it is open (Ctrl and a digit with `defaults:
+ordinary` in `keys.yaml`): `Super+1` the first, and on; `Super+0`, or
+Escape in a mode, goes back to what it opens onto, which finds everything.
+Their order is `launcher.order` in `config.yaml`:
+
+```yaml
+launcher:
+  order: [programs, files, actions, clipboard, commands]
+```
+
+A mode left out comes after those named, in that order: the list only
+orders. A mode not built yet takes no number, and today only `programs`,
+the grid of every program, is.
+
 How it looks is in `theme.css`, under `launcher`, `launcher-input`,
 `launcher-item`, `launcher-description` and `launcher-tile`, a program in
 the grid, as wide as its `min-width`; `launcher-input:active` is

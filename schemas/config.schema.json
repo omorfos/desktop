@@ -406,6 +406,10 @@
           "description": "Whether each program's icon is shown beside its name.",
           "type": "boolean"
         },
+        "order": {
+          "$ref": "#/$defs/ModeOrder",
+          "description": "The order of the launcher's modes, as `Super+1` and on reach them\n(ADR 109). A mode left out comes after those named, in the built-in\norder; this only orders, and turns nothing off."
+        },
         "sums": {
           "default": true,
           "description": "Whether a sum typed is worked out as it is typed, its answer above\nthe programs to be copied.",
@@ -453,6 +457,44 @@
         }
       },
       "type": "object"
+    },
+    "Mode": {
+      "description": "One of the launcher's modes, each with what it finds alone (ADR 109).",
+      "oneOf": [
+        {
+          "const": "programs",
+          "description": "Every program installed, as a grid.",
+          "type": "string"
+        },
+        {
+          "const": "files",
+          "description": "Files, as the programs that search them find them.",
+          "type": "string"
+        },
+        {
+          "const": "actions",
+          "description": "Actions: omorfos's own, programs' own and the user's.",
+          "type": "string"
+        },
+        {
+          "const": "clipboard",
+          "description": "What was copied lately.",
+          "type": "string"
+        },
+        {
+          "const": "commands",
+          "description": "A command, run in a terminal.",
+          "type": "string"
+        }
+      ]
+    },
+    "ModeOrder": {
+      "description": "The launcher's modes in order, each named once.",
+      "items": {
+        "$ref": "#/$defs/Mode"
+      },
+      "type": "array",
+      "uniqueItems": true
     },
     "Mouse": {
       "additionalProperties": false,
