@@ -2879,14 +2879,16 @@ impl Compositor {
     }
 
     /// Paints the frames the windows pictures are taken of by themselves
-    /// are drawn in, as each would be shown wherever it is, keeping what
-    /// was painted while it would look the same. Once the scene is laid
-    /// out, with the shadows in use begun.
+    /// are drawn in, and those the switcher shows, as each would be shown
+    /// wherever it is, keeping what was painted while it would look the
+    /// same. Once the scene is laid out, with the shadows in use begun.
     fn portray(&mut self, theme: &Theme) {
         let over = self.hover.button;
+        let switched = self.switcher_windows().to_vec();
         let pictured: Vec<(FrameInfo, Window, WlSurface)> = self
             .capture
             .windows()
+            .chain(switched)
             .filter_map(|window| {
                 let mapped = self.windows.iter().find(|mapped| mapped.id == window);
                 mapped.zip(self.desktop.frame_of(window))
@@ -3782,7 +3784,8 @@ impl Compositor {
             }
             if !portrait.shaded {
                 let drawn = (&mut elements, &mut Vec::new());
-                self.window_elements(renderer, view, (portrait, false, false), drawn);
+                let whole = (portrait, false, false, portrait.seen.opacity);
+                self.window_elements(renderer, view, whole, drawn);
             }
             let shadow = chrome.and_then(|chrome| chrome.shadow.as_ref());
             if let Some(shadow) = shadow {
@@ -3790,6 +3793,68 @@ impl Compositor {
             }
         }
         elements
+    }
+
+    /// Adds `window`'s picture in its frame, titlebar and all, as a picture
+    /// of it alone shows it: the frame made as small as fits `room`, as
+    /// see-through as `opacity` says, its glass made as small with it.
+    /// Returns whether it did: not where omorfos draws it no frame, nor
+    /// for a private window in a picture of the screen, not `screen`,
+    /// whose titlebar would say what it is, which is then pictured as
+    /// [`Compositor::picture_elements`] has it.
+    pub(crate) fn framed_picture<R>(
+        &self,
+        renderer: &mut R,
+        (window, opacity): (WindowId, f32),
+        room: crate::pictures::Exact,
+        (view, screen): (View, bool),
+        (elements, panes): (&mut Vec<Element<R>>, &mut Vec<Pane>),
+    ) -> bool
+    where
+        R: Renderer + ImportAll + ImportMem,
+        R::TextureId: Clone + Texture + Send + 'static,
+    {
+        let portraits = self.animation.portraits.iter();
+        let portrait = portraits.into_iter().find(|portrait| portrait.id == window);
+        let open = screen || !self.desktop.private(window);
+        let framed =
+            portrait.and_then(|portrait| portrait.chrome.as_ref().map(|chrome| (portrait, chrome)));
+        let Some((portrait, chrome)) = framed.filter(|_| open) else {
+            return false;
+        };
+        let outer = portrait.outer;
+        let size = (
+            outer.size.width.cast_signed(),
+            outer.size.height.cast_signed(),
+        );
+        let (left, top, across, _) = crate::pictures::fitted(size, room);
+        let factor = across / f64::from(size.0.max(1));
+        // Drawn where the frame stands, through a view moved so that its
+        // corner falls on the picture's, then made as small as the picture
+        // about that corner.
+        let corner = Point::<f64, Logical>::from((left, top));
+        let stands = Point::<i32, Logical>::from((outer.origin.x, outer.origin.y));
+        let moved = View {
+            origin: stands - corner.to_i32_round() + view.origin,
+            scale: view.scale,
+        };
+        let (first, laid) = (elements.len(), panes.len());
+        Self::chrome_elements(renderer, moved, chrome, opacity, (elements, panes));
+        // Cut to its frame, as it is drawn alone: of one rolled up into its
+        // titlebar, whose frame is that alone, nothing of what it draws.
+        let alone = (portrait, false, true, opacity);
+        self.window_elements(renderer, moved, alone, (elements, panes));
+        #[expect(clippy::cast_possible_truncation, reason = "a share of one")]
+        let around = scaling::around(factor as f32, || view.pixel(corner));
+        scaling::scale(elements, first, around);
+        scaling::scale_panes(panes, laid, around);
+        // Its glass kept apart from the same frame's on the screen, which
+        // has the same key and another size: one picture of what is behind
+        // would be blurred again for each in turn.
+        for pane in &mut panes[laid..] {
+            *pane = pane.clone().apart(&"pictured");
+        }
+        true
     }
 
     /// Draws on the output that is mirror `at` what the output it mirrors
@@ -4340,7 +4405,8 @@ impl Compositor {
                 // Under glass that blurs it, its menus are left out: they
                 // reach past its frame, where nothing blurs them.
                 let alone = matches!(veil, Some(Veil::Blurred));
-                self.window_elements(renderer, view, (shown, true, alone), (elements, panes));
+                let seen = (shown, true, alone, shown.seen.opacity);
+                self.window_elements(renderer, view, seen, (elements, panes));
                 // What is behind it, blurred where its program asks, is
                 // under it.
                 glass.extend(self.window_backdrop(view, shown, elements.len()));
@@ -4421,13 +4487,14 @@ impl Compositor {
     /// Adds what a window itself shows: its pop-ups whole, unless it is
     /// to be drawn `alone`, and its own picture, which is cut to the frame
     /// if the frame's bottom corners are rounded or it is drawn `alone`,
-    /// under glass the size of its frame. What it is drawn from is
-    /// noted if `noted`, to fade it out by when it goes.
+    /// under glass the size of its frame, as see-through as `opacity`
+    /// says. What it is drawn from is noted if `noted`, to fade it out by
+    /// when it goes.
     fn window_elements<R>(
         &self,
         renderer: &mut R,
         view: View,
-        (shown, noted, alone): (&Shown, bool, bool),
+        (shown, noted, alone, opacity): (&Shown, bool, bool, f32),
         (elements, panes): (&mut Vec<Element<R>>, &mut Vec<Pane>),
     ) where
         R: Renderer + ImportAll + ImportMem,
@@ -4454,7 +4521,7 @@ impl Compositor {
                 .style(Part::Window, States::NONE)
                 .transition;
             let share = changes.progress(self.animation.clock.saturating_sub(giving.since));
-            let opacity = (1.0 - share) * shown.seen.opacity;
+            let opacity = (1.0 - share) * opacity;
             let pieces = giving
                 .pieces
                 .elements(view.origin, view.scale.factor(), opacity);
@@ -4467,14 +4534,13 @@ impl Compositor {
         // Pop-ups reach beyond the frame and are not cut to it, nor
         // stretched with the window, as they are placed by where it is.
         if !alone {
-            let placed = (shown.origin, view, shown.seen.opacity);
+            let placed = (shown.origin, view, opacity);
             let drawn = (&mut *elements, &mut *panes);
             self.menu_elements(renderer, &shown.surface, placed, drawn, &mut noting);
         }
         let first = elements.len();
         let Some(chrome) = rounded else {
             let at = view.pixel(location.to_f64());
-            let opacity = shown.seen.opacity;
             if alone {
                 // Cut to its frame, the glass over which blurs it, as it
                 // lands once stretched: a part of its own placed beyond
@@ -4518,7 +4584,7 @@ impl Compositor {
                 &shown.surface,
                 view.pixel(location.to_f64()),
                 scale,
-                shown.seen.opacity,
+                opacity,
                 Kind::Unspecified,
             );
             for picture in whole {

@@ -497,6 +497,12 @@ impl Compositor {
     }
 
     /// The switcher while it is open and shown.
+    /// The windows the switcher shows, while it is shown: none otherwise.
+    pub(crate) fn switcher_windows(&self) -> &[WindowId] {
+        self.shown_switcher()
+            .map_or(&[], |switching| switching.switcher.windows())
+    }
+
     fn shown_switcher(&self) -> Option<&Switching> {
         let open = self.switch.open.as_ref();
         open.filter(|switching| self.clock() >= switching.shown)
@@ -634,9 +640,19 @@ impl Compositor {
         let front = layout.items.first().map(|item| item.place.size);
         let front = front.unwrap_or_default();
         let front = (front.width.cast_signed(), front.height.cast_signed());
-        let shapes = windows
-            .iter()
-            .map(|window| self.mapped(*window).map_or(front, shape));
+        // One in a frame of ours is pictured in it, and has its frame's shape.
+        let framed = |window: WindowId| {
+            let frame = self.desktop.frame_of(window);
+            let frame = frame.filter(|frame| frame.decoration.is_some());
+            frame.map(|frame| {
+                let size = frame.geometry.size;
+                (size.width.cast_signed(), size.height.cast_signed())
+            })
+        };
+        let shapes = windows.iter().map(|window| {
+            let drawn = || self.mapped(*window).map_or(front, shape);
+            framed(*window).unwrap_or_else(drawn)
+        });
         shapes.collect()
     }
 
@@ -845,7 +861,9 @@ impl Compositor {
                 f64::from(tall),
             );
             let (window, pass) = ((item.window, seen), (view, screen));
-            self.picture_elements(renderer, window, room, pass, (elements, panes));
+            if !self.framed_picture(renderer, window, room, pass, (elements, panes)) {
+                self.picture_elements(renderer, window, room, pass, (elements, panes));
+            }
         }
         let at =
             Point::<i32, Logical>::from((drawn.layout.area.origin.x, drawn.layout.area.origin.y));
@@ -964,7 +982,9 @@ impl Compositor {
             }
             let (window, picture) = ((item.window, opacity), (left, top, across, down));
             let pass = (view, screen);
-            self.picture_elements(renderer, window, picture, pass, (elements, panes));
+            if !self.framed_picture(renderer, window, picture, pass, (elements, panes)) {
+                self.picture_elements(renderer, window, picture, pass, (elements, panes));
+            }
             let at = Point::<f64, Logical>::from((left - out(edges.left), top - out(edges.top)));
             let size = (
                 whole(across + out(edges.left) + out(edges.right)),
