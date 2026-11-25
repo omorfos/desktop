@@ -919,7 +919,10 @@ fn the_notifications_run_by_themselves_in_the_session_they_are_started_in() {
     );
     closed.unwrap();
     session.eventually(clear);
-    // And one with a time goes when the time is up, by itself.
+    // And one with a time goes when the time is up, by itself. The time is
+    // that of the clock on the wall, in the program's own process: long
+    // enough for the notice to be seen while it is there, however loaded
+    // the machine, which 300 ms under the coverage gate was not.
     let actions: Vec<&str> = Vec::new();
     let hints: HashMap<&str, Value<'_>> = HashMap::new();
     let body = (
@@ -930,7 +933,7 @@ fn the_notifications_run_by_themselves_in_the_session_they_are_started_in() {
         "Some words",
         actions,
         hints,
-        300,
+        3000,
     );
     let brief = peer.call_method(Some(NAME), PATH, Some(NAME), "Notify", &body);
     brief.unwrap();
