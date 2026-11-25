@@ -311,6 +311,30 @@ fn a_swipe_of_three_fingers_is_not_the_programs() {
 }
 
 #[test]
+fn four_fingers_swipe_as_three_do_and_are_not_the_programs() {
+    let mut session = Session::with_workspaces();
+    let mut client = session.connect();
+    session.open(&mut client, "map", (200, 100), RED);
+    let _gestures = client.gestures();
+    session
+        .compositor_mut()
+        .input(Input::Motion { x: 50.0, y: 50.0 }, 0);
+    session.roundtrip(&mut client);
+    client.take_events();
+
+    // Across, the next workspace; up, the overview; down, closed again.
+    touch(&mut session, &swipe(4, (-400.0, 0.0), false));
+    session.eventually(|session| slid(session) == 0);
+    assert_eq!(active(&session), 1, "the next workspace");
+    touch(&mut session, &swipe(4, (0.0, -300.0), false));
+    session.eventually(|session| session.compositor().overview_layout().is_some());
+    touch(&mut session, &swipe(4, (0.0, 300.0), false));
+    session.eventually(|session| session.compositor().overview_layout().is_none());
+    session.roundtrip(&mut client);
+    assert_eq!(told(&mut client), [], "none of it the program's");
+}
+
+#[test]
 fn every_other_gesture_is_the_programs_under_the_pointer() {
     let mut session = Session::with_workspaces();
     let mut client = session.connect();
@@ -322,7 +346,8 @@ fn every_other_gesture_is_the_programs_under_the_pointer() {
     session.roundtrip(&mut client);
     client.take_events();
 
-    let four = swipe(4, (-300.0, 0.0), false);
+    // Of five fingers, as three and four are the desktop's.
+    let five = swipe(5, (-300.0, 0.0), false);
     let pinch = [
         Gesture::PinchBegin { fingers: 2 },
         Gesture::PinchUpdate {
@@ -337,7 +362,7 @@ fn every_other_gesture_is_the_programs_under_the_pointer() {
         Gesture::HoldBegin { fingers: 3 },
         Gesture::HoldEnd { cancelled: true },
     ];
-    let all: Vec<Gesture> = [&four[..], &pinch, &hold].concat();
+    let all: Vec<Gesture> = [&five[..], &pinch, &hold].concat();
     touch(&mut session, &all);
     session.roundtrip(&mut client);
 

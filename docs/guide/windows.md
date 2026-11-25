@@ -86,7 +86,7 @@ it.
 
 The overview shows every window of the workspace on the screen the
 pointer is on, laid out small side by side, under a strip of that
-screen's workspaces. Three fingers swiped up the touchpad open it, the
+screen's workspaces. Three fingers or four swiped up the touchpad open it, the
 windows moving up and shrinking to their places with the fingers and the
 screen dimming as they go; lift them past half way, or flick, and it
 opens the rest of the way, or short of that and it sinks back. Swiped
@@ -143,7 +143,7 @@ window is on it, `Super+Right` makes a new one, and goes no further than
 that while it is empty. A swipe towards where there is nothing gives a
 little, and goes back.
 
-On a touchpad, three fingers swiped left carry the workspace with them
+On a touchpad, three fingers or four, either, swiped left carry the workspace with them
 and bring the next in from the right, and swiped right bring in the one
 before, each with its own wallpaper, as when a key changes the
 workspace. A whole workspace is the same short way of the fingers on any
@@ -151,7 +151,7 @@ screen, however wide. Either is enough: lift them past
 half way, however slowly, or flick them, however short a way, and the
 one that came in is shown; lift them short of half way slowly, or flick
 them back, and the one that was there stays. Barely moved fingers
-settling as they lift change nothing. Three fingers swiped up open the overview (see [The overview](windows.md#the-overview)),
+settling as they lift change nothing. Three fingers or four swiped up open the overview (see [The overview](windows.md#the-overview)),
 and down close it. Every other gesture, as a pinch to zoom, is the
 program's under the pointer.
 

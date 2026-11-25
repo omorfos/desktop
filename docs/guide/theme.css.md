@@ -757,7 +757,7 @@ out without changing size, so yours keeps them unless it says otherwise.
 whatever the theme says, a part that comes and goes keeps its size and
 only fades, and no change, of a colour or of a part coming and going,
 takes longer than 120 ms. Workspaces change without sliding, whether by
-a key or by three fingers, which change it as they lift if they went far
+a key or by three fingers or four, which change it as they lift if they went far
 enough or fast enough; the box that asks for a password, and the lock
 screen's field, do not shake at a wrong one. Programs are told, to move
 nothing either: through the settings portal's `reduced-motion` and GNOME's
