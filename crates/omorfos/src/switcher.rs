@@ -132,6 +132,9 @@ pub(crate) struct Switching {
     turn: Option<(f64, Duration)>,
     /// Its pixels, kept until they would be painted differently.
     painted: Option<Drawn>,
+    /// Whether it shows programs, each once, and brings the one chosen
+    /// forward whole, rather than windows.
+    programs: bool,
 }
 
 impl Switching {
@@ -450,8 +453,9 @@ const fn area(rect: Rect) -> Area {
 
 impl Compositor {
     /// Opens the switcher, going back if `back`, on the screen the pointer
-    /// is on; or, while it is open, goes on to the next window or back.
-    pub(crate) fn switch_windows(&mut self, back: bool) {
+    /// is on, of `programs` each once by its window used last or of every
+    /// window; or, while it is open, goes on to the next or back.
+    pub(crate) fn switch_windows(&mut self, back: bool, programs: bool) {
         let (clock, still) = (self.clock(), self.switcher_still());
         if let Some(switching) = &mut self.switch.open {
             switching.turn(!back, clock, still);
@@ -459,6 +463,11 @@ impl Compositor {
         }
         let windows = self.desktop.windows().map(|listed| listed.window.id);
         let windows = self.switch.used.sorted(windows);
+        let windows = if programs {
+            self.desktop.first_of_each_program(&windows)
+        } else {
+            windows
+        };
         let screen = self
             .pointer_head()
             .map(|head| domain(head.area()))
@@ -476,6 +485,7 @@ impl Compositor {
             shown: clock + wait,
             turn: None,
             painted: None,
+            programs,
         });
     }
 
@@ -522,9 +532,11 @@ impl Compositor {
             .switch
             .open
             .take()
-            .map(|switching| switching.switcher.picked());
-        if let Some(window) = picked.filter(|_| chosen) {
-            self.desktop.activate(window);
+            .map(|switching| (switching.switcher.picked(), switching.programs));
+        match picked.filter(|_| chosen) {
+            Some((window, true)) => self.desktop.activate_program(window),
+            Some((window, false)) => self.desktop.activate(window),
+            None => {}
         }
     }
 

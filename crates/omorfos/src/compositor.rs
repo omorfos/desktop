@@ -1544,11 +1544,12 @@ impl Compositor {
             Action::Shade => self.on_focused(Desktop::toggle_shaded),
             Action::KeepAbove => self.on_focused(Desktop::toggle_above),
             Action::Stick => self.on_focused(Desktop::toggle_sticky),
-            Action::SwitchWindows | Action::SwitchWindowsBack => {
-                // Over the overview, the switcher is opened in its stead.
-                self.cards.overview.close();
-                self.switch_windows(*action == Action::SwitchWindowsBack);
-            }
+            Action::SwitchWindows
+            | Action::SwitchWindowsBack
+            | Action::SwitchPrograms
+            | Action::SwitchProgramsBack => self.switch(action),
+            Action::NextWindow => self.next_window(false),
+            Action::PreviousWindow => self.next_window(true),
             Action::Overview => self.toggle_overview(),
             Action::FocusNext => self.desktop.focus_next(),
             Action::FocusPrevious => self.desktop.focus_previous(),
@@ -1759,6 +1760,28 @@ impl Compositor {
             overlap: MENU_OVERLAP,
         };
         self.menu = Some(Menu::open(items, self.pointer_position(), area, metrics));
+    }
+
+    /// Opens the switcher, or goes on in it, as `action`, one of the four
+    /// that switch, says: of windows or of programs, forward or back. Over
+    /// the overview, the switcher is opened in its stead.
+    fn switch(&mut self, action: &Action) {
+        self.cards.overview.close();
+        let back = matches!(
+            action,
+            Action::SwitchWindowsBack | Action::SwitchProgramsBack
+        );
+        let programs = matches!(action, Action::SwitchPrograms | Action::SwitchProgramsBack);
+        self.switch_windows(back, programs);
+    }
+
+    /// Focuses the next window of the focused window's program on its
+    /// workspace, or the one before if `back`, going round.
+    fn next_window(&mut self, back: bool) {
+        let next = self.desktop.focused();
+        if let Some(id) = next.and_then(|id| self.desktop.next_of_program(id, back)) {
+            self.desktop.activate(id);
+        }
     }
 
     /// Asks every window of the focused window's program to close, as its

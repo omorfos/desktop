@@ -1802,10 +1802,12 @@ the first than on the last.
       keys, Super for Command, and `defaults: ordinary` in `keys.yaml`
       for the other way. To build, each tested chord by chord in both
       ways:
-      - [ ] the seven new actions, `switch_programs`,
+      - [x] the seven new actions, `switch_programs`,
             `switch_programs_back`, `next_window`, `previous_window`,
             `close_program`, `hide_program` and `hide_others`, the
-            switcher showing programs;
+            switcher showing programs (#130, #131): a program is its
+            windows that share an application's name, and one with none
+            a program of its own; not bound yet;
       - [ ] the built-in bindings moved as ADR 101 has them, and as it
             was accepted: no key for the next layout but `XF86Keyboard`,
             none for the root menu, none for reloading, `Super+F1` for

@@ -143,6 +143,8 @@ it takes and what it does.
 | `keep_above` | Keep the focused window above the others, or stop. |
 | `stick` | Have the focused window on every workspace of its screen, or only the one it is on. |
 | `switch_windows`, `switch_windows_back` | Open the switcher, or go on to the next window in it or back. See [Switching windows](windows.md#switching-windows). |
+| `switch_programs`, `switch_programs_back` | Open the switcher with each program once, by its window used last, as Cmd+Tab does, or go on to the next or back; the program chosen comes forward with all its windows on the workspace. |
+| `next_window`, `previous_window` | Focus the next window of the focused window's program on its workspace, or the one before, going round, as Cmd+backquote does. |
 | `overview` | Open the overview of the workspace's windows, or close it. See [The overview](windows.md#the-overview). |
 | `focus_next`, `focus_previous` | Cycle windows, without the switcher. |
 | `next_tab`, `previous_tab` | Cycle tabs in the focused group. |

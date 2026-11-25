@@ -87,6 +87,26 @@
           "type": "string"
         },
         {
+          "const": "switch_programs",
+          "description": "Open the switcher at the program used before the one in use, as\nCmd+Tab does: each program once, by its window used last; or, while\nit is open, go on to the next. The program chosen comes forward with\nall its windows on the workspace.",
+          "type": "string"
+        },
+        {
+          "const": "switch_programs_back",
+          "description": "The same, going back: the switcher opens at the program used\nlongest ago.",
+          "type": "string"
+        },
+        {
+          "const": "next_window",
+          "description": "Focus the next window of the focused window's program on its\nworkspace, going round, as Cmd+backquote does.",
+          "type": "string"
+        },
+        {
+          "const": "previous_window",
+          "description": "Focus the window of the focused window's program before it on its\nworkspace, going round.",
+          "type": "string"
+        },
+        {
           "const": "overview",
           "description": "Open the overview, every window of the workspace side by side\nunder the workspaces of the screen, to pick one from; or close it.",
           "type": "string"

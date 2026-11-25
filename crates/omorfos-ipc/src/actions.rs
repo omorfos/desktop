@@ -148,6 +148,30 @@ pub const TOLD: &[Told] = &[
     ),
     told!(
         "Switching",
+        "switch_programs",
+        "",
+        "Switch programs, or go on to the next",
+    ),
+    told!(
+        "Switching",
+        "switch_programs_back",
+        "",
+        "The same, going back"
+    ),
+    told!(
+        "Switching",
+        "next_window",
+        "",
+        "Focus the focused program's next window",
+    ),
+    told!(
+        "Switching",
+        "previous_window",
+        "",
+        "Focus the focused program's window before",
+    ),
+    told!(
+        "Switching",
         "overview",
         "",
         "Open the overview of the workspace, or close it",

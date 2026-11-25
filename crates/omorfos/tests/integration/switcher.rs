@@ -1271,3 +1271,73 @@ fn a_window_private_by_blur_is_as_blurred_at_the_back_of_the_queue_as_in_front()
     assert!(shot < 0x10, "the edge is sharp in a picture: {shot:#x}");
     press(&mut session, key::ALT, false);
 }
+
+/// Windows of two programs, `term` and `web`, opened term, web, term, the
+/// last with focus, the switcher in rows.
+fn two_programs() -> (Session, Client) {
+    let mut session = Session::with_config(&[FLAT]);
+    let mut client = session.connect();
+    for (name, colour) in [("term", RED), ("web", BLUE), ("term", GREEN)] {
+        session.open(&mut client, name, (200, 100), colour);
+    }
+    session.step();
+    (session, client)
+}
+
+#[test]
+fn switching_programs_shows_each_once_and_brings_the_one_chosen_forward_whole() {
+    let (mut session, _client) = two_programs();
+    session.compositor_mut().perform(&Action::SwitchPrograms);
+    session.step();
+    let (names, picked) = shown(&session).unwrap();
+    assert_eq!(
+        names,
+        ["term", "web"],
+        "each program once, by its window used last"
+    );
+    assert_eq!(picked, "web", "the program used before the one in use");
+    tap(&mut session, key::RETURN);
+    session.step();
+    assert_eq!(focused(&session).as_deref(), Some("web"));
+
+    // Back to the terminal: both its windows over the browser.
+    session
+        .compositor_mut()
+        .perform(&Action::SwitchProgramsBack);
+    session.step();
+    assert_eq!(
+        shown(&session).unwrap().1,
+        "term",
+        "back, the one used longest ago"
+    );
+    tap(&mut session, key::RETURN);
+    let desktop = session.compositor().desktop();
+    let stack: Vec<String> = desktop
+        .frames()
+        .map(|frame| frame.window().app_id.clone())
+        .collect();
+    assert_eq!(stack, ["web", "term", "term"], "bottom to top");
+}
+
+#[test]
+fn the_next_window_of_the_program_is_focused_going_round_and_back() {
+    let (mut session, _client) = two_programs();
+    let first = session.compositor().desktop().focused();
+    session.compositor_mut().perform(&Action::NextWindow);
+    let second = session.compositor().desktop().focused();
+    assert_ne!(second, first);
+    assert_eq!(
+        focused(&session).as_deref(),
+        Some("term"),
+        "of the same program"
+    );
+    session.compositor_mut().perform(&Action::PreviousWindow);
+    assert_eq!(session.compositor().desktop().focused(), first, "and back");
+    // A program with one window stays where it is.
+    session.compositor_mut().perform(&Action::SwitchPrograms);
+    tap(&mut session, key::RETURN);
+    session.step();
+    let web = session.compositor().desktop().focused();
+    session.compositor_mut().perform(&Action::NextWindow);
+    assert_eq!(session.compositor().desktop().focused(), web);
+}

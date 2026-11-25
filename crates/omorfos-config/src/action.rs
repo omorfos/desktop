@@ -114,6 +114,20 @@ pub enum Action {
     /// The same, going back: the switcher opens at the window used longest
     /// ago.
     SwitchWindowsBack,
+    /// Open the switcher at the program used before the one in use, as
+    /// Cmd+Tab does: each program once, by its window used last; or, while
+    /// it is open, go on to the next. The program chosen comes forward with
+    /// all its windows on the workspace.
+    SwitchPrograms,
+    /// The same, going back: the switcher opens at the program used
+    /// longest ago.
+    SwitchProgramsBack,
+    /// Focus the next window of the focused window's program on its
+    /// workspace, going round, as Cmd+backquote does.
+    NextWindow,
+    /// Focus the window of the focused window's program before it on its
+    /// workspace, going round.
+    PreviousWindow,
     /// Open the overview, every window of the workspace side by side
     /// under the workspaces of the screen, to pick one from; or close it.
     Overview,
@@ -444,6 +458,13 @@ mod tests {
         assert_eq!(parse("switch_windows"), Ok(Action::SwitchWindows));
         assert_eq!(parse("overview"), Ok(Action::Overview));
         assert_eq!(parse("switch_windows_back"), Ok(Action::SwitchWindowsBack));
+        assert_eq!(parse("switch_programs"), Ok(Action::SwitchPrograms));
+        assert_eq!(
+            parse("switch_programs_back"),
+            Ok(Action::SwitchProgramsBack)
+        );
+        assert_eq!(parse("next_window"), Ok(Action::NextWindow));
+        assert_eq!(parse("previous_window"), Ok(Action::PreviousWindow));
         assert_eq!(parse("reload_config"), Ok(Action::ReloadConfig));
         assert_eq!(parse("restart_compositor"), Ok(Action::RestartCompositor));
         assert_eq!(parse("shade"), Ok(Action::Shade));

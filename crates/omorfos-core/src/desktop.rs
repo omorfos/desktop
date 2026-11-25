@@ -2637,6 +2637,66 @@ impl Desktop {
         }
     }
 
+    /// `windows` with only the first of each program kept, in their order:
+    /// given the windows in the order they were used, each program once, by
+    /// the window of it used last, as Cmd+Tab shows them. A window whose
+    /// program has no name is a program of its own.
+    #[must_use]
+    pub fn first_of_each_program(&self, windows: &[WindowId]) -> Vec<WindowId> {
+        let app_id = |id: &WindowId| self.window(*id).map(|window| window.app_id.as_str());
+        let mut kept: Vec<WindowId> = Vec::new();
+        for window in windows {
+            let named = app_id(window).filter(|name| !name.is_empty());
+            let seen = named.is_some_and(|name| kept.iter().any(|one| app_id(one) == Some(name)));
+            if !seen {
+                kept.push(*window);
+            }
+        }
+        kept
+    }
+
+    /// Where a window is: its output and its workspace, as
+    /// [`Desktop::windows`] lists it.
+    fn place_of(&self, id: WindowId) -> Option<(usize, usize)> {
+        let mut listed = self.windows().filter(|listed| listed.window.id == id);
+        listed
+            .next()
+            .map(|listed| (listed.output, listed.workspace))
+    }
+
+    /// The windows of `id`'s program on the workspace it is on, in the
+    /// order [`Desktop::windows`] lists them.
+    fn program_here(&self, id: WindowId) -> Vec<WindowId> {
+        let program = self.program_of(id);
+        let here = self.place_of(id);
+        let listed = self.windows().filter(|listed| {
+            program.contains(&listed.window.id) && Some((listed.output, listed.workspace)) == here
+        });
+        listed.map(|listed| listed.window.id).collect()
+    }
+
+    /// Brings the program `id` is a window of forward, as choosing it with
+    /// Cmd+Tab does: every window of it on `id`'s workspace activated, and
+    /// `id` last, so that it is in front with the keyboard.
+    pub fn activate_program(&mut self, id: WindowId) {
+        for window in self.program_here(id) {
+            self.activate(window);
+        }
+        self.activate(id);
+    }
+
+    /// The window of `id`'s program on its workspace after it, or before it
+    /// if `back`, going round, as Cmd+backquote goes: nothing if it is the
+    /// only one.
+    #[must_use]
+    pub fn next_of_program(&self, id: WindowId, back: bool) -> Option<WindowId> {
+        let here = self.program_here(id);
+        let at = here.iter().position(|window| *window == id)?;
+        let count = here.len();
+        let next = (if back { at + count - 1 } else { at + 1 }) % count;
+        here.get(next).copied().filter(|window| *window != id)
+    }
+
     // --- Focus -------------------------------------------------------------
 
     /// Brings a window to the user's attention: switches to its workspace,
@@ -5719,6 +5779,70 @@ mod tests {
         let web = open(&mut desktop, "web");
         desktop.hide_others(WindowId::from_raw(999));
         assert!(!minimized(&desktop, web));
+    }
+
+    #[test]
+    fn each_program_is_kept_once_by_its_first_window_in_the_order_given() {
+        let mut desktop = desktop();
+        let (a, web, b) = (
+            open(&mut desktop, "term"),
+            open(&mut desktop, "web"),
+            open(&mut desktop, "term"),
+        );
+        let (x, y) = (
+            desktop.add_window("", "x", SIZE, POINTER, true),
+            desktop.add_window("", "y", SIZE, POINTER, true),
+        );
+        let gone = WindowId::from_raw(999);
+        assert_eq!(
+            desktop.first_of_each_program(&[b, web, a, x, y, gone]),
+            [b, web, x, y, gone]
+        );
+        assert_eq!(desktop.first_of_each_program(&[]), []);
+    }
+
+    #[test]
+    fn a_program_is_brought_forward_whole_with_the_window_chosen_in_front() {
+        let mut desktop = desktop();
+        let a = open(&mut desktop, "term");
+        let b = open(&mut desktop, "term");
+        let web = open(&mut desktop, "web");
+        let away = open(&mut desktop, "term");
+        desktop.move_to_workspace(away, 1);
+        desktop.activate(web);
+        desktop.activate_program(a);
+        assert_eq!(desktop.focused(), Some(a), "the one chosen, in front");
+        let order = stack(&desktop);
+        let place = |id| order.iter().position(|one| *one == id);
+        assert!(
+            place(b) > place(web),
+            "its other window over the other program"
+        );
+        assert_eq!(
+            desktop.place_of(away),
+            Some((0, 1)),
+            "one elsewhere left there"
+        );
+    }
+
+    #[test]
+    fn the_next_window_of_a_program_on_its_workspace_goes_round_and_is_none_alone() {
+        let mut desktop = desktop();
+        let a = open(&mut desktop, "term");
+        let web = open(&mut desktop, "web");
+        let b = open(&mut desktop, "term");
+        let c = open(&mut desktop, "term");
+        let away = open(&mut desktop, "term");
+        desktop.move_to_workspace(away, 1);
+        assert_eq!(desktop.next_of_program(a, false), Some(b));
+        assert_eq!(desktop.next_of_program(c, false), Some(a), "round");
+        assert_eq!(desktop.next_of_program(a, true), Some(c), "back, round");
+        assert_eq!(desktop.next_of_program(b, true), Some(a));
+        assert_eq!(desktop.next_of_program(web, false), None, "alone");
+        assert_eq!(
+            desktop.next_of_program(WindowId::from_raw(999), false),
+            None
+        );
     }
 
     #[test]
