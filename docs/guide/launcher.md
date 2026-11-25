@@ -3,7 +3,13 @@
 `Super+Space`, or **Run…** in the root menu, opens the launcher: a box on
 the screen the pointer is on. Type part of a program's name and the list
 narrows to the programs that have it, those that begin with it first. Up
-and Down choose among them, the list following the one chosen; the wheel
+and Down choose among them, the list following the one chosen. While you
+type, no program is lit, and Enter starts the first that matches. Down,
+or the pointer over a program, gives the programs the keyboard, as in
+Spotlight: the first, or the one pointed at, is lit, the field's cursor
+goes, and Left and Right walk the programs too, until something is typed
+or Up goes back past the first, which give the field the keyboard again
+with nothing lit; the wheel
 and the touchpad scroll the list, a notch of the wheel a program, and the
 pointer chooses the one it is over, the list staying as it was scrolled.
 Enter starts the chosen one, and Escape closes the launcher. A click on a
@@ -108,8 +114,8 @@ bindings:
 The arrows walk the grid, and the wheel scrolls it a line at a time past
 half the height of the screen. Enter or a click starts the program
 chosen. Typing narrows the grid as it narrows the list, and once
-something is typed, Left and Right move in it as in any field, Up and
-Down still walking the grid; a sum's answer has a line of its own above
+something is typed, Left and Right move in it as in any field until Down
+gives the grid the keyboard; a sum's answer has a line of its own above
 the programs. If the launcher is open already, it is left as it is.
 
 How it looks is in `theme.css`, under `launcher`, `launcher-input`,

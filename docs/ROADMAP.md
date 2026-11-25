@@ -27,14 +27,13 @@ a known gap.
   Super+Ctrl+Down opens the overview with the two alone, the one in
   front picked; Super+Ctrl+Down again closes it, and so does it with
   the whole overview open. With no window in front it does nothing.
-- **Every program as a grid (#157).** Bind `show_programs` in
-  `keys.yaml` (it has no key of its own; the four-finger pinch is to
-  open it, #138): the launcher opens wider, every program installed as
-  its icon over its name, six to a line in alphabetical order. The
-  arrows walk it, Enter or a click starts the one chosen; typing narrows
-  it, and then Left and Right move in what is typed. A sum's answer has
-  a line of its own above it. Judge the tiles' size and the icons' by
-  eye, at more than one scale.
+- **Down gives the programs the keyboard (#166).** In the launcher,
+  type `f`: no program is lit, and Enter would start the first. Down
+  lights the first, Files, rather than the one after it, and the field's
+  cursor goes; Left and Right walk the programs, in the list and in the
+  grid of every program alike. The pointer over a program does the
+  same. Typing, a click in the field, or Up past the first program gives
+  the field the keyboard back, its cursor with it, and nothing lit.
 
 ## Where this is going
 
@@ -2066,6 +2065,12 @@ to false, as `launcher.sums` is (ADR 83).
       all yet; the number of columns is fixed, not the theme's or the
       screen's; and with `launcher.icons: false` a tile keeps the room its
       icon would have.
+- [x] Down gives the launcher's programs the keyboard, as Spotlight does
+      (#166): while the field has it, no program is lit and Enter starts
+      the first that matches; Down, or the pointer over a program, lights
+      the first or that one, the field's cursor goes, and every arrow
+      walks the list or the grid, until something is typed, the field is
+      clicked, or Up goes back past the first line.
 - [ ] Known gaps in the launcher's size: the share of the screen it takes
       at most, half, is fixed, and is to be a setting of the theme once
       it is asked for; a launcher wider than its screen is put against the

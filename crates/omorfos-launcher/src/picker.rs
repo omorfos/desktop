@@ -102,6 +102,10 @@ pub struct Picker {
     /// Whether every program is shown as a grid, its icon over its name,
     /// rather than listed.
     grid: bool,
+    /// Whether the keyboard is on the programs, Down having taken it
+    /// there, rather than on what is typed: the field has no cursor then,
+    /// and every arrow walks the programs.
+    listing: bool,
 }
 
 /// A row of the launcher's list.
@@ -238,6 +242,7 @@ impl Picker {
             top: 0,
             dragging: false,
             grid: false,
+            listing: false,
         }
     }
 
@@ -305,9 +310,13 @@ impl Picker {
         let top = self.top.saturating_add_signed(rows).min(self.last_top());
         let moved = top != self.top;
         self.top = top;
-        let last = (self.top + self.room).min(self.lines()).saturating_sub(1);
-        let (line, column) = self.line_of(self.chosen);
-        self.chosen = self.nearest(line.max(self.top).min(last), column);
+        // The program lit, if the programs have the keyboard, stays in
+        // sight; with the field's, Enter still starts the first.
+        if self.listing {
+            let last = (self.top + self.room).min(self.lines()).saturating_sub(1);
+            let (line, column) = self.line_of(self.chosen);
+            self.chosen = self.nearest(line.max(self.top).min(last), column);
+        }
         moved
     }
 
@@ -359,10 +368,11 @@ impl Picker {
         self.follow();
     }
 
-    /// Whether Left and Right walk the grid, as they do while nothing is
-    /// typed for them to move the cursor in.
+    /// Whether Left and Right walk the programs: when they have the
+    /// keyboard, and in the grid while nothing is typed for them to move
+    /// the cursor in.
     fn walks(&self) -> bool {
-        self.grid && self.field.text().is_empty()
+        self.listing || (self.grid && self.field.text().is_empty())
     }
 
     /// What has been typed.
@@ -413,20 +423,32 @@ impl Picker {
                 reach: Reach::Character,
                 choosing: false,
             }) if self.walks() => {
-                let last = self.count().saturating_sub(1);
-                self.chosen = match way {
-                    Way::Back => self.chosen.saturating_sub(1),
-                    Way::On => (self.chosen + 1).min(last),
-                };
-                self.follow();
+                // The first arrow from the field lights the first program.
+                if self.listing {
+                    let last = self.count().saturating_sub(1);
+                    self.chosen = match way {
+                        Way::Back => self.chosen.saturating_sub(1),
+                        Way::On => (self.chosen + 1).min(last),
+                    };
+                    self.follow();
+                } else {
+                    self.listing = self.count() > 0;
+                }
             }
+            // Whatever is done to what is typed gives it the keyboard.
             Key::Text(text) => self.change(Edit::Type(text)),
             Key::Edit(edit) => self.change(edit),
             Key::All => self.change(Edit::All),
             Key::Copy => return self.copy(false),
             Key::Cut => return self.copy(true),
+            // Up from the first line gives what is typed the keyboard
+            // back.
+            Key::Up if self.line_of(self.chosen).0 == 0 => self.give_field_the_keyboard(),
             Key::Up => self.move_lines(-1),
-            Key::Down => self.move_lines(1),
+            // Down from the field lights the first program, and goes on
+            // from there.
+            Key::Down if self.listing => self.move_lines(1),
+            Key::Down => self.listing = self.count() > 0,
             Key::Enter => return self.start(),
             Key::Escape => return Outcome::Close,
         }
@@ -437,9 +459,19 @@ impl Picker {
     /// is on one, as when the pointer moves over it. Returns whether that
     /// changed anything.
     pub fn point(&mut self, x: i32, y: i32, theme: &Theme) -> bool {
-        let over = self.row_at(x, y, theme).filter(|row| *row != self.chosen);
+        let over = self.row_at(x, y, theme);
+        let changed = over.is_some_and(|row| !self.listing || row != self.chosen);
         self.chosen = over.unwrap_or(self.chosen);
-        over.is_some()
+        // Over a program, the programs have the keyboard, as after Down.
+        self.listing |= over.is_some();
+        changed
+    }
+
+    /// Gives what is typed the keyboard back: no program is lit, and the
+    /// first that matches is the one Enter starts.
+    const fn give_field_the_keyboard(&mut self) {
+        self.listing = false;
+        self.chosen = 0;
     }
 
     /// Takes a click at a point of the launcher: in the field it puts the
@@ -452,6 +484,7 @@ impl Picker {
         let down = y.checked_sub(top).and_then(|y| u32::try_from(y).ok());
         self.dragging = across.is_some_and(|x| x < width) && down.is_some_and(|y| y < height);
         if self.dragging {
+            self.give_field_the_keyboard();
             let at = self.place_at(x, text, theme);
             self.field.place(at, false);
             return Outcome::Stay;
@@ -512,6 +545,7 @@ impl Picker {
     /// Does `edit` to what is typed, and lists what matches it if that
     /// changed.
     fn change(&mut self, edit: Edit) {
+        self.give_field_the_keyboard();
         let before = self.field.text().to_owned();
         self.field.edit(edit);
         if self.field.text() != before {
@@ -566,7 +600,9 @@ impl Picker {
                 continue;
             }
             let place = line - self.first();
-            let states = States::NONE.when(State::Active, row == self.chosen);
+            // Lit only while the programs have the keyboard.
+            let lit = self.listing && row == self.chosen;
+            let states = States::NONE.when(State::Active, lit);
             // A row is the same row whichever program is in it.
             let key = u64::try_from(row).unwrap_or(u64::MAX);
             let (theme, key) = ((theme, scale), (key, states));
@@ -699,18 +735,7 @@ impl Picker {
             font,
         );
         let chosen = self.field.chosen();
-        if chosen.is_empty() {
-            // A line where the next character will go, which stays in the
-            // box however much has been typed.
-            let margin = tall / 5;
-            let caret = (
-                left.saturating_add_unsigned(across(text, self.field.cursor())),
-                top.saturating_add_unsigned(margin),
-                1,
-                tall.saturating_sub(margin * 2),
-            );
-            canvas.fill(caret, input.color);
-        } else {
+        if !chosen.is_empty() {
             // What is chosen on what the theme marks it with, and no line
             // where the next character goes, as it goes in its place.
             let marked = theme.style(Part::LauncherInput, States::NONE.with(State::Active));
@@ -726,6 +751,18 @@ impl Picker {
             // every letter stands where it stood.
             let shown = &typed_in[first..];
             text.draw_cut(canvas, shown, typed, start..end, marked.color, font);
+        } else if !self.listing {
+            // A line where the next character will go, which stays in the
+            // box however much has been typed; none while the programs
+            // have the keyboard.
+            let margin = tall / 5;
+            let caret = (
+                left.saturating_add_unsigned(across(text, self.field.cursor())),
+                top.saturating_add_unsigned(margin),
+                1,
+                tall.saturating_sub(margin * 2),
+            );
+            canvas.fill(caret, input.color);
         }
     }
 
@@ -1174,6 +1211,9 @@ mod tests {
         let mut picker = several();
         assert_eq!(picker.key(Key::Up), Outcome::Stay);
         assert_eq!(picker.chosen(), Some("Calculator"), "there is none above");
+        // The first Down lights the first, and the next go on from it.
+        picker.key(Key::Down);
+        assert_eq!(picker.chosen(), Some("Calculator"));
         picker.key(Key::Down);
         picker.key(Key::Down);
         assert_eq!(picker.chosen(), Some("Firefox"));
@@ -1197,6 +1237,11 @@ mod tests {
         let theme = Theme::default();
         let mut picker = several();
         picker.room = 2;
+        // With the field's keyboard, what Enter starts is still the first.
+        assert!(picker.scroll(1));
+        assert_eq!(picker.chosen(), Some("Calculator"));
+        assert!(picker.scroll(-1));
+        picker.key(Key::Down);
         assert!(picker.scroll(1));
         assert_eq!(picker.first(), 1);
         // Out of sight, the chosen row is the nearest in sight.
@@ -1267,6 +1312,7 @@ mod tests {
         typed(&mut picker, "fire");
         assert_eq!(picker.key(Key::Enter), spawn(&["firefox", "--go"]));
         let mut picker = several();
+        picker.key(Key::Down);
         picker.key(Key::Down);
         assert_eq!(picker.key(Key::Enter), spawn(&["files", "--go"]));
         // With nothing matching, Enter does nothing.
@@ -1393,7 +1439,13 @@ mod tests {
     #[test]
     fn the_chosen_program_is_lit_and_no_other() {
         let theme = Theme::default();
+        let surface = argb(theme.style(Part::Launcher, States::NONE).background);
         let mut picker = several();
+        // While what is typed has the keyboard, no program is lit.
+        let canvas = painted(&picker);
+        let (x, y) = row(0);
+        assert_eq!(canvas.at(x.unsigned_abs() + 200, y.unsigned_abs()), surface);
+        picker.key(Key::Down);
         picker.key(Key::Down);
         let canvas = painted(&picker);
         let at = |place: i32| {
@@ -1401,7 +1453,6 @@ mod tests {
             // Towards the right-hand end, clear of the name.
             canvas.at(x.unsigned_abs() + 200, y.unsigned_abs())
         };
-        let surface = argb(theme.style(Part::Launcher, States::NONE).background);
         assert_eq!(at(1), lit(&theme));
         assert_eq!(at(0), surface);
         assert_eq!(at(2), surface);
@@ -1498,11 +1549,13 @@ mod tests {
             icons: true,
             ..NAMES
         };
-        let with = Picker::new(
+        let mut with = Picker::new(
             names.iter().map(|name| app(name)).collect(),
             show,
             Numbers::Point,
         );
+        // The first lit, to see where the icon's room is against it.
+        with.key(Key::Down);
         let canvas = still(&with, &theme, Scale::ONE, &mut icons);
         let green = |canvas: &Canvas, place: i32| {
             let y = row(place).1.unsigned_abs();
@@ -1522,7 +1575,8 @@ mod tests {
         assert!(beside.clone().all(|x| canvas.at(x, y) == chosen));
 
         // Without icons asked for, none is drawn and the name starts there.
-        let without = picker(&names);
+        let mut without = picker(&names);
+        without.key(Key::Down);
         let canvas = still(&without, &theme, Scale::ONE, &mut icons);
         assert_eq!(green(&canvas, 1), 0);
         assert!(beside.into_iter().any(|x| canvas.at(x, y) != chosen));
@@ -1656,6 +1710,8 @@ mod tests {
         typed(&mut picker, "1+1");
         assert_eq!(picker.chosen(), Some("2"));
         assert_eq!(picker.key(Key::Down), Outcome::Stay);
+        assert_eq!(picker.chosen(), Some("2"), "lit");
+        picker.key(Key::Down);
         assert_eq!(picker.chosen(), Some("Counter 1+1"));
         picker.key(Key::Down);
         assert_eq!(picker.chosen(), Some("Counter 1+1"), "the last");
@@ -1695,6 +1751,8 @@ mod tests {
         let sum = |show: Show| {
             let mut picker = Picker::new(Vec::new(), show, Numbers::Point);
             typed(&mut picker, "6*7");
+            // Lit, to see where its room is against it.
+            picker.key(Key::Down);
             picker
         };
         let described = sum(Show {
@@ -1729,7 +1787,8 @@ mod tests {
         let many: Vec<String> = (0..20).map(|n| format!("Program {n:02}")).collect();
         let many: Vec<&str> = many.iter().map(String::as_str).collect();
         let mut picker = picker(&many);
-        for _ in 0..11 {
+        // The first Down lights the first.
+        for _ in 0..12 {
             picker.key(Key::Down);
         }
         assert_eq!(picker.chosen(), Some("Program 11"));
@@ -1783,6 +1842,8 @@ mod tests {
             assert_eq!(picker.key(key), Outcome::Stay);
             picker.chosen().map(str::to_owned)
         };
+        // The first arrow lights the first; the next go on from it.
+        assert_eq!(press(across(Way::On)).as_deref(), Some("Archive"));
         assert_eq!(press(across(Way::On)).as_deref(), Some("Books"));
         assert_eq!(press(Key::Down).as_deref(), Some("Photos"), "a line down");
         assert_eq!(press(Key::Up).as_deref(), Some("Books"));
@@ -1806,6 +1867,7 @@ mod tests {
         list.key(across(Way::On));
         assert_eq!(list.chosen(), Some("Archive"));
         list.key(Key::Down);
+        list.key(Key::Down);
         assert_eq!(list.chosen(), Some("Books"));
     }
 
@@ -1820,9 +1882,10 @@ mod tests {
         // The cursor went back and on again, to the end.
         typed(&mut picker, "u");
         assert_eq!(names_of(&picker), ["Music"]);
-        // Emptied, the arrows walk it again.
+        // Emptied, the arrows walk it again, the first lighting the first.
         picker.key(BACKSPACE);
         picker.key(BACKSPACE);
+        picker.key(across(Way::On));
         picker.key(across(Way::On));
         assert_eq!(picker.chosen(), Some("Books"));
     }
@@ -1833,6 +1896,7 @@ mod tests {
         let mut picker = grid(&["2+2 Drill", "2+2 Quiz", "Archive"]);
         typed(&mut picker, "2+2");
         assert_eq!(picker.chosen(), Some("4"));
+        picker.key(Key::Down);
         picker.key(Key::Down);
         assert_eq!(picker.chosen(), Some("2+2 Drill"));
         picker.key(Key::Down);
@@ -1871,6 +1935,7 @@ mod tests {
         // Room for two lines of the four.
         picker.fit(&theme, 2 * (layout.bare + 2 * layout.pitch));
         assert_eq!(picker.size(&theme).1, layout.bare + 2 * layout.pitch);
+        picker.key(Key::Down);
         assert!(picker.scroll(1));
         assert_eq!(picker.chosen(), Some("Program 06"), "kept in sight");
         assert!(picker.scroll(5));
@@ -1927,6 +1992,8 @@ mod tests {
         let apps = EIGHT.iter().map(|name| app(name)).collect();
         let mut picker = Picker::new(apps, show, Numbers::Point);
         picker.set_grid(true);
+        // The first lit, as Down from the field lights it.
+        picker.key(Key::Down);
         let canvas = still(&picker, &theme, Scale::ONE, &mut icons);
         let layout = Layout::of(&theme, true);
         let style = theme.style(Part::LauncherTile, States::NONE);
@@ -1973,5 +2040,97 @@ mod tests {
         let corner = |(left, top, _, _): Area| canvas.at(left.unsigned_abs(), top.unsigned_abs());
         assert_eq!(corner(inside(0, 0)), lit_tile);
         assert_ne!(corner(inside(0, 1)), lit_tile);
+    }
+
+    #[test]
+    fn down_gives_the_programs_the_keyboard_and_every_arrow_walks_them() {
+        let mut picker = several();
+        typed(&mut picker, "f");
+        assert_eq!(names_of(&picker), ["Files", "Firefox"]);
+        // Down lights the first, rather than going past it.
+        picker.key(Key::Down);
+        assert_eq!(picker.chosen(), Some("Files"));
+        picker.key(across(Way::On));
+        assert_eq!(picker.chosen(), Some("Firefox"), "walked, not the cursor");
+        picker.key(across(Way::Back));
+        assert_eq!(picker.chosen(), Some("Files"));
+        picker.key(across(Way::On));
+        assert_eq!(picker.chosen(), Some("Firefox"));
+        assert_eq!(picker.query(), "f");
+        // Up from the first gives the field the keyboard back, and Left
+        // moves its cursor again.
+        picker.key(Key::Up);
+        picker.key(Key::Up);
+        assert_eq!(picker.chosen(), Some("Files"));
+        picker.key(across(Way::Back));
+        typed(&mut picker, "x");
+        assert_eq!(picker.query(), "xf");
+        // Typing gives it back too.
+        let mut picker = several();
+        typed(&mut picker, "f");
+        picker.key(Key::Down);
+        typed(&mut picker, "i");
+        picker.key(across(Way::Back));
+        typed(&mut picker, "x");
+        assert_eq!(picker.query(), "fxi");
+        // With nothing to walk, Down leaves the keyboard where it is.
+        let mut none = several();
+        typed(&mut none, "zz");
+        none.key(Key::Down);
+        none.key(across(Way::Back));
+        typed(&mut none, "y");
+        assert_eq!(none.query(), "zyz");
+    }
+
+    #[test]
+    fn in_the_grid_down_gives_its_programs_the_keyboard_once_something_is_typed() {
+        let mut picker = grid(&EIGHT);
+        typed(&mut picker, "m");
+        picker.key(Key::Down);
+        picker.key(across(Way::On));
+        assert_eq!(picker.chosen(), Some("Music"));
+        // A click in the field gives the field the keyboard back.
+        let theme = Theme::default();
+        let (x, top, _, tall) = picker.typed_area(&theme);
+        let mut text = Text::new();
+        picker.click(x, top + tall.cast_signed() / 2, &theme, &mut text);
+        picker.release();
+        // With the field's keyboard, Enter's is the first again, and Right
+        // moves the cursor rather than to the next program.
+        assert_eq!(picker.chosen(), Some("Maps"));
+        picker.key(across(Way::On));
+        assert_eq!(picker.chosen(), Some("Maps"), "the cursor moved");
+    }
+
+    #[test]
+    fn the_field_has_no_cursor_while_the_programs_have_the_keyboard() {
+        let theme = Theme::default();
+        let layout = Layout::new(&theme);
+        let input = theme.style(Part::LauncherInput, States::NONE);
+        let (left, top, width, height) = layout.input;
+        let field = argb(input.background);
+        let inked = |picker: &Picker| {
+            let canvas = painted(picker);
+            let columns = left.unsigned_abs()..left.unsigned_abs() + width;
+            let middle = top.unsigned_abs() + height / 2;
+            columns.filter(|x| canvas.at(*x, middle) != field).count()
+        };
+        let mut picker = several();
+        assert_eq!(inked(&picker), 1, "the cursor alone");
+        picker.key(Key::Down);
+        assert_eq!(inked(&picker), 0);
+        picker.key(Key::Up);
+        assert_eq!(inked(&picker), 1);
+        // The pointer over a program, even the first, lights it and takes
+        // the keyboard to the programs as Down does.
+        let (x, y) = row(0);
+        assert!(picker.point(x, y, &theme));
+        assert_eq!(inked(&picker), 0);
+        assert!(!picker.point(x, y, &theme), "nothing new");
+        let canvas = painted(&picker);
+        assert_eq!(
+            canvas.at(x.unsigned_abs() + 200, y.unsigned_abs()),
+            lit(&theme)
+        );
     }
 }
