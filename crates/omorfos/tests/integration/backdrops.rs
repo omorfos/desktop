@@ -456,3 +456,37 @@ fn a_menu_that_asks_through_kdes_protocol_has_all_of_it_blurred_behind() {
         "the window, below it, sharp"
     );
 }
+
+#[test]
+fn a_window_seen_through_looks_the_same_as_the_overview_takes_it_up() {
+    let mut session = Session::with_config(&[("theme.css", BLURRED)]);
+    session.blurring();
+    let mut red = session.connect();
+    let _under = session.open(&mut red, "red", (200, 400), RED);
+    // Half see-through, and blurring what is behind it, as a terminal
+    // that asks for blur.
+    let mut clear = session.connect();
+    let window = session.open(&mut clear, "clear", (300, 200), 0x8020_2020);
+    let _effect = clear.blur_behind(&window.surface, &[(0, 0, 300, 200)]);
+    window.surface.commit();
+    session.roundtrip(&mut clear);
+    session.advance(std::time::Duration::from_secs(1));
+    // Over the red window, and over the desktop.
+    let seen = |session: &mut Session| {
+        let picture = session.draw();
+        [(100, 100), (250, 150)].map(|(x, y)| picture.at(x, y))
+    };
+    let before = seen(&mut session);
+    // Fingers gone far enough up to say they open the overview, and back:
+    // it is taken up, open by nothing, each window pictured where it is.
+    let compositor = session.compositor_mut();
+    let begin = omorfos::Gesture::SwipeBegin { fingers: 3 };
+    compositor.input(omorfos::Input::Gesture(begin), 0);
+    for (dy, time) in [(-9.0, 10), (9.0, 20)] {
+        let moved = omorfos::Gesture::SwipeUpdate { dx: 0.0, dy };
+        compositor.input(omorfos::Input::Gesture(moved), time);
+    }
+    session.step();
+    assert!(session.compositor().overview_layout().is_some());
+    assert_eq!(seen(&mut session), before, "not seen through any less");
+}

@@ -168,7 +168,9 @@ impl Compositor {
         let placed = (origin, factor, view);
         let backdrop =
             self.backdrop_within(&mapped.surface, placed, Some(&[bounds]), behind, place + 1);
-        panes.extend(backdrop);
+        // What is behind it begins under it, as on the screen: not with
+        // it, nor what stands over it, which would show through it again.
+        panes.extend(backdrop.map(|pane| pane.under(behind.0)));
         if hidden && self.desktop.blurred(window) {
             let blank = self
                 .config()
