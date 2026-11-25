@@ -33,6 +33,7 @@ use smithay::wayland::shell::wlr_layer::Layer;
 
 use crate::Scale;
 use crate::compositor::{Compositor, Element, Painted, Told, View, color, layer_origin};
+use crate::fingers::Fingers;
 use crate::glass::{self, Pane};
 use crate::outputs::domain;
 use crate::paint;
@@ -52,9 +53,6 @@ const STRIP: f64 = 0.12;
 /// How far fingers go up the touchpad to open the overview all the way, in
 /// the units the touchpad tells, about the pixels of the pointer.
 const REACH: f64 = 300.0;
-/// How far a swipe let go of is taken to carry on, as the time it would go
-/// on for at the speed it was going, in milliseconds.
-const THROW: f64 = 120.0;
 /// How far inside the bottom of the window picked its title is.
 const INSIDE: u32 = 8;
 
@@ -222,11 +220,8 @@ struct Held {
     /// How far they have gone down the touchpad since, up being less than
     /// none.
     moved: f64,
-    /// How fast they were going down when they last moved, in units a
-    /// millisecond.
-    speed: f64,
-    /// When they last moved, in milliseconds.
-    last: u32,
+    /// How fast, open being more.
+    fingers: Fingers,
     /// Whether what is shown follows them, as it does unless motion is to
     /// be reduced.
     carried: bool,
@@ -982,8 +977,7 @@ impl Compositor {
                 let held = Held {
                     from: 0.0,
                     moved: 0.0,
-                    speed: 0.0,
-                    last: time,
+                    fingers: Fingers::down(time),
                     carried,
                 };
                 self.open_overview(Some(held));
@@ -993,8 +987,7 @@ impl Compositor {
                 looking.held = Some(Held {
                     from: looking.open(clock),
                     moved: 0.0,
-                    speed: 0.0,
-                    last: time,
+                    fingers: Fingers::down(time),
                     carried,
                 });
                 true
@@ -1010,19 +1003,15 @@ impl Compositor {
         let Some(held) = looking.and_then(|looking| looking.held.as_mut()) else {
             return false;
         };
-        let gone = f64::from(time.wrapping_sub(held.last));
-        if gone > 0.0 {
-            held.speed = dy / gone;
-            held.last = time;
-        }
+        held.fingers.went(-dy / REACH, time);
         held.moved += dy;
         true
     }
 
     /// Takes the fingers lifting, or the swipe being `cancelled`: the
-    /// overview goes on open from where they let it go if they took it
-    /// past half way, or were going fast enough that they would have, and
-    /// closes otherwise. Says whether fingers carried it.
+    /// overview goes on open from where they let it go, or closes, as
+    /// `fingers` decides for every gesture. Says whether fingers carried
+    /// it.
     pub(crate) fn overview_swipe_ended(&mut self, cancelled: bool) -> bool {
         let clock = self.clock();
         let looking = self.cards.overview.open.as_mut();
@@ -1030,11 +1019,16 @@ impl Compositor {
         let Some((looking, held)) = held else {
             return false;
         };
-        let reached = held.reached();
-        let thrown = (held.speed * THROW).mul_add(-1.0 / REACH, f64::from(reached));
+        // Opening, how far open it is; closing, how far closed.
+        let (reached, opening) = (f64::from(held.reached()), held.from < 0.5);
+        let open = if opening {
+            held.fingers.go_on(reached, true)
+        } else {
+            !held.fingers.go_on(1.0 - reached, false)
+        };
         let shown = held.shown();
         looking.held = None;
-        if !cancelled && thrown > 0.5 {
+        if !cancelled && open {
             looking.way = (shown, 1.0, clock);
         } else {
             looking.way = (shown, shown, clock);
