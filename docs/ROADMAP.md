@@ -1863,7 +1863,7 @@ the first than on the last.
             shows them: `show_program_windows`, on Super+Ctrl+Down in
             the Mac's way and on no key in the ordinary way, closing the
             overview while it is open whichever windows it shows (#141).
-            The four-finger swipe down is to open it too (#138);
+            The four-finger swipe down opens it too (#138);
       - [x] the shell's fields reading Super as Command, Ctrl left for
             the line (#133): the launcher, the boxes that ask and the lock
             screen copy, cut, paste, choose all and undo with Super, or
@@ -2100,24 +2100,24 @@ to false, as `launcher.sums` is (ADR 83).
       (`layout-grid`, or `layout-grid-circles`, as was asked for, if
       Lucide has it).
 - [ ] The launcher as Spotlight, and open to more than programs (asked
-      on 25 November 2026). One launcher on `Super+Space`, in a generic
-      mode that finds whatever matches and goes to the kind it found, and
-      modes chosen with `Super+1` and on: programs (the grid of #157),
-      files, actions, the clipboard's history, and commands, which move
-      from `>` to `Super+5`. Each mode can be turned on or off and put in
-      the order wanted, in the configuration; the modes are shown to be
-      picked when the pointer is over the launcher, and each has its icon
-      before the field and its own words in it while it is empty. Large
-      text, and one glass, as a Mac's. Before it is built, an ADR on what
-      feeds it, standards first (ADR 99): actions of programs from their
-      desktop entries (`[Desktop Action]`), which the launcher reads
-      already; players through MPRIS; and other programs' results through
-      KRunner's D-Bus API (`org.kde.krunner1`) or GNOME's search
-      providers (`org.gnome.Shell.SearchProvider2`), which many programs
-      already speak, so that files, the clipboard's history and the rest
-      are providers rather than built in. omorfos's own actions are among
-      the actions. Neither files nor the clipboard's history exists yet.
-      This takes in the launcher's look, commands and files below.
+      on 25 November 2026, ADR 109, #170): one launcher on `Super+Space`,
+      a generic mode of sections and a top hit, and modes on `Super+1` and
+      on (programs, files, actions, the clipboard's history, commands),
+      each turned off or ordered in `config.yaml`; other programs' results
+      through GNOME's search providers and KDE's runners. In the ADR's
+      order:
+      - [ ] the model: the sources, the sections and the top hit, the
+            modes and Super with a digit, `launcher.order`;
+      - [ ] the look, from the mockups of 25 November 2026;
+      - [ ] actions: omorfos's, programs' own from their desktop
+            entries, the user's own (`launcher.shortcuts`);
+      - [ ] commands, in their mode (taking in the item below);
+      - [ ] GNOME's search providers, and the files mode with them;
+      - [ ] KDE's runners;
+      - [ ] MPRIS, among the actions;
+      - [ ] the clipboard's history;
+      - [ ] the gap in `docs/STANDARDS.md`, and a proposal for
+            `xdg-specs` once both kinds of provider are spoken.
 - [ ] Commands in the launcher (asked on 17 November 2026): what is
       typed after `>` is run as a command in a new window of the
       terminal, by the user's shell, and the window stays open after
