@@ -209,6 +209,9 @@ fn the_arrows_walk_the_windows_and_enter_goes_to_the_one_picked_once_closed() {
 fn escape_closes_it_where_it_was_and_other_keys_are_bindings() {
     let (mut session, _client) = three(&[UNBLURRED]);
     open(&mut session);
+    // A key that is none of its own leaves it as it is.
+    tap(&mut session, key::Q);
+    assert!(session.compositor().overview_layout().is_some());
     tap(&mut session, key::LEFT);
     tap(&mut session, key::ESCAPE);
     session.advance(GLIDE);
@@ -218,6 +221,17 @@ fn escape_closes_it_where_it_was_and_other_keys_are_bindings() {
     open(&mut session);
     session.compositor_mut().perform(&Action::Overview);
     session.step();
+    session.advance(GLIDE);
+    assert_eq!(session.compositor().overview_layout(), None);
+    // And so do the keys it is opened by, Super, Ctrl and the arrow up
+    // (#155): an arrow with a modifier held is a binding's, not the
+    // overview's to walk with.
+    open(&mut session);
+    press(&mut session, key::SUPER, true);
+    press(&mut session, key::CONTROL, true);
+    tap(&mut session, key::UP);
+    press(&mut session, key::CONTROL, false);
+    press(&mut session, key::SUPER, false);
     session.advance(GLIDE);
     assert_eq!(session.compositor().overview_layout(), None);
 }

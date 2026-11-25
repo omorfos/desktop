@@ -187,6 +187,32 @@ the workspaces by Page Up and Down. Every other chord with Super is the
 program's, as one coming from Windows or KDE expects, and is bound in
 `keys.yaml` by whoever wants it.
 
+Tried on the same day (#154, #155), Super with the arrows was the
+desktop's, the overview and the workspaces, where a Mac's Cmd with them
+goes to the ends of the line and of the text, and its Ctrl with them is
+the desktop's: Mission Control, the app's windows and the Spaces. As a
+Mac has it, then, in the `super` way:
+
+- Super+Left and Right go to the start and the end of the line, and
+  Super+Up and Down to those of the text, Shift choosing as they go:
+  programs are handed them as Home, End, Ctrl+Home and Ctrl+End, a
+  terminal without the Shift that Super's letters are given there; the
+  shell's fields read them so, and Super+Backspace as taking out all
+  before the cursor.
+- Super+Ctrl+Up opens the overview and closes it again, an arrow with a
+  modifier held being a binding's while it is open; Super+Ctrl+Left and
+  Right go to the workspaces beside; Super+Ctrl+Down is to show the
+  program's windows, once `show_program_windows` is there (#141), and to
+  close the overview while it is open.
+- Going to the window beside, among those that share a workspace, and
+  changing places with it, move to Super+Ctrl+Alt with the arrows, and
+  with Shift.
+- VS Code's Mac habit, Ctrl+Cmd+Left and Right, gives way to the Spaces,
+  as it does on a Mac: on Linux it moves an editor with Ctrl+Alt+Left and
+  Right.
+
+The ordinary way keeps Super+Up for the overview, as named above.
+
 ## Alternatives
 
 - **The best of each**, GNOME's overview on a tap of Super, KDE's three

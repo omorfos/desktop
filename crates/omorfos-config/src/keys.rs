@@ -196,9 +196,11 @@ fn super_way() -> Vec<Binding> {
         // is the program's.
         bind("Super+Ctrl+Tab", Action::NextTab),
         bind("Super+Ctrl+Shift+Tab", Action::PreviousTab),
-        bind("Super+Up", Action::Overview),
-        bind("Super+Right", Action::NextWorkspace),
-        bind("Super+Left", Action::PreviousWorkspace),
+        // Super with the arrows is for text, as Cmd on a Mac, and with Ctrl
+        // the desktop's, as Ctrl alone on a Mac (#155).
+        bind("Super+Ctrl+Up", Action::Overview),
+        bind("Super+Ctrl+Right", Action::NextWorkspace),
+        bind("Super+Ctrl+Left", Action::PreviousWorkspace),
         bind("Super+Ctrl+n", Action::NewWorkspace),
         bind("Super+Ctrl+Shift+n", Action::MoveToNewWorkspace),
         bind("Super+Ctrl+q", Action::Lock),
@@ -305,9 +307,12 @@ fn beside(bindings: &mut Vec<Binding>) {
         ("Down", Half::Bottom),
     ];
     for (key, toward) in beside {
-        bindings.push(bind(&format!("Super+Ctrl+{key}"), Action::Focus(toward)));
         bindings.push(bind(
-            &format!("Super+Ctrl+Shift+{key}"),
+            &format!("Super+Ctrl+Alt+{key}"),
+            Action::Focus(toward),
+        ));
+        bindings.push(bind(
+            &format!("Super+Ctrl+Alt+Shift+{key}"),
             Action::Swap(toward),
         ));
     }
@@ -861,7 +866,18 @@ bindings:
             action_for("Super+Alt+Right"),
             Some(Action::Tile(Half::Right))
         );
-        assert_eq!(action_for("Super+Up"), Some(Action::Overview));
+        // The desktop's arrows are with Ctrl, as a Mac's; Super's alone are
+        // the program's, for text.
+        assert_eq!(action_for("Super+Ctrl+Up"), Some(Action::Overview));
+        assert_eq!(action_for("Super+Ctrl+Right"), Some(Action::NextWorkspace));
+        assert_eq!(
+            action_for("Super+Ctrl+Left"),
+            Some(Action::PreviousWorkspace)
+        );
+        for arrow in ["Up", "Down", "Left", "Right"] {
+            assert_eq!(action_for(&format!("Super+{arrow}")), None, "{arrow}");
+            assert_eq!(action_for(&format!("Super+Shift+{arrow}")), None, "{arrow}");
+        }
         assert_eq!(action_for("Super+Ctrl+q"), Some(Action::Lock));
         assert_eq!(action_for("XF86ScreenSaver"), Some(Action::Lock));
         assert_eq!(action_for("Super+Shift+q"), Some(Action::LogOut));
@@ -980,9 +996,12 @@ bindings:
         );
         assert_eq!(action_for("Super+Ctrl+n"), Some(Action::NewWorkspace));
         assert_eq!(action_for("XF86Display"), Some(Action::NextScreens));
-        assert_eq!(action_for("Super+Ctrl+Up"), Some(Action::Focus(Half::Top)));
         assert_eq!(
-            action_for("Super+Ctrl+Shift+Left"),
+            action_for("Super+Ctrl+Alt+Up"),
+            Some(Action::Focus(Half::Top))
+        );
+        assert_eq!(
+            action_for("Super+Ctrl+Alt+Shift+Left"),
             Some(Action::Swap(Half::Left))
         );
         assert_eq!(

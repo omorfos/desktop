@@ -394,6 +394,27 @@ fn super_a_or_in_the_ordinary_way_ctrl_a_chooses_all_that_is_typed_for_the_next_
     }
 }
 
+#[test]
+fn super_with_backspace_takes_out_to_the_start_and_with_the_arrows_goes_to_the_ends() {
+    // As a Mac's Cmd (#155): what is typed is taken out, and "f" goes in
+    // before "i", to make "fi", as Files begins.
+    let mut session = Session::new();
+    let mut launcher = launcher(&mut session);
+    settle(&mut session, &mut launcher);
+    press(&mut session, L);
+    command(&mut session, key::BACKSPACE);
+    press(&mut session, I);
+    command(&mut session, key::LEFT);
+    command(&mut session, key::RIGHT);
+    command(&mut session, key::UP);
+    press(&mut session, F);
+    command(&mut session, key::DOWN);
+    press(&mut session, key::RETURN);
+    assert!(settle(&mut session, &mut launcher));
+    session.eventually(|session| mark(session, "files") == "x");
+    assert_eq!(mark(&session, "lens"), "");
+}
+
 /// Presses Super and `code` together, as a Mac's Cmd, which copies and
 /// pastes in the shell's fields (ADR 101).
 fn command(session: &mut Session, code: Keycode) {

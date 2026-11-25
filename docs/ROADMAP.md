@@ -1820,6 +1820,14 @@ the first than on the last.
             `Super+Shift+3` and `4` kept, and with Ctrl on the clipboard,
             `Super+Shift+5` the picker; Alt+Tab left for the ordinary way.
             `Super+Down`, the program's windows, waits on #141;
+      - [x] Super with the arrows for text, as a Mac's Cmd, handed to
+            programs as Home, End, Ctrl+Home and Ctrl+End and read so by
+            the shell's fields, Super+Backspace there taking out to the
+            start; the desktop's arrows on Super+Ctrl, the overview on Up,
+            the workspaces on Left and Right, between tiles on
+            Super+Ctrl+Alt (#155). An arrow with a modifier held is a
+            binding's while the overview is open, so Super+Ctrl+Up closes
+            it. Super+Ctrl+Down waits for `show_program_windows` (#141);
       - [x] the shell's fields reading Super as Command, Ctrl left for
             the line (#133): the launcher, the boxes that ask and the lock
             screen copy, cut, paste, choose all and undo with Super, or

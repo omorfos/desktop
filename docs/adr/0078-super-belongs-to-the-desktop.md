@@ -28,6 +28,9 @@ read, and a program never sees a key pressed while Super is held:
   Super+Shift+T is Ctrl+Shift+T, in every program, as Cmd is on macOS.
   The program is told the modifiers changed for that key alone, Super
   taken out and Ctrl put in, and as they are once it is let go.
+  The arrows are handed on as a Mac's Cmd moves with them, Super+Left
+  and Right as Home and End, Super+Up and Down as Ctrl+Home and
+  Ctrl+End (ADR 101, as accepted, #155).
 - **In a terminal**, where a Ctrl chord goes to the shell and Ctrl+C
   interrupts, the chord is handed on as Ctrl+Shift, which is what
   terminals copy, paste and open tabs with. A window is a terminal by its

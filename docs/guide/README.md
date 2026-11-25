@@ -50,10 +50,10 @@ manual pages and `--help` are in English.
 | `Super+Alt+Up` | Maximize the window, or restore it |
 | `Super+Alt+Left` | Have the window take the left half; `Super+Alt+Right` the right |
 | `Super+Ctrl+f` | Make the window fullscreen, or not |
-| `Super+Up` | See every window of the workspace |
+| `Super+Ctrl+Up` | See every window of the workspace |
 | `Super+1` | Go to the first workspace; up to `Super+9` |
 | `Super+Ctrl+1` | Send the window to the first workspace |
-| `Super+Right` | Go to the next workspace; `Super+Left` the one before |
+| `Super+Ctrl+Right` | Go to the next workspace; `Super+Ctrl+Left` the one before |
 | `Super+Shift+3` | Take a picture of every screen; `Super+Shift+4` pick what of |
 | `Super+Ctrl+q` | Lock the screen |
 | `Super+Shift+q` | Log out, asking first |
@@ -117,7 +117,7 @@ action` lists every action, and `keys.yaml` binds them:
 
 ```yaml
 bindings:
-  - keys: Super+Up
+  - keys: Super+F3
     action: overview
   - keys: Super+l
     action: lock          # with `locker` set in config.yaml

@@ -39,7 +39,11 @@ other reaches the program with the keyboard as the same chord with Ctrl
 in its place, as Cmd does on macOS: `Super+c` copies, `Super+v` pastes,
 `Super+z` undoes, `Super+f` finds, `Super+Shift+t` is `Ctrl+Shift+t`. In
 a terminal, where `Ctrl+c` interrupts, it is Ctrl and Shift together,
-which terminals copy, paste and open tabs with. Which programs are
+which terminals copy, paste and open tabs with. Super with the arrows
+goes to the ends of the line and of the text, as Cmd does: `Super+Left`
+reaches the program as `Home`, `Super+Right` as `End`, `Super+Up` as
+`Ctrl+Home` and `Super+Down` as `Ctrl+End`, and with Shift chooses as it
+goes; in a terminal too, without Shift added. Which programs are
 terminals is `keyboard.terminals` in `config.yaml`, by their `app_id`,
 where `*` stands for any run of characters; `keyboard.super_as_ctrl:
 false`, or the ordinary way, has a chord with Super that nothing binds
@@ -49,8 +53,10 @@ program's: `Super+s` bound is no longer save anywhere.
 The shell's own fields, in the launcher, the boxes that ask for a
 password and the lock screen, are given Super as it is, and read it as a
 Mac's read Command: `Super+c`, `x`, `v`, `a` and `z` copy, cut, paste,
-choose all and undo, and Ctrl with those letters does nothing there. In
-the ordinary way they read Ctrl instead, as everything else does.
+choose all and undo, and Ctrl with those letters does nothing there;
+`Super` with the arrows goes to the ends of what is typed, and
+`Super+BackSpace` takes out all before the cursor. In the ordinary way
+they read Ctrl instead, as everything else does.
 
 A program that needs every key, as a virtual machine, a remote desktop
 or a game may, can ask for them (`keyboard-shortcuts-inhibit`), and is
@@ -104,9 +110,9 @@ as `overview` or `lock`, has no key until you bind one.
 | `Shift+Super+grave` | `previous_window` | Focus the focused program's window before |
 | `Ctrl+Super+Tab` | `next_tab` | Show the next tab of the focused window |
 | `Ctrl+Shift+Super+Tab` | `previous_tab` | Show the previous tab of the focused window |
-| `Super+Up` | `overview` | Open the overview of the workspace, or close it |
-| `Super+Right` | `next_workspace` | Show the next workspace |
-| `Super+Left` | `previous_workspace` | Show the workspace before |
+| `Ctrl+Super+Up` | `overview` | Open the overview of the workspace, or close it |
+| `Ctrl+Super+Right` | `next_workspace` | Show the next workspace |
+| `Ctrl+Super+Left` | `previous_workspace` | Show the workspace before |
 | `Ctrl+Super+n` | `new_workspace` | Make a workspace after the last, and show it |
 | `Ctrl+Shift+Super+n` | `move_to_new_workspace` | Send the focused window to a new workspace |
 | `Ctrl+Super+q` | `lock` | Lock the session |
@@ -135,14 +141,14 @@ as `overview` or `lock`, has no key until you bind one.
 | `XF86AudioNext` | `{ spawn: [omorfos-session, media, next] }` | Start a program, with no shell |
 | `XF86AudioPrev` | `{ spawn: [omorfos-session, media, previous] }` | Start a program, with no shell |
 | `XF86AudioStop` | `{ spawn: [omorfos-session, media, stop] }` | Start a program, with no shell |
-| `Ctrl+Super+Left` | `{ focus: left }` | Focus the window beside the focused one |
-| `Ctrl+Shift+Super+Left` | `{ swap: left }` | Swap the focused window with the one beside it |
-| `Ctrl+Super+Right` | `{ focus: right }` | Focus the window beside the focused one |
-| `Ctrl+Shift+Super+Right` | `{ swap: right }` | Swap the focused window with the one beside it |
-| `Ctrl+Super+Up` | `{ focus: top }` | Focus the window beside the focused one |
-| `Ctrl+Shift+Super+Up` | `{ swap: top }` | Swap the focused window with the one beside it |
-| `Ctrl+Super+Down` | `{ focus: bottom }` | Focus the window beside the focused one |
-| `Ctrl+Shift+Super+Down` | `{ swap: bottom }` | Swap the focused window with the one beside it |
+| `Ctrl+Alt+Super+Left` | `{ focus: left }` | Focus the window beside the focused one |
+| `Ctrl+Alt+Shift+Super+Left` | `{ swap: left }` | Swap the focused window with the one beside it |
+| `Ctrl+Alt+Super+Right` | `{ focus: right }` | Focus the window beside the focused one |
+| `Ctrl+Alt+Shift+Super+Right` | `{ swap: right }` | Swap the focused window with the one beside it |
+| `Ctrl+Alt+Super+Up` | `{ focus: top }` | Focus the window beside the focused one |
+| `Ctrl+Alt+Shift+Super+Up` | `{ swap: top }` | Swap the focused window with the one beside it |
+| `Ctrl+Alt+Super+Down` | `{ focus: bottom }` | Focus the window beside the focused one |
+| `Ctrl+Alt+Shift+Super+Down` | `{ swap: bottom }` | Swap the focused window with the one beside it |
 | `Super+1` | `{ workspace: 1 }` | Show workspace N |
 | `Ctrl+Super+1` | `{ move_to_workspace: 1 }` | Send the focused window to workspace N |
 | `Super+2` | `{ workspace: 2 }` | Show workspace N |

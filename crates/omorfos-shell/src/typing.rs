@@ -185,9 +185,17 @@ fn typed(state: &xkb::State, code: u32, ordinary: bool) -> Key {
     if let Some(found) = found {
         return found;
     }
-    // By a word with Ctrl, as GTK has it, or Alt, as a Mac has it, or
-    // Super, whichever way the keys are.
-    let reach = if chord { Reach::Word } else { Reach::Character };
+    // By a word with Ctrl, as GTK has it, or Alt, as a Mac has it; with
+    // Super, as a Mac's Cmd, to the end of the line, and by a word in the
+    // ordinary way, where Super is no command (#155).
+    let line = logo && !ordinary;
+    let reach = if line {
+        Reach::Line
+    } else if chord {
+        Reach::Word
+    } else {
+        Reach::Character
+    };
     let moved = |way, reach| Key::Move {
         way,
         reach,
@@ -204,6 +212,10 @@ fn typed(state: &xkb::State, code: u32, ordinary: bool) -> Key {
         xkb::Keysym::End | xkb::Keysym::KP_End => moved(Way::On, Reach::Line),
         xkb::Keysym::Tab => Key::Next,
         xkb::Keysym::ISO_Left_Tab => Key::Previous,
+        // With Super, as a Mac's Cmd, to the ends of what is typed, which
+        // is one line.
+        xkb::Keysym::Up if line => moved(Way::Back, Reach::Line),
+        xkb::Keysym::Down if line => moved(Way::On, Reach::Line),
         xkb::Keysym::Up => Key::Up,
         xkb::Keysym::Down => Key::Down,
         _ => {
@@ -356,6 +368,7 @@ mod tests {
     fn the_keys_that_edit_a_line_go_by_a_character_a_word_or_to_an_end() {
         // As the compositor numbers them.
         let (left, right, home, end, delete, backspace) = (105, 106, 102, 107, 111, 14);
+        let (up, down) = (103, 108);
         let moved = |way, reach, choosing| Key::Move {
             way,
             reach,
@@ -380,17 +393,47 @@ mod tests {
         );
         assert_eq!(typed(&plain, backspace, false), Key::Back(Reach::Character));
         assert_eq!(typed(&plain, delete, false), Key::Delete(Reach::Character));
-        // By a word with Ctrl, as GTK has it, or Alt, as a Mac has it.
-        // And with Super, as Ctrl, which is how the compositor hands it on.
-        for word in [xkb::MOD_NAME_CTRL, xkb::MOD_NAME_ALT, xkb::MOD_NAME_LOGO] {
+        // By a word with Ctrl, as GTK has it, or Alt, as a Mac has it, and
+        // with Super in the ordinary way, where it is no command.
+        for (word, ordinary) in [
+            (xkb::MOD_NAME_CTRL, false),
+            (xkb::MOD_NAME_ALT, false),
+            (xkb::MOD_NAME_LOGO, true),
+        ] {
             let held = holding(&[word]);
             assert_eq!(
-                typed(&held, left, false),
+                typed(&held, left, ordinary),
                 moved(Way::Back, Reach::Word, false)
             );
-            assert_eq!(typed(&held, backspace, false), Key::Back(Reach::Word));
-            assert_eq!(typed(&held, delete, false), Key::Delete(Reach::Word));
+            assert_eq!(typed(&held, backspace, ordinary), Key::Back(Reach::Word));
+            assert_eq!(typed(&held, delete, ordinary), Key::Delete(Reach::Word));
+            assert_eq!(typed(&held, up, ordinary), Key::Up);
         }
+        // With Super, as a Mac's Cmd, to the ends of the line, and up and
+        // down to those of what is typed; Backspace takes out to the start.
+        let command = holding(&[xkb::MOD_NAME_LOGO]);
+        assert_eq!(
+            typed(&command, left, false),
+            moved(Way::Back, Reach::Line, false)
+        );
+        assert_eq!(
+            typed(&command, right, false),
+            moved(Way::On, Reach::Line, false)
+        );
+        assert_eq!(
+            typed(&command, up, false),
+            moved(Way::Back, Reach::Line, false)
+        );
+        assert_eq!(
+            typed(&command, down, false),
+            moved(Way::On, Reach::Line, false)
+        );
+        assert_eq!(typed(&command, backspace, false), Key::Back(Reach::Line));
+        let choosing = holding(&[xkb::MOD_NAME_LOGO, xkb::MOD_NAME_SHIFT]);
+        assert_eq!(
+            typed(&choosing, down, false),
+            moved(Way::On, Reach::Line, true)
+        );
         // Shift chooses what the cursor goes over.
         let shift = holding(&[xkb::MOD_NAME_SHIFT, xkb::MOD_NAME_CTRL]);
         assert_eq!(

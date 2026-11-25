@@ -657,6 +657,95 @@ fn a_chord_with_super_that_nothing_binds_reaches_the_program_as_ctrl() {
     );
 }
 
+/// The numbers of Home and End, as programs are sent them.
+const HOME_CODE: u32 = 102;
+const END_CODE: u32 = 107;
+
+/// What `app`'s window is sent of `arrow` pressed with Super, and Shift if
+/// `shifted`, under `config`, leaving out Super and Shift themselves; Super
+/// let go of before the arrow if `super_first`.
+fn arrow_with_super(
+    app: &str,
+    arrow: Keycode,
+    shifted: bool,
+    super_first: bool,
+    config: &[(&str, &str)],
+) -> Vec<(u32, bool, u32)> {
+    let mut session = Session::with_config(config);
+    let mut client = session.connect_plain();
+    session.open(&mut client, app, (200, 100), RED);
+    session.roundtrip(&mut client);
+    client.state.chords.clear();
+    press(&mut session, key::SUPER);
+    if shifted {
+        press(&mut session, key::SHIFT);
+    }
+    press(&mut session, arrow);
+    if super_first {
+        release(&mut session, key::SUPER);
+    }
+    release(&mut session, arrow);
+    if shifted {
+        release(&mut session, key::SHIFT);
+    }
+    if !super_first {
+        release(&mut session, key::SUPER);
+    }
+    session.roundtrip(&mut client);
+    std::mem::take(&mut client.state.chords)
+        .into_iter()
+        .filter(|(code, ..)| ![SUPER_CODE, 42].contains(code))
+        .collect()
+}
+
+#[test]
+fn super_with_the_arrows_reaches_the_program_as_home_and_end_as_a_macs_cmd_does() {
+    // Left and Right to the ends of the line, Up and Down to those of the
+    // text, as Home and End, and with Ctrl.
+    for (arrow, code, ctrl) in [
+        (key::LEFT, HOME_CODE, 0),
+        (key::RIGHT, END_CODE, 0),
+        (key::UP, HOME_CODE, CTRL),
+        (key::DOWN, END_CODE, CTRL),
+    ] {
+        let chords = arrow_with_super("app", arrow, false, false, &[]);
+        assert_eq!(
+            chords,
+            [(code, true, ctrl), (code, false, ctrl)],
+            "{arrow:?}"
+        );
+    }
+    // With Shift, choosing as it goes, in a terminal too.
+    for app in ["app", "com.mitchellh.ghostty"] {
+        let chords = arrow_with_super(app, key::RIGHT, true, false, &[]);
+        assert_eq!(chords[0], (END_CODE, true, SHIFT), "{app}");
+    }
+    // Let go of after Super, it is let go of as it was pressed, so that
+    // nothing is left held down.
+    let chords = arrow_with_super("app", key::UP, false, true, &[]);
+    assert_eq!(chords.len(), 2, "{chords:?}");
+    assert_eq!(chords[1].0, HOME_CODE);
+    assert!(!chords[1].1);
+    // A binding of the user's on them is the binding's.
+    let config = [(
+        "keys.yaml",
+        "bindings:\n  - { keys: Super+Left, action: overview }\n",
+    )];
+    assert_eq!(
+        arrow_with_super("app", key::LEFT, false, false, &config),
+        []
+    );
+    // In the ordinary way they are the desktop's, or the program's as they
+    // are.
+    let ordinary = [("keys.yaml", "defaults: ordinary\n")];
+    assert_eq!(
+        arrow_with_super("app", key::LEFT, false, false, &ordinary),
+        []
+    );
+    let chords = arrow_with_super("app", key::DOWN, false, false, &ordinary);
+    assert_eq!(chords[0].0, 108, "Down itself");
+}
+
 #[test]
 fn in_a_terminal_a_chord_with_super_is_ctrl_and_shift_so_ctrl_c_still_interrupts() {
     let chords = chord_with_super("com.mitchellh.ghostty", false, &[]);

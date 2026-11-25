@@ -148,12 +148,54 @@ pub enum Gesture {
 pub(crate) struct Taken {
     /// Keys whose press was consumed, so their release is consumed too.
     pub(crate) suppressed: Vec<Keycode>,
-    /// Keys pressed with Super that went to the program as Ctrl, whose
-    /// release goes the same way (ADR 78).
-    pub(crate) as_ctrl: Vec<Keycode>,
-    /// A key the keyboard has taken that is to go to the program as Ctrl,
-    /// and whether it was pressed or let go of.
-    pub(crate) handing: Option<(Keycode, bool)>,
+    /// Keys pressed with Super that went to the program as something else,
+    /// as what, whose release goes the same way (ADR 78).
+    pub(crate) as_ctrl: Vec<(Keycode, Handed)>,
+    /// A key the keyboard has taken that is to go to the program as
+    /// something else, and whether it was pressed or let go of.
+    pub(crate) handing: Option<(Handed, bool)>,
+}
+
+/// What a key pressed with Super, which nothing binds, goes to the program
+/// as (ADR 78): itself with Ctrl in Super's place, or, for an arrow, Home
+/// or End, as a Mac's Cmd with the arrows goes to the ends of the line and
+/// of the text (#155).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct Handed {
+    /// The key sent.
+    code: Keycode,
+    /// Whether Ctrl is said to be held with it.
+    ctrl: bool,
+    /// Whether it is an arrow made Home or End, which a terminal is sent as
+    /// it is, Shift being for choosing.
+    arrow: bool,
+}
+
+impl Handed {
+    /// The numbers of Home and End, as the keyboard numbers them, which are
+    /// the same whatever the layout.
+    const HOME: Keycode = Keycode::new(110);
+    const END: Keycode = Keycode::new(115);
+
+    /// What `code`, which is `keysym`, goes to the program as.
+    fn of(code: Keycode, keysym: Keysym) -> Self {
+        let arrow = |code, ctrl| Self {
+            code,
+            ctrl,
+            arrow: true,
+        };
+        match keysym {
+            Keysym::Left => arrow(Self::HOME, false),
+            Keysym::Right => arrow(Self::END, false),
+            Keysym::Up => arrow(Self::HOME, true),
+            Keysym::Down => arrow(Self::END, true),
+            _ => Self {
+                code,
+                ctrl: true,
+                arrow: false,
+            },
+        }
+    }
 }
 
 /// How far a key scrolls "About", in units of layout, a page being `page`
@@ -522,8 +564,10 @@ impl Compositor {
                 }
             }
             // An open switcher is steered by Escape, Enter and the arrows,
-            // and so is the overview.
-            if compositor.switcher_key(keysym) || compositor.overview_key(keysym) {
+            // and so is the overview, by them alone: with a modifier held
+            // they are a binding's, as Super+Ctrl+Up closes it (#155).
+            let plain = bridge::modifiers(held) == Modifiers::NONE;
+            if compositor.switcher_key(keysym) || (plain && compositor.overview_key(keysym)) {
                 compositor.taken.suppressed.push(code);
                 return FilterResult::Intercept(None);
             }
@@ -538,7 +582,6 @@ impl Compositor {
             // reaches a window; a binding still does what it is bound to,
             // so a key pressed with a modifier held is the binding's.
             let about = compositor.cards.about.asked.is_some();
-            let plain = bridge::modifiers(held) == Modifiers::NONE;
             if about && plain && compositor.about_key(keysym) {
                 compositor.taken.suppressed.push(code);
                 return FilterResult::Intercept(None);
@@ -580,9 +623,7 @@ impl Compositor {
             let as_ctrl = held.logo && compositor.super_as_ctrl();
             let action = match compositor.bindings.press(chord) {
                 KeyOutcome::Unbound if !about && as_ctrl => {
-                    compositor.taken.as_ctrl.push(code);
-                    compositor.taken.handing = Some((code, true));
-                    return FilterResult::Intercept(None);
+                    return compositor.take_to_hand_on(code, keysym);
                 }
                 KeyOutcome::Unbound if !about => return FilterResult::Forward,
                 KeyOutcome::Unbound | KeyOutcome::Pending | KeyOutcome::Cancelled => None,
@@ -593,8 +634,8 @@ impl Compositor {
             compositor.switch.held = crate::switcher::held_with(held);
             FilterResult::Intercept(action)
         });
-        if let Some((code, pressed)) = self.taken.handing.take() {
-            self.hand_on_as_ctrl(code, pressed, serial, time);
+        if let Some((handed, pressed)) = self.taken.handing.take() {
+            self.hand_on_as_ctrl(handed, pressed, serial, time);
         }
         if let Some(action) = action.flatten() {
             self.perform(&action);
@@ -627,16 +668,30 @@ impl Compositor {
         Some(FilterResult::Forward)
     }
 
+    /// Takes `code`, pressed with Super as `keysym`, to go to the program as
+    /// something else once the keyboard has done with it, and its release
+    /// after it.
+    fn take_to_hand_on(&mut self, code: Keycode, keysym: Keysym) -> FilterResult<Option<Action>> {
+        let handed = Handed::of(code, keysym);
+        self.taken.as_ctrl.push((code, handed));
+        self.taken.handing = Some((handed, true));
+        FilterResult::Intercept(None)
+    }
+
     /// What becomes of `code` let go of with `held`: the switcher it was
     /// held open by chooses, a key that went to the program as Ctrl is let
     /// go of so, and the release of a key whose press was swallowed is
     /// swallowed too.
     fn let_go(&mut self, code: Keycode, held: &ModifiersState) -> FilterResult<Option<Action>> {
         self.switcher_let_go(held);
-        let before = self.taken.as_ctrl.len();
-        self.taken.as_ctrl.retain(|handed| *handed != code);
-        if self.taken.as_ctrl.len() < before {
-            self.taken.handing = Some((code, false));
+        let handed = self
+            .taken
+            .as_ctrl
+            .iter()
+            .position(|(held, _)| *held == code);
+        if let Some(index) = handed {
+            let (_, handed) = self.taken.as_ctrl.remove(index);
+            self.taken.handing = Some((handed, false));
             return FilterResult::Intercept(None);
         }
         let before = self.taken.suppressed.len();
@@ -650,20 +705,22 @@ impl Compositor {
         }
     }
 
-    /// Hands the program with the keyboard `code`, pressed or let go of
-    /// with Super held, as though Ctrl were held in its place, and Shift
-    /// with it in a terminal, where Ctrl alone is the shell's (ADR 78).
-    /// The program is told the modifiers so for that key alone, and told
-    /// them as they are once it is let go of.
-    fn hand_on_as_ctrl(&mut self, code: Keycode, pressed: bool, serial: Serial, time: u32) {
+    /// Hands the program with the keyboard a key pressed or let go of with
+    /// Super held, as `handed` says: as though Ctrl were held in Super's
+    /// place, and Shift with it in a terminal, where Ctrl alone is the
+    /// shell's (ADR 78); or an arrow as Home or End. The program is told
+    /// the modifiers so for that key alone, and told them as they are once
+    /// it is let go of.
+    fn hand_on_as_ctrl(&mut self, handed: Handed, pressed: bool, serial: Serial, time: u32) {
+        let code = handed.code;
         let keyboard = self.keyboard.clone();
         let focus = keyboard.current_focus();
         let held = keyboard.modifier_state();
         if pressed {
             let mut told = held;
             told.logo = false;
-            told.ctrl = true;
-            told.shift |= self.terminal_focused();
+            told.ctrl |= handed.ctrl;
+            told.shift |= !handed.arrow && self.terminal_focused();
             // What is sent of them is made from the keymap: they are set
             // so, read back, and set as they were before anything else.
             keyboard.set_modifier_state(told);

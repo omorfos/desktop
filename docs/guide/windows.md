@@ -93,12 +93,13 @@ opens the rest of the way, or short of that and it sinks back. Swiped
 down, they close it the same way. With `appearance.reduce_motion` the
 fingers carry nothing, and it opens or not as they lift. The Mission
 Control key of a Mac's keyboard (`XF86LaunchA`, F3 on a MacBook) opens
-it and closes it. On a keyboard without one, bind the `overview` action
-in `keys.yaml`:
+it and closes it, and so does `Super+Ctrl+Up`, as Ctrl+Up on a Mac
+(`Super+Up` in the ordinary way). To have it on another key, bind the
+`overview` action in `keys.yaml`:
 
 ```yaml
 bindings:
-  - keys: Super+Up
+  - keys: Super+F3
     action: overview
 ```
 
@@ -139,7 +140,7 @@ shown. A screen has 32 at most.
 Going to another workspace slides it in from the side it lies on: the
 next from the right, the one before from the left. The row does not go
 round. There is nothing before the first workspace; after the last, if a
-window is on it, `Super+Right` makes a new one, and goes no further than
+window is on it, `Super+Ctrl+Right` makes a new one, and goes no further than
 that while it is empty. A swipe towards where there is nothing gives a
 little, and goes back.
 
@@ -170,7 +171,7 @@ in between, which stay where you put them.
 A window made fullscreen, by the third button of its titlebar, by
 `Super+Ctrl+f`, or because its program asked, goes alone to a workspace made
 for it, directly after the one it was on, with no panel over it and no
-titlebar. That workspace has no number: `Super+Right` and `Super+Left` go
+titlebar. That workspace has no number: `Super+Ctrl+Right` and `Super+Ctrl+Left` go
 along the whole row and reach it, and the number keys count desktops only.
 It goes when the window closes or leaves fullscreen, which takes the
 window back where it was. A dialog that belongs to it opens over it; any
@@ -215,8 +216,9 @@ part that has nothing in it, from the menu of its own titlebar: under
 and the windows there. Beside a fullscreen window it takes the right
 half. You are taken there with it.
 
-`Super+Ctrl` and an arrow gives focus to the window beside the one that
-has it, and `Super+Ctrl+Shift` and an arrow changes the two over. With the
+`Super+Ctrl+Alt` and an arrow gives focus to the window beside the one
+that has it, and `Super+Ctrl+Alt+Shift` and an arrow changes the two
+over. With the
 pointer, drag a window by its titlebar onto another part: the part is
 washed over while it is held, and let go there the two change places.
 

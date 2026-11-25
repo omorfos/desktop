@@ -15,7 +15,7 @@ a script as it is:
 ```yaml
 # keys.yaml
 bindings:
-  - keys: Super+Up
+  - keys: Super+F12
     action: { spawn: [omorfos-session, volume, up] }
 ```
 
