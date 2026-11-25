@@ -1390,3 +1390,55 @@ fn the_cursor_blinks_from_the_last_key_unless_nothing_is_to_move() {
         assert_eq!(held.deadline(), None, "{files:?}");
     }
 }
+
+#[test]
+fn super_with_a_digit_is_the_launchers_while_it_has_the_keyboard() {
+    let mut session = Session::new();
+    let mut client = session.connect();
+    session.open(&mut client, "app", (200, 100), RED);
+    let mut launcher = launcher(&mut session);
+    settle(&mut session, &mut launcher);
+    // With the launcher open, Super and 2 is no workspace.
+    hold(&mut session, key::SUPER, true);
+    press(&mut session, key::TWO);
+    hold(&mut session, key::SUPER, false);
+    assert!(!settle(&mut session, &mut launcher), "still open");
+    assert_eq!(session.compositor().desktop().active_workspace(), 0);
+    // With a window's keyboard it is the workspace's, as ever:
+    // `input::shift_selects_a_different_binding_on_the_same_key`.
+}
+
+/// Presses `code` with `held` held, in the order a hand would.
+fn chord(session: &mut Session, held: &[Keycode], code: Keycode) {
+    for key in held {
+        hold(session, *key, true);
+    }
+    press(session, code);
+    for key in held.iter().rev() {
+        hold(session, *key, false);
+    }
+}
+
+#[test]
+fn with_the_launcher_up_super_with_shift_and_a_digit_is_still_its_binding() {
+    // As the pictures of the screen are, on Super, Shift and a digit.
+    let keys = "bindings:\n  - { keys: Super+Shift+2, action: { workspace: 2 } }\n";
+    let mut session = Session::with_config(&[("keys.yaml", keys)]);
+    let mut launcher = launcher(&mut session);
+    settle(&mut session, &mut launcher);
+    chord(&mut session, &[key::SUPER, key::SHIFT], key::TWO);
+    settle(&mut session, &mut launcher);
+    assert_eq!(session.compositor().desktop().active_workspace(), 1);
+}
+
+#[test]
+fn in_the_ordinary_way_super_and_a_digit_bound_is_its_binding_with_the_launcher_up() {
+    // There the launcher's modes are on Ctrl, and Super is the system's.
+    let keys = "defaults: ordinary\nbindings:\n  - { keys: Super+2, action: { workspace: 2 } }\n";
+    let mut session = Session::with_config(&[("keys.yaml", keys)]);
+    let mut launcher = launcher(&mut session);
+    settle(&mut session, &mut launcher);
+    chord(&mut session, &[key::SUPER], key::TWO);
+    settle(&mut session, &mut launcher);
+    assert_eq!(session.compositor().desktop().active_workspace(), 1);
+}

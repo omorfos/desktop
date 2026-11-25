@@ -504,14 +504,45 @@ impl Compositor {
         way && !self.shell_focused()
     }
 
+    /// Whether `code`, pressed with `held`, is one of the launcher's modes,
+    /// Super with a digit, while it has the keyboard (ADR 109), rather than
+    /// a workspace's: by the key's place on the number row, as the
+    /// launcher reads it. Super alone, so that a chord with Shift or Ctrl
+    /// beside it, as the pictures of the screen are, is still its
+    /// binding's; and in the Mac's way, as in the ordinary way the modes
+    /// are on Ctrl, which no binding takes.
+    fn launchers_mode_key(&self, held: &ModifiersState, code: Keycode) -> bool {
+        let row = (10..=19).contains(&code.raw());
+        let alone = bridge::modifiers(held) == Modifiers::SUPER;
+        let ordinary = self.config().keys.ordinary();
+        alone && row && !ordinary && self.overlay_focused()
+    }
+
+    /// The surface that has the keyboard, if one does that is not an X11
+    /// window's.
+    fn focused_surface(&self) -> Option<WlSurface> {
+        match self.keyboard.current_focus() {
+            Some(Focus::Surface(surface)) => Some(surface),
+            _ => None,
+        }
+    }
+
+    /// Whether what has the keyboard is one of the shell's surfaces over
+    /// everything, as the launcher's: not a window, and of a program the
+    /// compositor started with the role for it.
+    fn overlay_focused(&self) -> bool {
+        let surface = self.focused_surface();
+        let window = |surface: &WlSurface| self.scene.iter().any(|shown| shown.surface == *surface);
+        let surface = surface.filter(|surface| !window(surface));
+        let roles = Self::roles(surface.and_then(|surface| surface.client()).as_ref());
+        roles.has(Roles::OVERLAY)
+    }
+
     /// Whether what has the keyboard is one of the shell's programs with
     /// fields: the launcher, the boxes that ask for a secret and the lock
     /// screen, by the roles the compositor started them with.
     fn shell_focused(&self) -> bool {
-        let surface = match self.keyboard.current_focus() {
-            Some(Focus::Surface(surface)) => Some(surface),
-            _ => None,
-        };
+        let surface = self.focused_surface();
         let roles = Self::roles(surface.and_then(|surface| surface.client()).as_ref());
         [Roles::OVERLAY, Roles::ASK, Roles::LOCK]
             .into_iter()
@@ -631,6 +662,9 @@ impl Compositor {
                 modifiers: bridge::modifiers(held),
                 keysym: keysym.raw(),
             };
+            if compositor.launchers_mode_key(held, code) {
+                return FilterResult::Forward;
+            }
             // Super is the desktop's: a chord with it that nothing binds
             // is the program's as Ctrl (ADR 78), unless it is not to be.
             let as_ctrl = held.logo && compositor.super_as_ctrl();
