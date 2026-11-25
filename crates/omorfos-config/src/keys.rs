@@ -225,7 +225,8 @@ fn super_way() -> Vec<Binding> {
         bind("XF86Keyboard", Action::NextLayout),
         bind("XF86LaunchA", Action::Overview),
     ];
-    shared(&mut bindings);
+    media(&mut bindings);
+    beside(&mut bindings);
     for number in 1..=9 {
         let workspace = WorkspaceNumber::clamped(number);
         bindings.push(bind(
@@ -242,63 +243,40 @@ fn super_way() -> Vec<Binding> {
 }
 
 /// The built-in bindings of the ordinary way, with Ctrl and Alt as Windows,
-/// GNOME and KDE have them (ADR 101, as accepted): those ADR 101 names, and
-/// GNOME's where it names none. A chord with Super that nothing here binds
-/// reaches the program as it is.
+/// GNOME and KDE have them (ADR 101, as accepted): Super is left to the
+/// launcher and the overview, and to what ADR 101 names beside them, locking,
+/// half the screen and the workspaces; GNOME's keys with Alt and Ctrl where
+/// it names none. A chord with Super that nothing here binds reaches the
+/// program as it is.
 fn ordinary_way() -> Vec<Binding> {
     let mut bindings = vec![
-        bind("Super+Return", Action::Open(Application::Terminal)),
         bind("Super+space", Action::ShowLauncher),
         bind("Super+Up", Action::Overview),
         bind("XF86LaunchA", Action::Overview),
-        bind("Alt+Tab", Action::SwitchWindows),
-        bind("Alt+Shift+Tab", Action::SwitchWindowsBack),
-        bind("Super+Tab", Action::SwitchPrograms),
-        bind("Super+Shift+Tab", Action::SwitchProgramsBack),
-        bind("Super+grave", Action::NextWindow),
-        bind("Super+Shift+grave", Action::PreviousWindow),
-        bind("Super+Ctrl+Tab", Action::NextTab),
-        bind("Super+Ctrl+Shift+Tab", Action::PreviousTab),
-        bind("Alt+F4", Action::Close),
-        bind("Alt+F10", Action::Maximize),
-        bind("Super+h", Action::Minimize),
-        bind("Super+Ctrl+f", Action::Fullscreen),
+        bind("Super+l", Action::Lock),
         bind("Super+Left", Action::Tile(Half::Left)),
         bind("Super+Right", Action::Tile(Half::Right)),
         bind("Super+Page_Up", Action::PreviousWorkspace),
         bind("Super+Page_Down", Action::NextWorkspace),
-        bind("Super+Ctrl+n", Action::NewWorkspace),
-        bind("Super+Ctrl+Shift+n", Action::MoveToNewWorkspace),
-        bind("Super+l", Action::Lock),
-        bind("XF86ScreenSaver", Action::Lock),
+        bind("Alt+Tab", Action::SwitchWindows),
+        bind("Alt+Shift+Tab", Action::SwitchWindowsBack),
+        bind("Alt+F4", Action::Close),
+        bind("Alt+F10", Action::Maximize),
         bind("Ctrl+Alt+Delete", Action::LogOut),
+        bind("XF86ScreenSaver", Action::Lock),
         bind("Print", Action::Spawn(Started::screenshot())),
         bind("Shift+Print", Action::Spawn(Started::screenshot_copied())),
         bind("Alt+Print", Action::Spawn(Started::screenshot_window())),
         bind("XF86Display", Action::NextScreens),
-        bind("Super+F1", Action::NextScreens),
         bind("XF86Keyboard", Action::NextLayout),
     ];
-    shared(&mut bindings);
-    for number in 1..=9 {
-        let workspace = WorkspaceNumber::clamped(number);
-        bindings.push(bind(
-            &format!("Super+{number}"),
-            Action::Workspace(workspace),
-        ));
-        bindings.push(bind(
-            &format!("Super+Shift+{number}"),
-            Action::MoveToWorkspace(workspace),
-        ));
-    }
+    media(&mut bindings);
     bindings
 }
 
-/// What both ways have: the keys for the volume, the brightness and what
-/// is playing, and those that go between windows that share a workspace.
-fn shared(bindings: &mut Vec<Binding>) {
-    // The keys a keyboard has for the volume, the brightness and what
-    // is playing, which mean nothing else.
+/// The keys a keyboard has for the volume, the brightness and what is
+/// playing, which mean nothing else, as both ways have them.
+fn media(bindings: &mut Vec<Binding>) {
     let session = [
         ("XF86AudioRaiseVolume", "volume up"),
         ("XF86AudioLowerVolume", "volume down"),
@@ -315,8 +293,11 @@ fn shared(bindings: &mut Vec<Binding>) {
     for (key, asked) in session {
         bindings.push(bind(key, Action::Spawn(Command::session(asked).into())));
     }
-    // Among windows that share a workspace: to the one beside, and
-    // changing places with it.
+}
+
+/// Among windows that share a workspace: to the one beside, and changing
+/// places with it.
+fn beside(bindings: &mut Vec<Binding>) {
     let beside = [
         ("Left", Half::Left),
         ("Right", Half::Right),
@@ -806,20 +787,40 @@ bindings:
         assert_eq!(action_for("Super+Page_Down"), Some(Action::NextWorkspace));
         assert_eq!(action_for("Super+space"), Some(Action::ShowLauncher));
         assert_eq!(action_for("Super+Up"), Some(Action::Overview));
-        // And as GNOME has them where it names none.
-        assert_eq!(action_for("Super+Tab"), Some(Action::SwitchPrograms));
-        assert_eq!(action_for("Super+grave"), Some(Action::NextWindow));
+        // And with Alt and Ctrl, as GNOME has them, where it names none.
         assert_eq!(action_for("Alt+F10"), Some(Action::Maximize));
-        assert_eq!(action_for("Super+h"), Some(Action::Minimize));
         assert_eq!(action_for("Ctrl+Alt+Delete"), Some(Action::LogOut));
-        assert_eq!(
-            action_for("Super+Shift+3"),
-            Some(Action::MoveToWorkspace(WorkspaceNumber::clamped(3)))
-        );
         assert_eq!(
             action_for("XF86AudioMute"),
             Some(Action::Spawn(Command::session("volume mute").into()))
         );
+        // Every other chord with Super is the program's, as it is typed
+        // (#153): none of the Mac way's, nor GNOME's beyond ADR 101's.
+        for chord in [
+            "Super+Tab",
+            "Super+grave",
+            "Super+h",
+            "Super+Return",
+            "Super+3",
+            "Super+Shift+3",
+            "Super+Ctrl+Left",
+            "Super+Ctrl+Tab",
+            "Super+F1",
+        ] {
+            assert_eq!(action_for(chord), None, "{chord}");
+        }
+        let super_held = keys
+            .bindings()
+            .iter()
+            .filter(|binding| {
+                binding
+                    .keys
+                    .chords()
+                    .iter()
+                    .any(|chord| chord.modifiers.contains(Modifiers::SUPER))
+            })
+            .count();
+        assert_eq!(super_held, 7, "only the seven ADR 101 names hold Super");
         // Super with a letter is the program's, as it is typed.
         assert_eq!(action_for("Super+q"), None);
         assert_eq!(action_for("Super+m"), None);

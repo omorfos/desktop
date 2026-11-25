@@ -179,6 +179,14 @@ And what the proposal left to the review:
 - `Super+Return`, the terminal, and `Super+Ctrl+N`, a new workspace, stay
   as they are.
 
+Tried on real hardware on 25 November 2026 (#153), the ordinary way held
+Super for more than what it names above, as GNOME has Super+Tab, Super+H
+and Super with a digit, and the Mac's way's terminal and tiles. It keeps
+only what is named: the launcher, the overview, locking, the halves and
+the workspaces by Page Up and Down. Every other chord with Super is the
+program's, as one coming from Windows or KDE expects, and is bound in
+`keys.yaml` by whoever wants it.
+
 ## Alternatives
 
 - **The best of each**, GNOME's overview on a tap of Super, KDE's three

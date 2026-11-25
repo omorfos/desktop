@@ -1830,10 +1830,11 @@ the first than on the last.
             program and a spread for the desktop; a page of settings for
             the gestures, for stage 7;
       - [x] `defaults: ordinary`, and the release that moves the keys
-            saying which (#133): those ADR 101 names, and GNOME's where it
-            names none, `Alt+F10` maximizing, `Super+h` minimizing and
-            `Ctrl+Alt+Delete` logging out; a chord with Super that nothing
-            binds reaching the program as it is.
+            saying which (#133): those ADR 101 names, and with Alt and
+            Ctrl GNOME's where it names none, `Alt+F10` maximizing and
+            `Ctrl+Alt+Delete` logging out; Super holding only what ADR
+            101 names (#153), every other chord with it reaching the
+            program as it is.
 
 ## 5. The shell: a bar and a dock
 

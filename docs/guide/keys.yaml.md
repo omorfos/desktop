@@ -69,18 +69,15 @@ Super that nothing binds reaches the program as it is:
 | `Alt+Tab` | Switch windows; `Alt+Shift+Tab` back |
 | `Alt+F4` | Close the window |
 | `Alt+F10` | Maximize the window, or restore it |
-| `Super+h` | Minimize the window |
 | `Super+Left` | Have the window take the left half; `Super+Right` the right |
 | `Super+Page_Down` | Go to the next workspace; `Super+Page_Up` the one before |
-| `Super+1` | Go to the first workspace; `Super+Shift+1` send the window there |
 | `Super+l` | Lock the screen |
 | `Ctrl+Alt+Delete` | Log out, asking first |
-| `Super+Tab` | Switch programs; `Super+grave` the program's next window |
 | `Super+space` | Open the launcher; `Super+Up` the overview |
 
-and as the Mac's way has them: `Super+Return` for a terminal, the `Print`
-keys, the keys for the volume, the brightness and what is playing, and
-`Super+Ctrl` with the arrows between windows that share a workspace.
+and the `Print` keys, and those for the volume, the brightness and what
+is playing. Super holds nothing else: `Super+Tab`, `Super+1` or
+`Super+Return` reach the program unless you bind them in `keys.yaml`.
 
 ## Built-in bindings
 
