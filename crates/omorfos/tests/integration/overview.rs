@@ -824,15 +824,6 @@ fn let_go_short_of_half_way_it_sinks_back_unless_flicked() {
 }
 
 #[test]
-fn down_with_no_overview_open_does_nothing() {
-    let (mut session, _client, open) = swiping(&[UNBLURRED]);
-    swipe(&mut session, &[100.0, 100.0], true);
-    assert_eq!(session.compositor().overview_layout(), None);
-    assert_eq!(dimmed(&mut session, open), 0);
-    assert_eq!(session.compositor().desktop().active_workspace(), 0);
-}
-
-#[test]
 fn with_motion_reduced_the_fingers_carry_nothing_but_open_it_as_they_lift() {
     let reduced = ("config.yaml", "appearance: { reduce_motion: true }\n");
     let (mut session, _client, open) = swiping(&[UNBLURRED, reduced]);
@@ -968,6 +959,41 @@ fn the_program_windows_are_shown_alone_and_super_ctrl_down_closes_any_overview()
     // And they open it.
     down(&mut session);
     assert_eq!(shown(&session).unwrap().0.len(), 2);
+}
+
+#[test]
+fn fingers_down_carry_the_program_windows_open_and_up_close_them() {
+    let mut session = Session::with_config(&[UNBLURRED]);
+    let mut client = session.connect();
+    for (name, colour) in [("files", RED), ("other", BLUE), ("files", GREEN)] {
+        session.open(&mut client, name, (180, 120), colour);
+    }
+    session.step();
+    // Down, with nothing open: the program in front's windows alone.
+    swipe(&mut session, &[100.0, 100.0, 100.0], true);
+    session.advance(GLIDE);
+    let (places, _) = shown(&session).unwrap();
+    let names: Vec<&str> = places.iter().map(|(name, _)| name.as_str()).collect();
+    assert_eq!(names, ["files", "files"]);
+    // Down again does nothing more; up closes them.
+    swipe(&mut session, &[100.0, 100.0, 100.0], true);
+    session.advance(GLIDE);
+    assert_eq!(shown(&session).unwrap().0.len(), 2);
+    swipe(&mut session, &[-100.0, -100.0, -100.0], true);
+    session.advance(GLIDE);
+    assert_eq!(session.compositor().overview_layout(), None);
+    // Short of half way, slowly, they sink back.
+    swipe(&mut session, &[60.0], true);
+    session.advance(GLIDE);
+    assert_eq!(session.compositor().overview_layout(), None);
+}
+
+#[test]
+fn with_no_window_in_front_fingers_down_open_nothing() {
+    let mut session = Session::with_config(&[UNBLURRED]);
+    swipe(&mut session, &[100.0, 100.0, 100.0], true);
+    assert_eq!(session.compositor().overview_layout(), None);
+    assert_eq!(session.compositor().desktop().active_workspace(), 0);
 }
 
 #[test]
