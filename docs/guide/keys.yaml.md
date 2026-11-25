@@ -195,7 +195,7 @@ it takes and what it does.
 | `switch_programs`, `switch_programs_back` | Open the switcher with each program once, by its window used last, as Cmd+Tab does, or go on to the next or back; the program chosen comes forward with all its windows on the workspace. |
 | `next_window`, `previous_window` | Focus the next window of the focused window's program on its workspace, or the one before, going round, as Cmd+backquote does. |
 | `overview` | Open the overview of the workspace's windows, or close it. See [The overview](windows.md#the-overview). |
-| `show_program_windows` | Open the overview with only the focused program's windows on the workspace, as App Exposé shows them, or close the overview. See [The overview](windows.md#the-overview). |
+| `show_program_windows` | Open the overview with only the focused program's windows on the workspace, as App Exposé shows them, or close the overview. Three fingers or four swiped down the touchpad open it too, and up close it. See [The overview](windows.md#the-overview). |
 | `focus_next`, `focus_previous` | Cycle windows, without the switcher. |
 | `next_tab`, `previous_tab` | Cycle tabs in the focused group. |
 | `workspace: N` | Switch to workspace N (from 1) on the screen the pointer is on. One past the last is made first; further than that does nothing. |

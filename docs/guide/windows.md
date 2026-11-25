@@ -159,7 +159,9 @@ half way, however slowly, or flick them, however short a way, and the
 one that came in is shown; lift them short of half way slowly, or flick
 them back, and the one that was there stays. Barely moved fingers
 settling as they lift change nothing. Three fingers or four swiped up open the overview (see [The overview](windows.md#the-overview)),
-and down close it. Four fingers spread apart show the desktop: every
+and down close it; swiped down with nothing open, they show the windows
+of the program in front alone, as `show_program_windows` does, and up
+close them. Four fingers spread apart show the desktop: every
 window of the workspace shown goes with them, straight out from the
 middle of the screen until a sliver of it is left at the edge it comes to,
 and none has the keyboard. Four fingers pinched together bring them back

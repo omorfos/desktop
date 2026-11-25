@@ -940,8 +940,8 @@ what only games and touchpads need last.
             sliding in beside it. The
             workspaces, the overview and the windows aside follow the
             fingers by one rule, `fingers.rs`.
-      - [ ] Down, with the overview closed, the program's windows, once
-            `show_program_windows` is there (#141).
+      - [x] Down, with nothing open, the program in front's windows
+            alone, and up closing them (`show_program_windows`).
       - [ ] Four fingers pinched, the launcher's every program (#157).
       - [ ] The page of settings.
 - [x] The session outliving the compositor (ADR 60), the holder first,

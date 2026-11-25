@@ -1,6 +1,9 @@
 //! Gestures on a touchpad: three fingers or four swiped across it go from
 //! one workspace to the next, swiped up open the overview and down close
-//! it, either, as a Mac has it (ADR 101); and every other gesture is the
+//! it, and swiped down with nothing open show the program in front's
+//! windows alone and up close them, either, as a Mac has it (ADR 101);
+//! four spread and pinched set the windows aside and bring them back (see
+//! `aside.rs`); and every other gesture is the
 //! program's under the pointer (`pointer-gestures`), for a pinch to zoom a
 //! page or a map.
 //!

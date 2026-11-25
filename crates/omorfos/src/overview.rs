@@ -220,20 +220,23 @@ impl Overview {
 struct Held {
     /// How open it was as they began.
     from: f32,
-    /// How far they have gone down the touchpad since, up being less than
-    /// none.
+    /// How far they have gone toward opening it since, up the touchpad
+    /// for the whole overview and down it for a program's windows.
     moved: f64,
     /// How fast, open being more.
     fingers: Fingers,
     /// Whether what is shown follows them, as it does unless motion is to
     /// be reduced.
     carried: bool,
+    /// Whether fingers going up the touchpad open it: the whole overview,
+    /// where down opens a program's windows.
+    up: bool,
 }
 
 impl Held {
     /// How open the fingers have taken it.
     fn reached(&self) -> f32 {
-        let reached = self.moved.mul_add(-1.0 / REACH, f64::from(self.from));
+        let reached = self.moved.mul_add(1.0 / REACH, f64::from(self.from));
         #[expect(
             clippy::cast_possible_truncation,
             reason = "a share from 0 to 1 by the clamp"
@@ -994,36 +997,44 @@ impl Compositor {
 }
 
 impl Compositor {
-    /// Takes three fingers that began to swipe up the touchpad, if
-    /// `opening`, or down it, and so open the overview or close it: it
-    /// follows them from as open as it is. Says whether there was one to
-    /// open or close.
-    pub(crate) fn overview_swipe_began(&mut self, opening: bool, time: u32) -> bool {
+    /// Takes three fingers or four that began to swipe up the touchpad,
+    /// if `up`, or down it: up opens the whole overview, and down closes
+    /// it; down opens the windows of the program in front alone, as a
+    /// Mac's App Exposé, and up closes them. It follows them from as open
+    /// as it is. Says whether there was one to open or close.
+    pub(crate) fn overview_swipe_began(&mut self, up: bool, time: u32) -> bool {
         let clock = self.clock();
         let carried = !self.config().general.appearance.reduce_motion;
+        let held = |from, up| Held {
+            from,
+            moved: 0.0,
+            fingers: Fingers::down(time),
+            carried,
+            up,
+        };
         let looking = self.cards.overview.open.as_mut();
         let looking = looking.filter(|looking| !looking.closing);
-        match (opening, looking) {
-            (true, None) => {
-                let held = Held {
-                    from: 0.0,
-                    moved: 0.0,
-                    fingers: Fingers::down(time),
-                    carried,
-                };
-                self.open_overview(Some(held), None);
+        match looking {
+            None => {
+                // Down, the program in front's, if there is a window in
+                // front to say which.
+                let focused = self
+                    .desktop
+                    .focused()
+                    .and_then(|id| self.desktop.window(id));
+                let program = focused.map(|window| window.app_id.clone());
+                let opens = up || program.is_some();
+                if opens {
+                    self.open_overview(Some(held(0.0, up)), program.filter(|_| !up));
+                }
+                opens
+            }
+            // Closed the way that did not open it.
+            Some(looking) if up == looking.program.is_some() => {
+                looking.held = Some(held(looking.open(clock), !up));
                 true
             }
-            (false, Some(looking)) => {
-                looking.held = Some(Held {
-                    from: looking.open(clock),
-                    moved: 0.0,
-                    fingers: Fingers::down(time),
-                    carried,
-                });
-                true
-            }
-            _ => false,
+            Some(_) => false,
         }
     }
 
@@ -1034,8 +1045,10 @@ impl Compositor {
         let Some(held) = looking.and_then(|looking| looking.held.as_mut()) else {
             return false;
         };
-        held.fingers.went(-dy / REACH, time);
-        held.moved += dy;
+        // Toward opening it, as the fingers go up or down.
+        let toward = if held.up { -dy } else { dy };
+        held.fingers.went(toward / REACH, time);
+        held.moved += toward;
         true
     }
 
