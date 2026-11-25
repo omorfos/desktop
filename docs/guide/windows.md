@@ -107,7 +107,8 @@ bindings:
 
 `Super+Ctrl+Down`, as Ctrl+Down shows a Mac's App Exposé, opens it with
 the windows of the program in front alone, the `show_program_windows`
-action; with no window in front it does nothing. Either key closes the
+action; with no window in front it does nothing. The other programs'
+windows fade where they stand as it opens, and back as it closes. Either key closes the
 overview again, whichever windows it shows. The ordinary way has no key
 for it until you bind one.
 

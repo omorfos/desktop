@@ -1052,6 +1052,44 @@ fn fingers_closing_the_overview_go_to_the_window_under_the_pointer() {
 }
 
 #[test]
+fn the_other_programs_windows_fade_where_they_are_as_the_programs_windows_open() {
+    let mut session = Session::with_config(&[UNBLURRED]);
+    let mut client = session.connect();
+    session.open(&mut client, "other", (600, 440), BLUE);
+    session.open(&mut client, "more", (300, 200), GREEN);
+    session.open(&mut client, "files", (100, 80), RED);
+    session.advance(GLIDE);
+    let corner = (590, 430);
+    assert_eq!(session.draw().at(corner.0, corner.1), BLUE);
+    // Where the one opened second stands over the first, by its own corner.
+    let over = {
+        let desktop = session.compositor().desktop();
+        let mut windows = desktop.windows();
+        let found = windows.find(|listed| listed.window.app_id == "more");
+        let id = found.unwrap().window.id;
+        desktop.frame_of(id).unwrap().geometry
+    };
+    let over = (
+        over.origin.x + over.size.width.cast_signed() - 5,
+        over.origin.y + over.size.height.cast_signed() - 5,
+    );
+    assert_eq!(session.draw().at(over.0, over.1), GREEN);
+    // Half way down, the other program's window half gone where it is.
+    swipe(&mut session, &[75.0, 75.0], false);
+    let half = session.draw().at(corner.0, corner.1);
+    let blue = half & 0xff;
+    assert!(blue > 0x40 && blue < 0xe0, "half faded: {half:#x}");
+    // Still the one over the other.
+    let stacked = session.draw().at(over.0, over.1);
+    assert!((stacked >> 8) & 0xff > stacked & 0xff, "{stacked:#x}");
+    // Let go short of half way, slowly: back as it was.
+    swipe_on(&mut session, &[-75.0, -40.0], true);
+    session.advance(GLIDE);
+    assert_eq!(session.compositor().overview_layout(), None);
+    assert_eq!(session.draw().at(corner.0, corner.1), BLUE);
+}
+
+#[test]
 fn with_no_window_in_front_fingers_down_open_nothing() {
     let mut session = Session::with_config(&[UNBLURRED]);
     swipe(&mut session, &[100.0, 100.0, 100.0], true);
