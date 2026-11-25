@@ -906,7 +906,8 @@ fn a_program_told_of_a_swipe_under_way_is_kept_and_told_it_was_cancelled() {
         .compositor_mut()
         .input(Input::Motion { x: 50.0, y: 50.0 }, 0);
     first.roundtrip(&mut client);
-    let begun = Gesture::SwipeBegin { fingers: 4 };
+    // Of five fingers, as three and four are the desktop's.
+    let begun = Gesture::SwipeBegin { fingers: 5 };
     first.compositor_mut().input(Input::Gesture(begun), 0);
     first.roundtrip(&mut client);
     assert!(client.take_events().contains(&Event::Gesture(begun)));
