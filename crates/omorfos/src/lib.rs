@@ -11,6 +11,7 @@
 //! backend adds its input to that loop as [`Input`] values and draws each
 //! turn with [`Compositor::render`].
 
+mod aside;
 mod asked;
 mod backdrops;
 pub mod backend;

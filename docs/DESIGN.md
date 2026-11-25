@@ -270,12 +270,16 @@ straight down.
 | A colour changing with a state | 120 ms | ease-out |
 | Something coming onto the screen | 180 ms | ease-out, from 96% of its size and no opacity |
 | Something leaving | 120 ms | ease-in, to 98% and no opacity |
-| A window moving to where it was sent: maximize | 240 ms | ease-in-out |
+| A window moving to where it was sent: maximize; the rest of the way, the windows set aside to show the desktop let go of by the fingers; and those coming back as their workspace is left | 240 ms | ease-in-out |
 | A workspace sliding, by the fingers or a key: a page turned, which the eye follows across the whole screen | 320 ms | ease-in-out |
 
 - Nothing but a workspace sliding is longer than 300 ms, nothing
   bounces, nothing loops.
-- What the user drags follows the hand with no easing at all.
+- What the user drags follows the hand with no easing at all, and so
+  does what fingers on a touchpad carry: the workspaces, the overview,
+  the windows set aside. Let go of, each goes on or back by one rule, in
+  `crates/omorfos/src/fingers.rs`: on if taken past half way, or flicked
+  on past a twitch; back otherwise.
 - Leaving is quicker than arriving: what has been dismissed should not
   be in the way of what is next.
 - Movement never holds input up. A menu can be clicked the frame it

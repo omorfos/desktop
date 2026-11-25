@@ -458,6 +458,20 @@ impl Compositor {
         config.general.keyboard.super_as_ctrl && !config.keys.ordinary()
     }
 
+    /// Takes Escape, if it is the desktop's: closing an open menu, or with
+    /// the windows set aside, none of which has the keyboard, bringing them
+    /// back, but for a panel that has it.
+    fn escape(&mut self) -> bool {
+        if self.menu.take().is_some() {
+            return true;
+        }
+        let aside = self.desktop.showing_desktop() && self.layer_focus.is_none();
+        if aside {
+            self.desktop.show_desktop();
+        }
+        aside
+    }
+
     fn key(&mut self, code: Keycode, pressed: bool, time: u32) {
         let keyboard = self.keyboard.clone();
         let state = if pressed {
@@ -509,8 +523,7 @@ impl Compositor {
                 compositor.taken.suppressed.push(code);
                 return FilterResult::Intercept(None);
             }
-            if compositor.menu.is_some() && keysym == Keysym::Escape {
-                compositor.menu = None;
+            if keysym == Keysym::Escape && compositor.escape() {
                 compositor.taken.suppressed.push(code);
                 return FilterResult::Intercept(None);
             }

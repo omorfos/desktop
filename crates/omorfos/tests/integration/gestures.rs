@@ -13,7 +13,7 @@ use wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_surface_v1::{
 
 use crate::common::{Client, Event, FOUR_WORKSPACES, LayerShape, Session, WIDTH};
 use crate::lock::lock;
-use crate::windows::{BACKGROUND, BLUE, GREEN, RED};
+use crate::windows::{BACKGROUND, BLUE, GREEN, MOVING, RED};
 
 /// Makes a gesture on the touchpad, step by step, each at its time in
 /// milliseconds.
@@ -359,6 +359,221 @@ fn four_fingers_swipe_as_three_do_and_are_not_the_programs() {
     session.eventually(|session| session.compositor().overview_layout().is_none());
     session.roundtrip(&mut client);
     assert_eq!(told(&mut client), [], "none of it the program's");
+}
+
+/// A pinch of `fingers`, its fingers ending `scale` as far apart as they
+/// began: more than one, a spread.
+fn pinch(fingers: u32, scale: f64) -> [Gesture; 4] {
+    let update = |scale| Gesture::PinchUpdate {
+        dx: 0.0,
+        dy: 0.0,
+        scale,
+        rotation: 0.0,
+    };
+    [
+        Gesture::PinchBegin { fingers },
+        update(f64::midpoint(1.0, scale)),
+        update(scale),
+        Gesture::PinchEnd { cancelled: false },
+    ]
+}
+
+/// Where the first window is, and where nothing is once it is set aside.
+const INSIDE: (i32, i32) = (100, 50);
+/// The sliver of the first window left on the screen once it is set
+/// aside, at the left edge.
+const SLIVER: (i32, i32) = (5, 5);
+
+/// A window, in a session whose windows take their time to move.
+fn moving() -> (Session, Client) {
+    let mut session = Session::with_config(&[MOVING]);
+    let mut client = session.connect();
+    session.open(&mut client, "first", (200, 100), RED);
+    // Come in the whole way.
+    session.advance(Duration::from_secs(1));
+    (session, client)
+}
+
+/// Whether the windows are set aside, glided the whole way.
+fn aside(session: &mut Session) -> bool {
+    let picture = session.draw();
+    let at = |(x, y)| picture.at(x, y);
+    (at(INSIDE), at(SLIVER)) == (BACKGROUND, RED)
+}
+
+#[test]
+fn four_fingers_spread_send_the_windows_aside_and_pinched_bring_them_back() {
+    let (mut session, mut client) = moving();
+    let _gestures = client.gestures();
+    session.roundtrip(&mut client);
+    client.take_events();
+    let showing = |session: &Session| session.compositor().desktop().showing_desktop();
+
+    touch(&mut session, &pinch(4, 1.6));
+    assert!(showing(&session));
+    assert_eq!(session.draw().at(INSIDE.0, INSIDE.1), RED, "setting out");
+    session.eventually(aside);
+    // Spread again, it stays; pinched in hardly or cancelled, too.
+    touch(&mut session, &pinch(4, 1.6));
+    touch(&mut session, &pinch(4, 0.95));
+    let mut cancelled = pinch(4, 0.5);
+    cancelled[3] = Gesture::PinchEnd { cancelled: true };
+    touch(&mut session, &cancelled);
+    assert!(showing(&session));
+    touch(&mut session, &pinch(4, 0.5));
+    assert!(!showing(&session));
+    session.eventually(|session| session.draw().at(INSIDE.0, INSIDE.1) == RED);
+    // Pinched in with nothing aside, or hardly spread, it does nothing.
+    touch(&mut session, &pinch(4, 0.5));
+    touch(&mut session, &pinch(4, 1.05));
+    assert!(!showing(&session));
+    session.roundtrip(&mut client);
+    assert_eq!(told(&mut client), [], "none of it the program's");
+}
+
+/// A step of four fingers pinching, `scale` times as far apart as they
+/// began.
+fn spread_to(scale: f64) -> Gesture {
+    Gesture::PinchUpdate {
+        dx: 0.0,
+        dy: 0.0,
+        scale,
+        rotation: 0.0,
+    }
+}
+
+#[test]
+fn the_windows_go_aside_with_the_fingers_and_back_and_let_go_go_on_quickly() {
+    let (mut session, mut client) = moving();
+    let _gestures = client.gestures();
+    session.roundtrip(&mut client);
+    // Half way aside, up and left from the middle: from (0, 0) to (-60,
+    // -52), half of it is (-30, -26), its foot at 74.
+    let half = 1.5_f64.sqrt();
+    touch(
+        &mut session,
+        &[Gesture::PinchBegin { fingers: 4 }, spread_to(half)],
+    );
+    let picture = session.draw();
+    assert_eq!(
+        (picture.at(100, 50), picture.at(100, 80)),
+        (RED, BACKGROUND)
+    );
+    // Together again, home, at once: the fingers lead.
+    touch(&mut session, &[spread_to(1.0)]);
+    assert_eq!(session.draw().at(100, 80), RED);
+    // Spread past half way and let go: aside the rest of the way in the
+    // time something sent takes.
+    touch(&mut session, &[spread_to(1.3)]);
+    session.draw();
+    touch(&mut session, &[Gesture::PinchEnd { cancelled: false }]);
+    assert!(session.compositor().desktop().showing_desktop());
+    session.advance(Duration::from_millis(250));
+    let picture = session.draw();
+    assert_eq!((picture.at(60, 50), picture.at(5, 5)), (BACKGROUND, RED));
+    // Short of half way, back.
+    touch(
+        &mut session,
+        &[Gesture::PinchBegin { fingers: 4 }, spread_to(0.9)],
+    );
+    touch(&mut session, &[Gesture::PinchEnd { cancelled: false }]);
+    assert!(session.compositor().desktop().showing_desktop());
+}
+
+#[test]
+fn with_motion_reduced_the_fingers_carry_nothing_and_the_windows_go_aside_as_they_lift() {
+    let reduced = ("config.yaml", "appearance: { reduce_motion: true }\n");
+    let mut session = Session::with_config(&[reduced]);
+    let mut client = session.connect();
+    session.open(&mut client, "first", (200, 100), RED);
+    session.advance(Duration::from_secs(1));
+    touch(
+        &mut session,
+        &[Gesture::PinchBegin { fingers: 4 }, spread_to(1.4)],
+    );
+    assert_eq!(
+        session.draw().at(INSIDE.0, INSIDE.1),
+        RED,
+        "carried nowhere"
+    );
+    touch(&mut session, &[Gesture::PinchEnd { cancelled: false }]);
+    assert!(aside(&mut session), "and there at once");
+}
+
+#[test]
+fn a_workspace_left_by_a_key_has_its_windows_back_as_it_goes() {
+    let mut session = Session::with_config(&[MOVING, ("config.yaml", FOUR_WORKSPACES)]);
+    let mut client = session.connect();
+    session.open(&mut client, "first", (200, 100), RED);
+    session.advance(Duration::from_secs(1));
+    session.compositor_mut().perform(&Action::ShowDesktop);
+    session.eventually(aside);
+    session.compositor_mut().perform(&Action::NextWorkspace);
+    // Set out on their way back as it goes, and there once they have taken
+    // the time it takes.
+    session.step();
+    session.advance(Duration::from_millis(250));
+    session.compositor_mut().perform(&Action::PreviousWorkspace);
+    session.step();
+    assert!(!session.compositor().desktop().showing_desktop());
+}
+
+#[test]
+fn nothing_of_a_workspace_is_drawn_over_the_one_sliding_in_beside_it() {
+    let (mut session, _client) = two_windows();
+    // On the second, its window set aside up and to the left, hanging past
+    // the screen's left edge.
+    session.compositor_mut().perform(&Action::NextWorkspace);
+    session.advance(Duration::from_secs(1));
+    session.compositor_mut().perform(&Action::ShowDesktop);
+    session.advance(Duration::from_secs(1));
+    assert_eq!(session.draw().at(5, 5), BLUE, "its sliver");
+    // Carried right, the first comes in from the left, where the part of
+    // the window that hangs past the edge would be.
+    carry(&mut session, fingers(100.0), 100);
+    let picture = session.draw();
+    assert_eq!(picture.at(105, 5), BLUE, "its sliver, carried");
+    assert_eq!(picture.at(70, 5), BACKGROUND, "and nothing more of it");
+    // And it comes back as the fingers carry its workspace away.
+    session.advance(Duration::from_millis(250));
+    assert!(!session.compositor().desktop().showing_desktop());
+}
+
+#[test]
+fn the_windows_set_aside_come_back_by_escape_by_a_sliver_clicked_or_by_the_action() {
+    let (mut session, _client) = moving();
+    let showing = |session: &Session| session.compositor().desktop().showing_desktop();
+    session.compositor_mut().perform(&Action::ShowDesktop);
+    session.eventually(aside);
+    let key = |session: &mut Session, pressed| {
+        let code = crate::common::key::ESCAPE;
+        session
+            .compositor_mut()
+            .input(Input::Key { code, pressed }, 0);
+    };
+    key(&mut session, true);
+    key(&mut session, false);
+    assert!(!showing(&session), "by Escape");
+
+    session.compositor_mut().perform(&Action::ShowDesktop);
+    session.eventually(aside);
+    let compositor = session.compositor_mut();
+    compositor.input(Input::Motion { x: 5.0, y: 5.0 }, 0);
+    for pressed in [true, false] {
+        compositor.input(
+            Input::Button {
+                button: 0x110,
+                pressed,
+            },
+            0,
+        );
+    }
+    assert!(!showing(&session), "by its sliver clicked");
+    session.eventually(|session| session.draw().at(INSIDE.0, INSIDE.1) == RED);
+
+    session.compositor_mut().perform(&Action::ShowDesktop);
+    session.compositor_mut().perform(&Action::ShowDesktop);
+    assert!(!showing(&session), "and by the action again");
 }
 
 #[test]

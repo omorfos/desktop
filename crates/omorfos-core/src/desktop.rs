@@ -238,6 +238,12 @@ pub struct Frame<'a> {
     /// beside, which does not show its workspace. Nothing while it does
     /// not slide, when it is drawn wherever it reaches.
     pub within: Option<Rect>,
+    /// While its workspace slides, or has its windows set aside, what of
+    /// its output that workspace is drawn on, outside which nothing of it
+    /// is drawn: no part of it covers the workspace coming in beside, nor
+    /// another output. It may be nothing. Nothing while it does neither,
+    /// when it is drawn wherever it reaches.
+    pub clip: Option<Rect>,
 }
 
 /// Which of the workspaces drawn on an output a frame is on.
@@ -462,6 +468,92 @@ const fn from_corner(point: Point, corner: Point) -> (i32, i32) {
 /// workspaces slide.
 const fn moved_across(at: Rect, by: i32) -> Rect {
     Rect::new(at.origin.offset(by, 0), at.size)
+}
+
+/// How much of a window set aside to show the desktop is left on its
+/// screen, in units of layout: enough to see that it is there, and to be
+/// clicked to bring the windows back, as a Mac leaves.
+const ASIDE: i32 = 48;
+
+/// Where a frame at `at` goes when it is set aside, on a screen of `area`,
+/// as a Mac sends them: straight out from the middle of the screen through
+/// its own middle, until [`ASIDE`] of it is left on the screen at the edge
+/// it comes to first. One in the very middle goes right; one already as
+/// far out as that stays where it is.
+fn aside(at: Rect, area: Rect) -> Point {
+    let lines = [
+        Along::of(at.origin.x, at.size.width, area.origin.x, area.size.width),
+        Along::of(at.origin.y, at.size.height, area.origin.y, area.size.height),
+    ];
+    let way = match lines.map(|line| line.way) {
+        [0, 0] => [1, 0],
+        way => way,
+    };
+    // How far along `way` it goes, as a fraction: as far as the line it
+    // comes to an edge of first takes it.
+    let fractions = lines.iter().zip(way).filter(|(_, way)| *way != 0);
+    let fractions =
+        fractions.map(|(line, way)| ((line.reach(way) * way.signum()).max(0), way.abs()));
+    let (gone, of) = fractions
+        .min_by(|(a, of_a), (b, of_b)| (a * of_b).cmp(&(b * of_a)))
+        .unwrap_or((0, 1));
+    let moved = |way: i128, from: i32| {
+        // Within the screen's own reach, it is an i32 still.
+        i32::try_from(i128::from(from) + way * gone / of).unwrap_or(from)
+    };
+    Point::new(moved(way[0], at.origin.x), moved(way[1], at.origin.y))
+}
+
+/// Where a frame lies along one line of a screen, for setting it aside.
+#[derive(Clone, Copy)]
+struct Along {
+    /// Twice how far its middle is past the screen's, which is the way it
+    /// goes.
+    way: i128,
+    at: i128,
+    size: i128,
+    from: i128,
+    across: i128,
+}
+
+impl Along {
+    fn of(at: i32, size: u32, from: i32, across: u32) -> Self {
+        let (at, size, from, across) = (
+            i128::from(at),
+            i128::from(size),
+            i128::from(from),
+            i128::from(across),
+        );
+        Self {
+            way: (at * 2 + size) - (from * 2 + across),
+            at,
+            size,
+            from,
+            across,
+        }
+    }
+
+    /// How far it goes along this line, going `way`, for [`ASIDE`] of it to
+    /// be left on the screen.
+    fn reach(self, way: i128) -> i128 {
+        let edge = if way > 0 {
+            self.from + self.across - i128::from(ASIDE)
+        } else {
+            self.from + i128::from(ASIDE) - self.size
+        };
+        edge - self.at
+    }
+}
+
+/// The place `by` a share of the way from `from` to `to`, out of
+/// [`WHOLE`].
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "a place between two that are i32s is one too"
+)]
+fn between(from: i32, to: i32, by: u32) -> i32 {
+    let way = (i64::from(to) - i64::from(from)) * i64::from(by) / i64::from(WHOLE);
+    (i64::from(from) + way) as i32
 }
 
 /// The room, in units of layout, left round each window offered in a part
@@ -1145,6 +1237,20 @@ struct Workspace {
     /// Bottom to top.
     groups: Vec<Group>,
     focused: Option<u64>,
+    /// Whether its windows are set aside, the desktop shown, until one has
+    /// the keyboard again or another workspace is shown.
+    aside: bool,
+    /// How many times its windows have been set aside or brought back,
+    /// each a sending of them to the screen's edges or back, round to
+    /// nothing past the largest.
+    asides: u64,
+    /// How far its windows have been carried aside by fingers that are
+    /// still on the touchpad, from where they are to where they would be
+    /// aside, out of [`WHOLE`].
+    carried: Option<u32>,
+    /// Whether its windows, set aside, are to be brought back over a time,
+    /// as it is left for another workspace.
+    unspread: bool,
 }
 
 impl Workspace {
@@ -1155,7 +1261,28 @@ impl Workspace {
             solo: None,
             groups: Vec::new(),
             focused: None,
+            aside: false,
+            asides: 0,
+            carried: None,
+            unspread: false,
         }
+    }
+
+    /// Sets its windows aside, or brings them back, counting it as their
+    /// being sent there if it changes anything.
+    const fn set_aside(&mut self, aside: bool) {
+        self.carried = None;
+        self.unspread = false;
+        if self.aside != aside {
+            self.aside = aside;
+            self.asides = self.asides.wrapping_add(1);
+        }
+    }
+
+    /// How far its windows are aside, out of [`WHOLE`]: none, all, or a
+    /// share between while fingers carry them.
+    fn aside_by(&self) -> u32 {
+        self.carried.unwrap_or(if self.aside { WHOLE } else { 0 })
     }
 
     /// The frame that fills a part, while it is here and still does.
@@ -1199,6 +1326,8 @@ impl Workspace {
     }
 
     fn focus(&mut self, group: usize, raise: bool) {
+        // One of its windows with the keyboard brings the rest back.
+        self.set_aside(false);
         self.groups[group].minimized = false;
         self.focused = Some(self.groups[group].serial);
         if raise {
@@ -2722,7 +2851,9 @@ impl Desktop {
     /// follows the pointer.
     pub fn pointer_entered(&mut self, id: WindowId) {
         let Some(at) = self.locate(id) else { return };
-        if self.settings.focus_follows_pointer {
+        // Nor the sliver of one set aside, which is not there to be lit on.
+        let aside = self.sets[at.set].workspaces[at.workspace].aside;
+        if self.settings.focus_follows_pointer && !aside {
             self.current = at.set;
             self.sets[at.set].workspaces[at.workspace]
                 .focus(at.group, self.settings.raise_on_focus);
@@ -3088,6 +3219,84 @@ impl Desktop {
         self.sets.iter().map(|set| set.active)
     }
 
+    /// Sets every window of the workspace the current output is showing
+    /// aside, the desktop shown, as a Mac does: each sent straight out from
+    /// the middle of its screen, with a sliver of it left at an edge to be
+    /// seen and clicked, none with the keyboard, and not minimized; and back
+    /// where it was once this is asked again, a window of it has the
+    /// keyboard again, as when one is chosen or opens, or, over a time,
+    /// once another workspace is shown.
+    pub fn show_desktop(&mut self) {
+        let set = &mut self.sets[self.current];
+        let workspace = &mut set.workspaces[set.active];
+        workspace.set_aside(!workspace.aside);
+    }
+
+    /// Whether the workspace the current output is showing has its windows
+    /// set aside, the desktop shown.
+    #[must_use]
+    pub fn showing_desktop(&self) -> bool {
+        let set = &self.sets[self.current];
+        set.workspaces[set.active].aside
+    }
+
+    /// Carries the windows of the workspace the current output is showing
+    /// `by` of the way from their places to aside, out of 65536, as fingers
+    /// on the touchpad do, either way: drawn there at once, and nothing
+    /// else changed until they are let go of.
+    pub fn carry_aside(&mut self, by: u32) {
+        let set = &mut self.sets[self.current];
+        set.workspaces[set.active].carried = Some(by.min(WHOLE));
+    }
+
+    /// Lets go of the windows the fingers carried, to go `aside` or back
+    /// from where they were let go, sent there.
+    pub fn let_go_aside(&mut self, aside: bool) {
+        let set = &mut self.sets[self.current];
+        let workspace = &mut set.workspaces[set.active];
+        // Sent, even back where they were, as they are drawn on their way.
+        workspace.asides = workspace.asides.wrapping_add(1);
+        workspace.set_aside(aside);
+    }
+
+    /// Has the windows set aside on the workspace the current output is
+    /// showing brought back over a time, as it is about to be left.
+    pub fn unspread(&mut self) {
+        let set = &mut self.sets[self.current];
+        let workspace = &mut set.workspaces[set.active];
+        workspace.unspread = workspace.aside;
+    }
+
+    /// A workspace whose windows set aside are to be brought back over a
+    /// time, now taken to be on their way.
+    pub fn unspreading(&mut self) -> Option<WorkspaceId> {
+        let mut workspaces = self.sets.iter_mut().flat_map(|set| &mut set.workspaces);
+        let workspace = workspaces.find(|workspace| workspace.unspread)?;
+        workspace.unspread = false;
+        Some(workspace.id)
+    }
+
+    /// Carries the windows set aside on workspace `id` `by` of the way from
+    /// their places to aside, out of 65536, as [`Desktop::carry_aside`]
+    /// does, wherever the workspace is.
+    pub fn carry_aside_of(&mut self, id: WorkspaceId, by: u32) {
+        if let Some(workspace) = self.workspace_mut(id) {
+            workspace.carried = Some(by.min(WHOLE));
+        }
+    }
+
+    /// Brings the windows set aside on workspace `id` back, put there.
+    pub fn bring_back_aside(&mut self, id: WorkspaceId) {
+        if let Some(workspace) = self.workspace_mut(id) {
+            workspace.set_aside(false);
+        }
+    }
+
+    fn workspace_mut(&mut self, id: WorkspaceId) -> Option<&mut Workspace> {
+        let mut workspaces = self.sets.iter_mut().flat_map(|set| &mut set.workspaces);
+        workspaces.find(|workspace| workspace.id == id)
+    }
+
     /// Shows a workspace on the current output. One past the last is made
     /// and shown; further than that does nothing.
     pub fn switch_workspace(&mut self, workspace: usize) {
@@ -3314,13 +3523,17 @@ impl Desktop {
     /// there by hand or by their programs: maximized or restored, tiled,
     /// arranged, put beside others or changed over with one, given the
     /// room of one that closed or left, or moved with the line between
-    /// them put back in the middle. A frame whose place changes while
+    /// them put back in the middle, or set aside to show the desktop and
+    /// brought back. A frame whose place changes while
     /// this does is on its way there, which it may be drawn moving to; one
     /// whose place changes while it does not is there at once. It counts
     /// on from where it was, round to nothing past the largest.
     #[must_use]
-    pub const fn sent(&self) -> u64 {
-        self.sent
+    pub fn sent(&self) -> u64 {
+        let workspaces = self.sets.iter().flat_map(|set| &set.workspaces);
+        workspaces.fold(self.sent, |sent, workspace| {
+            sent.wrapping_add(workspace.asides)
+        })
     }
 
     /// The frame window `id` is in, as it is drawn showing it, wherever
@@ -3363,6 +3576,11 @@ impl Desktop {
             (None, true) => screen.usable,
             (None, false) => group.geometry,
         };
+        let by = workspace.aside_by();
+        if by > 0 {
+            let (home, away) = (geometry.origin, aside(geometry, screen.area));
+            geometry.origin = Point::new(between(home.x, away.x, by), between(home.y, away.y, by));
+        }
         geometry.origin = geometry.origin.offset(shift, 0);
         let home = workspace.solo.map_or(Home::Desktop, |tiling| {
             if tiling.shared() {
@@ -3388,7 +3606,10 @@ impl Desktop {
             maximized: group.maximized,
             fullscreen: group.fullscreen,
             home,
-            focused: index == self.current && shown && workspace.focused == Some(group.serial),
+            focused: index == self.current
+                && shown
+                && !workspace.aside
+                && workspace.focused == Some(group.serial),
             standing: Standing {
                 shaded,
                 ..group.standing
@@ -3399,6 +3620,11 @@ impl Desktop {
                 Showing::Beside
             },
             within: own.map(|own| own.area).filter(|_| shift != 0),
+            clip: own.filter(|_| shift != 0 || by > 0).map(|own| {
+                let room = moved_across(own.area, shift);
+                let none = Rect::new(own.area.origin, Size::new(0, 0));
+                own.area.intersection(room).unwrap_or(none)
+            }),
         }
     }
 
@@ -3470,6 +3696,9 @@ impl Desktop {
 
     fn push_focused(&mut self, set: usize, workspace: usize, group: Group) {
         let workspace = &mut self.sets[set].workspaces[workspace];
+        // A window that comes with the keyboard brings back what was set
+        // aside, as one chosen does.
+        workspace.set_aside(false);
         workspace.focused = Some(group.serial);
         workspace.groups.push(group);
         // A minimized frame can be moved here; it must not hold focus.
@@ -3481,6 +3710,9 @@ impl Desktop {
     /// one of them that had focus keeps it.
     fn turn(&mut self, set: usize, to: usize) {
         let set = &mut self.sets[set];
+        // What was set aside on the one left comes back as it goes.
+        let left = &mut set.workspaces[set.active];
+        left.unspread |= left.aside && set.active != to;
         set.active = to;
         set.settle();
     }
@@ -5766,6 +5998,147 @@ mod tests {
         assert_eq!(desktop.program_of(nameless), [nameless]);
         assert_eq!(desktop.program_of(again), [again]);
         assert_eq!(desktop.program_of(WindowId::from_raw(999)), []);
+    }
+
+    /// Where each window's frame is, by their identifiers.
+    fn places(desktop: &Desktop) -> Vec<(WindowId, Rect)> {
+        let frames = desktop.frames();
+        frames
+            .map(|frame| (frame.window().id, frame.geometry))
+            .collect()
+    }
+
+    #[test]
+    fn the_desktop_shown_sends_the_windows_aside_and_shown_again_brings_them_back() {
+        let mut desktop = desktop();
+        let (term, web) = (open(&mut desktop, "term"), open(&mut desktop, "web"));
+        let (left, right) = (
+            Rect::new(Point::new(100, 200), SIZE),
+            Rect::new(Point::new(1000, 50), SIZE),
+        );
+        desktop.set_geometry(term, left);
+        desktop.set_geometry(web, right);
+        let (before, sent) = (places(&desktop), desktop.sent());
+        desktop.show_desktop();
+        assert!(desktop.showing_desktop());
+        assert_ne!(desktop.sent(), sent, "sent there, to be seen going");
+        // Straight out from the middle, a sliver of each left at the edge
+        // it comes to first: the one up and left of the middle mostly left,
+        // and the one up and right mostly right.
+        let aside = [
+            (term, Rect::new(Point::new(48 - 800, 126), SIZE)),
+            (web, Rect::new(Point::new(1920 - 48, -326), SIZE)),
+        ];
+        assert_eq!(places(&desktop), aside);
+        assert_eq!(desktop.focused(), None, "none has the keyboard");
+        assert!(!minimized(&desktop, term) && !minimized(&desktop, web));
+        // The pointer over a sliver does not bring them back.
+        desktop.pointer_entered(term);
+        assert!(desktop.showing_desktop());
+
+        let sent = desktop.sent();
+        desktop.show_desktop();
+        assert!(!desktop.showing_desktop());
+        assert_ne!(desktop.sent(), sent, "and back");
+        assert_eq!(places(&desktop), before, "where they were");
+        assert_eq!(desktop.focused(), Some(web));
+    }
+
+    #[test]
+    fn a_window_chosen_or_opened_brings_the_windows_back() {
+        let mut desktop = desktop();
+        let (term, _web) = (open(&mut desktop, "term"), open(&mut desktop, "web"));
+        let before = places(&desktop);
+        // Chosen, as a sliver clicked: the rest come back with it, and it
+        // has the keyboard.
+        desktop.show_desktop();
+        desktop.clicked(term);
+        assert!(!desktop.showing_desktop());
+        assert_eq!(desktop.focused(), Some(term));
+        // Opened.
+        desktop.show_desktop();
+        let mail = open(&mut desktop, "mail");
+        assert!(!desktop.showing_desktop());
+        assert_eq!(desktop.focused(), Some(mail));
+        assert!(before.iter().all(|place| places(&desktop).contains(place)));
+        // Set aside again, and nothing sent for a window not there.
+        desktop.show_desktop();
+        let sent = desktop.sent();
+        desktop.clicked(WindowId::from_raw(999));
+        assert_eq!(desktop.sent(), sent);
+    }
+
+    #[test]
+    fn a_workspace_left_with_its_windows_aside_has_them_brought_back_as_it_goes() {
+        let mut desktop = desktop();
+        let term = open(&mut desktop, "term");
+        let home = places(&desktop);
+        desktop.show_desktop();
+        let first = desktop.active_workspace_id();
+        assert_eq!(desktop.unspreading(), None, "nothing yet");
+        desktop.switch_workspace(1);
+        // Asked for once, carried back over a time, and then back.
+        assert_eq!(desktop.unspreading(), Some(first));
+        assert_eq!(desktop.unspreading(), None);
+        desktop.carry_aside_of(first, WHOLE / 2);
+        desktop.bring_back_aside(first);
+        desktop.switch_workspace(0);
+        assert!(!desktop.showing_desktop());
+        assert_eq!(places(&desktop), home);
+        assert_eq!(desktop.focused(), Some(term));
+        // Or as fingers begin to swipe away from it; and only if aside.
+        desktop.unspread();
+        assert_eq!(desktop.unspreading(), None);
+        desktop.show_desktop();
+        desktop.unspread();
+        assert_eq!(desktop.unspreading(), Some(first));
+        // A workspace that is no more is passed over.
+        let gone = WorkspaceId(999);
+        desktop.carry_aside_of(gone, WHOLE);
+        desktop.bring_back_aside(gone);
+        assert!(desktop.showing_desktop());
+    }
+
+    #[test]
+    fn a_window_set_aside_goes_straight_out_from_the_middle_of_its_screen() {
+        let screen = Rect::new(Point::new(0, 0), Size::new(640, 480));
+        let at = |x, y| Rect::new(Point::new(x, y), Size::new(200, 100));
+        // Up and left, nearer the top: up, a sliver at the top.
+        assert_eq!(aside(at(0, 0), screen), Point::new(-60, -52));
+        // Below the middle, straight down.
+        assert_eq!(aside(at(220, 300), screen), Point::new(220, 480 - 48));
+        // In the very middle, right.
+        assert_eq!(aside(at(220, 190), screen), Point::new(640 - 48, 190));
+        // Already as far out as that, where it is.
+        assert_eq!(aside(at(620, 190), screen), Point::new(620, 190));
+    }
+
+    #[test]
+    fn fingers_carry_the_windows_part_of_the_way_and_let_go_send_them_on_or_back() {
+        let mut desktop = desktop();
+        let term = open(&mut desktop, "term");
+        desktop.set_geometry(term, Rect::new(Point::new(100, 200), SIZE));
+        let at = |desktop: &Desktop| places(desktop)[0].1.origin;
+        let sent = desktop.sent();
+        // From (100, 200) to (48 - 800, 126): a quarter of the way, and the
+        // whole of it.
+        desktop.carry_aside(WHOLE / 4);
+        assert_eq!(at(&desktop), Point::new(100 - 213, 200 - 18));
+        desktop.carry_aside(WHOLE * 2);
+        assert_eq!(at(&desktop), Point::new(48 - 800, 126));
+        assert_eq!(desktop.sent(), sent, "carried, not sent");
+        assert!(!desktop.showing_desktop(), "nor aside yet");
+        assert_eq!(desktop.focused(), Some(term));
+
+        desktop.let_go_aside(true);
+        assert!(desktop.showing_desktop());
+        assert_ne!(desktop.sent(), sent, "sent on");
+        // Carried back a little and let go, sent back aside where it was.
+        desktop.carry_aside(WHOLE / 2);
+        let sent = desktop.sent();
+        desktop.let_go_aside(true);
+        assert_ne!(desktop.sent(), sent);
+        assert_eq!(at(&desktop), Point::new(48 - 800, 126));
     }
 
     #[test]

@@ -6,7 +6,7 @@
 //! about one point, as a picture would be: nothing of it is drawn again,
 //! nor its shadow cast again, at each size it passes through.
 
-use smithay::backend::renderer::element::utils::RescaleRenderElement;
+use smithay::backend::renderer::element::utils::{CropRenderElement, RescaleRenderElement};
 use smithay::backend::renderer::element::{Element as Drawn, Id, RenderElement};
 use smithay::backend::renderer::utils::CommitCounter;
 use smithay::backend::renderer::{ImportAll, ImportMem, Renderer};
@@ -91,6 +91,24 @@ where
             Element::Scaled(RescaleRenderElement::from_element(boxed, middle, scale))
         }));
     }
+}
+
+/// Has the elements from `first` on drawn only where they are within
+/// `area`, at `scale`; one wholly outside it not at all.
+pub(crate) fn crop<R>(
+    elements: &mut Vec<Element<R>>,
+    first: usize,
+    area: Rectangle<i32, Physical>,
+    scale: Factor<f64>,
+) where
+    R: Renderer + ImportAll + ImportMem,
+    R::TextureId: 'static,
+{
+    let made = elements.split_off(first.min(elements.len()));
+    elements.extend(made.into_iter().filter_map(|element| {
+        let boxed = Boxed(Box::new(element));
+        CropRenderElement::from_element(boxed, scale, area).map(Element::Clipped)
+    }));
 }
 
 /// How much larger or smaller something is drawn across and down: a

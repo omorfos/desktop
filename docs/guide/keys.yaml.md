@@ -172,6 +172,7 @@ it takes and what it does.
 | `close_program` | Ask every window of the focused window's program to close, as Cmd+Q quits a program on a Mac; each may ask to save first. A program is the windows that share an application's name. |
 | `hide_program` | Minimize every window of the focused window's program, on any workspace, as Cmd+H. |
 | `hide_others` | Minimize every window of every other program, as Cmd+Option+H. |
+| `show_desktop` | Set every window of the workspace shown aside, to show the desktop, as a Mac does: each slides straight out from the middle of the screen until a sliver is left at an edge, and none has the keyboard. They slide back where they were when it is chosen again, Escape is pressed, a window or its sliver is chosen, or one opens, and as their workspace is left for another. No key is bound to it yet; four fingers spread on a touchpad carry the windows aside, and pinched together carry them back. |
 | `maximize`, `minimize` | Toggle or apply that state. |
 | `fullscreen` | Put the focused window alone on a workspace made for it, filling the screen, or bring it back to the desktop it came from. |
 | `tile: left` | Have the focused window take the left half of where it is; also `right`, `top` and `bottom`. The next window to open there has the other half. From a desktop, where it is becomes a workspace made for it. |
