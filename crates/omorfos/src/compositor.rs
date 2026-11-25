@@ -1514,6 +1514,19 @@ impl Compositor {
         self.slide_in(id, forwards);
     }
 
+    /// Opens About where the pointer is, with what the computer is as it
+    /// opens; or, asked again, closes it. It is not shown on a locked
+    /// session.
+    fn toggle_about(&mut self) {
+        let open = self.cards.about.asked.is_none() && !self.is_locked();
+        self.cards.about.asked = open.then_some(self.pointer_location);
+        if open {
+            let said = system::said(Path::new("/"), self.monitors());
+            self.cards.about.system = System::of(&said);
+            self.cards.about.copied = None;
+        }
+    }
+
     /// Carries out an action from a key binding or menu entry.
     pub fn perform(&mut self, action: &Action) {
         // A menu that is open was opened on what was there then: a
@@ -1593,18 +1606,7 @@ impl Compositor {
             Action::ShowLauncher => self.open_launcher(),
             Action::FocusNotifications => self.focus_notifications(),
             Action::ShowWelcome => self.open_welcome(false),
-            Action::About => {
-                // Asked again, it goes; and it is not shown on a locked
-                // session.
-                let open = self.cards.about.asked.is_none() && !self.is_locked();
-                self.cards.about.asked = open.then_some(self.pointer_location);
-                // What the computer is, as it opens.
-                if open {
-                    let said = system::said(Path::new("/"), self.monitors());
-                    self.cards.about.system = System::of(&said);
-                    self.cards.about.copied = None;
-                }
-            }
+            Action::About => self.toggle_about(),
             Action::Lock => self.start_locker(),
             Action::Sleep => self.ask_session(&["sleep"]),
             Action::Restart => self.leave(crate::leaving::Leaving::Restart),
