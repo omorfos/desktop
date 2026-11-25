@@ -1343,3 +1343,50 @@ fn down_from_what_is_typed_lights_the_first_program_rather_than_the_next() {
     session.eventually(|session| mark(session, "files") == "x");
     assert_eq!(mark(&session, "firefox"), "");
 }
+
+#[test]
+fn the_cursor_blinks_from_the_last_key_unless_nothing_is_to_move() {
+    // The tests' sessions keep still unless a part says otherwise, as the
+    // launcher does here.
+    let moving = ("theme.css", "launcher { transition: 180ms; }\n");
+    let mut session = Session::with_config(&[moving]);
+    let mut launcher = launcher_of(&mut session, &["Files"]);
+    let at = Duration::from_millis;
+    let input = Theme::default().style(Part::LauncherInput, States::NONE);
+    // The cursor at the start of the empty field, above the list, in the
+    // field's colour.
+    let cursor = |session: &mut Session| {
+        let picture = session.draw();
+        let ink = argb(input.color);
+        let field = 0..row(0).1 - 24;
+        (0..WIDTH).any(|x| field.clone().any(|y| picture.at(x, y) == ink))
+    };
+    settle_at(&mut session, &mut launcher, at(0));
+    // The compositor brings it in as the theme says, by its own clock.
+    session.advance(Duration::from_millis(300));
+    assert!(cursor(&mut session));
+    assert_eq!(launcher.deadline(), Some(at(500)));
+    settle_at(&mut session, &mut launcher, at(500));
+    assert!(!cursor(&mut session), "off");
+    // A key shows it at once.
+    press(&mut session, DOWN);
+    press(&mut session, UP);
+    settle_at(&mut session, &mut launcher, at(700));
+    assert!(cursor(&mut session));
+    assert_eq!(launcher.deadline(), Some(at(1200)));
+    // Left alone, it stops, shown.
+    settle_at(&mut session, &mut launcher, at(20_000));
+    assert!(cursor(&mut session));
+    assert_eq!(launcher.deadline(), None);
+
+    // Not where motion is reduced, nor where the theme moves nothing.
+    let reduced = ("config.yaml", "appearance: { reduce_motion: true }\n");
+    for files in [&[moving, reduced][..], &[]] {
+        let mut still = Session::with_config(files);
+        let mut held = launcher_of(&mut still, &["Files"]);
+        settle_at(&mut still, &mut held, at(500));
+        still.advance(Duration::from_millis(300));
+        assert!(cursor(&mut still), "{files:?}");
+        assert_eq!(held.deadline(), None, "{files:?}");
+    }
+}

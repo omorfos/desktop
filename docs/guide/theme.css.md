@@ -771,7 +771,9 @@ only fades, and no change, of a colour or of a part coming and going,
 takes longer than 120 ms. Workspaces change without sliding, whether by
 a key or by three fingers or four, which change it as they lift if they went far
 enough or fast enough; the box that asks for a password, and the lock
-screen's field, do not shake at a wrong one. Programs are told, to move
+screen's field, do not shake at a wrong one, and the cursor in a field
+does not blink; nor does it where the theme has the box it is in move
+nothing, `launcher` or `question`. Programs are told, to move
 nothing either: through the settings portal's `reduced-motion` and GNOME's
 `enable-animations`, which GTK and libadwaita read, in a sandbox too, and
 as `Gtk/EnableAnimations` to programs written for X11. Day turning into

@@ -566,7 +566,8 @@ impl Picker {
         chosen.map_or(Outcome::Stay, |text| Outcome::Ask(Request::Copy { text }))
     }
 
-    /// Draws the launcher, with `scale` pixels to a unit of layout. The
+    /// Draws the launcher, with `scale` pixels to a unit of layout, and the
+    /// field's cursor if it is in the `cursor` half of its blink. The
     /// icons of the programs in sight are looked up in `icons`, if icons
     /// are shown. A row that has just been chosen, or has just stopped
     /// being, is as far on its way to its new colours as `motion` has it.
@@ -575,8 +576,7 @@ impl Picker {
     pub fn paint(
         &self,
         (text, words): (&mut Text, &Words),
-        theme: &Theme,
-        scale: Scale,
+        (theme, scale, cursor): (&Theme, Scale, bool),
         icons: &mut Icons,
         motion: &mut Motion,
     ) -> Canvas {
@@ -586,7 +586,7 @@ impl Picker {
         let mut canvas = Canvas::scaled(width, height, scale);
         canvas.draw_box(whole, &theme.style(Part::Launcher, States::NONE));
 
-        self.paint_field(&mut canvas, text, theme, layout.input);
+        self.paint_field(&mut canvas, text, theme, (layout.input, cursor));
 
         // Under an answer, what Enter does with it, whatever is shown of
         // the programs.
@@ -711,8 +711,15 @@ impl Picker {
     }
 
     /// Draws the field, at `field`, with what is typed in it as far as it
-    /// is in sight, and the cursor or what is chosen.
-    fn paint_field(&self, canvas: &mut Canvas, text: &mut Text, theme: &Theme, field: Area) {
+    /// is in sight, and what is chosen of it, or the cursor while it is in
+    /// the `cursor` half of its blink.
+    fn paint_field(
+        &self,
+        canvas: &mut Canvas,
+        text: &mut Text,
+        theme: &Theme,
+        (field, cursor): (Area, bool),
+    ) {
         let input = theme.style(Part::LauncherInput, States::NONE);
         let font = theme.font(Part::LauncherInput, States::NONE);
         canvas.draw_box(field, &input);
@@ -751,10 +758,10 @@ impl Picker {
             // every letter stands where it stood.
             let shown = &typed_in[first..];
             text.draw_cut(canvas, shown, typed, start..end, marked.color, font);
-        } else if !self.listing {
+        } else if cursor && !self.listing {
             // A line where the next character will go, which stays in the
             // box however much has been typed; none while the programs
-            // have the keyboard.
+            // have the keyboard, nor while it blinks off.
             let margin = tall / 5;
             let caret = (
                 left.saturating_add_unsigned(across(text, self.field.cursor())),
@@ -928,7 +935,7 @@ mod tests {
     fn still(picker: &Picker, theme: &Theme, scale: Scale, icons: &mut Icons) -> Canvas {
         let words = Words::in_languages(&omorfos_i18n::LAUNCHER, &[]);
         let text = (&mut Text::new(), &words);
-        picker.paint(text, theme, scale, icons, &mut Motion::new())
+        picker.paint(text, (theme, scale, true), icons, &mut Motion::new())
     }
 
     /// Where what is typed begins, across, and the middle of its line,
@@ -2121,6 +2128,14 @@ mod tests {
         assert_eq!(inked(&picker), 0);
         picker.key(Key::Up);
         assert_eq!(inked(&picker), 1);
+        // Nor while it blinks off.
+        let words = Words::in_languages(&omorfos_i18n::LAUNCHER, &[]);
+        let text = (&mut Text::new(), &words);
+        let look = (&theme, Scale::ONE, false);
+        let off = picker.paint(text, look, &mut Icons::default(), &mut Motion::new());
+        let columns = left.unsigned_abs()..left.unsigned_abs() + width;
+        let middle = top.unsigned_abs() + height / 2;
+        assert!(columns.into_iter().all(|x| off.at(x, middle) == field));
         // The pointer over a program, even the first, lights it and takes
         // the keyboard to the programs as Down does.
         let (x, y) = row(0);

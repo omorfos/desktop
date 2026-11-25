@@ -82,7 +82,8 @@ shown whole, and cut short only where it would be wider than the screen.
 It asks PAM, so whatever your system's login accepts unlocks it. A wrong
 password shakes the field, as the administrator's prompt does, unless the
 theme has nothing move (`question { transition: none; }`), and then
-nothing comes into view or goes gradually either. A finger on
+nothing comes into view or goes gradually either, nor does the field's
+cursor blink. A finger on
 the reader and a security key, such as a YubiKey, are asked for at the
 same time, each through a PAM service of its own, and whichever you use
 first unlocks: you never wait for a finger to time out before typing.

@@ -34,6 +34,10 @@ a known gap.
   grid of every program alike. The pointer over a program does the
   same. Typing, a click in the field, or Up past the first program gives
   the field the keyboard back, its cursor with it, and nothing lit.
+- **The cursor blinks (#167).** In the launcher, the lock screen's field
+  and the box that asks for a password, the cursor blinks, half a
+  second on and half off, from each key, and stays shown ten seconds
+  after the last. With `appearance.reduce_motion`, it does not blink.
 
 ## Where this is going
 
@@ -2071,6 +2075,12 @@ to false, as `launcher.sums` is (ADR 83).
       the first or that one, the field's cursor goes, and every arrow
       walks the list or the grid, until something is typed, the field is
       clicked, or Up goes back past the first line.
+- [x] The cursor blinks in every text field (#167): the launcher, the
+      lock screen and the box that asks for a password, by one rule in
+      `omorfos-ui`, `Blink`. Half a second shown and half hidden from
+      each key, and steady ten seconds after the last, so that a field
+      left alone wakes nothing; never with motion reduced, or where the
+      theme has the box it is in move nothing, as it shakes only then.
 - [ ] Known gaps in the launcher's size: the share of the screen it takes
       at most, half, is fixed, and is to be a setting of the theme once
       it is asked for; a launcher wider than its screen is put against the

@@ -17,7 +17,9 @@ program starts it too, and a click anywhere beside the launcher closes
 it. `Super+A`, as Cmd+A on a Mac, chooses all that is typed (`Ctrl+A`
 with `defaults: ordinary` in `keys.yaml`), for what is typed next to take its place, or Backspace to take it
 all out, as in the box that asks for a password. What is typed is edited
-as in any text field: Left and Right move the cursor, by a word with
+as in any text field, where the cursor blinks, as it does in every field
+of omorfos, for ten seconds after the last key and then stays: Left and
+Right move the cursor, by a word with
 `Ctrl` or `Alt`, and Home and End to an end; with Shift they choose what
 they go over; Backspace and Delete take out a
 character, or a word with `Ctrl` or `Alt`; `Ctrl+Z` undoes and

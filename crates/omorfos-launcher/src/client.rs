@@ -12,14 +12,14 @@ use std::os::unix::net::UnixStream;
 use std::path::Path;
 use std::time::{Duration, Instant};
 
-use omorfos_config::{Part, States, Store, Theme};
+use omorfos_config::{Config, Part, States, Store, Theme};
 use omorfos_i18n::{LAUNCHER, Words};
 use omorfos_ipc::Client as Ipc;
 use omorfos_shell::sheet::Sheet;
 use omorfos_shell::typing::{Key as Typed, Typing};
 use omorfos_shell::whole;
 use omorfos_ui::field::{Edit, Way};
-use omorfos_ui::{Canvas, Motion, Scale, Text};
+use omorfos_ui::{Blink, Canvas, Motion, Scale, Text};
 use rustix::event::{PollFd, PollFlags, Timespec, poll};
 use wayland_client::backend::ReadEventsGuard;
 use wayland_client::protocol::{
@@ -98,6 +98,7 @@ impl Launcher {
                 connection,
                 queue,
                 shell: Shell::new(config.theme.clone(), commands, picker, icons)
+                    .blinking(blinks(config))
                     .reading_as(config.keys.ordinary()),
             }
         })
@@ -132,8 +133,10 @@ impl Launcher {
         let handled = handled.map(drop).map_err(Failure::from);
         self.shell.take_paste();
         self.shell.repeat(now);
-        // A row on its way to another look is drawn again as it goes.
+        // A row on its way to another look is drawn again as it goes, and
+        // the cursor as it blinks.
         self.shell.stale |= self.shell.motion.due(now);
+        self.shell.stale |= self.shell.blink.changed(now);
         handled
             .and_then(|()| {
                 let shown = self.shell.show(&self.queue.handle());
@@ -178,13 +181,23 @@ impl Launcher {
 
     /// When there will next be something to do without anything having
     /// happened: when a key that is being held is due to be taken again,
-    /// or a row that is changing colour is due to be drawn again.
+    /// a row that is changing colour is due to be drawn again, or the
+    /// cursor is due to blink.
     #[must_use]
     pub fn deadline(&self) -> Option<Duration> {
         let held = self.shell.held.map(|(_, due)| due);
         let drawn = self.shell.motion.deadline();
-        held.into_iter().chain(drawn).min()
+        let blinks = self.shell.blink.deadline(self.shell.now);
+        held.into_iter().chain(drawn).chain(blinks).min()
     }
+}
+
+/// Whether the field's cursor blinks under `config`: as the launcher moves,
+/// unless motion is to be reduced, or the theme has the launcher move
+/// nothing, which is how a theme turns movement off.
+fn blinks(config: &Config) -> bool {
+    let moves = config.theme.style(Part::Launcher, States::NONE);
+    moves.transition.duration > 0 && !config.general.appearance.reduce_motion
 }
 
 /// Runs a launcher offering `apps`, with their pictures from `icons`, in
@@ -257,6 +270,8 @@ struct Shell {
     sent: io::Result<()>,
     /// The rows that are on their way from one look to another.
     motion: Motion,
+    /// The field's cursor blinking, from the last key or click.
+    blink: Blink<Duration>,
     /// Whether the launcher may look different from what is on the screen.
     stale: bool,
     /// Whether the launcher is done with.
@@ -358,14 +373,23 @@ impl Shell {
             commands,
             sent: Ok(()),
             motion: Motion::new(),
+            blink: Blink::new(Duration::ZERO, true),
             // Worth trying to show from the very first turn.
             stale: true,
             done: false,
         }
     }
 
-    /// Acts on what a key or a click came to.
+    /// The same, its cursor blinking, if it is to blink.
+    const fn blinking(mut self, blinks: bool) -> Self {
+        self.blink = Blink::new(Duration::ZERO, !blinks);
+        self
+    }
+
+    /// Acts on what a key or a click came to, showing the cursor at once,
+    /// and blinking from there.
     fn take(&mut self, outcome: Outcome) {
+        self.blink.restart(self.now);
         match outcome {
             Outcome::Stay => self.stale = true,
             Outcome::Close => self.done = true,
@@ -639,9 +663,8 @@ impl Shell {
         }
         let (text, icons) = ((&mut self.text, &self.words), &mut self.icons);
         self.motion.begin(self.now);
-        let canvas = self
-            .picker
-            .paint(text, &self.theme, face.scale, icons, &mut self.motion);
+        let look = (&self.theme, face.scale, self.blink.draw(self.now));
+        let canvas = self.picker.paint(text, look, icons, &mut self.motion);
         self.motion.end();
         behind.and(face.sheet.put(shm, &canvas, (width, height), handle))
     }

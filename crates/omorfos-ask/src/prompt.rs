@@ -20,7 +20,7 @@ use omorfos_shell::shake::{FRAME, SHAKE, SHAKING, shaken};
 use omorfos_shell::sheet::Sheet;
 use omorfos_shell::typing::{Key, Repeat, Typing};
 use omorfos_shell::whole;
-use omorfos_ui::{Area, Canvas, Scale, Text};
+use omorfos_ui::{Area, Blink, Canvas, Scale, Text};
 use rustix::event::{PollFd, PollFlags, Timespec, poll};
 use wayland_client::backend::ReadEventsGuard;
 use wayland_client::protocol::{
@@ -268,12 +268,13 @@ pub fn paint(
     looks: (i32, bool, Option<Button>),
 ) -> Canvas {
     let lines = message(text, theme, &asked.0.message);
-    paint_lines(theme, text, scale, &lines, asked, looks)
+    paint_lines(theme, text, scale, &lines, asked, looks, true)
 }
 
 /// Paints the box as [`paint`] does, with what is asked for in `lines`
 /// as they were wrapped when it was asked: wrapping them for each frame
-/// held the box back as it shook.
+/// held the box back as it shook. The cursor is drawn only if the `cursor`
+/// half of its blink is the one it is shown in.
 fn paint_lines(
     theme: &Theme,
     text: &mut Text,
@@ -281,6 +282,7 @@ fn paint_lines(
     lines: &[String],
     (asking, (typed, marked), open): (&Asking, (&str, bool), bool),
     (shift, on_eye, focused): (i32, bool, Option<Button>),
+    cursor: bool,
 ) -> Canvas {
     let lower = lower(lines);
     let taller = lower.unsigned_abs();
@@ -335,9 +337,10 @@ fn paint_lines(
         field.color
     };
     text.draw(&mut canvas, &showing, within, ink, font);
-    // A line where the next character will go, while it may be typed, which
-    // stays in the field however much has been typed.
-    if typed_into && !marked {
+    // A line where the next character will go, while it may be typed and
+    // is in the half of its blink it is shown in, which stays in the field
+    // however much has been typed.
+    if typed_into && cursor && !marked {
         let margin = tall / 5;
         let caret = (
             left.saturating_add_unsigned(at),
@@ -514,6 +517,8 @@ struct Shell {
     store: Store,
     text: Text,
     typing: Typing,
+    /// The field's cursor blinking, from the last key.
+    blink: Blink<Instant>,
     /// Whether what is on the screen may not be what should be.
     stale: bool,
 }
@@ -601,8 +606,10 @@ impl Shell {
         }
     }
 
-    /// Does what `key` does, going down or held.
+    /// Does what `key` does, going down or held, showing the cursor at
+    /// once and blinking from there.
     fn key(&mut self, key: Key) {
+        self.blink.restart(self.now);
         // What types, takes out or chooses is for the field.
         if matches!(key, Key::Typed(_) | Key::Back(_) | Key::All) {
             self.focused = None;
@@ -751,6 +758,7 @@ impl Shell {
         let surface = face.sheet.surface();
         surface.frame(handle, ());
         let shift = elapsed.map_or(0, shaken);
+        let cursor = self.blink.draw(self.now);
         let canvas = paint_lines(
             theme,
             &mut self.text,
@@ -758,6 +766,7 @@ impl Shell {
             &self.lines,
             (asking, (&self.typed, self.marked), self.open),
             (shift, on_eye, focused),
+            cursor,
         );
         // The box takes the pointer and the room it shakes in does not;
         // the compositor casts the box's shadow round that, as it goes.
@@ -819,6 +828,11 @@ impl Desk {
         connection.and_then(|connection| {
             let queue = connection.new_event_queue();
             connection.display().get_registry(&queue.handle(), ());
+            // The cursor blinks as the box shakes: unless the theme has it
+            // move nothing, or motion is to be reduced.
+            let config = store.current();
+            let moves = config.theme.style(Part::Question, States::NONE);
+            let still = moves.transition.duration == 0 || config.general.appearance.reduce_motion;
             let shell = Shell {
                 compositor: None,
                 shm: None,
@@ -840,6 +854,7 @@ impl Desk {
                 store,
                 text: Text::new(),
                 typing: Typing::default(),
+                blink: Blink::new(Instant::now(), still),
                 stale: false,
             };
             let mut desk = Self {
@@ -915,16 +930,19 @@ impl Desk {
         // flush that ends the turn.
         let _ = self.queue.dispatch_pending(&mut self.shell);
         self.shell.repeated(now);
+        self.shell.stale |= self.shell.blink.changed(now);
         let _ = self.shell.show(&self.queue.handle());
         let flushed = self.connection.flush().map_err(Failure::from);
         flushed.map(|()| self.shell.answer.take())
     }
 
     /// When there will next be something to do without anything having
-    /// happened: a key held down due to be done again.
+    /// happened: a key held down due to be done again, or the cursor due
+    /// to blink.
     #[must_use]
     pub fn deadline(&self) -> Option<Instant> {
-        self.shell.repeat.deadline()
+        let blinks = self.shell.blink.deadline(self.shell.now);
+        self.shell.repeat.deadline().into_iter().chain(blinks).min()
     }
 }
 

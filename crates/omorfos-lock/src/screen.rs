@@ -20,7 +20,7 @@ use omorfos_shell::said::Said;
 use omorfos_shell::shake::{FRAME, SHAKING, shaken};
 use omorfos_shell::sheet::Sheet;
 use omorfos_shell::typing::{Key, Repeat, Typing};
-use omorfos_ui::{Canvas, Image, Scale, Text};
+use omorfos_ui::{Blink, Canvas, Image, Scale, Text};
 use rustix::event::{PollFd, PollFlags, Timespec, poll};
 use rustix::pipe::{PipeFlags, pipe_with};
 use wayland_client::backend::ReadEventsGuard;
@@ -237,8 +237,8 @@ impl Lock {
 
     /// When there will next be something to do without anything having
     /// happened: the time changing, a helper due to be asked again, the
-    /// lock screen due to show only the time again, or a key held due to be
-    /// done again.
+    /// lock screen due to show only the time again, a key held due to be
+    /// done again, or the cursor due to blink.
     #[must_use]
     pub fn deadline(&self) -> Option<Instant> {
         let clock = self.shell.clock.as_ref().map(|(_, changes)| *changes);
@@ -247,11 +247,13 @@ impl Lock {
             View::Resting => None,
         };
         let repeat = self.shell.repeat.deadline();
+        let blinks = self.shell.blink.deadline(self.shell.now);
         clock
             .into_iter()
             .chain(self.shell.again)
             .chain(rest)
             .chain(repeat)
+            .chain(blinks)
             .min()
     }
 
@@ -344,6 +346,8 @@ struct Shell {
     /// of it was shown, once one has been, and how long it has shaken for
     /// since, in milliseconds, as the compositor tells the time of each.
     shaking: Option<(Option<u32>, u32)>,
+    /// The field's cursor blinking, from the last key.
+    blink: Blink<Instant>,
     /// Whether what is on the screens may not be what should be.
     stale: bool,
 }
@@ -397,6 +401,11 @@ type Area = (i32, i32, u32, u32);
 
 impl Shell {
     fn new(store: Store, (called, face): (String, Option<Image>), ways: Ways) -> Self {
+        // The cursor blinks as the box shakes: unless the theme has it move
+        // nothing, or motion is to be reduced.
+        let config = store.current();
+        let moves = config.theme.style(Part::Question, States::NONE);
+        let still = moves.transition.duration == 0 || config.general.appearance.reduce_motion;
         Self {
             compositor: None,
             shm: None,
@@ -427,6 +436,7 @@ impl Shell {
             clock: None,
             again: None,
             shaking: None,
+            blink: Blink::new(Instant::now(), still),
             stale: true,
         }
     }
@@ -513,6 +523,7 @@ impl Shell {
             self.clock = Some((time, now + changes));
             self.stale = true;
         }
+        self.stale |= self.blink.changed(now);
         self.show(handle).map(|()| false)
     }
 
@@ -562,6 +573,7 @@ impl Shell {
         self.moving = self.moving.filter(|(_, elapsed)| !done(elapsed));
         let who = (self.called.as_str(), self.face.as_ref());
         let power = (self.power.as_ref(), self.hovered, self.focus());
+        let cursor = self.blink.draw(self.now);
         let faces = self
             .screens
             .iter_mut()
@@ -572,6 +584,7 @@ impl Shell {
                 time,
                 who,
                 typed: (self.typed.chars().count(), self.marked),
+                cursor,
                 ways,
                 shift,
                 share,
@@ -758,8 +771,10 @@ impl Shell {
         self.key(key);
     }
 
-    /// Does what `key` does, going down or held.
+    /// Does what `key` does, going down or held, showing the cursor at
+    /// once and blinking from there.
     fn key(&mut self, key: Key) {
+        self.blink.restart(self.now);
         // What types, takes out or chooses is for the field.
         if matches!(key, Key::Typed(_) | Key::Back(_) | Key::All) {
             self.focused = None;
@@ -839,6 +854,8 @@ struct Shown<'a> {
     /// How many characters are typed in the field, and whether all of them
     /// are chosen.
     typed: (usize, bool),
+    /// Whether the cursor is in the half of its blink it is shown in.
+    cursor: bool,
     ways: &'a Ways,
     /// How far the field is moved across as it shakes, in units of layout.
     shift: i32,
@@ -936,7 +953,7 @@ fn paint(
         theme,
         (&mut canvas, text),
         (area, share),
-        (shown.typed, asks),
+        (shown.typed, (asks, shown.cursor)),
     );
     top += FIELD.1.cast_signed() + 8;
     // What each way says: the password's first, under the field. Another
@@ -964,12 +981,13 @@ fn paint(
 /// Paints the field for the password in `area`, `share` of it in view:
 /// focused if it `asks`, with a dot for each of the characters typed, on
 /// what the theme marks them with if all are chosen, and a line where the
-/// next goes while it is typed into.
+/// next goes while it is typed into and the `cursor` is in the half of its
+/// blink it is shown in.
 fn paint_field(
     theme: &Theme,
     (canvas, text): (&mut Canvas, &mut Text),
     (area, share): (Area, f32),
-    ((typed, marked), asks): ((usize, bool), bool),
+    ((typed, marked), (asks, cursor)): ((usize, bool), (bool, bool)),
 ) {
     let states = if asks {
         States::NONE.with(State::Focused)
@@ -997,8 +1015,9 @@ fn paint_field(
     };
     text.draw(canvas, &dots, inside, ink, font);
     // A line where the next character will go, while the field is typed
-    // into, which stays in the field however much has been typed.
-    if asks && !marked {
+    // into and the cursor is in the half of its blink it is shown in,
+    // which stays in the field however much has been typed.
+    if asks && cursor && !marked {
         let margin = tall / 5;
         let caret = (
             left_in.saturating_add_unsigned(wide),

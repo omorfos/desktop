@@ -1135,3 +1135,53 @@ fn super_and_a_chooses_all_that_is_typed_to_type_over_or_take_out_and_ctrl_and_a
     entered(&mut session, &mut lock);
     assert!(!session.compositor().is_locked(), "with atx alone");
 }
+
+#[test]
+fn the_cursor_blinks_from_the_last_key_unless_nothing_is_to_move() {
+    // The tests' sessions keep still unless a part says otherwise, as the
+    // box does here.
+    let moving = ("theme.css", "question { transition: 120ms; }\n");
+    for (files, blinks) in [(&[moving][..], true), (&[], false)] {
+        let there = tempfile::TempDir::new().unwrap();
+        let mut session = Session::with_config(files);
+        let mut lock = awake(&mut session, there.path(), &[Way::Password]);
+        for shown in 1..30 {
+            session.send_frames(Duration::from_millis(shown * 16));
+            settle(&mut session, &mut lock);
+        }
+        // Once the helper asks, a line where the next character goes, at
+        // the start of the field.
+        let (start, plain) = (169, 200);
+        let caret = |session: &mut Session| {
+            let row = field(session);
+            row[start] != row[plain]
+        };
+        for _ in 0..500 {
+            settle(&mut session, &mut lock);
+            if caret(&mut session) {
+                break;
+            }
+        }
+        tap(&mut session, key::SHIFT);
+        let pressed = Instant::now();
+        settle_at(&mut session, &mut lock, pressed);
+        assert!(caret(&mut session), "shown as a key goes down");
+        settle_at(
+            &mut session,
+            &mut lock,
+            pressed + Duration::from_millis(700),
+        );
+        assert_eq!(caret(&mut session), !blinks, "{files:?}");
+        settle_at(
+            &mut session,
+            &mut lock,
+            pressed + Duration::from_millis(1100),
+        );
+        assert!(caret(&mut session), "{files:?}");
+        // Blinking from the key, not from when the lock screen started,
+        // which by then is long enough ago for it to have stopped.
+        let late = pressed + Duration::from_millis(9700);
+        settle_at(&mut session, &mut lock, late);
+        assert_eq!(caret(&mut session), !blinks, "{files:?}");
+    }
+}

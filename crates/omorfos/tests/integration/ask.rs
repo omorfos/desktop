@@ -1732,3 +1732,52 @@ fn polkit_waits_its_turn_behind_gnupg() {
     tap(&mut session, key::ESCAPE);
     session.eventually(|_| answer.is_finished());
 }
+
+/// Whether the empty field has a line where the next character goes: ink
+/// of the field's colour across its middle near its start, which is
+/// nothing else's while nothing is typed, the eye being at its end.
+fn cursor(session: &mut Session) -> bool {
+    let left = (WIDTH - SIZE.0.cast_signed()) / 2 + FIELD.0;
+    let top = (HEIGHT - SIZE.1.cast_signed()) / 2 + FIELD.1;
+    let colour = Theme::default()
+        .style(
+            Part::QuestionInput,
+            States::NONE.with(omorfos_config::State::Focused),
+        )
+        .color;
+    let ink = u32::from_be_bytes([colour.alpha, colour.red, colour.green, colour.blue]);
+    let picture = session.draw();
+    let middle = top + FIELD.3.cast_signed() / 2;
+    (left..left + 40).any(|x| picture.at(x, middle) == ink)
+}
+
+#[test]
+fn the_cursor_blinks_from_the_last_key_unless_nothing_is_to_move() {
+    // The tests' sessions keep still unless a part says otherwise, as the
+    // box does here. Its clock is the wall's, so the cursor is watched for
+    // as long as it takes to blink both ways and more.
+    let moving = ("theme.css", "question { transition: 120ms; }\n");
+    for (files, blinks) in [(&[moving][..], true), (&[], false)] {
+        let mut session = Session::with_config(files);
+        let asker = start(&mut session);
+        let cookie = asker.directory.path().join("asked");
+        let me = rustix::process::getuid().as_raw();
+        let _answer = begin(
+            &asker.polkit.connection,
+            &asker.agent,
+            &cookie,
+            (&[me], &[]),
+        );
+        wait_up(&mut session);
+        tap(&mut session, key::SHIFT);
+        let (mut on, mut off) = (false, false);
+        let watched = std::time::Instant::now() + std::time::Duration::from_millis(1500);
+        while std::time::Instant::now() < watched {
+            session.step();
+            let shown = cursor(&mut session);
+            (on, off) = (on || shown, off || !shown);
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        assert_eq!((on, off), (true, blinks), "{files:?}");
+    }
+}

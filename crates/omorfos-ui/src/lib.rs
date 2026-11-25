@@ -6,6 +6,7 @@
 //! system has. Sharing it is what makes a panel look as if it belongs to
 //! the window frames beside it.
 
+pub mod blink;
 mod blur;
 mod button;
 mod canvas;
@@ -17,6 +18,7 @@ mod scale;
 mod shadow;
 mod tooltip;
 
+pub use blink::{Blink, Moment};
 pub use blur::Blur;
 pub use button::{button, button_look, button_size};
 pub use canvas::{Area, Canvas, Image, Text, inset};

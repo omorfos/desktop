@@ -16,7 +16,7 @@ back; Enter presses the one you are on, which looks
 `question-button:focus`, and typing goes back to the field. A wrong
 password is asked for again, and the box shakes; a theme that has the
 `question` part change at once, `question { transition: none; }`, keeps it
-still.
+still, and its cursor too, which otherwise blinks.
 
 While it asks, everything else is dimmed and blurred, and the keyboard and the
 pointer reach the box alone: no key binding works, no other program and
