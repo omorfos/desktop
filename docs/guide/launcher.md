@@ -92,8 +92,29 @@ which the calculator is to share (ADR 86). An answer has at most 15
 figures, and a very large or very small one is written with a power of
 ten, as `1e20`.
 
+## Every program
+
+The `show_programs` action opens the launcher onto every program
+installed, as a Mac shows its Apps: a grid of their icons, each with its
+name under it, six to a line in alphabetical order, the launcher as wide
+as a line of them. It has no key of its own; bind one in `keys.yaml`:
+
+```yaml
+bindings:
+  - keys: Super+Shift+space
+    action: show_programs
+```
+
+The arrows walk the grid, and the wheel scrolls it a line at a time past
+half the height of the screen. Enter or a click starts the program
+chosen. Typing narrows the grid as it narrows the list, and once
+something is typed, Left and Right move in it as in any field, Up and
+Down still walking the grid; a sum's answer has a line of its own above
+the programs. If the launcher is open already, it is left as it is.
+
 How it looks is in `theme.css`, under `launcher`, `launcher-input`,
-`launcher-item` and `launcher-description`; `launcher-input:active` is
+`launcher-item`, `launcher-description` and `launcher-tile`, a program in
+the grid, as wide as its `min-width`; `launcher-input:active` is
 what is typed when all of it is chosen. `launcher-backdrop` is the rest
 of the screen while it is open: give it a see-through background, such as
 `rgba(0, 0, 0, 0.4)`, to dim what is behind. To open the launcher with

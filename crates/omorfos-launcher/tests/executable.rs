@@ -12,14 +12,16 @@ fn launcher() -> Command {
 }
 
 #[test]
-fn outside_a_session_it_fails_with_an_explanation() {
-    let output = launcher().output().unwrap();
-    assert_eq!(output.status.code(), Some(1));
-    let said = String::from_utf8(output.stderr).unwrap();
-    assert!(
-        said.starts_with("omorfos-launcher: this is not an omorfos session"),
-        "{said}"
-    );
+fn outside_a_session_it_fails_with_an_explanation_with_every_program_or_without() {
+    for arguments in [&[][..], &["--programs"]] {
+        let output = launcher().args(arguments).output().unwrap();
+        assert_eq!(output.status.code(), Some(1), "{arguments:?}");
+        let said = String::from_utf8(output.stderr).unwrap();
+        assert!(
+            said.starts_with("omorfos-launcher: this is not an omorfos session"),
+            "{arguments:?}: {said}"
+        );
+    }
 }
 
 #[test]

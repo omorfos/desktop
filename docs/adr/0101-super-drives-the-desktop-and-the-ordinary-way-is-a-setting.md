@@ -213,6 +213,12 @@ Mac has it, then, in the `super` way:
 
 The ordinary way keeps Super+Up for the overview, as named above.
 
+The pinch's every program is the launcher, `show_programs` (#157): a grid
+of every program installed, each icon over its name, narrowed by typing,
+chosen over the launcher's list of matches, which reads as a search's
+results rather than as all one's programs. It is a key of no one's in
+either way until the pinch opens it.
+
 ## Alternatives
 
 - **The best of each**, GNOME's overview on a tap of Super, KDE's three

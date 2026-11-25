@@ -27,6 +27,14 @@ a known gap.
   Super+Ctrl+Down opens the overview with the two alone, the one in
   front picked; Super+Ctrl+Down again closes it, and so does it with
   the whole overview open. With no window in front it does nothing.
+- **Every program as a grid (#157).** Bind `show_programs` in
+  `keys.yaml` (it has no key of its own; the four-finger pinch is to
+  open it, #138): the launcher opens wider, every program installed as
+  its icon over its name, six to a line in alphabetical order. The
+  arrows walk it, Enter or a click starts the one chosen; typing narrows
+  it, and then Left and Right move in what is typed. A sum's answer has
+  a line of its own above it. Judge the tiles' size and the icons' by
+  eye, at more than one scale.
 
 ## Where this is going
 
@@ -2045,13 +2053,27 @@ to false, as `launcher.sums` is (ADR 83).
         backdrop took the pointer everywhere: the backdrop takes none
         now, what is behind is pointed at and scrolled, and the
         compositor closes the launcher at a press beside it (ADR 22).
+- [x] Every program as a grid (#157), as a Mac shows its Apps: the
+      action `show_programs` starts the launcher with `--programs`, which
+      opens onto every program installed as tiles, `launcher-tile` in the
+      theme, each icon over its name, six to a line, alphabetically, and
+      scrolled by lines past half the screen. Typing narrows the grid; the
+      arrows walk it, Left and Right only while nothing is typed, as they
+      move the cursor once something is; a sum's answer has a line to
+      itself above. No key is bound to it; the four-finger pinch is to
+      open it (#138). Still missing: a screen reader is told nothing of
+      it, as of the rest of the launcher, which has no accessibility at
+      all yet; the number of columns is fixed, not the theme's or the
+      screen's; and with `launcher.icons: false` a tile keeps the room its
+      icon would have.
 - [ ] Known gaps in the launcher's size: the share of the screen it takes
       at most, half, is fixed, and is to be a setting of the theme once
       it is asked for; a launcher wider than its screen is put against the
       screen's left edge, not in the middle, as Smithay makes it as wide as
       the screen and puts it there, and the launcher draws itself as wide
       as it would be anyway: it is to lay itself out at the width it is
-      given. Only a screen less than 480 units wide shows it.
+      given. Only a screen less than 480 units wide shows it, or, for the
+      grid of every program, about 700.
 - [ ] The launcher's look (asked on 17 November 2026): of glass by
       default, see-through and blurring what is behind it, as menus and
       notifications are; its text field with no background of its own;

@@ -31,16 +31,22 @@ pub const ABOUT: About = About {
     name: "omorfos-launcher",
     what: "The launcher of the omorfos desktop: type a program's name to start it, or a sum \
            to copy its answer.",
-    usage: "",
+    usage: " [--programs]",
     commands: &[],
-    options: &[],
+    options: &[(
+        "--programs",
+        "Open onto every program installed, as a grid of their icons with their names, rather \
+         than onto the field alone.",
+    )],
     examples: &[],
-    notes: "The omorfos compositor starts it when the launcher is asked for.",
+    notes: "The omorfos compositor starts it when the launcher is asked for, and with --programs \
+            when every program is.",
     version: env!("CARGO_PKG_VERSION"),
 };
 
 /// Runs the launcher in the session the environment describes, until a
-/// program is picked or it is dismissed.
+/// program is picked or it is dismissed; showing every program as a grid,
+/// if `grid`, rather than as a list.
 ///
 /// `variable` looks a variable of the environment up. It is passed in so
 /// that this can be used and tested without touching the environment. The
@@ -54,7 +60,7 @@ pub const ABOUT: About = About {
 /// # Errors
 ///
 /// Returns why the launcher could not be shown, or could not go on.
-pub fn start(variable: &dyn Fn(&str) -> Option<OsString>) -> Result<(), Failure> {
+pub fn start(variable: &dyn Fn(&str) -> Option<OsString>, grid: bool) -> Result<(), Failure> {
     let get = |name: &str| variable(name);
     let (runtime, display) = (get("XDG_RUNTIME_DIR"), get("WAYLAND_DISPLAY"));
     let (runtime, display) = (runtime.as_deref(), display.as_deref());
@@ -76,7 +82,7 @@ pub fn start(variable: &dyn Fn(&str) -> Option<OsString>) -> Result<(), Failure>
             let locales = omorfos_entries::locales(&asked);
             let numbers = numbers(&|name| get(name)?.into_string().ok());
             let offered = (installed(&places, &locales), Icons::new(icons), numbers);
-            client::run(&wayland, &socket, (&config, kept.as_deref()), offered)
+            client::run(&wayland, &socket, (&config, kept.as_deref()), offered, grid)
         }
         None => Err(
             "this is not an omorfos session: XDG_RUNTIME_DIR, WAYLAND_DISPLAY or HOME \
@@ -117,7 +123,7 @@ mod tests {
 
     #[test]
     fn outside_a_session_the_launcher_says_so() {
-        let failure = start(&|_| None).unwrap_err();
+        let failure = start(&|_| None, false).unwrap_err();
         let message = failure.to_string();
         assert!(message.contains("not an omorfos session"), "{message}");
     }
@@ -131,7 +137,7 @@ mod tests {
             "WAYLAND_DISPLAY" => Some(OsString::from("wayland-none")),
             _ => None,
         };
-        let failure = start(&variable).unwrap_err();
+        let failure = start(&variable, true).unwrap_err();
         let message = failure.to_string();
         assert!(!message.contains("not an omorfos session"), "{message}");
     }

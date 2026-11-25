@@ -1603,7 +1603,8 @@ impl Compositor {
                 self.on_focused(|desktop, window| desktop.join(window, workspace));
             }
             Action::ShowMenu => self.open_menu(),
-            Action::ShowLauncher => self.open_launcher(),
+            Action::ShowLauncher => self.open_launcher(&[]),
+            Action::ShowPrograms => self.open_launcher(&["--programs".to_owned()]),
             Action::FocusNotifications => self.focus_notifications(),
             Action::ShowWelcome => self.open_welcome(false),
             Action::About => self.toggle_about(),
@@ -1972,9 +1973,9 @@ impl Compositor {
         }
     }
 
-    /// Opens the launcher, unless one is open already.
-    fn open_launcher(&mut self) {
-        self.open_once(|on_demand| &mut on_demand.launcher, &[]);
+    /// Opens the launcher with `arguments`, unless one is open already.
+    fn open_launcher(&mut self, arguments: &[String]) {
+        self.open_once(|on_demand| &mut on_demand.launcher, arguments);
     }
 
     /// Says where the welcome card that comes with omorfos is: a name to

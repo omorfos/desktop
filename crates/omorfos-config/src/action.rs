@@ -181,6 +181,11 @@ pub enum Action {
     ShowMenu,
     /// Open the launcher, to start a program by typing its name.
     ShowLauncher,
+    /// Open the launcher onto every program installed, as a grid of their
+    /// icons with their names, to pick one from or narrow by typing, as a
+    /// Mac shows its Apps. If the launcher is open already, it is left as
+    /// it is.
+    ShowPrograms,
     /// Give the notifications the keyboard, the newest first: Tab and the
     /// arrow keys go through it and its buttons, Enter chooses, as a click
     /// does, and Escape dismisses it.
@@ -543,6 +548,7 @@ mod tests {
         );
         assert_eq!(parse("move_to_next_output"), Ok(Action::MoveToNextOutput));
         assert_eq!(parse("show_launcher"), Ok(Action::ShowLauncher));
+        assert_eq!(parse("show_programs"), Ok(Action::ShowPrograms));
         assert_eq!(parse("focus_notifications"), Ok(Action::FocusNotifications));
         assert_eq!(parse("show_welcome"), Ok(Action::ShowWelcome));
         assert_eq!(parse("about"), Ok(Action::About));

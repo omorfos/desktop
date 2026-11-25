@@ -251,6 +251,11 @@
           "type": "string"
         },
         {
+          "const": "show_programs",
+          "description": "Open the launcher onto every program installed, as a grid of their\nicons with their names, to pick one from or narrow by typing, as a\nMac shows its Apps. If the launcher is open already, it is left as\nit is.",
+          "type": "string"
+        },
+        {
           "const": "focus_notifications",
           "description": "Give the notifications the keyboard, the newest first: Tab and the\narrow keys go through it and its buttons, Enter chooses, as a click\ndoes, and Escape dismisses it.",
           "type": "string"

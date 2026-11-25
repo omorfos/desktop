@@ -3,7 +3,7 @@
 //!
 //! Nothing here knows of Wayland or of sockets.
 
-use omorfos_config::{Command, Edges, Launcher as Show, Part, State, States, Theme};
+use omorfos_config::{Color, Command, Edges, Launcher as Show, Part, State, States, Theme};
 use omorfos_i18n::{Value, Words};
 use omorfos_ipc::Request;
 use omorfos_ui::field::{Edit, Field, Reach, Way};
@@ -24,6 +24,12 @@ const GAP: u32 = 10;
 
 /// The narrowest the launcher is made, whatever the theme says.
 const NARROWEST: u32 = 160;
+
+/// How many programs a line of the grid has.
+const COLUMNS: usize = 6;
+
+/// The room between a program's icon in the grid and its name under it.
+const UNDER: u32 = 6;
 
 /// A key, as the launcher understands keys.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -93,6 +99,9 @@ pub struct Picker {
     /// Whether the pointer was pressed in the field and is still held,
     /// choosing what it moves over.
     dragging: bool,
+    /// Whether every program is shown as a grid, its icon over its name,
+    /// rather than listed.
+    grid: bool,
 }
 
 /// A row of the launcher's list.
@@ -113,19 +122,43 @@ struct Layout {
     input: Area,
     /// The room the list has: its left, its top and its width.
     list: (i32, i32, u32),
-    /// How far apart rows are, with the room the theme keeps around each.
+    /// How far apart lines are, with the room the theme keeps around each.
     pitch: u32,
+    /// How many programs a line has: one in the list, more in the grid.
+    columns: usize,
 }
 
 impl Layout {
+    /// How the list is laid out under `theme`.
+    #[cfg(test)]
     fn new(theme: &Theme) -> Self {
+        Self::of(theme, false)
+    }
+
+    /// How the list, or the `grid`, is laid out under `theme`. The grid's
+    /// lines are as tall as a program's tile, and the launcher as wide as
+    /// a line of them, if that is wider than it would be.
+    fn of(theme: &Theme, grid: bool) -> Self {
         let launcher = theme.style(Part::Launcher, States::NONE);
         let input = theme.style(Part::LauncherInput, States::NONE);
         let item = theme.style(Part::LauncherItem, States::NONE);
-        let pitch = item.height.saturating_add(item.margin.down());
+        let tile = theme.style(Part::LauncherTile, States::NONE);
+        let (columns, pitch, needed) = if grid {
+            let wide = tile.min_width.saturating_add(tile.margin.across());
+            let tall = tile_height(theme).saturating_add(tile.margin.down());
+            let line = wide.saturating_mul(u32::try_from(COLUMNS).unwrap_or(u32::MAX));
+            (
+                COLUMNS,
+                tall,
+                line.saturating_add(launcher.inset().across()),
+            )
+        } else {
+            (1, item.height.saturating_add(item.margin.down()), 0)
+        };
         let field = input.height.saturating_add(input.margin.down());
         let bare = field.saturating_add(launcher.inset().down());
-        let whole = (0, 0, launcher.min_width.max(NARROWEST), bare);
+        let width = launcher.min_width.max(NARROWEST).max(needed);
+        let whole = (0, 0, width, bare);
         let (left, top, width, _) = inset(whole, launcher.inset());
         let (x, y, wide, _) = inset((left, top, width, field), input.margin);
         Self {
@@ -134,7 +167,28 @@ impl Layout {
             input: (x, y, wide, input.height),
             list: (left, top.saturating_add_unsigned(field), width),
             pitch,
+            columns,
         }
+    }
+
+    /// How wide each program's place in a line is.
+    fn cell(&self) -> u32 {
+        let columns = u32::try_from(self.columns).unwrap_or(u32::MAX);
+        self.list.2 / columns.max(1)
+    }
+
+    /// The room for the program `column` places across the line that is
+    /// `place` lines down.
+    fn tile(&self, place: usize, column: usize) -> Area {
+        let (left, top, _, pitch) = self.row(place);
+        let across = u32::try_from(column).unwrap_or(u32::MAX);
+        let across = across.saturating_mul(self.cell());
+        (
+            left.saturating_add_unsigned(across),
+            top,
+            self.cell(),
+            pitch,
+        )
     }
 
     /// The whole launcher, with `rows` rows.
@@ -154,6 +208,18 @@ impl Layout {
     }
 }
 
+/// How tall a program's tile in the grid is under `theme`: its icon, half
+/// as wide as the room inside its padding, the room under that, and a line
+/// for its name.
+fn tile_height(theme: &Theme) -> u32 {
+    let tile = theme.style(Part::LauncherTile, States::NONE);
+    let font = theme.font(Part::LauncherTile, States::NONE);
+    let room = tile.min_width.saturating_sub(tile.inset().across());
+    let line = font.size.get().saturating_mul(5) / 3;
+    let inside = (room / 2).saturating_add(UNDER).saturating_add(line);
+    inside.saturating_add(tile.inset().down())
+}
+
 impl Picker {
     /// A launcher offering `apps`, in the order they are given, showing
     /// of each what `show` says, and reading sums as `numbers`.
@@ -171,13 +237,27 @@ impl Picker {
             room: ROWS,
             top: 0,
             dragging: false,
+            grid: false,
         }
+    }
+
+    /// Shows every program as a grid, each program's icon over its name,
+    /// if `grid`, rather than as a list. Typing narrows it as it does the
+    /// list; the arrows walk it, and Left and Right move the cursor in
+    /// what is typed once there is something typed to move in.
+    pub const fn set_grid(&mut self, grid: bool) {
+        self.grid = grid;
+    }
+
+    /// How the launcher is laid out under `theme`.
+    fn layout(&self, theme: &Theme) -> Layout {
+        Layout::of(theme, self.grid)
     }
 
     /// Lists as many rows as fit in half of a screen `height` units tall,
     /// under `theme`, and one at least.
     pub fn fit(&mut self, theme: &Theme, height: u32) {
-        let layout = Layout::new(theme);
+        let layout = self.layout(theme);
         let room = (height / 2).saturating_sub(layout.bare) / layout.pitch.max(1);
         self.room = usize::try_from(room).unwrap_or(usize::MAX).max(1);
         self.top = self.top.min(self.last_top());
@@ -187,7 +267,7 @@ impl Picker {
     /// tall as the rows it lists, up to as many as it has room for.
     #[must_use]
     pub fn size(&self, theme: &Theme) -> (u32, u32) {
-        let (_, _, width, height) = Layout::new(theme).whole(self.shown());
+        let (_, _, width, height) = self.layout(theme).whole(self.shown());
         (width, height)
     }
 
@@ -197,14 +277,14 @@ impl Picker {
     /// are listed.
     #[must_use]
     pub fn top(&self, theme: &Theme, height: u32) -> u32 {
-        let (_, _, _, tallest) = Layout::new(theme).whole(self.room);
+        let (_, _, _, tallest) = self.layout(theme).whole(self.room);
         height.saturating_sub(tallest) / 2
     }
 
-    /// How many rows are listed: one, to say so, when nothing matches
+    /// How many lines are shown: one, to say so, when nothing matches
     /// what is typed.
     fn shown(&self) -> usize {
-        self.count().min(self.room).max(usize::from(self.nothing()))
+        self.lines().min(self.room).max(usize::from(self.nothing()))
     }
 
     /// Whether something is typed, and nothing matches it.
@@ -212,22 +292,77 @@ impl Picker {
         self.count() == 0 && !self.field.text().is_empty()
     }
 
-    /// The furthest down the list can be scrolled: its last row at the
+    /// The furthest down the list can be scrolled: its last line at the
     /// bottom.
     fn last_top(&self) -> usize {
-        self.count().saturating_sub(self.room)
+        self.lines().saturating_sub(self.room)
     }
 
-    /// Scrolls the list `rows` down, or up if it is less than none, as far
-    /// as it goes, the chosen row kept in sight: the same while it is in
-    /// sight, and else the nearest that is. Says whether it moved.
+    /// Scrolls the list `rows` lines down, or up if it is less than none,
+    /// as far as it goes, the chosen program kept in sight: the same while
+    /// it is in sight, and else the nearest that is. Says whether it moved.
     pub fn scroll(&mut self, rows: isize) -> bool {
         let top = self.top.saturating_add_signed(rows).min(self.last_top());
         let moved = top != self.top;
         self.top = top;
-        let last = (self.top + self.room).min(self.count()).saturating_sub(1);
-        self.chosen = self.chosen.max(self.top).min(last);
+        let last = (self.top + self.room).min(self.lines()).saturating_sub(1);
+        let (line, column) = self.line_of(self.chosen);
+        self.chosen = self.nearest(line.max(self.top).min(last), column);
         moved
+    }
+
+    /// How many programs a line has: one in the list, more in the grid.
+    const fn columns(&self) -> usize {
+        if self.grid { COLUMNS } else { 1 }
+    }
+
+    /// How many lines there are: the answer's alone, if there is one, then
+    /// the programs', as many to a line as there are columns.
+    fn lines(&self) -> usize {
+        let head = usize::from(self.answer.is_some());
+        head + self.found.len().div_ceil(self.columns())
+    }
+
+    /// Which line the row `row` is on, and how far across it.
+    fn line_of(&self, row: usize) -> (usize, usize) {
+        let head = usize::from(self.answer.is_some());
+        row.checked_sub(head).map_or((0, 0), |program| {
+            let columns = self.columns();
+            (head + program / columns, program % columns)
+        })
+    }
+
+    /// The row `column` places across line `line`, if one is there. The
+    /// answer has a line to itself, all the way across.
+    fn row_on(&self, line: usize, column: usize) -> Option<usize> {
+        let head = usize::from(self.answer.is_some());
+        let programs = line.checked_sub(head);
+        let row = programs.map_or(0, |line| head + line * self.columns() + column);
+        Some(row).filter(|row| *row < self.count())
+    }
+
+    /// The row on line `line` nearest `column` places across it: the
+    /// last of a line that does not reach so far.
+    fn nearest(&self, line: usize, column: usize) -> usize {
+        let mut columns = (0..=column).rev();
+        let found = columns.find_map(|column| self.row_on(line, column));
+        found.unwrap_or(self.chosen)
+    }
+
+    /// Chooses the program `by` lines down, or up if less than none, as
+    /// near the same place across as the line has one.
+    fn move_lines(&mut self, by: isize) {
+        // Past the last line there is nothing near, and the same stays
+        // chosen.
+        let (line, column) = self.line_of(self.chosen);
+        self.chosen = self.nearest(line.saturating_add_signed(by), column);
+        self.follow();
+    }
+
+    /// Whether Left and Right walk the grid, as they do while nothing is
+    /// typed for them to move the cursor in.
+    fn walks(&self) -> bool {
+        self.grid && self.field.text().is_empty()
     }
 
     /// What has been typed.
@@ -273,20 +408,25 @@ impl Picker {
     /// Takes a key.
     pub fn key(&mut self, key: Key) -> Outcome {
         match key {
+            Key::Edit(Edit::Move {
+                way,
+                reach: Reach::Character,
+                choosing: false,
+            }) if self.walks() => {
+                let last = self.count().saturating_sub(1);
+                self.chosen = match way {
+                    Way::Back => self.chosen.saturating_sub(1),
+                    Way::On => (self.chosen + 1).min(last),
+                };
+                self.follow();
+            }
             Key::Text(text) => self.change(Edit::Type(text)),
             Key::Edit(edit) => self.change(edit),
             Key::All => self.change(Edit::All),
             Key::Copy => return self.copy(false),
             Key::Cut => return self.copy(true),
-            Key::Up => {
-                self.chosen = self.chosen.saturating_sub(1);
-                self.follow();
-            }
-            Key::Down => {
-                let last = self.count().saturating_sub(1);
-                self.chosen = (self.chosen + 1).min(last);
-                self.follow();
-            }
+            Key::Up => self.move_lines(-1),
+            Key::Down => self.move_lines(1),
             Key::Enter => return self.start(),
             Key::Escape => return Outcome::Close,
         }
@@ -307,7 +447,7 @@ impl Picker {
     /// until it is let go; on a program's row it starts that program; and
     /// anywhere else it does nothing. `text` measures what is typed.
     pub fn click(&mut self, x: i32, y: i32, theme: &Theme, text: &mut Text) -> Outcome {
-        let (left, top, width, height) = Layout::new(theme).input;
+        let (left, top, width, height) = self.layout(theme).input;
         let across = x.checked_sub(left).and_then(|x| u32::try_from(x).ok());
         let down = y.checked_sub(top).and_then(|y| u32::try_from(y).ok());
         self.dragging = across.is_some_and(|x| x < width) && down.is_some_and(|y| y < height);
@@ -336,16 +476,16 @@ impl Picker {
 
     /// Where what is typed is written: the field less its padding and its
     /// border.
-    fn typed_area(theme: &Theme) -> Area {
+    fn typed_area(&self, theme: &Theme) -> Area {
         let input = theme.style(Part::LauncherInput, States::NONE);
-        inset(Layout::new(theme).input, input.inset())
+        inset(self.layout(theme).input, input.inset())
     }
 
     /// The first place in what is typed that is shown: where what comes
     /// before the cursor fits in the field from, as far back as it goes,
     /// so that the cursor is always in sight.
     fn first_shown(&self, text: &mut Text, theme: &Theme) -> usize {
-        let (_, _, room, _) = Self::typed_area(theme);
+        let (_, _, room, _) = self.typed_area(theme);
         let font = theme.font(Part::LauncherInput, States::NONE);
         let (typed, cursor) = (self.field.text(), self.field.cursor());
         let mut places = self.field.boundaries().take_while(|at| *at <= cursor);
@@ -356,7 +496,7 @@ impl Picker {
     /// The place in what is typed nearest a point `x` across the launcher,
     /// as it is shown.
     fn place_at(&self, x: i32, text: &mut Text, theme: &Theme) -> usize {
-        let (left, ..) = Self::typed_area(theme);
+        let (left, ..) = self.typed_area(theme);
         let font = theme.font(Part::LauncherInput, States::NONE);
         let first = self.first_shown(text, theme);
         let typed = self.field.text();
@@ -406,7 +546,7 @@ impl Picker {
         icons: &mut Icons,
         motion: &mut Motion,
     ) -> Canvas {
-        let layout = Layout::new(theme);
+        let layout = self.layout(theme);
         let whole = layout.whole(self.shown());
         let (_, _, width, height) = whole;
         let mut canvas = Canvas::scaled(width, height, scale);
@@ -418,57 +558,32 @@ impl Picker {
         // the programs.
         let copies = self.answer.as_ref().map(|_| words.say("enter-copies", &[]));
         let described = self.show.descriptions;
-        let listed = self.rows().enumerate().skip(self.first()).take(self.room);
-        for (place, (row, item)) in listed.enumerate() {
-            let (name, says, icon) = match item {
-                Row::Answer(_, shown) => (shown, copies.as_deref(), None),
-                Row::App(app) => {
-                    let says = described.then_some(app.description.as_str());
-                    (app.name.as_str(), says, Some(&app.icon))
-                }
-            };
+        let sight = self.first()..self.first() + self.room;
+        let mut drawing = (&mut canvas, &mut *text, icons, motion);
+        for (row, item) in self.rows().enumerate() {
+            let (line, column) = self.line_of(row);
+            if !sight.contains(&line) {
+                continue;
+            }
+            let place = line - self.first();
             let states = States::NONE.when(State::Active, row == self.chosen);
             // A row is the same row whichever program is in it.
             let key = u64::try_from(row).unwrap_or(u64::MAX);
-            let style = motion.style(theme, Part::LauncherItem, key, states);
-            let area = inset(layout.row(place), style.margin);
-            canvas.draw_box(area, &style);
-            let mut room = inset(area, style.inset());
-            if self.show.icons {
-                // A square as tall as the row's two lines.
-                let side = room.3;
-                let square = (room.0, room.1, side, side);
-                let pixels = scale.pixels(side.cast_signed()).unsigned_abs();
-                let icon = icon.and_then(|icon| icons.get(icon, pixels, style.color));
-                if let Some(icon) = icon {
-                    canvas.draw_image(square, icon);
+            let (theme, key) = ((theme, scale), (key, states));
+            match item {
+                Row::Answer(_, shown) => {
+                    let said = (shown, copies.as_deref(), None);
+                    self.paint_row(&mut drawing, theme, key, layout.row(place), said);
                 }
-                room = inset(room, on_the_left(side.saturating_add(GAP)));
-            }
-            let font = theme.font(Part::LauncherItem, states);
-            if let Some(says) = says {
-                // The name in the top half, what it says under it.
-                let (left, top, width, height) = room;
-                let half = height / 2;
-                let under = (
-                    left,
-                    top.saturating_add_unsigned(half),
-                    width,
-                    height - half,
-                );
-                text.draw(
-                    &mut canvas,
-                    name,
-                    (left, top, width, half),
-                    style.color,
-                    font,
-                );
-                let said = motion.style(theme, Part::LauncherDescription, key, states);
-                let ink = said.color;
-                let font = theme.font(Part::LauncherDescription, states);
-                text.draw(&mut canvas, says, under, ink, font);
-            } else {
-                text.draw(&mut canvas, name, room, style.color, font);
+                Row::App(app) if self.grid => {
+                    let area = layout.tile(place, column);
+                    self.paint_tile(&mut drawing, theme, key, area, app);
+                }
+                Row::App(app) => {
+                    let says = described.then_some(app.description.as_str());
+                    let said = (app.name.as_str(), says, Some(app.icon.as_str()));
+                    self.paint_row(&mut drawing, theme, key, layout.row(place), said);
+                }
             }
         }
         if self.nothing() {
@@ -483,6 +598,80 @@ impl Picker {
             text.draw(&mut canvas, &nothing, area, said.color, font);
         }
         canvas
+    }
+
+    /// Draws a row of the list at `place`: `name`, what it `says` under
+    /// it if anything, and its icon beside them if icons are shown, with
+    /// the colours of `states`, as far on their way as the row `key`'s are.
+    fn paint_row(
+        &self,
+        (canvas, text, icons, motion): &mut Drawing<'_>,
+        (theme, scale): (&Theme, Scale),
+        (key, states): (u64, States),
+        place: Area,
+        (name, says, icon): (&str, Option<&str>, Option<&str>),
+    ) {
+        let style = motion.style(theme, Part::LauncherItem, key, states);
+        let area = inset(place, style.margin);
+        canvas.draw_box(area, &style);
+        let mut room = inset(area, style.inset());
+        if self.show.icons {
+            // A square as tall as the row's two lines.
+            let side = room.3;
+            let square = (room.0, room.1, side, side);
+            draw_icon(canvas, icons, (icon, square, scale), style.color);
+            room = inset(room, on_the_left(side.saturating_add(GAP)));
+        }
+        let font = theme.font(Part::LauncherItem, states);
+        if let Some(says) = says {
+            // The name in the top half, what it says under it.
+            let (left, top, width, height) = room;
+            let half = height / 2;
+            let under = (
+                left,
+                top.saturating_add_unsigned(half),
+                width,
+                height - half,
+            );
+            text.draw(canvas, name, (left, top, width, half), style.color, font);
+            let said = motion.style(theme, Part::LauncherDescription, key, states);
+            let ink = said.color;
+            let font = theme.font(Part::LauncherDescription, states);
+            text.draw(canvas, says, under, ink, font);
+        } else {
+            text.draw(canvas, name, room, style.color, font);
+        }
+    }
+
+    /// Draws a program's tile in the grid at `place`: its icon, if icons
+    /// are shown, over its name in the middle, with the colours of
+    /// `states`, as far on their way as the tile `key`'s are.
+    fn paint_tile(
+        &self,
+        (canvas, text, icons, motion): &mut Drawing<'_>,
+        (theme, scale): (&Theme, Scale),
+        (key, states): (u64, States),
+        place: Area,
+        app: &App,
+    ) {
+        let style = motion.style(theme, Part::LauncherTile, key, states);
+        let area = inset(place, style.margin);
+        canvas.draw_box(area, &style);
+        let (left, top, width, height) = inset(area, style.inset());
+        let side = width / 2;
+        if self.show.icons {
+            let square = (left.saturating_add_unsigned(side / 2), top, side, side);
+            draw_icon(canvas, icons, (Some(&app.icon), square, scale), style.color);
+        }
+        let below = side.saturating_add(UNDER);
+        let line = (
+            left,
+            top.saturating_add_unsigned(below),
+            width,
+            height.saturating_sub(below),
+        );
+        let font = theme.font(Part::LauncherTile, states);
+        text.draw_centered(canvas, &app.name, line, style.color, font);
     }
 
     /// Draws the field, at `field`, with what is typed in it as far as it
@@ -545,26 +734,31 @@ impl Picker {
         self.top
     }
 
-    /// Scrolls the list only as far as it takes to keep the chosen row in
-    /// sight, as the arrows move it.
+    /// Scrolls the list only as far as it takes to keep the chosen
+    /// program's line in sight, as the arrows move it.
     fn follow(&mut self) {
-        let lowest = (self.chosen + 1).saturating_sub(self.room);
-        self.top = self.top.min(self.chosen).max(lowest);
+        let (line, _) = self.line_of(self.chosen);
+        let lowest = (line + 1).saturating_sub(self.room);
+        self.top = self.top.min(line).max(lowest);
     }
 
-    /// Which of the programs that match is listed at a point, if any is.
+    /// Which of the programs that match is shown at a point, if any is.
     fn row_at(&self, x: i32, y: i32, theme: &Theme) -> Option<usize> {
-        let layout = Layout::new(theme);
+        let layout = self.layout(theme);
         let (left, top, width) = layout.list;
         let across = u32::try_from(x.saturating_sub(left)).ok();
         let down = u32::try_from(y.saturating_sub(top)).ok();
         let inside = across.zip(down).filter(|(across, _)| *across < width);
-        let place = inside.and_then(|(_, down)| down.checked_div(layout.pitch));
-        let place = place.and_then(|place| usize::try_from(place).ok());
-        let row = place
-            .filter(|place| *place < self.room)
-            .map(|place| self.first() + place);
-        row.filter(|row| *row < self.count())
+        let place = inside.and_then(|(across, down)| {
+            let line = down / layout.pitch.max(1);
+            let column = across / layout.cell().max(1);
+            usize::try_from(line).ok().zip(usize::try_from(column).ok())
+        });
+        // What is left over past the last column is the last column's.
+        let last = self.columns() - 1;
+        let place = place.map(|(line, column)| (line, column.min(last)));
+        let place = place.filter(|(line, _)| *line < self.room);
+        place.and_then(|(line, column)| self.row_on(self.first() + line, column))
     }
 
     /// Finds the programs that match what has been typed: those whose name
@@ -626,6 +820,25 @@ impl Picker {
     }
 }
 
+/// What the launcher is drawn on and with: the canvas, what draws text,
+/// the icons there are, and how far each row is on its way to its colours.
+type Drawing<'a> = (&'a mut Canvas, &'a mut Text, &'a mut Icons, &'a mut Motion);
+
+/// Draws the icon called `icon` in `square`, at `scale`, in `ink` where it
+/// is drawn in one colour, if it is there to draw.
+fn draw_icon(
+    canvas: &mut Canvas,
+    icons: &mut Icons,
+    (icon, square, scale): (Option<&str>, Area, Scale),
+    ink: Color,
+) {
+    let pixels = scale.pixels(square.2.cast_signed()).unsigned_abs();
+    let icon = icon.and_then(|icon| icons.get(icon, pixels, ink));
+    if let Some(icon) = icon {
+        canvas.draw_image(square, icon);
+    }
+}
+
 /// Room taken from the left of a box and from nowhere else.
 const fn on_the_left(room: u32) -> Edges<u32> {
     Edges {
@@ -636,7 +849,6 @@ const fn on_the_left(room: u32) -> Edges<u32> {
 
 #[cfg(test)]
 mod tests {
-    use omorfos_config::Color;
 
     use super::*;
 
@@ -685,7 +897,7 @@ mod tests {
     /// Where what is typed begins, across, and the middle of its line,
     /// down, under the built-in theme.
     fn field_at(theme: &Theme) -> (i32, i32) {
-        let (left, top, _, tall) = Picker::typed_area(theme);
+        let (left, top, _, tall) = several().typed_area(theme);
         (left, top + tall.cast_signed() / 2)
     }
 
@@ -858,7 +1070,7 @@ mod tests {
     /// Which columns of what is typed, in the upper half of its line, hold
     /// anything but `ground`, under the built-in theme.
     fn inked_columns(picker: &Picker, ground: impl Fn(u32) -> u32) -> Vec<bool> {
-        let (left, top, room, tall) = Picker::typed_area(&Theme::default());
+        let (left, top, room, tall) = several().typed_area(&Theme::default());
         let canvas = painted(picker);
         let (left, top) = (left.unsigned_abs(), top.unsigned_abs());
         let inked = |x: u32| (top..top + tall / 2).any(|y| canvas.at(x, y) != ground(x));
@@ -890,7 +1102,7 @@ mod tests {
         let theme = Theme::default();
         let input = theme.style(Part::LauncherInput, States::NONE);
         let marked = theme.style(Part::LauncherInput, States::NONE.with(State::Active));
-        let (left, top, _, _) = Picker::typed_area(&theme);
+        let (left, top, _, _) = several().typed_area(&theme);
         let (left, top) = (left.unsigned_abs(), top.unsigned_abs());
         // On the mark where it is chosen, and on the field elsewhere.
         let inked = |picker: &Picker| {
@@ -1365,7 +1577,7 @@ mod tests {
         assert!(first > 0, "{first}");
         // The cursor is at the end, in sight: what comes before it, from
         // there, fits, and from a character sooner it would not.
-        let (_, _, room, _) = Picker::typed_area(&theme);
+        let (_, _, room, _) = several().typed_area(&theme);
         let font = theme.font(Part::LauncherInput, States::NONE).clone();
         assert!(text.measure(&picker.query()[first..], &font) < room);
         assert!(text.measure(&picker.query()[first - 1..], &font) >= room);
@@ -1532,5 +1744,234 @@ mod tests {
         let (x, y) = row(0);
         assert!(picker.point(x, y, &theme));
         assert_eq!(picker.chosen(), Some("Program 04"));
+    }
+
+    /// Eight programs, more than a line of the grid has.
+    const EIGHT: [&str; 8] = [
+        "Archive", "Books", "Calendar", "Clock", "Files", "Maps", "Music", "Photos",
+    ];
+
+    /// The arrows Left and Right, as the shell's typing gives them.
+    const fn across(way: Way) -> Key {
+        Key::Edit(Edit::Move {
+            way,
+            reach: Reach::Character,
+            choosing: false,
+        })
+    }
+
+    fn grid(names: &[&str]) -> Picker {
+        let mut picker = picker(names);
+        picker.set_grid(true);
+        picker
+    }
+
+    /// The middle of the tile `column` places across the line `line`
+    /// lines down the grid, under the built-in theme.
+    fn tile(line: usize, column: usize) -> (i32, i32) {
+        let (left, top, width, height) = Layout::of(&Theme::default(), true).tile(line, column);
+        (
+            left + (width / 2).cast_signed(),
+            top + (height / 2).cast_signed(),
+        )
+    }
+
+    #[test]
+    fn the_grid_has_six_programs_to_a_line_and_the_arrows_walk_it() {
+        let mut picker = grid(&EIGHT);
+        let mut press = |key: Key| {
+            assert_eq!(picker.key(key), Outcome::Stay);
+            picker.chosen().map(str::to_owned)
+        };
+        assert_eq!(press(across(Way::On)).as_deref(), Some("Books"));
+        assert_eq!(press(Key::Down).as_deref(), Some("Photos"), "a line down");
+        assert_eq!(press(Key::Up).as_deref(), Some("Books"));
+        assert_eq!(press(across(Way::Back)).as_deref(), Some("Archive"));
+        assert_eq!(press(across(Way::Back)).as_deref(), Some("Archive"));
+        assert_eq!(press(Key::Up).as_deref(), Some("Archive"));
+        // From the fifth across, down is the last of a shorter line.
+        for _ in 0..4 {
+            press(across(Way::On));
+        }
+        assert_eq!(press(Key::Down).as_deref(), Some("Photos"));
+        assert_eq!(press(Key::Down).as_deref(), Some("Photos"));
+        assert_eq!(press(across(Way::On)).as_deref(), Some("Photos"));
+        // The list has a program to a line, and its Left and Right are
+        // the field's.
+        let mut list = Picker::new(
+            EIGHT.iter().map(|name| app(name)).collect(),
+            NAMES,
+            Numbers::Point,
+        );
+        list.key(across(Way::On));
+        assert_eq!(list.chosen(), Some("Archive"));
+        list.key(Key::Down);
+        assert_eq!(list.chosen(), Some("Books"));
+    }
+
+    #[test]
+    fn once_something_is_typed_the_grid_narrows_and_left_and_right_move_the_cursor() {
+        let mut picker = grid(&EIGHT);
+        typed(&mut picker, "m");
+        assert_eq!(names_of(&picker), ["Maps", "Music"]);
+        picker.key(across(Way::Back));
+        picker.key(across(Way::On));
+        assert_eq!(picker.chosen(), Some("Maps"), "not walked");
+        // The cursor went back and on again, to the end.
+        typed(&mut picker, "u");
+        assert_eq!(names_of(&picker), ["Music"]);
+        // Emptied, the arrows walk it again.
+        picker.key(BACKSPACE);
+        picker.key(BACKSPACE);
+        picker.key(across(Way::On));
+        assert_eq!(picker.chosen(), Some("Books"));
+    }
+
+    #[test]
+    fn a_sum_in_the_grid_has_a_line_of_its_own_above_the_programs() {
+        let theme = Theme::default();
+        let mut picker = grid(&["2+2 Drill", "2+2 Quiz", "Archive"]);
+        typed(&mut picker, "2+2");
+        assert_eq!(picker.chosen(), Some("4"));
+        picker.key(Key::Down);
+        assert_eq!(picker.chosen(), Some("2+2 Drill"));
+        picker.key(Key::Down);
+        assert_eq!(picker.chosen(), Some("2+2 Drill"), "the last line");
+        // Its line is the answer's all the way across.
+        let (_, y) = tile(0, 0);
+        let (x, _) = tile(0, 5);
+        assert!(picker.point(x, y, &theme));
+        assert_eq!(picker.chosen(), Some("4"));
+        let (x, y) = tile(1, 1);
+        assert!(picker.point(x, y, &theme));
+        assert_eq!(picker.chosen(), Some("2+2 Quiz"));
+        let canvas = still(&picker, &theme, Scale::ONE, &mut Icons::default());
+        let (_, y) = tile(0, 0);
+        let lit_across =
+            (0..canvas.width()).filter(|x| canvas.at(*x, y.unsigned_abs()) == lit(&theme));
+        assert_eq!(lit_across.count(), 0, "the answer is not chosen");
+        let tiled = theme.style(Part::LauncherTile, States::NONE.with(State::Active));
+        let (x, y) = tile(1, 1);
+        let at = canvas.at(x.unsigned_abs(), (y - 30).unsigned_abs());
+        assert_eq!(at, argb(tiled.background), "the tile chosen is lit");
+    }
+
+    #[test]
+    fn the_grid_is_as_wide_as_a_line_of_tiles_and_scrolls_by_lines() {
+        let theme = Theme::default();
+        let names: Vec<String> = (0..20).map(|n| format!("Program {n:02}")).collect();
+        let names: Vec<&str> = names.iter().map(String::as_str).collect();
+        let mut picker = grid(&names);
+        let layout = Layout::of(&theme, true);
+        let tile = theme.style(Part::LauncherTile, States::NONE);
+        let launcher = theme.style(Part::Launcher, States::NONE);
+        let wide = 6 * tile.min_width + launcher.inset().across();
+        assert_eq!(picker.size(&theme).0, wide);
+        assert!(wide > Layout::new(&theme).width);
+        // Room for two lines of the four.
+        picker.fit(&theme, 2 * (layout.bare + 2 * layout.pitch));
+        assert_eq!(picker.size(&theme).1, layout.bare + 2 * layout.pitch);
+        assert!(picker.scroll(1));
+        assert_eq!(picker.chosen(), Some("Program 06"), "kept in sight");
+        assert!(picker.scroll(5));
+        assert!(!picker.scroll(1), "the last line at the bottom");
+        assert_eq!(picker.chosen(), Some("Program 12"));
+        // The arrows take the view with them.
+        picker.key(Key::Up);
+        picker.key(Key::Up);
+        assert_eq!(picker.chosen(), Some("Program 00"));
+        assert!(picker.scroll(1));
+    }
+
+    #[test]
+    fn the_pointer_chooses_the_tile_it_is_over_and_a_click_starts_it() {
+        let theme = Theme::default();
+        let mut picker = grid(&EIGHT);
+        let (x, y) = tile(0, 2);
+        assert!(picker.point(x, y, &theme));
+        assert_eq!(picker.chosen(), Some("Calendar"));
+        let (x, y) = tile(1, 1);
+        assert!(picker.point(x, y, &theme));
+        assert_eq!(picker.chosen(), Some("Photos"));
+        // Where no program is, nothing is chosen.
+        let (x, y) = tile(1, 3);
+        assert!(!picker.point(x, y, &theme));
+        assert_eq!(picker.chosen(), Some("Photos"));
+        let (x, y) = tile(0, 1);
+        let mut text = Text::new();
+        let started = picker.click(x, y, &theme, &mut text);
+        assert_eq!(started, spawn(&["books", "--go"]));
+        // A launcher wider than a line of tiles leaves what is over past
+        // the last column to the last column, not to the next line.
+        let wide = Theme::parse("launcher { min-width: 1000px; }").unwrap();
+        let layout = Layout::of(&wide, true);
+        let (left, top, width) = layout.list;
+        assert!(width > 6 * layout.cell(), "something left over");
+        let y = top + (layout.pitch / 2).cast_signed();
+        assert!(picker.point(left + width.cast_signed() - 1, y, &wide));
+        assert_eq!(picker.chosen(), Some("Maps"));
+    }
+
+    #[test]
+    fn each_tile_has_its_icon_over_its_name_and_the_chosen_one_is_lit() {
+        let root = tempfile::TempDir::new().unwrap();
+        let green = "<svg xmlns='http://www.w3.org/2000/svg' width='8' height='8'>\
+                     <rect width='8' height='8' fill='#00ff00'/></svg>";
+        std::fs::write(root.path().join("books.svg"), green).unwrap();
+        let mut icons = Icons::new(vec![root.path().to_owned()]);
+        let theme = Theme::default();
+        let show = Show {
+            icons: true,
+            ..NAMES
+        };
+        let apps = EIGHT.iter().map(|name| app(name)).collect();
+        let mut picker = Picker::new(apps, show, Numbers::Point);
+        picker.set_grid(true);
+        let canvas = still(&picker, &theme, Scale::ONE, &mut icons);
+        let layout = Layout::of(&theme, true);
+        let style = theme.style(Part::LauncherTile, States::NONE);
+        let inside = |line, column| {
+            inset(
+                inset(layout.tile(line, column), style.margin),
+                style.inset(),
+            )
+        };
+        // Books has its icon, half as wide as the tile's room, in the
+        // middle at its top; Archive has none.
+        let green_in = |(left, top, width, height): Area| {
+            let xs = left.unsigned_abs()..(left.unsigned_abs() + width);
+            let ys = top.unsigned_abs()..(top.unsigned_abs() + height);
+            let all = xs.flat_map(|x| ys.clone().map(move |y| (x, y)));
+            all.filter(|(x, y)| canvas.at(*x, *y) == 0xff00_ff00)
+                .count()
+        };
+        let books = inside(0, 1);
+        let side = books.2 / 2;
+        assert_eq!(green_in(books), (side * side) as usize);
+        let square = (books.0 + (side / 2).cast_signed(), books.1, side, side);
+        assert_eq!(green_in(square), (side * side) as usize);
+        assert_eq!(green_in(inside(0, 0)), 0);
+        // Under the icon, the name: ink in its line, of the tile's colour.
+        let ink = |(left, top, width, height): Area, color: u32| {
+            let below = top + (side + UNDER).cast_signed();
+            let xs = left.unsigned_abs()..(left.unsigned_abs() + width);
+            let ys = below.unsigned_abs()..(top.unsigned_abs() + height);
+            let mut all = xs.flat_map(|x| ys.clone().map(move |y| (x, y)));
+            all.any(|(x, y)| canvas.at(x, y) == color)
+        };
+        let on_accent = theme
+            .style(Part::LauncherTile, States::NONE.with(State::Active))
+            .color;
+        assert!(ink(inside(0, 0), argb(on_accent)), "the chosen one's name");
+        assert!(ink(inside(0, 1), argb(style.color)), "another's");
+        // The chosen one is lit, and no other.
+        let lit_tile = argb(
+            theme
+                .style(Part::LauncherTile, States::NONE.with(State::Active))
+                .background,
+        );
+        let corner = |(left, top, _, _): Area| canvas.at(left.unsigned_abs(), top.unsigned_abs());
+        assert_eq!(corner(inside(0, 0)), lit_tile);
+        assert_ne!(corner(inside(0, 1)), lit_tile);
     }
 }

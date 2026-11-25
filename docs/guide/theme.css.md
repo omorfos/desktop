@@ -380,6 +380,18 @@ launcher-item:active {
 /* What a program says of itself, where the launcher is set to show it. */
 launcher-description { color: var(--text-dim); }
 launcher-description:active { color: var(--on-accent); }
+/* A program in the grid of every program: its icon, half as wide as the
+ * room inside its padding, over its name. It is as wide as its min-width. */
+launcher-tile {
+  min-width: 112px;
+  padding: 8px;
+  color: var(--text);
+  border-radius: 10px;
+}
+launcher-tile:active {
+  background: var(--accent);
+  color: var(--on-accent);
+}
 /* The rest of the screen while the launcher is open. A click on it closes
  * the launcher. Give it a see-through colour to dim what is behind. */
 launcher-backdrop { background: transparent; }
@@ -701,7 +713,7 @@ workspace:active, task:active { border-bottom: none; }
 `menu-separator`, `menu-sign`, `menu-keys`, `notice`, `notice-heading`, `capture`, `capture-border`, `tooltip`, `panel`,
 `workspace`, `task`,
 `clock`, `popover`, `popover-item`, `popover-day`, `popover-day-outside`, `launcher`, `launcher-input`, `launcher-item`,
-`launcher-description`, `launcher-backdrop`, `notification`,
+`launcher-description`, `launcher-tile`, `launcher-backdrop`, `notification`,
 `notification-title`, `notification-body`, `notification-level`, `question`, `question-detail`,
 `question-button`, `question-input`, `switcher`, `switcher-item`, `switcher-title`,
 `switcher-window`, `switcher-backdrop`, `overview-window`, `overview-title`,
@@ -784,7 +796,7 @@ is measured to the outside of its border.
 | `border-radius` | `0` to `32px` | rounds the corners of the box; a `menu`'s rows are kept to its corners, so the first and last, highlighted, follow the curve, as `overflow: hidden` would have it |
 | `padding`, `margin` | one to four sizes, `0` to `64px` | all; top and bottom, then sides; top, sides, bottom; or top, right, bottom, left. A `menu`'s rows begin inside its border and padding: with none, as in the built-in theme, the first and last reach its border; `menu { padding: 4px 0; }` leaves room above and below them |
 | `height` | `16px` to `64px` | of `titlebar`, `menu-item`, `panel`, `launcher-input`, `launcher-item`, `popover-day` and `question-button` |
-| `min-width`, `max-width` | `0` to `4096px` | of `workspace`, `task` and `clock`, and of `popover-day`, whose height or `min-width`, whichever is more, is how large each day of a month is, and each day of the months beside it, each arrow and each day of the week; `max-width: 0` is no limit. The launcher is as wide as its `min-width`, and so is each button of a titlebar, which is not there at all if that is `0` |
+| `min-width`, `max-width` | `0` to `4096px` | of `workspace`, `task` and `clock`, and of `popover-day`, whose height or `min-width`, whichever is more, is how large each day of a month is, and each day of the months beside it, each arrow and each day of the week; `max-width: 0` is no limit. The launcher is as wide as its `min-width`, and so is each program in its grid, `launcher-tile`, and so is each button of a titlebar, which is not there at all if that is `0` |
 | `font-family`, `font-size` | a name, or names apart by commas; `6pt` to `72pt` | the first of the names that is installed, or a generic one such as `sans-serif`, is used, and `sans-serif` if none is: the built-in theme's `Inter, sans-serif` is Inter where it is installed. Programs are told the font of `menu-item`, which is as most text is, as GTK writes one, `Inter, sans-serif 11`: in the settings toolkits follow under X11 and through the settings portal's `font-name`. The variable `--font-monospace`, names as `font-family` takes them, is the monospaced font programs are told for code and terminals, at the same size, `JetBrains Mono, monospace 11`, through the settings portal's `monospace-font-name`; X11 has no setting for it |
 | `font-weight`, `font-style` | `normal`, `bold`, `100` to `900`; `normal`, `italic` | |
 | `transition` | a time up to `10s`, perhaps a second up to `10s`, and perhaps `linear`, `ease`, `ease-in`, `ease-out`, `ease-in-out` or `cubic-bezier(x1, y1, x2, y2)`; or `none` | how long the part's colours take to change when its state does, how long they wait first, and how; also `transition-duration`, `transition-delay` and `transition-timing-function`. In `cubic-bezier()` each x is from 0 to 1 and each y from -10 to 10, as in CSS; a curve that goes before its start or past its end goes no further than either |

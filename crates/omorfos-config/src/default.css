@@ -365,6 +365,18 @@ launcher-item:active {
 /* What a program says of itself, where the launcher is set to show it. */
 launcher-description { color: var(--text-dim); }
 launcher-description:active { color: var(--on-accent); }
+/* A program in the grid of every program: its icon, half as wide as the
+ * room inside its padding, over its name. It is as wide as its min-width. */
+launcher-tile {
+  min-width: 112px;
+  padding: 8px;
+  color: var(--text);
+  border-radius: 10px;
+}
+launcher-tile:active {
+  background: var(--accent);
+  color: var(--on-accent);
+}
 /* The rest of the screen while the launcher is open. A click on it closes
  * the launcher. Give it a see-through colour to dim what is behind. */
 launcher-backdrop { background: transparent; }

@@ -103,6 +103,14 @@ impl Launcher {
         })
     }
 
+    /// The same launcher showing every program as a grid, each one's icon
+    /// over its name, if `grid`, rather than as a list.
+    #[must_use]
+    pub const fn in_grid(mut self, grid: bool) -> Self {
+        self.shell.picker.set_grid(grid);
+        self
+    }
+
     /// Does whatever there is to do, without waiting, at the time `now`,
     /// counted from when the program started: takes in the keys the
     /// compositor reports, takes a key that is being held again if it is
@@ -182,19 +190,21 @@ impl Launcher {
 /// Runs a launcher offering `apps`, with their pictures from `icons`, in
 /// the session whose Wayland socket is at `wayland` and whose own socket is
 /// at `socket`, themed and set up from the configuration and what is kept
-/// of it, `config`, reading sums as `numbers`.
+/// of it, `config`, reading sums as `numbers`; as a grid, if `grid`.
 pub(crate) fn run(
     wayland: &Path,
     socket: &Path,
     config: (&Path, Option<&Path>),
     (apps, icons, numbers): (Vec<App>, Icons, Numbers),
+    grid: bool,
 ) -> Result<(), Failure> {
     let streams = omorfos_shell::connect(wayland);
     let streams = streams.and_then(|wayland| Ipc::connect(socket).map(|ipc| (wayland, ipc)));
     let launcher = streams
         .map_err(Failure::from)
         .and_then(|(wayland, commands)| {
-            Launcher::new(wayland, commands, config, apps, icons, numbers)
+            let launcher = Launcher::new(wayland, commands, config, apps, icons, numbers);
+            launcher.map(|launcher| launcher.in_grid(grid))
         });
     launcher.and_then(|mut launcher| launcher.serve())
 }

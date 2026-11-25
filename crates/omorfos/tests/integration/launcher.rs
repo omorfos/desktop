@@ -1069,6 +1069,25 @@ fn the_compositor_opens_the_launcher_when_asked_and_only_one_at_a_time() {
 }
 
 #[test]
+fn every_program_is_asked_for_by_starting_the_launcher_onto_its_grid() {
+    let mut session = Session::new();
+    session.listen();
+    session.compositor_mut().set_launcher(stand_in_launcher());
+    session.compositor_mut().perform(&Action::ShowPrograms);
+    session.eventually(|session| mark(session, "launcher-arguments") == "--programs;");
+    // While it is open, the launcher asked for alone leaves it as it is.
+    session.compositor_mut().perform(&Action::ShowLauncher);
+    session.advance(Duration::from_millis(100));
+    assert_eq!(mark(&session, "launcher-opened"), "x");
+    std::fs::write(session.config.path().join("launcher-close"), "").unwrap();
+    session.eventually(|session| {
+        session.compositor_mut().perform(&Action::ShowLauncher);
+        mark(session, "launcher-opened").len() > 1
+    });
+    assert_eq!(mark(&session, "launcher-arguments"), "--programs;;");
+}
+
+#[test]
 fn the_launcher_is_opened_by_its_key_and_from_the_menu_by_default() {
     let mut session = Session::new();
     session.listen();
@@ -1130,7 +1149,7 @@ fn a_launcher_running_by_itself_gives_up_when_the_session_ends() {
             let found = variables.iter().find(|(known, _)| *known == name);
             found.map(|(_, value)| value.clone())
         };
-        omorfos_launcher::start(&variable).map_err(|failure| failure.to_string())
+        omorfos_launcher::start(&variable, false).map_err(|failure| failure.to_string())
     });
     session.eventually(|session| session.draw().at(WIDTH / 2, HEIGHT / 2) == surface());
 
@@ -1168,7 +1187,7 @@ fn a_launcher_started_after_the_theme_went_wrong_is_drawn_as_the_session_kept_it
             let found = variables.iter().find(|(known, _)| *known == name);
             found.map(|(_, value)| value.clone())
         };
-        omorfos_launcher::start(&variable).map_err(|failure| failure.to_string())
+        omorfos_launcher::start(&variable, false).map_err(|failure| failure.to_string())
     });
     session.eventually(|session| session.draw().at(WIDTH / 2, HEIGHT / 2) == RED);
 
@@ -1213,7 +1232,7 @@ fn the_launcher_runs_by_itself_offering_what_is_installed() {
             let found = variables.iter().find(|(known, _)| *known == name);
             found.map(|(_, value)| value.clone())
         };
-        omorfos_launcher::start(&variable).map_err(|failure| failure.to_string())
+        omorfos_launcher::start(&variable, false).map_err(|failure| failure.to_string())
     });
 
     let (x, y) = row(0);
@@ -1250,4 +1269,20 @@ fn the_launcher_runs_by_itself_offering_what_is_installed() {
         std::thread::sleep(Duration::from_millis(1));
     }
     assert_eq!(launcher.join().unwrap(), Ok(()));
+}
+
+#[test]
+fn in_the_grid_the_arrows_walk_across_and_enter_starts_the_one_chosen() {
+    let mut session = Session::new();
+    let mut launcher = launcher(&mut session).in_grid(true);
+    settle(&mut session, &mut launcher);
+    // Nothing typed, Left and Right are the grid's, not the field's.
+    press(&mut session, key::RIGHT);
+    press(&mut session, key::RIGHT);
+    press(&mut session, key::LEFT);
+    press(&mut session, key::RIGHT);
+    press(&mut session, key::RETURN);
+    assert!(settle(&mut session, &mut launcher));
+    session.eventually(|session| mark(session, "lens") == "x");
+    assert_eq!(mark(&session, "files"), "");
 }

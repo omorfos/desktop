@@ -12,7 +12,8 @@ fn main() -> ExitCode {
     if answered(&omorfos_launcher::ABOUT, &arguments, &mut io::stdout()) {
         return ExitCode::SUCCESS;
     }
-    let outcome = omorfos_launcher::start(&|name| env::var_os(name));
+    let grid = arguments.iter().any(|argument| argument == "--programs");
+    let outcome = omorfos_launcher::start(&|name| env::var_os(name), grid);
     // The session ending is how it is told to stop, and nothing to say.
     let outcome = outcome.or_else(omorfos_shell::ended::quietly);
     let failure = outcome.as_ref().err();

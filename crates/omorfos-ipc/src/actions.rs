@@ -234,6 +234,12 @@ pub const TOLD: &[Told] = &[
     told!("Programs", "show_launcher", "", "Open the launcher"),
     told!(
         "Programs",
+        "show_programs",
+        "",
+        "Open the launcher onto every program, as a grid",
+    ),
+    told!(
+        "Programs",
         "focus_notifications",
         "",
         "Give the notifications the keyboard",

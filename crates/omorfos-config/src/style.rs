@@ -123,6 +123,12 @@ pub enum Part {
     /// What a program in the launcher's list says of itself, under its
     /// name. It is [`State::Active`] with its program.
     LauncherDescription,
+    /// A program in the launcher's grid of every program: its icon, and
+    /// its name under it, in one line. It is as wide as its `min-width`,
+    /// the icon half as wide as the room inside its padding, and as tall
+    /// as those and its name. It is [`State::Active`] when it is the one
+    /// that would be started.
+    LauncherTile,
     /// The whole of the screen behind the launcher while it is open. Only
     /// its background is used.
     LauncherBackdrop,
@@ -211,7 +217,7 @@ pub enum Part {
 
 impl Part {
     /// Every part there is.
-    pub const ALL: [Self; 57] = [
+    pub const ALL: [Self; 58] = [
         Self::Desktop,
         Self::Window,
         Self::TileLine,
@@ -244,6 +250,7 @@ impl Part {
         Self::LauncherInput,
         Self::LauncherItem,
         Self::LauncherDescription,
+        Self::LauncherTile,
         Self::LauncherBackdrop,
         Self::Notification,
         Self::NotificationTitle,
@@ -307,6 +314,7 @@ impl Part {
             Self::LauncherInput => "launcher-input",
             Self::LauncherItem => "launcher-item",
             Self::LauncherDescription => "launcher-description",
+            Self::LauncherTile => "launcher-tile",
             Self::LauncherBackdrop => "launcher-backdrop",
             Self::Notification => "notification",
             Self::NotificationTitle => "notification-title",
@@ -875,6 +883,7 @@ mod tests {
                 "launcher-input",
                 "launcher-item",
                 "launcher-description",
+                "launcher-tile",
                 "launcher-backdrop",
                 "notification",
                 "notification-title",
