@@ -19,6 +19,7 @@ use crate::compositor::{About, Compositor, Look};
 use crate::holding::Held;
 use crate::paint;
 use crate::reveal::Placing;
+use crate::roles::Roles;
 use crate::surfaces;
 use crate::x11::Focus;
 use omorfos_core::KeyOutcome;
@@ -451,11 +452,28 @@ impl Compositor {
     }
 
     /// Whether a chord with Super that nothing binds reaches the program
-    /// as Ctrl (ADR 78): unless the configuration says not, or the bindings
-    /// are the ordinary way's, where it is the program's as it is (ADR 101).
+    /// with the keyboard as Ctrl (ADR 78): unless the configuration says
+    /// not, or the bindings are the ordinary way's, where it is the
+    /// program's as it is, or the program is one of the shell's with fields
+    /// of its own, which read Super as a Mac's read Command (ADR 101).
     fn super_as_ctrl(&self) -> bool {
         let config = self.config();
-        config.general.keyboard.super_as_ctrl && !config.keys.ordinary()
+        let way = config.general.keyboard.super_as_ctrl && !config.keys.ordinary();
+        way && !self.shell_focused()
+    }
+
+    /// Whether what has the keyboard is one of the shell's programs with
+    /// fields: the launcher, the boxes that ask for a secret and the lock
+    /// screen, by the roles the compositor started them with.
+    fn shell_focused(&self) -> bool {
+        let surface = match self.keyboard.current_focus() {
+            Some(Focus::Surface(surface)) => Some(surface),
+            _ => None,
+        };
+        let roles = Self::roles(surface.and_then(|surface| surface.client()).as_ref());
+        [Roles::OVERLAY, Roles::ASK, Roles::LOCK]
+            .into_iter()
+            .any(|role| roles.has(role))
     }
 
     fn key(&mut self, code: Keycode, pressed: bool, time: u32) {

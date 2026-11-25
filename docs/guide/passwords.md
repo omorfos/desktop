@@ -8,8 +8,8 @@ software or changing the date, polkit asks the desktop to ask you, and
 middle of the screen says what is asked for and whose password it wants:
 yours, if you are allowed to say yes, as an administrator is, and
 otherwise the first of those who are. Type it and press Enter; Escape or
-Cancel gives up. Backspace held down and Ctrl+A or Super+A work as on the
-lock screen. The eye at the end of the field shows what you typed, or
+Cancel gives up. Backspace held down and Super+A, or Ctrl+A in the
+ordinary way, work as on the lock screen. The eye at the end of the field shows what you typed, or
 hides it again, and says so when the pointer rests on it. Tab moves from
 the field to the eye, Cancel and Authenticate in turn, and Shift+Tab
 back; Enter presses the one you are on, which looks

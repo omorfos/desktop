@@ -457,6 +457,9 @@ impl Shell {
         // A key held is done again when it is due, as it would be pressed
         // again, and puts off showing only the time as a key does.
         if let Some(code) = self.repeat.due(now) {
+            // Super copies and pastes, or Ctrl in the ordinary way, as the
+            // bindings in force are (ADR 101).
+            self.typing.read_as(self.store.current().keys.ordinary());
             let key = self.typing.pressed(code);
             self.key(key);
             self.view = View::Awake { until: None };
@@ -744,6 +747,9 @@ impl Shell {
         if self.wake() {
             return;
         }
+        // Super copies and pastes, or Ctrl in the ordinary way, as the
+        // bindings in force are (ADR 101).
+        self.typing.read_as(self.store.current().keys.ordinary());
         let key = self.typing.pressed(code);
         // Only what types, or takes out, is done again while it is held:
         // not Enter, Escape or Tab, which do something once.

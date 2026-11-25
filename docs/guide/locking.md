@@ -66,7 +66,8 @@ button. Then the rest comes into view: your face, your name, a field for
 your password and what each way of unlocking says. The key that wakes it
 types nothing, so start typing your password after it. Backspace held
 down goes on taking out, at the pace of `keyboard.repeat_rate` and
-`repeat_delay`, and Ctrl+A, or Super+A, chooses all of what you typed,
+`repeat_delay`, and Super+A, as Cmd+A on a Mac, chooses all of what you
+typed (Ctrl+A with `defaults: ordinary` in `keys.yaml`),
 which `question-input:active` marks, for Backspace to take it out at once
 or what you type next to take its place. Escape, or being
 left alone for 30 seconds, empties the field and shows only the time

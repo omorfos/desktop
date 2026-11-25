@@ -617,7 +617,7 @@ const C_CODE: u32 = 46;
 /// each let go again in turn, under `config`.
 fn chord_with_super(app: &str, shifted: bool, config: &[(&str, &str)]) -> Vec<(u32, bool, u32)> {
     let mut session = Session::with_config(config);
-    let mut client = session.connect();
+    let mut client = session.connect_plain();
     session.open(&mut client, app, (200, 100), RED);
     session.roundtrip(&mut client);
     client.state.chords.clear();
@@ -737,7 +737,7 @@ fn a_program_given_every_key_has_the_desktops_keys_too_while_it_has_focus() {
     assert!(client.state.chords.contains(&(Q_CODE, true, LOGO)));
 
     // Another window that has not asked has the desktop's keys as ever.
-    let mut other = session.connect();
+    let mut other = session.connect_plain();
     session.open(&mut other, "app", (200, 100), BLUE);
     session.roundtrip(&mut other);
     other.state.chords.clear();

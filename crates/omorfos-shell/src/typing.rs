@@ -70,6 +70,10 @@ pub enum Key {
 pub struct Typing {
     layouts: xkb::Context,
     state: Option<xkb::State>,
+    /// Whether the keys are the ordinary way's, as `defaults: ordinary` in
+    /// `keys.yaml` has them, in which Ctrl copies, pastes and the rest; in
+    /// a Mac's way, as by default, Super does (ADR 101).
+    ordinary: bool,
 }
 
 impl Default for Typing {
@@ -77,6 +81,7 @@ impl Default for Typing {
         Self {
             layouts: xkb::Context::new(xkb::CONTEXT_NO_FLAGS),
             state: None,
+            ordinary: false,
         }
     }
 }
@@ -122,6 +127,13 @@ impl Typing {
         keymap.is_some_and(|keymap| keymap.key_repeats(code))
     }
 
+    /// Has the keys read as the ordinary way's if `ordinary`, Ctrl copying,
+    /// pasting and the rest, or as a Mac's, Super doing so, as the bindings
+    /// in force are (`Keys::ordinary`).
+    pub const fn read_as(&mut self, ordinary: bool) {
+        self.ordinary = ordinary;
+    }
+
     /// Whether the keyboard layout is known, so that keys type something.
     #[must_use]
     pub const fn known(&self) -> bool {
@@ -134,13 +146,13 @@ impl Typing {
         // Before the layout is known, no key types anything.
         self.state
             .as_ref()
-            .map_or(Key::Nothing, |state| typed(state, code))
+            .map_or(Key::Nothing, |state| typed(state, code, self.ordinary))
     }
 }
 
 /// What the key the compositor numbers `code` does on the keyboard as it is
-/// in `state`.
-fn typed(state: &xkb::State, code: u32) -> Key {
+/// in `state`, the keys being the ordinary way's if `ordinary`.
+fn typed(state: &xkb::State, code: u32, ordinary: bool) -> Key {
     // The numbers the layout knows keys by are eight higher.
     let code = xkb::Keycode::new(code.saturating_add(8));
     let held = |name| state.mod_name_is_active(name, xkb::STATE_MODS_EFFECTIVE);
@@ -149,8 +161,11 @@ fn typed(state: &xkb::State, code: u32) -> Key {
         held(xkb::MOD_NAME_ALT),
         held(xkb::MOD_NAME_LOGO),
     );
-    let command = ctrl || logo;
-    let chord = command || alt;
+    // What copies, pastes and the rest: Super, as Cmd on a Mac, or Ctrl in
+    // the ordinary way. The compositor hands Super to the shell's fields as
+    // it is, so that they can tell the two apart (ADR 101).
+    let command = if ordinary { ctrl } else { logo };
+    let chord = ctrl || logo || alt;
     let sym = state.key_get_one_sym(code);
     // A shortcut is the key's, whatever letter the layout typed with puts
     // on it, as programs take it.
@@ -170,14 +185,9 @@ fn typed(state: &xkb::State, code: u32) -> Key {
     if let Some(found) = found {
         return found;
     }
-    // By a word with Ctrl or Alt; and with Super, as Ctrl, which is how
-    // the compositor hands Super on to the shell's fields (ADR 78), so
-    // that it is the same whichever reaches a field.
-    let reach = if command || alt {
-        Reach::Word
-    } else {
-        Reach::Character
-    };
+    // By a word with Ctrl, as GTK has it, or Alt, as a Mac has it, or
+    // Super, whichever way the keys are.
+    let reach = if chord { Reach::Word } else { Reach::Character };
     let moved = |way, reach| Key::Move {
         way,
         reach,
@@ -305,15 +315,19 @@ mod tests {
 
     #[test]
     fn ctrl_and_the_key_that_is_a_chooses_all_whatever_the_layout_types_on_it() {
-        assert_eq!(typed(&keyboard("us", 0, true), A), Key::All);
-        assert_eq!(typed(&keyboard("us,gr", 1, true), A), Key::All, "in Greek");
+        assert_eq!(typed(&keyboard("us", 0, true), A, true), Key::All);
         assert_eq!(
-            typed(&keyboard("us,ru", 1, true), A),
+            typed(&keyboard("us,gr", 1, true), A, true),
+            Key::All,
+            "in Greek"
+        );
+        assert_eq!(
+            typed(&keyboard("us,ru", 1, true), A, true),
             Key::All,
             "in Russian"
         );
         assert_eq!(
-            typed(&keyboard("us,gr", 1, false), A),
+            typed(&keyboard("us,gr", 1, false), A, false),
             Key::Typed("α".to_owned())
         );
     }
@@ -322,8 +336,8 @@ mod tests {
     fn the_arrows_go_up_and_down_a_list() {
         // As the compositor numbers them.
         let (up, down) = (103, 108);
-        assert_eq!(typed(&keyboard("us", 0, false), up), Key::Up);
-        assert_eq!(typed(&keyboard("us", 0, false), down), Key::Down);
+        assert_eq!(typed(&keyboard("us", 0, false), up, false), Key::Up);
+        assert_eq!(typed(&keyboard("us", 0, false), down, false), Key::Down);
     }
 
     /// A US keyboard with the modifiers named in `held` held down.
@@ -349,38 +363,55 @@ mod tests {
         };
         let plain = holding(&[]);
         assert_eq!(
-            typed(&plain, left),
+            typed(&plain, left, false),
             moved(Way::Back, Reach::Character, false)
         );
         assert_eq!(
-            typed(&plain, right),
+            typed(&plain, right, false),
             moved(Way::On, Reach::Character, false)
         );
-        assert_eq!(typed(&plain, home), moved(Way::Back, Reach::Line, false));
-        assert_eq!(typed(&plain, end), moved(Way::On, Reach::Line, false));
-        assert_eq!(typed(&plain, backspace), Key::Back(Reach::Character));
-        assert_eq!(typed(&plain, delete), Key::Delete(Reach::Character));
+        assert_eq!(
+            typed(&plain, home, false),
+            moved(Way::Back, Reach::Line, false)
+        );
+        assert_eq!(
+            typed(&plain, end, false),
+            moved(Way::On, Reach::Line, false)
+        );
+        assert_eq!(typed(&plain, backspace, false), Key::Back(Reach::Character));
+        assert_eq!(typed(&plain, delete, false), Key::Delete(Reach::Character));
         // By a word with Ctrl, as GTK has it, or Alt, as a Mac has it.
         // And with Super, as Ctrl, which is how the compositor hands it on.
         for word in [xkb::MOD_NAME_CTRL, xkb::MOD_NAME_ALT, xkb::MOD_NAME_LOGO] {
             let held = holding(&[word]);
-            assert_eq!(typed(&held, left), moved(Way::Back, Reach::Word, false));
-            assert_eq!(typed(&held, backspace), Key::Back(Reach::Word));
-            assert_eq!(typed(&held, delete), Key::Delete(Reach::Word));
+            assert_eq!(
+                typed(&held, left, false),
+                moved(Way::Back, Reach::Word, false)
+            );
+            assert_eq!(typed(&held, backspace, false), Key::Back(Reach::Word));
+            assert_eq!(typed(&held, delete, false), Key::Delete(Reach::Word));
         }
         // Shift chooses what the cursor goes over.
         let shift = holding(&[xkb::MOD_NAME_SHIFT, xkb::MOD_NAME_CTRL]);
-        assert_eq!(typed(&shift, right), moved(Way::On, Reach::Word, true));
         assert_eq!(
-            typed(&holding(&[xkb::MOD_NAME_SHIFT]), home),
+            typed(&shift, right, false),
+            moved(Way::On, Reach::Word, true)
+        );
+        assert_eq!(
+            typed(&holding(&[xkb::MOD_NAME_SHIFT]), home, false),
             moved(Way::Back, Reach::Line, true)
         );
     }
 
     #[test]
-    fn ctrl_or_super_with_z_y_c_x_or_v_undoes_does_again_copies_cuts_or_pastes() {
+    fn super_or_in_the_ordinary_way_ctrl_with_z_y_c_x_or_v_undoes_does_again_copies_or_pastes() {
         let (key_z, key_y, key_c, key_x, key_b, key_v) = (44, 21, 46, 45, 48, 47);
-        for command in [xkb::MOD_NAME_CTRL, xkb::MOD_NAME_LOGO] {
+        // Super in a Mac's way, as by default; Ctrl in the ordinary way.
+        for (command, other, ordinary) in [
+            (xkb::MOD_NAME_LOGO, xkb::MOD_NAME_CTRL, false),
+            (xkb::MOD_NAME_CTRL, xkb::MOD_NAME_LOGO, true),
+        ] {
+            let typed = |state: &xkb::State, code| typed(state, code, ordinary);
             let held = holding(&[command]);
             assert_eq!(typed(&held, key_z), Key::Undo);
             assert_eq!(typed(&held, key_y), Key::Redo);
@@ -391,17 +422,22 @@ mod tests {
             let shifted = holding(&[command, xkb::MOD_NAME_SHIFT]);
             assert_eq!(typed(&shifted, key_z), Key::Redo);
             assert_eq!(typed(&shifted, key_c), Key::Nothing, "not with Shift");
+            // The other copies nothing, and types nothing either.
+            assert_eq!(typed(&holding(&[other]), key_c), Key::Nothing, "{other}");
         }
         // With Alt as well, none of them: that is another shortcut.
-        let both = holding(&[xkb::MOD_NAME_CTRL, xkb::MOD_NAME_ALT]);
-        assert_eq!(typed(&both, key_z), Key::Nothing);
+        let both = holding(&[xkb::MOD_NAME_LOGO, xkb::MOD_NAME_ALT]);
+        assert_eq!(typed(&both, key_z, false), Key::Nothing);
         // Alone, they type.
-        assert_eq!(typed(&holding(&[]), key_z), Key::Typed("z".to_owned()));
+        assert_eq!(
+            typed(&holding(&[]), key_z, false),
+            Key::Typed("z".to_owned())
+        );
     }
 
     #[test]
     fn with_no_latin_layout_beside_it_there_is_no_a_to_choose_all_by() {
-        assert_eq!(typed(&keyboard("gr", 0, true), A), Key::Nothing);
+        assert_eq!(typed(&keyboard("gr", 0, true), A, true), Key::Nothing);
     }
 
     #[test]

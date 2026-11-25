@@ -1820,8 +1820,12 @@ the first than on the last.
             `Super+Shift+3` and `4` kept, and with Ctrl on the clipboard,
             `Super+Shift+5` the picker; Alt+Tab left for the ordinary way.
             `Super+Down`, the program's windows, waits on #141;
-      - [ ] the shell's fields reading Super as Command, Ctrl left for
-            the line;
+      - [x] the shell's fields reading Super as Command, Ctrl left for
+            the line (#133): the launcher, the boxes that ask and the lock
+            screen copy, cut, paste, choose all and undo with Super, or
+            with Ctrl in the ordinary way; the compositor hands them Super
+            as it is, as it does no other program. What a Mac's fields do
+            with Ctrl, as Ctrl+A to the start of the line, is to come;
       - [ ] the touchpad's three or four fingers, a pinch for every
             program and a spread for the desktop; a page of settings for
             the gestures, for stage 7;

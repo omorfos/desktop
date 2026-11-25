@@ -46,6 +46,12 @@ false`, or the ordinary way, has a chord with Super that nothing binds
 reach the program as it is. A chord you bind with Super is no longer the
 program's: `Super+s` bound is no longer save anywhere.
 
+The shell's own fields, in the launcher, the boxes that ask for a
+password and the lock screen, are given Super as it is, and read it as a
+Mac's read Command: `Super+c`, `x`, `v`, `a` and `z` copy, cut, paste,
+choose all and undo, and Ctrl with those letters does nothing there. In
+the ordinary way they read Ctrl instead, as everything else does.
+
 A program that needs every key, as a virtual machine, a remote desktop
 or a game may, can ask for them (`keyboard-shortcuts-inhibit`), and is
 given them while its window has the keyboard, the desktop's bindings and

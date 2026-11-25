@@ -1119,7 +1119,7 @@ fn backspace_held_takes_out_one_character_after_another_as_keys_repeat() {
 }
 
 #[test]
-fn ctrl_or_super_and_a_choose_all_that_is_typed_to_type_over_or_take_out() {
+fn super_and_a_chooses_all_that_is_typed_to_take_out_and_ctrl_and_a_does_not() {
     let mut session = Session::new();
     let asker = start(&mut session);
     let cookie = asker.directory.path().join("asked");
@@ -1136,14 +1136,52 @@ fn ctrl_or_super_and_a_choose_all_that_is_typed_to_type_over_or_take_out() {
         tap(session, key::A);
         key_down(session, held, false);
     };
-    // Taken out at once by Backspace, then typed over: only what is typed
-    // after both is what polkit's helper is given.
+    // Chosen with Super, as a Mac's Cmd, and taken out at once by
+    // Backspace. Ctrl and A, left for the line (ADR 101), chooses nothing:
+    // what is typed after it goes after what is there, and not over it.
     for code in [key::Q, key::Q] {
         tap(&mut session, code);
     }
-    chosen(&mut session, key::CONTROL);
+    chosen(&mut session, key::SUPER);
     tap(&mut session, key::BACKSPACE);
-    tap(&mut session, key::Q);
+    for code in [key::A, key::T] {
+        tap(&mut session, code);
+    }
+    chosen(&mut session, key::CONTROL);
+    for code in [key::X, key::RETURN] {
+        tap(&mut session, code);
+    }
+    session.eventually(|_| answer.is_finished());
+    assert_eq!(answer.join().unwrap(), Ok(()));
+    assert!(
+        helped(&cookie).ends_with("typed atx\n"),
+        "{}",
+        helped(&cookie)
+    );
+}
+
+#[test]
+fn super_and_a_chooses_all_that_is_typed_for_what_is_typed_next_to_take_its_place() {
+    let mut session = Session::new();
+    let asker = start(&mut session);
+    let cookie = asker.directory.path().join("asked");
+    let me = rustix::process::getuid().as_raw();
+    let answer = begin(
+        &asker.polkit.connection,
+        &asker.agent,
+        &cookie,
+        (&[me], &[]),
+    );
+    wait_up(&mut session);
+    let chosen = |session: &mut Session, held: Keycode| {
+        key_down(session, held, true);
+        tap(session, key::A);
+        key_down(session, held, false);
+    };
+    // Chosen with Super, as a Mac's Cmd, and typed over.
+    for code in [key::Q, key::Q] {
+        tap(&mut session, code);
+    }
     chosen(&mut session, key::SUPER);
     for code in [key::A, key::T, key::X, key::RETURN] {
         tap(&mut session, code);

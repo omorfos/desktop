@@ -97,7 +97,8 @@ impl Launcher {
             Self {
                 connection,
                 queue,
-                shell: Shell::new(config.theme.clone(), commands, picker, icons),
+                shell: Shell::new(config.theme.clone(), commands, picker, icons)
+                    .reading_as(config.keys.ordinary()),
             }
         })
     }
@@ -311,6 +312,13 @@ struct Face {
 }
 
 impl Shell {
+    /// The same, its field reading copying, pasting and the rest from Ctrl
+    /// if the keys are the `ordinary` way's, or else from Super (ADR 101).
+    fn reading_as(mut self, ordinary: bool) -> Self {
+        self.typing.read_as(ordinary);
+        self
+    }
+
     fn new(theme: Theme, commands: Ipc, picker: Picker, icons: Icons) -> Self {
         Self {
             compositor: None,

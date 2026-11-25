@@ -8,8 +8,8 @@ and the touchpad scroll the list, a notch of the wheel a program, and the
 pointer chooses the one it is over, the list staying as it was scrolled.
 Enter starts the chosen one, and Escape closes the launcher. A click on a
 program starts it too, and a click anywhere beside the launcher closes
-it. `Ctrl+A`, or `Super+A`, chooses all that is
-typed, for what is typed next to take its place, or Backspace to take it
+it. `Super+A`, as Cmd+A on a Mac, chooses all that is typed (`Ctrl+A`
+with `defaults: ordinary` in `keys.yaml`), for what is typed next to take its place, or Backspace to take it
 all out, as in the box that asks for a password. What is typed is edited
 as in any text field: Left and Right move the cursor, by a word with
 `Ctrl` or `Alt`, and Home and End to an end; with Shift they choose what

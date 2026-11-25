@@ -343,10 +343,10 @@ fn what_is_typed_is_edited_as_in_any_text_field() {
     settle(&mut session, &mut launcher);
     assert_eq!(chosen(&mut session), Some(0), "Files");
     // Undone, and done again.
-    chord(&mut session, &[key::CONTROL], Z);
+    chord(&mut session, &[key::SUPER], Z);
     settle(&mut session, &mut launcher);
     assert_eq!(chosen(&mut session), None, "fl");
-    chord(&mut session, &[key::CONTROL, key::SHIFT], Z);
+    chord(&mut session, &[key::SUPER, key::SHIFT], Z);
     settle(&mut session, &mut launcher);
     assert_eq!(chosen(&mut session), Some(0), "fil");
     // The first character taken out from in front: "il", in Files still.
@@ -355,13 +355,13 @@ fn what_is_typed_is_edited_as_in_any_text_field() {
     settle(&mut session, &mut launcher);
     assert_eq!(chosen(&mut session), Some(0));
     // All of it chosen and copied, the launcher staying; then cut.
-    chord(&mut session, &[key::CONTROL], key::A);
-    chord(&mut session, &[key::CONTROL], key::C);
+    chord(&mut session, &[key::SUPER], key::A);
+    chord(&mut session, &[key::SUPER], key::C);
     assert!(!settle(&mut session, &mut launcher), "still open");
-    chord(&mut session, &[key::CONTROL], key::X);
+    chord(&mut session, &[key::SUPER], key::X);
     assert!(!settle(&mut session, &mut launcher), "still open");
     // A word chosen back from the end, with Shift and Ctrl, and typed over.
-    chord(&mut session, &[key::CONTROL], Z);
+    chord(&mut session, &[key::SUPER], Z);
     press(&mut session, key::END);
     chord(&mut session, &[key::CONTROL, key::SHIFT], key::LEFT);
     press(&mut session, L);
@@ -371,9 +371,13 @@ fn what_is_typed_is_edited_as_in_any_text_field() {
 }
 
 #[test]
-fn ctrl_a_or_super_a_chooses_all_that_is_typed_for_the_next_key_to_take_its_place() {
-    for chooser in [key::CONTROL, key::SUPER] {
-        let mut session = Session::new();
+fn super_a_or_in_the_ordinary_way_ctrl_a_chooses_all_that_is_typed_for_the_next_key_to_take_its_place()
+ {
+    // Super, as a Mac's Cmd, or Ctrl where the keys are the ordinary way's
+    // (ADR 101).
+    let ordinary: &[(&str, &str)] = &[("keys.yaml", "defaults: ordinary\n")];
+    for (chooser, files) in [(key::SUPER, &[][..]), (key::CONTROL, ordinary)] {
+        let mut session = Session::with_config(files);
         let mut launcher = launcher(&mut session);
         settle(&mut session, &mut launcher);
         press(&mut session, F);
@@ -390,18 +394,19 @@ fn ctrl_a_or_super_a_chooses_all_that_is_typed_for_the_next_key_to_take_its_plac
     }
 }
 
-/// Presses Ctrl and `code` together.
-fn ctrl(session: &mut Session, code: Keycode) {
-    hold(session, key::CONTROL, true);
+/// Presses Super and `code` together, as a Mac's Cmd, which copies and
+/// pastes in the shell's fields (ADR 101).
+fn command(session: &mut Session, code: Keycode) {
+    hold(session, key::SUPER, true);
     press(session, code);
-    hold(session, key::CONTROL, false);
+    hold(session, key::SUPER, false);
 }
 
-/// Pastes with Ctrl and V, letting the launcher, the compositor and the
+/// Pastes with Super and V, letting the launcher, the compositor and the
 /// program that copied, if one did, talk until what was pasted has
 /// arrived, and presses Enter.
 fn paste_and_enter(session: &mut Session, launcher: &mut Launcher, from: Option<&mut Client>) {
-    ctrl(session, V);
+    command(session, V);
     let mut from = from;
     for _ in 0..20 {
         launcher.turn(Duration::ZERO).unwrap();
@@ -419,7 +424,7 @@ fn paste_and_enter(session: &mut Session, launcher: &mut Launcher, from: Option<
 }
 
 #[test]
-fn what_is_copied_is_pasted_into_the_launcher_with_ctrl_v_its_first_line_in_place_of_what_is_chosen()
+fn what_is_copied_is_pasted_into_the_launcher_with_super_v_its_first_line_in_place_of_what_is_chosen()
  {
     let mut session = Session::new();
     let mut editor = session.connect();
@@ -431,7 +436,7 @@ fn what_is_copied_is_pasted_into_the_launcher_with_ctrl_v_its_first_line_in_plac
     // "fi" typed and chosen, for what is pasted to take its place.
     press(&mut session, F);
     press(&mut session, I);
-    ctrl(&mut session, key::A);
+    command(&mut session, key::A);
     paste_and_enter(&mut session, &mut launcher, Some(&mut editor));
     session.eventually(|session| mark(session, "lens") == "x");
     assert_eq!(mark(&session, "files"), "");
@@ -446,11 +451,11 @@ fn what_the_launcher_copied_itself_is_pasted_back() {
     // in its place, which would start Lens, and "fi" pasted over that.
     press(&mut session, F);
     press(&mut session, I);
-    ctrl(&mut session, key::A);
-    ctrl(&mut session, key::C);
+    command(&mut session, key::A);
+    command(&mut session, key::C);
     settle(&mut session, &mut launcher);
     press(&mut session, L);
-    ctrl(&mut session, key::A);
+    command(&mut session, key::A);
     paste_and_enter(&mut session, &mut launcher, None);
     session.eventually(|session| mark(session, "files") == "x");
     assert_eq!(mark(&session, "lens"), "");

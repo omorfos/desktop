@@ -1092,7 +1092,7 @@ fn backspace_held_takes_out_one_character_after_another_as_keys_repeat() {
 }
 
 #[test]
-fn ctrl_or_super_and_a_choose_all_that_is_typed_to_type_over_or_take_out() {
+fn super_and_a_chooses_all_that_is_typed_to_type_over_or_take_out_and_ctrl_and_a_does_not() {
     let there = tempfile::TempDir::new().unwrap();
     let mut session = Session::new();
     let mut lock = awake(&mut session, there.path(), &[Way::Password]);
@@ -1120,7 +1120,10 @@ fn ctrl_or_super_and_a_choose_all_that_is_typed_to_type_over_or_take_out() {
     typed(&mut session, &[key::X, key::X]);
     settle(&mut session, &mut lock);
     let two = field(&mut session);
+    // Super, as a Mac's Cmd; Ctrl is left for the line (ADR 101).
     chosen(&mut session, &mut lock, key::CONTROL);
+    assert_eq!(field(&mut session), two, "not with Ctrl");
+    chosen(&mut session, &mut lock, key::SUPER);
     assert_ne!(field(&mut session), two, "marked as chosen");
     tap(&mut session, key::BACKSPACE);
     settle(&mut session, &mut lock);
