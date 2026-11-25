@@ -1029,9 +1029,14 @@ impl Compositor {
                 }
                 opens
             }
-            // Closed the way that did not open it.
+            // Closed the way that did not open it, the window picked, under
+            // the pointer if it went over one, brought to the front as the
+            // fingers begin, so that the windows glide back with it there.
             Some(looking) if up == looking.program.is_some() => {
                 looking.held = Some(held(looking.open(clock), !up));
+                if let Some(picked) = looking.picked {
+                    self.desktop.activate(picked);
+                }
                 true
             }
             Some(_) => false,
@@ -1054,8 +1059,10 @@ impl Compositor {
 
     /// Takes the fingers lifting, or the swipe being `cancelled`: the
     /// overview goes on open from where they let it go, or closes, as
-    /// `fingers` decides for every gesture. Says whether fingers carried
-    /// it.
+    /// `fingers` decides for every gesture. Closed by them from open, it
+    /// goes to the window picked, the one under the pointer if the pointer
+    /// went over one, as a click on it would, which was brought to the
+    /// front as they began. Says whether fingers carried it.
     pub(crate) fn overview_swipe_ended(&mut self, cancelled: bool) -> bool {
         let clock = self.clock();
         let looking = self.cards.overview.open.as_mut();
@@ -1076,7 +1083,9 @@ impl Compositor {
             looking.way = (shown, 1.0, clock);
         } else {
             looking.way = (shown, shown, clock);
-            looking.close(clock, None);
+            // Brought to the front as the fingers began, and gone to.
+            let chosen = looking.picked.filter(|_| !opening);
+            looking.close(clock, chosen);
         }
         true
     }
