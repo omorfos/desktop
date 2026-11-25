@@ -5,10 +5,8 @@
 //! What the fingers carry follows them with no easing at all, a whole
 //! workspace for the same way of the fingers on any screen, so that a
 //! wide one asks no more of them. Once they lift, the workspace that came
-//! in is shown if they went more than half that way, however slowly, or
-//! flicked it on, however short a way, but for a twitch; and the one that
-//! was there is kept otherwise, or if they were flicking it back, which
-//! is how a swipe is taken back halfway. Either way it is shown at once, so that nothing waits on
+//! in is shown or the one that was there is kept, as `fingers` decides for
+//! every gesture. Either way it is shown at once, so that nothing waits on
 //! the movement, and the workspaces settle where they belong over 320 ms,
 //! as `docs/DESIGN.md` says of a workspace sliding. Workspaces do not go
 //! round: before the first there is nothing, and after the last only a
@@ -33,6 +31,7 @@ use omorfos_config::Easing;
 use omorfos_core::WorkspaceId;
 
 use crate::compositor::Compositor;
+use crate::fingers::Fingers;
 
 /// How long the workspaces take to settle once the fingers lift.
 const SETTLE: Duration = Duration::from_millis(320);
@@ -40,19 +39,6 @@ const SETTLE: Duration = Duration::from_millis(320);
 /// How far the fingers go across for a whole workspace, as the touchpad
 /// counts it, whatever the screen's width: as GNOME has it.
 const FULL: f64 = 400.0;
-
-/// How fast the fingers going across when they lift is a flick, as the
-/// touchpad counts it a millisecond.
-const FLICK: f64 = 0.6;
-
-/// How much of the way a flick has to have gone, so that the fingers
-/// settling as they lift is not one.
-const TWITCH: f64 = 0.1;
-
-/// How much of the speed the fingers were going at before each movement
-/// is kept, beside that of the movement itself: the last few count, so
-/// that the lighter touch of lifting does not hide a flick.
-const KEPT: f64 = 0.5;
 
 /// How much of the fingers' way a workspace with nothing beside it goes.
 const RESISTED: f64 = 0.25;
@@ -79,11 +65,8 @@ struct Following {
     from: f64,
     /// How far across they have gone since, as the touchpad counts it.
     moved: f64,
-    /// How fast they have been going across lately, as the touchpad counts
-    /// it a millisecond.
-    speed: f64,
-    /// When they last moved, in milliseconds.
-    last: u32,
+    /// How fast, in workspaces, right being more.
+    fingers: Fingers,
 }
 
 /// The workspaces on their way to where they belong.
@@ -126,8 +109,7 @@ impl Compositor {
         slide.following = Some(Following {
             from: f64::from(self.desktop.slid()),
             moved: 0.0,
-            speed: 0.0,
-            last: time,
+            fingers: Fingers::down(time),
         });
     }
 
@@ -138,11 +120,7 @@ impl Compositor {
         let Some(following) = self.protocols.gestures.slide.following.as_mut() else {
             return false;
         };
-        let gone = f64::from(time.wrapping_sub(following.last));
-        if gone > 0.0 {
-            following.speed = following.speed.mul_add(KEPT, (1.0 - KEPT) * dx / gone);
-            following.last = time;
-        }
+        following.fingers.went(dx / FULL, time);
         following.moved += dx;
         // The fingers' way as the workspaces' own: a whole one for FULL.
         let (from, moved) = (following.from, following.moved * width / FULL);
@@ -178,13 +156,7 @@ impl Compositor {
         let next = offset < 0.0;
         let way = offset.abs() / width;
         // Fingers going left bring in what is after.
-        let flicked = following.speed.abs() >= FLICK;
-        let onwards = (following.speed < 0.0) == next;
-        let far = if flicked {
-            onwards && way >= TWITCH
-        } else {
-            way > 0.5
-        };
+        let far = following.fingers.go_on(way, !next);
         let turned = !cancelled && far && self.desktop.goes_on(next);
         // The workspace that came in is shown from where it has got to.
         let from = match (turned, next) {

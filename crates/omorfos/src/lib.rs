@@ -21,6 +21,7 @@ mod compositor;
 mod corners;
 mod cursor;
 mod fading;
+mod fingers;
 mod frames;
 mod gestures;
 mod ghost;
