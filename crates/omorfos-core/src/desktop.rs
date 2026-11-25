@@ -2912,14 +2912,16 @@ impl Desktop {
 
     /// How far right each workspace an output draws is drawn, in units of
     /// layout: the one it shows, and while the workspaces slide the one
-    /// that comes in beside it. For what is drawn once for each, as the
-    /// wallpaper is, so that it goes with them. Not moved, for an output
-    /// there is not.
+    /// that comes in beside it, even one that is yet to be made as the
+    /// fingers lift, or that is not there at all, past the first. For what
+    /// is drawn once for each, as the wallpaper is, so that it goes with
+    /// them and nothing comes in without it. Not moved, for an output there
+    /// is not.
     pub fn shifts(&self, output: usize) -> impl Iterator<Item = i32> {
         let set = self.sets.get(output);
-        let beside = set.and_then(|_| self.beside(output));
         let shown = set.map_or(0, |set| set.slid);
-        [shown].into_iter().chain(beside.map(|(_, shift)| shift))
+        let beside = set.and_then(|_| self.beside_shift(output));
+        [shown].into_iter().chain(beside)
     }
 
     /// The workspaces an output draws: the one it shows, and while the
@@ -3130,17 +3132,13 @@ impl Desktop {
     /// there is no other.
     fn beside(&self, set: usize) -> Option<(usize, i32)> {
         let shown = &self.sets[set];
-        let width = self
-            .outputs
-            .get(set)
-            .map_or(0, |output| output.area.size.width);
-        let width = width.cast_signed();
         let count = shown.workspaces.len();
+        let shift = self.beside_shift(set)?;
         // There is none before the first, nor yet after the last.
-        let (next, shift) = match shown.slid.signum() {
-            -1 => (Some(shown.active + 1), shown.slid + width),
-            1 => (shown.active.checked_sub(1), shown.slid - width),
-            _ => return None,
+        let next = if shown.slid < 0 {
+            Some(shown.active + 1)
+        } else {
+            shown.active.checked_sub(1)
         };
         let next = next.filter(|next| *next < count);
         let workspace = match shown.beside {
@@ -3148,6 +3146,22 @@ impl Desktop {
             None => next,
         }?;
         (workspace != shown.active).then_some((workspace, shift))
+    }
+
+    /// How far right what comes in beside the workspace a set shows is
+    /// drawn while it is slid, whatever comes in; none if it is not slid.
+    fn beside_shift(&self, set: usize) -> Option<i32> {
+        let shown = &self.sets[set];
+        let width = self
+            .outputs
+            .get(set)
+            .map_or(0, |output| output.area.size.width);
+        let width = width.cast_signed();
+        match shown.slid.signum() {
+            -1 => Some(shown.slid + width),
+            1 => Some(shown.slid - width),
+            _ => None,
+        }
     }
 
     /// Whether the current output has a workspace to go to `forwards`, or
