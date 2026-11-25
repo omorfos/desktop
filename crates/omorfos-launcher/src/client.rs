@@ -555,7 +555,7 @@ impl Shell {
             Typed::Up => Some(Key::Up),
             Typed::Down => Some(Key::Down),
             Typed::Typed(typed) => Some(Key::Text(typed)),
-            Typed::Next | Typed::Previous | Typed::Nothing => None,
+            Typed::Next | Typed::Previous | Typed::Mode(_) | Typed::Nothing => None,
         };
         // A key that types nothing, such as Shift, is no key to the launcher.
         if let Some(key) = key {

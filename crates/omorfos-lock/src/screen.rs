@@ -827,6 +827,7 @@ impl Shell {
             | Key::Copy
             | Key::Cut
             | Key::Paste
+            | Key::Mode(_)
             | Key::Nothing => {}
         }
         self.stale = true;

@@ -59,6 +59,10 @@ pub enum Key {
     /// Ctrl and A, or Super and A as on a Mac: all that is typed chosen,
     /// for what is typed next to take its place.
     All,
+    /// Super and a digit, or Ctrl and a digit in the ordinary way: the
+    /// mode of that number, in the launcher (ADR 109). The digit is the
+    /// key's place on the number row, whatever the layout types on it.
+    Mode(u8),
     /// Types this.
     Typed(String),
     /// Nothing: a key held with Ctrl, Alt or Super, or one that types
@@ -166,6 +170,18 @@ fn typed(state: &xkb::State, code: u32, ordinary: bool) -> Key {
     // it is, so that they can tell the two apart (ADR 101).
     let command = if ordinary { ctrl } else { logo };
     let chord = ctrl || logo || alt;
+    // The number row by its place, 1 to 9 and then 0, as layouts that put
+    // digits under Shift, or none on it, have it all the same; with the
+    // command alone, as Shift beside it is the pictures of the screen's.
+    let other = if ordinary { logo } else { ctrl } || held(xkb::MOD_NAME_SHIFT);
+    let row = code
+        .raw()
+        .checked_sub(9)
+        .filter(|place| (1..=10).contains(place));
+    let digit = row.and_then(|place| u8::try_from(place % 10).ok());
+    if let Some(digit) = digit.filter(|_| command && !alt && !other) {
+        return Key::Mode(digit);
+    }
     let sym = state.key_get_one_sym(code);
     // A shortcut is the key's, whatever letter the layout typed with puts
     // on it, as programs take it.
@@ -342,6 +358,30 @@ mod tests {
             typed(&keyboard("us,gr", 1, false), A, false),
             Key::Typed("α".to_owned())
         );
+    }
+
+    #[test]
+    fn super_with_a_digit_goes_to_a_mode_or_ctrl_in_the_ordinary_way() {
+        // The number row, as the compositor numbers it: 1 is 2, 0 is 11.
+        let (one, nine, zero) = (2, 10, 11);
+        let logo = holding(&[xkb::MOD_NAME_LOGO]);
+        let ctrl = holding(&[xkb::MOD_NAME_CTRL]);
+        assert_eq!(typed(&logo, one, false), Key::Mode(1));
+        assert_eq!(typed(&logo, nine, false), Key::Mode(9));
+        assert_eq!(typed(&logo, zero, false), Key::Mode(0));
+        assert_eq!(typed(&ctrl, one, false), Key::Nothing);
+        assert_eq!(typed(&ctrl, one, true), Key::Mode(1), "the ordinary way");
+        assert_eq!(typed(&logo, one, true), Key::Nothing, "the ordinary way");
+        let both = holding(&[xkb::MOD_NAME_LOGO, xkb::MOD_NAME_ALT]);
+        assert_eq!(typed(&both, one, false), Key::Nothing, "with Alt too");
+        let workspace = holding(&[xkb::MOD_NAME_LOGO, xkb::MOD_NAME_CTRL]);
+        assert_eq!(typed(&workspace, one, false), Key::Nothing, "with Ctrl too");
+        assert_eq!(typed(&holding(&[]), one, false), Key::Typed("1".to_owned()));
+        // With Shift too it is no mode, as the pictures of the screen are
+        // on Super, Shift and a digit; the key's place on the row is what
+        // a layout whose digits are under Shift reaches it by.
+        let shifted = holding(&[xkb::MOD_NAME_LOGO, xkb::MOD_NAME_SHIFT]);
+        assert_eq!(typed(&shifted, one, false), Key::Nothing);
     }
 
     #[test]
