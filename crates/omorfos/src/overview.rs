@@ -9,7 +9,8 @@
 //! that screen meanwhile. A window that is minimized has nowhere on the
 //! screen to glide from, and fades in and out where it is in the overview.
 //! With `appearance.reduce_motion` every window fades in and out in its
-//! place. The window picked, by the pointer or the arrows, has a border
+//! place. Showing one program's windows alone, the others fade where they
+//! stand as it opens, and back as it closes. The window picked, by the pointer or the arrows, has a border
 //! round it and its title under it; Enter or a click goes to it, Escape or
 //! a click elsewhere closes the overview where it was. The window gone to
 //! is given focus once the overview has closed, so that it does not come
@@ -813,6 +814,22 @@ impl Compositor {
             let window = (card.window, card.seen);
             let pass = (view, screen);
             self.picture_elements(renderer, window, card.now, pass, (elements, panes));
+        }
+        // Showing one program's windows, the others on the screen fade where
+        // they stand as it opens, under them all, and back as it closes,
+        // rather than go at once.
+        if looking.program.is_some() {
+            let all = self.overview_windows(looking.output, None).into_iter();
+            let mut left: Vec<(WindowId, Rect)> = all
+                .filter(|(window, _, on)| *on && !cards.iter().any(|card| card.window == *window))
+                .map(|(window, rect, _)| (window, rect))
+                .collect();
+            left.sort_by_key(|(window, _)| height(*window));
+            for (window, rect) in left {
+                let fading = (window, 1.0 - open);
+                let pass = (view, screen);
+                self.picture_elements(renderer, fading, exact(rect), pass, (elements, panes));
+            }
         }
         for (at, (rect, index, _, shown)) in self.strip(looking).into_iter().enumerate() {
             let place = (at, index, shown, looking.hovered == Some(at));
