@@ -201,9 +201,9 @@ Mac has it, then, in the `super` way:
   before the cursor.
 - Super+Ctrl+Up opens the overview and closes it again, an arrow with a
   modifier held being a binding's while it is open; Super+Ctrl+Left and
-  Right go to the workspaces beside; Super+Ctrl+Down is to show the
-  program's windows, once `show_program_windows` is there (#141), and to
-  close the overview while it is open.
+  Right go to the workspaces beside; Super+Ctrl+Down shows the
+  program's windows, `show_program_windows` (#141), and closes the
+  overview while it is open.
 - Going to the window beside, among those that share a workspace, and
   changing places with it, move to Super+Ctrl+Alt with the arrows, and
   with Shift.

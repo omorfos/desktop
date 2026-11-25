@@ -926,3 +926,56 @@ fn a_window_that_asks_for_blur_behind_it_has_it_in_the_overview_too() {
     drop(session.draw());
     assert!(session.compositor().blurs() > before);
 }
+
+#[test]
+fn the_program_windows_are_shown_alone_and_super_ctrl_down_closes_any_overview() {
+    let mut session = Session::with_config(&[UNBLURRED]);
+    let mut client = session.connect();
+    for (name, colour) in [("files", RED), ("other", BLUE), ("files", GREEN)] {
+        session.open(&mut client, name, (180, 120), colour);
+    }
+    session.step();
+    // Only the windows of the program in front, the one in front picked.
+    session
+        .compositor_mut()
+        .perform(&Action::ShowProgramWindows);
+    session.step();
+    session.advance(GLIDE);
+    let (places, picked) = shown(&session).unwrap();
+    let names: Vec<&str> = places.iter().map(|(name, _)| name.as_str()).collect();
+    assert_eq!(names, ["files", "files"]);
+    assert_eq!(picked.as_deref(), Some("files"));
+    let frame = session.draw();
+    for (_, place) in &places {
+        let (x, y) = middle(*place);
+        assert_ne!(frame.at(x, y), BLUE, "{place:?}");
+    }
+    // Its keys close it, as they close the whole overview too.
+    let down = |session: &mut Session| {
+        press(session, key::SUPER, true);
+        press(session, key::CONTROL, true);
+        tap(session, key::DOWN);
+        press(session, key::CONTROL, false);
+        press(session, key::SUPER, false);
+        session.advance(GLIDE);
+    };
+    down(&mut session);
+    assert_eq!(session.compositor().overview_layout(), None);
+    open(&mut session);
+    assert_eq!(shown(&session).unwrap().0.len(), 3, "the whole overview");
+    down(&mut session);
+    assert_eq!(session.compositor().overview_layout(), None);
+    // And they open it.
+    down(&mut session);
+    assert_eq!(shown(&session).unwrap().0.len(), 2);
+}
+
+#[test]
+fn with_no_window_in_front_the_program_windows_show_nothing() {
+    let mut session = Session::with_config(&[UNBLURRED]);
+    session
+        .compositor_mut()
+        .perform(&Action::ShowProgramWindows);
+    session.step();
+    assert_eq!(session.compositor().overview_layout(), None);
+}

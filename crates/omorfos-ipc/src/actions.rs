@@ -176,6 +176,12 @@ pub const TOLD: &[Told] = &[
         "",
         "Open the overview of the workspace, or close it",
     ),
+    told!(
+        "Switching",
+        "show_program_windows",
+        "",
+        "Show the focused program's windows alone",
+    ),
     told!("Workspaces", "workspace", "N", "Show workspace N"),
     told!(
         "Workspaces",

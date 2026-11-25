@@ -1551,6 +1551,7 @@ impl Compositor {
             Action::NextWindow => self.next_window(false),
             Action::PreviousWindow => self.next_window(true),
             Action::Overview => self.toggle_overview(),
+            Action::ShowProgramWindows => self.toggle_program_windows(),
             Action::FocusNext => self.desktop.focus_next(),
             Action::FocusPrevious => self.desktop.focus_previous(),
             Action::NextTab => self.on_focused(Desktop::next_tab),

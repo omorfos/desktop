@@ -51,6 +51,7 @@ manual pages and `--help` are in English.
 | `Super+Alt+Left` | Have the window take the left half; `Super+Alt+Right` the right |
 | `Super+Ctrl+f` | Make the window fullscreen, or not |
 | `Super+Ctrl+Up` | See every window of the workspace |
+| `Super+Ctrl+Down` | See the windows of the program in front alone |
 | `Super+1` | Go to the first workspace; up to `Super+9` |
 | `Super+Ctrl+1` | Send the window to the first workspace |
 | `Super+Ctrl+Right` | Go to the next workspace; `Super+Ctrl+Left` the one before |

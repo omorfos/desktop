@@ -103,6 +103,12 @@ bindings:
     action: overview
 ```
 
+`Super+Ctrl+Down`, as Ctrl+Down shows a Mac's App Exposé, opens it with
+the windows of the program in front alone, the `show_program_windows`
+action; with no window in front it does nothing. Either key closes the
+overview again, whichever windows it shows. The ordinary way has no key
+for it until you bind one.
+
 Opened, each window glides from where it is to its place, and the screen
 behind dims and blurs; closed, each glides back. With
 `appearance.reduce_motion` they fade in their places instead. A window

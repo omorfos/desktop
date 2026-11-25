@@ -22,6 +22,12 @@ the maintainer. An agent starting work reminds them of what is here, and
 an item goes once it has been tried: what was wrong goes to its stage as
 a known gap.
 
+- **The program's windows alone (#141).** With two windows of one
+  program and one of another on a workspace, the first focused,
+  Super+Ctrl+Down opens the overview with the two alone, the one in
+  front picked; Super+Ctrl+Down again closes it, and so does it with
+  the whole overview open. With no window in front it does nothing.
+
 ## Where this is going
 
 omorfos is small, fast and driven by text files, but what is being asked
@@ -1819,7 +1825,7 @@ the first than on the last.
             the screens (#132); pictures of the screen as a Mac's,
             `Super+Shift+3` and `4` kept, and with Ctrl on the clipboard,
             `Super+Shift+5` the picker; Alt+Tab left for the ordinary way.
-            `Super+Down`, the program's windows, waits on #141;
+            the program's windows on `Super+Ctrl+Down` (#141);
       - [x] Super with the arrows for text, as a Mac's Cmd, handed to
             programs as Home, End, Ctrl+Home and Ctrl+End and read so by
             the shell's fields, Super+Backspace there taking out to the
@@ -1827,7 +1833,12 @@ the first than on the last.
             the workspaces on Left and Right, between tiles on
             Super+Ctrl+Alt (#155). An arrow with a modifier held is a
             binding's while the overview is open, so Super+Ctrl+Up closes
-            it. Super+Ctrl+Down waits for `show_program_windows` (#141);
+            it. Super+Ctrl+Down shows the program's windows (#141);
+      - [x] the overview with one program's windows alone, as App Exposé
+            shows them: `show_program_windows`, on Super+Ctrl+Down in
+            the Mac's way and on no key in the ordinary way, closing the
+            overview while it is open whichever windows it shows (#141).
+            The four-finger swipe down is to open it too (#138);
       - [x] the shell's fields reading Super as Command, Ctrl left for
             the line (#133): the launcher, the boxes that ask and the lock
             screen copy, cut, paste, choose all and undo with Super, or

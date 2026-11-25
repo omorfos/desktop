@@ -199,6 +199,7 @@ fn super_way() -> Vec<Binding> {
         // Super with the arrows is for text, as Cmd on a Mac, and with Ctrl
         // the desktop's, as Ctrl alone on a Mac (#155).
         bind("Super+Ctrl+Up", Action::Overview),
+        bind("Super+Ctrl+Down", Action::ShowProgramWindows),
         bind("Super+Ctrl+Right", Action::NextWorkspace),
         bind("Super+Ctrl+Left", Action::PreviousWorkspace),
         bind("Super+Ctrl+n", Action::NewWorkspace),
@@ -869,6 +870,10 @@ bindings:
         // The desktop's arrows are with Ctrl, as a Mac's; Super's alone are
         // the program's, for text.
         assert_eq!(action_for("Super+Ctrl+Up"), Some(Action::Overview));
+        assert_eq!(
+            action_for("Super+Ctrl+Down"),
+            Some(Action::ShowProgramWindows)
+        );
         assert_eq!(action_for("Super+Ctrl+Right"), Some(Action::NextWorkspace));
         assert_eq!(
             action_for("Super+Ctrl+Left"),

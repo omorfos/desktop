@@ -105,6 +105,9 @@ struct Looking {
     screen: Rect,
     /// Which of the desktop's screens that is.
     output: usize,
+    /// The program whose windows alone it shows, by its application, or
+    /// none for every window of the workspace.
+    program: Option<String>,
     /// When it was opened, by the compositor's clock.
     opened: Duration,
     /// How open it is on its way to being: from how open, to how open,
@@ -313,12 +316,30 @@ impl Compositor {
             looking.close(clock, None);
             return;
         }
-        self.open_overview(None);
+        self.open_overview(None, None);
+    }
+
+    /// Opens the overview with the windows of the focused window's program
+    /// alone, on the screen the pointer is on, or closes the overview
+    /// where it was, whichever windows it shows. With no window focused
+    /// there is no program to show.
+    pub(crate) fn toggle_program_windows(&mut self) {
+        let clock = self.clock();
+        if let Some(looking) = self.cards.overview.open.as_mut() {
+            looking.close(clock, None);
+            return;
+        }
+        let focused = self.desktop.focused();
+        let window = focused.and_then(|id| self.desktop.window(id));
+        if let Some(program) = window.map(|window| window.app_id.clone()) {
+            self.open_overview(None, Some(program));
+        }
     }
 
     /// Opens the overview on the screen the pointer is on, gliding open,
-    /// or carried open by `fingers` on the touchpad.
-    fn open_overview(&mut self, fingers: Option<Held>) {
+    /// or carried open by `fingers` on the touchpad, with the windows of
+    /// `program` alone if one is given.
+    fn open_overview(&mut self, fingers: Option<Held>, program: Option<String>) {
         let clock = self.clock();
         self.close_switcher(false);
         let head = self.pointer_head();
@@ -331,11 +352,13 @@ impl Compositor {
         let output = output.unwrap_or_default();
         let picked = self.desktop.focused();
         // Those there as it opens come in as it does.
-        let windows = self.overview_windows(output).into_iter();
+        let windows = self.overview_windows(output, program.as_deref());
+        let windows = windows.into_iter();
         let entered = windows.map(|(window, _, _)| (window, clock)).collect();
         self.cards.overview.open = Some(Looking {
             screen,
             output,
+            program,
             opened: clock,
             way: (0.0, 1.0, clock),
             held: fingers,
@@ -387,13 +410,21 @@ impl Compositor {
         looking.is_some_and(|looking| on_screen(outer, looking.screen))
     }
 
-    /// The windows of the workspace shown on the overview's screen, each
-    /// with where it is now on the screen, or, if it is minimized, where
-    /// it would be, and whether it is on the screen to glide from.
-    fn overview_windows(&self, output: usize) -> Vec<(WindowId, Rect, bool)> {
+    /// The windows of the workspace shown on the overview's screen, or of
+    /// `program` alone among them, each with where it is now on the
+    /// screen, or, if it is minimized, where it would be, and whether it
+    /// is on the screen to glide from.
+    fn overview_windows(
+        &self,
+        output: usize,
+        program: Option<&str>,
+    ) -> Vec<(WindowId, Rect, bool)> {
         let shown = self.desktop.shown_workspaces().nth(output);
         let listed = self.desktop.windows().filter(|listed| {
-            listed.output == output && Some(listed.workspace) == shown && listed.shown
+            listed.output == output
+                && Some(listed.workspace) == shown
+                && listed.shown
+                && program.is_none_or(|program| listed.window.app_id == program)
         });
         let windows = listed.filter_map(|listed| {
             let id = listed.window.id;
@@ -452,7 +483,7 @@ impl Compositor {
     /// Each window in the overview, as it is drawn at `clock`, in the order
     /// they are read and walked.
     fn cards(&self, looking: &Looking, clock: Duration) -> Vec<Card> {
-        let windows = self.overview_windows(looking.output);
+        let windows = self.overview_windows(looking.output, looking.program.as_deref());
         let places: Vec<(WindowId, Rect)> =
             windows.iter().map(|(id, rect, _)| (*id, *rect)).collect();
         let tiles = self.overview_desktops(looking.output).len() + 1;
@@ -986,7 +1017,7 @@ impl Compositor {
                     last: time,
                     carried,
                 };
-                self.open_overview(Some(held));
+                self.open_overview(Some(held), None);
                 true
             }
             (false, Some(looking)) => {

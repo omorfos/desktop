@@ -131,6 +131,10 @@ pub enum Action {
     /// Open the overview, every window of the workspace side by side
     /// under the workspaces of the screen, to pick one from; or close it.
     Overview,
+    /// Open the overview with only the windows of the focused window's
+    /// program on its workspace, as a Mac's App Exposé shows them, to pick
+    /// one from; or close the overview, whichever windows it shows.
+    ShowProgramWindows,
     /// Switch to the tab after the active one in the focused window's group.
     NextTab,
     /// Switch to the tab before the active one in the focused window's group.
@@ -478,6 +482,10 @@ mod tests {
         assert_eq!(parse("focus_next"), Ok(Action::FocusNext));
         assert_eq!(parse("switch_windows"), Ok(Action::SwitchWindows));
         assert_eq!(parse("overview"), Ok(Action::Overview));
+        assert_eq!(
+            parse("show_program_windows"),
+            Ok(Action::ShowProgramWindows)
+        );
         assert_eq!(parse("switch_windows_back"), Ok(Action::SwitchWindowsBack));
         assert_eq!(parse("switch_programs"), Ok(Action::SwitchPrograms));
         assert_eq!(

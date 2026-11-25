@@ -112,6 +112,11 @@
           "type": "string"
         },
         {
+          "const": "show_program_windows",
+          "description": "Open the overview with only the windows of the focused window's\nprogram on its workspace, as a Mac's App Exposé shows them, to pick\none from; or close the overview, whichever windows it shows.",
+          "type": "string"
+        },
+        {
           "const": "next_tab",
           "description": "Switch to the tab after the active one in the focused window's group.",
           "type": "string"
