@@ -22,38 +22,50 @@ There before anything is written, and kept unless \fBdefaults: false\fR is: a bi
 \fBSuper+space\fR
 \fBshow_launcher\fR: Open the launcher
 .TP
-\fBSuper+Escape\fR
-\fBshow_menu\fR: Open the root menu at the pointer
-.TP
 \fBSuper+q\fR
-\fBclose\fR: Ask the focused window to close
+\fBclose_program\fR: Ask the focused program's windows to close
 .TP
 \fBSuper+m\fR
-\fBmaximize\fR: Maximize the focused window, or restore it
+\fBminimize\fR: Hide the focused window
+.TP
+\fBSuper+h\fR
+\fBhide_program\fR: Hide the focused program's windows
+.TP
+\fBAlt+Super+h\fR
+\fBhide_others\fR: Hide every other program's windows
 .TP
 \fBCtrl+Super+f\fR
 \fBfullscreen\fR: Make the focused window fullscreen, or not
 .TP
-\fBSuper+h\fR
-\fBminimize\fR: Hide the focused window
+\fBAlt+Super+Up\fR
+\fBmaximize\fR: Maximize the focused window, or restore it
 .TP
-\fBAlt+Tab\fR
-\fBswitch_windows\fR: Open the switcher, or go on to the next window
+\fBAlt+Super+Left\fR
+\fB{ tile: left }\fR: Tile the focused window to that half
 .TP
-\fBAlt+Shift+Tab\fR
-\fBswitch_windows_back\fR: The same, going back
+\fBAlt+Super+Right\fR
+\fB{ tile: right }\fR: Tile the focused window to that half
 .TP
 \fBSuper+Tab\fR
-\fBswitch_windows\fR: Open the switcher, or go on to the next window
+\fBswitch_programs\fR: Switch programs, or go on to the next
 .TP
 \fBShift+Super+Tab\fR
-\fBswitch_windows_back\fR: The same, going back
+\fBswitch_programs_back\fR: The same, going back
 .TP
 \fBSuper+grave\fR
-\fBnext_tab\fR: Show the next tab of the focused window
+\fBnext_window\fR: Focus the focused program's next window
 .TP
 \fBShift+Super+grave\fR
+\fBprevious_window\fR: Focus the focused program's window before
+.TP
+\fBCtrl+Super+Tab\fR
+\fBnext_tab\fR: Show the next tab of the focused window
+.TP
+\fBCtrl+Shift+Super+Tab\fR
 \fBprevious_tab\fR: Show the previous tab of the focused window
+.TP
+\fBSuper+Up\fR
+\fBoverview\fR: Open the overview of the workspace, or close it
 .TP
 \fBSuper+Right\fR
 \fBnext_workspace\fR: Show the next workspace
@@ -67,6 +79,15 @@ There before anything is written, and kept unless \fBdefaults: false\fR is: a bi
 \fBCtrl+Shift+Super+n\fR
 \fBmove_to_new_workspace\fR: Send the focused window to a new workspace
 .TP
+\fBCtrl+Super+q\fR
+\fBlock\fR: Lock the session
+.TP
+\fBXF86ScreenSaver\fR
+\fBlock\fR: Lock the session
+.TP
+\fBShift+Super+q\fR
+\fBlog_out\fR: End the session, once the user says so
+.TP
 \fBPrint\fR
 \fB{ spawn: { run: [omorfos\-screenshot], may: [capture, clipboard] } }\fR: Start a program, with no shell
 .TP
@@ -76,14 +97,29 @@ There before anything is written, and kept unless \fBdefaults: false\fR is: a bi
 \fBAlt+Print\fR
 \fB{ spawn: { run: [omorfos\-screenshot, \-\-window], may: [capture, clipboard, panel] } }\fR: Start a program, with no shell
 .TP
-\fBShift+Super+r\fR
-\fBreload_config\fR: Read the configuration again
+\fBShift+Super+3\fR
+\fB{ spawn: { run: [omorfos\-screenshot], may: [capture, clipboard] } }\fR: Start a program, with no shell
 .TP
-\fBShift+Super+e\fR
-\fBquit\fR: End the session
+\fBShift+Super+4\fR
+\fB{ spawn: { run: [omorfos\-screenshot, \-\-pick], may: [capture, clipboard, panel, overlay] } }\fR: Start a program, with no shell
+.TP
+\fBShift+Super+5\fR
+\fB{ spawn: { run: [omorfos\-screenshot, \-\-pick], may: [capture, clipboard, panel, overlay] } }\fR: Start a program, with no shell
+.TP
+\fBCtrl+Shift+Super+3\fR
+\fB{ spawn: { run: [omorfos\-screenshot, \-\-to, clipboard], may: [capture, clipboard] } }\fR: Start a program, with no shell
+.TP
+\fBCtrl+Shift+Super+4\fR
+\fB{ spawn: { run: [omorfos\-screenshot, \-\-pick, \-\-to, clipboard], may: [capture, clipboard, panel, overlay] } }\fR: Start a program, with no shell
 .TP
 \fBXF86Display\fR
 \fBnext_screens\fR: Arrange the screens the next way
+.TP
+\fBSuper+F1\fR
+\fBnext_screens\fR: Arrange the screens the next way
+.TP
+\fBXF86Keyboard\fR
+\fBnext_layout\fR: Type with the next keyboard layout
 .TP
 \fBXF86LaunchA\fR
 \fBoverview\fR: Open the overview of the workspace, or close it
@@ -148,55 +184,55 @@ There before anything is written, and kept unless \fBdefaults: false\fR is: a bi
 \fBSuper+1\fR
 \fB{ workspace: 1 }\fR: Show workspace N
 .TP
-\fBShift+Super+1\fR
+\fBCtrl+Super+1\fR
 \fB{ move_to_workspace: 1 }\fR: Send the focused window to workspace N
 .TP
 \fBSuper+2\fR
 \fB{ workspace: 2 }\fR: Show workspace N
 .TP
-\fBShift+Super+2\fR
+\fBCtrl+Super+2\fR
 \fB{ move_to_workspace: 2 }\fR: Send the focused window to workspace N
 .TP
 \fBSuper+3\fR
 \fB{ workspace: 3 }\fR: Show workspace N
 .TP
-\fBShift+Super+3\fR
+\fBCtrl+Super+3\fR
 \fB{ move_to_workspace: 3 }\fR: Send the focused window to workspace N
 .TP
 \fBSuper+4\fR
 \fB{ workspace: 4 }\fR: Show workspace N
 .TP
-\fBShift+Super+4\fR
+\fBCtrl+Super+4\fR
 \fB{ move_to_workspace: 4 }\fR: Send the focused window to workspace N
 .TP
 \fBSuper+5\fR
 \fB{ workspace: 5 }\fR: Show workspace N
 .TP
-\fBShift+Super+5\fR
+\fBCtrl+Super+5\fR
 \fB{ move_to_workspace: 5 }\fR: Send the focused window to workspace N
 .TP
 \fBSuper+6\fR
 \fB{ workspace: 6 }\fR: Show workspace N
 .TP
-\fBShift+Super+6\fR
+\fBCtrl+Super+6\fR
 \fB{ move_to_workspace: 6 }\fR: Send the focused window to workspace N
 .TP
 \fBSuper+7\fR
 \fB{ workspace: 7 }\fR: Show workspace N
 .TP
-\fBShift+Super+7\fR
+\fBCtrl+Super+7\fR
 \fB{ move_to_workspace: 7 }\fR: Send the focused window to workspace N
 .TP
 \fBSuper+8\fR
 \fB{ workspace: 8 }\fR: Show workspace N
 .TP
-\fBShift+Super+8\fR
+\fBCtrl+Super+8\fR
 \fB{ move_to_workspace: 8 }\fR: Send the focused window to workspace N
 .TP
 \fBSuper+9\fR
 \fB{ workspace: 9 }\fR: Show workspace N
 .TP
-\fBShift+Super+9\fR
+\fBCtrl+Super+9\fR
 \fB{ move_to_workspace: 9 }\fR: Send the focused window to workspace N
 .SH KEYS
 .TP

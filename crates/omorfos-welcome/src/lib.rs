@@ -297,7 +297,7 @@ pub fn rows(keys: &Keys, super_as_ctrl: bool, words: &Words) -> Vec<(String, Str
         (Action::Open(Application::Terminal), "terminal"),
         (Action::ShowLauncher, "launcher"),
         (Action::ShowMenu, "menu"),
-        (Action::SwitchWindows, "switcher"),
+        (Action::SwitchPrograms, "switcher"),
     ];
     let bound = wanted.into_iter().filter_map(|(action, name)| {
         let bindings = keys
@@ -433,12 +433,12 @@ mod tests {
     fn the_keys_that_matter_are_said_as_they_are_bound_and_one_not_bound_is_left_out() {
         let rows = rows(&Keys::default(), true, &english());
         let keys: Vec<&str> = rows.iter().map(|(keys, _)| keys.as_str()).collect();
+        // The menu has no key of its own (ADR 101), and is left out.
         assert_eq!(
             keys,
             [
                 "Super+Return",
                 "Super+space",
-                "Super+Escape",
                 "Super+Tab",
                 "Super+c, x, v, z"
             ]
@@ -446,10 +446,7 @@ mod tests {
         assert_eq!(rows[0].1, "Open a terminal");
 
         let there = folder();
-        let bound = |unbound: &str| {
-            let written = format!(
-                "bindings:\n  - {{ keys: Super+t, action: {{ open: terminal }} }}\nunbind: [Super+Return, {unbound}]\n"
-            );
+        let bound = |written: &str| {
             fs::write(there.path().join("keys.yaml"), written).unwrap();
             let (config, problems) = Config::load(there.path(), &Config::default());
             assert_eq!(problems, []);
@@ -457,26 +454,28 @@ mod tests {
             rows.into_iter().map(|(keys, _)| keys).collect::<Vec<_>>()
         };
         assert_eq!(
-            bound("Super+Tab"),
+            bound(
+                "bindings:\n  - { keys: Super+t, action: { open: terminal } }\n  \
+                 - { keys: Super+Escape, action: show_menu }\nunbind: [Super+Return]\n"
+            ),
             [
                 "Super+t",
                 "Super+space",
                 "Super+Escape",
-                "Alt+Tab",
+                "Super+Tab",
                 "Super+c, x, v, z"
-            ]
+            ],
+            "as they are bound"
         );
         assert_eq!(
-            bound("Super+Tab, Alt+Tab"),
-            ["Super+t", "Super+space", "Super+Escape", "Super+c, x, v, z"]
+            bound("unbind: [Super+Tab]\n"),
+            ["Super+Return", "Super+space", "Super+c, x, v, z"],
+            "the switcher with no key, left out"
         );
         // Where Super is not Ctrl, Super+C does not copy, and is not said to.
         let without = super::rows(&Keys::default(), false, &english());
         let keys: Vec<&str> = without.iter().map(|(keys, _)| keys.as_str()).collect();
-        assert_eq!(
-            keys,
-            ["Super+Return", "Super+space", "Super+Escape", "Super+Tab"]
-        );
+        assert_eq!(keys, ["Super+Return", "Super+space", "Super+Tab"]);
     }
 
     /// A place of data with `designs`' pictures, dark and light, in it.

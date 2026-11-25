@@ -23,7 +23,7 @@ A chord is zero or more modifiers and a key, joined by `+`. Modifiers are
 `Ctrl`, `Alt`, `Shift` and `Super` (case does not matter; `Control`, `Mod1`
 and `Mod4` also work). Keys are XKB keysym names such as `Return`, `a`, `F1`
 or `XF86AudioMute`. A binding names the key, not the symbol it types: write
-`Super+Shift+r`, not `Super+R`. A binding whose key name does not exist is
+`Super+Shift+q`, not `Super+Q`. A binding whose key name does not exist is
 ignored and reported.
 
 Two of your bindings may not use the same keys, and a chain of yours may
@@ -61,27 +61,39 @@ as `overview` or `lock`, has no key until you bind one.
 |---|---|---|
 | `Super+Return` | `{ open: terminal }` | Open the default application of KIND |
 | `Super+space` | `show_launcher` | Open the launcher |
-| `Super+Escape` | `show_menu` | Open the root menu at the pointer |
-| `Super+q` | `close` | Ask the focused window to close |
-| `Super+m` | `maximize` | Maximize the focused window, or restore it |
+| `Super+q` | `close_program` | Ask the focused program's windows to close |
+| `Super+m` | `minimize` | Hide the focused window |
+| `Super+h` | `hide_program` | Hide the focused program's windows |
+| `Alt+Super+h` | `hide_others` | Hide every other program's windows |
 | `Ctrl+Super+f` | `fullscreen` | Make the focused window fullscreen, or not |
-| `Super+h` | `minimize` | Hide the focused window |
-| `Alt+Tab` | `switch_windows` | Open the switcher, or go on to the next window |
-| `Alt+Shift+Tab` | `switch_windows_back` | The same, going back |
-| `Super+Tab` | `switch_windows` | Open the switcher, or go on to the next window |
-| `Shift+Super+Tab` | `switch_windows_back` | The same, going back |
-| `Super+grave` | `next_tab` | Show the next tab of the focused window |
-| `Shift+Super+grave` | `previous_tab` | Show the previous tab of the focused window |
+| `Alt+Super+Up` | `maximize` | Maximize the focused window, or restore it |
+| `Alt+Super+Left` | `{ tile: left }` | Tile the focused window to that half |
+| `Alt+Super+Right` | `{ tile: right }` | Tile the focused window to that half |
+| `Super+Tab` | `switch_programs` | Switch programs, or go on to the next |
+| `Shift+Super+Tab` | `switch_programs_back` | The same, going back |
+| `Super+grave` | `next_window` | Focus the focused program's next window |
+| `Shift+Super+grave` | `previous_window` | Focus the focused program's window before |
+| `Ctrl+Super+Tab` | `next_tab` | Show the next tab of the focused window |
+| `Ctrl+Shift+Super+Tab` | `previous_tab` | Show the previous tab of the focused window |
+| `Super+Up` | `overview` | Open the overview of the workspace, or close it |
 | `Super+Right` | `next_workspace` | Show the next workspace |
 | `Super+Left` | `previous_workspace` | Show the workspace before |
 | `Ctrl+Super+n` | `new_workspace` | Make a workspace after the last, and show it |
 | `Ctrl+Shift+Super+n` | `move_to_new_workspace` | Send the focused window to a new workspace |
+| `Ctrl+Super+q` | `lock` | Lock the session |
+| `XF86ScreenSaver` | `lock` | Lock the session |
+| `Shift+Super+q` | `log_out` | End the session, once the user says so |
 | `Print` | `{ spawn: { run: [omorfos-screenshot], may: [capture, clipboard] } }` | Start a program, with no shell |
 | `Shift+Print` | `{ spawn: { run: [omorfos-screenshot, --pick, --to, clipboard], may: [capture, clipboard, panel, overlay] } }` | Start a program, with no shell |
 | `Alt+Print` | `{ spawn: { run: [omorfos-screenshot, --window], may: [capture, clipboard, panel] } }` | Start a program, with no shell |
-| `Shift+Super+r` | `reload_config` | Read the configuration again |
-| `Shift+Super+e` | `quit` | End the session |
+| `Shift+Super+3` | `{ spawn: { run: [omorfos-screenshot], may: [capture, clipboard] } }` | Start a program, with no shell |
+| `Shift+Super+4` | `{ spawn: { run: [omorfos-screenshot, --pick], may: [capture, clipboard, panel, overlay] } }` | Start a program, with no shell |
+| `Shift+Super+5` | `{ spawn: { run: [omorfos-screenshot, --pick], may: [capture, clipboard, panel, overlay] } }` | Start a program, with no shell |
+| `Ctrl+Shift+Super+3` | `{ spawn: { run: [omorfos-screenshot, --to, clipboard], may: [capture, clipboard] } }` | Start a program, with no shell |
+| `Ctrl+Shift+Super+4` | `{ spawn: { run: [omorfos-screenshot, --pick, --to, clipboard], may: [capture, clipboard, panel, overlay] } }` | Start a program, with no shell |
 | `XF86Display` | `next_screens` | Arrange the screens the next way |
+| `Super+F1` | `next_screens` | Arrange the screens the next way |
+| `XF86Keyboard` | `next_layout` | Type with the next keyboard layout |
 | `XF86LaunchA` | `overview` | Open the overview of the workspace, or close it |
 | `XF86AudioRaiseVolume` | `{ spawn: [omorfos-session, volume, up] }` | Start a program, with no shell |
 | `XF86AudioLowerVolume` | `{ spawn: [omorfos-session, volume, down] }` | Start a program, with no shell |
@@ -103,23 +115,23 @@ as `overview` or `lock`, has no key until you bind one.
 | `Ctrl+Super+Down` | `{ focus: bottom }` | Focus the window beside the focused one |
 | `Ctrl+Shift+Super+Down` | `{ swap: bottom }` | Swap the focused window with the one beside it |
 | `Super+1` | `{ workspace: 1 }` | Show workspace N |
-| `Shift+Super+1` | `{ move_to_workspace: 1 }` | Send the focused window to workspace N |
+| `Ctrl+Super+1` | `{ move_to_workspace: 1 }` | Send the focused window to workspace N |
 | `Super+2` | `{ workspace: 2 }` | Show workspace N |
-| `Shift+Super+2` | `{ move_to_workspace: 2 }` | Send the focused window to workspace N |
+| `Ctrl+Super+2` | `{ move_to_workspace: 2 }` | Send the focused window to workspace N |
 | `Super+3` | `{ workspace: 3 }` | Show workspace N |
-| `Shift+Super+3` | `{ move_to_workspace: 3 }` | Send the focused window to workspace N |
+| `Ctrl+Super+3` | `{ move_to_workspace: 3 }` | Send the focused window to workspace N |
 | `Super+4` | `{ workspace: 4 }` | Show workspace N |
-| `Shift+Super+4` | `{ move_to_workspace: 4 }` | Send the focused window to workspace N |
+| `Ctrl+Super+4` | `{ move_to_workspace: 4 }` | Send the focused window to workspace N |
 | `Super+5` | `{ workspace: 5 }` | Show workspace N |
-| `Shift+Super+5` | `{ move_to_workspace: 5 }` | Send the focused window to workspace N |
+| `Ctrl+Super+5` | `{ move_to_workspace: 5 }` | Send the focused window to workspace N |
 | `Super+6` | `{ workspace: 6 }` | Show workspace N |
-| `Shift+Super+6` | `{ move_to_workspace: 6 }` | Send the focused window to workspace N |
+| `Ctrl+Super+6` | `{ move_to_workspace: 6 }` | Send the focused window to workspace N |
 | `Super+7` | `{ workspace: 7 }` | Show workspace N |
-| `Shift+Super+7` | `{ move_to_workspace: 7 }` | Send the focused window to workspace N |
+| `Ctrl+Super+7` | `{ move_to_workspace: 7 }` | Send the focused window to workspace N |
 | `Super+8` | `{ workspace: 8 }` | Show workspace N |
-| `Shift+Super+8` | `{ move_to_workspace: 8 }` | Send the focused window to workspace N |
+| `Ctrl+Super+8` | `{ move_to_workspace: 8 }` | Send the focused window to workspace N |
 | `Super+9` | `{ workspace: 9 }` | Show workspace N |
-| `Shift+Super+9` | `{ move_to_workspace: 9 }` | Send the focused window to workspace N |
+| `Ctrl+Super+9` | `{ move_to_workspace: 9 }` | Send the focused window to workspace N |
 <!-- The end of the built-in bindings. -->
 
 ## Actions

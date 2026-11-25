@@ -153,7 +153,7 @@ pub enum Part {
     /// [`State::Focused`] while it is typed into, and [`State::Active`]
     /// what is typed when all of it is chosen, its background behind it.
     QuestionInput,
-    /// The switcher on `Alt+Tab`: the box the windows are shown in, in the
+    /// The switcher on `Super+Tab`: the box the windows are shown in, in the
     /// middle of the screen, or under them where they stand on a diagonal,
     /// with the title of the one picked.
     Switcher,

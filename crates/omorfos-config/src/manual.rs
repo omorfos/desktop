@@ -634,7 +634,7 @@ mod tests {
         );
         assert!(
             keys.contains(
-                "\n.TP\n\\fBSuper+q\\fR\n\\fBclose\\fR: Ask the focused window to close\n"
+                "\n.TP\n\\fBSuper+q\\fR\n\\fBclose_program\\fR: Ask the focused program's windows to close\n"
             ),
             "{keys}"
         );

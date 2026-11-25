@@ -316,9 +316,30 @@ impl Started {
     /// on the clipboard and nowhere else.
     #[must_use]
     pub fn screenshot_copied() -> Self {
+        let mut started = Self::screenshot_picked();
+        started
+            .run
+            .arguments
+            .extend(["--to", "clipboard"].map(str::to_owned));
+        started
+    }
+
+    /// The same, picking first, the picture going where
+    /// `screenshots.destination` says, as `Super+Shift+4` takes it.
+    #[must_use]
+    pub fn screenshot_picked() -> Self {
         let mut started = Self::screenshot();
-        started.run.arguments = ["--pick", "--to", "clipboard"].map(str::to_owned).to_vec();
+        started.run.arguments = vec!["--pick".to_owned()];
         started.may.extend([Role::Panel, Role::Overlay]);
+        started
+    }
+
+    /// A picture of every screen put on the clipboard, as
+    /// `Super+Ctrl+Shift+3` takes it.
+    #[must_use]
+    pub fn screenshot_screens_copied() -> Self {
+        let mut started = Self::screenshot();
+        started.run.arguments = ["--to", "clipboard"].map(str::to_owned).to_vec();
         started
     }
 }

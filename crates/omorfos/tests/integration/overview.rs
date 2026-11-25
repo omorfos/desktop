@@ -337,7 +337,7 @@ fn a_window_private_by_blur_is_untitled_in_a_picture_of_the_overview() {
 
 #[test]
 fn the_switcher_and_the_overview_close_each_other_and_locking_closes_it() {
-    let (mut session, _client) = three(&[UNBLURRED]);
+    let (mut session, _client) = three(&[UNBLURRED, crate::switcher::ALT_TAB]);
     open(&mut session);
     // Alt+Tab over the overview opens the switcher in its stead.
     press(&mut session, key::ALT, true);

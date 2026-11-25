@@ -23,13 +23,17 @@ rather, such as Visual Studio Code, are left alone; a rule with
 
 ## Switching windows
 
-`Super+Tab`, or `Alt+Tab`, opens the switcher in the middle of the
-screen the pointer is on: every window, on every workspace and minimized or not, as a picture
-of itself, in the order they were last used. A window smaller than its
+`Super+Tab` opens the switcher in the middle of the screen the pointer is
+on, as Cmd+Tab does on a Mac: every program once, on every workspace and
+minimized or not, by a picture of its window used last, in the order
+they were last used; the program chosen comes forward with all its
+windows on that workspace. `switch_windows`, which `Alt+Tab` has in the
+ordinary way, shows every window instead. A window smaller than its
 place is shown as large as it is, not made larger. It opens at the
-window used before the one you are in, so one `Super+Tab` goes back to it
-and another comes back again. It is shown once Super, or Alt, has been
-held for 200 ms, so that a quick `Super+Tab` goes back without the switcher
+program used before the one you are in, so one `Super+Tab` goes back to
+it and another comes back again; `Super+grave`, the key above Tab, goes
+through the windows of the program you are in. It is shown once Super has
+been held for 200 ms, so that a quick `Super+Tab` goes back without the switcher
 showing for a moment; opened by something other than keys, it is shown
 at once. Shown, it fades in over 120 ms, with the dim and blur behind
 it, and goes at once. A click before it is shown closes it, choosing
@@ -106,7 +110,7 @@ fades in where it goes. The window under the pointer, or reached with the
 arrows, is picked: a border round it and its title under it. Enter or a
 click goes to it, once the overview has closed; Escape, or a click where
 nothing is, closes it where you were. Any other key is a binding as
-ever, so `Alt+Tab` opens the switcher in its stead.
+ever, so `Super+Tab` opens the switcher in its stead.
 
 The strip has each desktop of the screen as a small picture of itself,
 its wallpaper and its windows where they stand, the one shown in the

@@ -1808,10 +1808,13 @@ the first than on the last.
             switcher showing programs (#130, #131): a program is its
             windows that share an application's name, and one with none
             a program of its own; not bound yet;
-      - [ ] the built-in bindings moved as ADR 101 has them, and as it
+      - [x] the built-in bindings moved as ADR 101 has them, and as it
             was accepted: no key for the next layout but `XF86Keyboard`,
             none for the root menu, none for reloading, `Super+F1` for
-            the screens;
+            the screens (#132); pictures of the screen as a Mac's,
+            `Super+Shift+3` and `4` kept, and with Ctrl on the clipboard,
+            `Super+Shift+5` the picker; Alt+Tab left for the ordinary way.
+            `Super+Down`, the program's windows, waits on #141;
       - [ ] the shell's fields reading Super as Command, Ctrl left for
             the line;
       - [ ] the touchpad's three or four fingers, a pinch for every

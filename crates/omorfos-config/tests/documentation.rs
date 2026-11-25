@@ -186,7 +186,9 @@ fn the_guides_built_in_bindings_are_made_as_the_manual_pages_are() {
         "| Keys | Action | What it does |\n|---|---|---|\n{}",
         rows.concat()
     );
-    assert!(table.contains("| `Super+q` | `close` | Ask the focused window to close |\n"));
+    assert!(table.contains(
+        "| `Super+q` | `close_program` | Ask the focused program's windows to close |\n"
+    ));
     let made = format!("{before}{}{table}{}{after}", BINDINGS[0], BINDINGS[1]);
     let bless = env::var_os("OMORFOS_BLESS").is_some();
     let kept = omorfos_ipc::manual::kept(&path, &made, bless).unwrap();

@@ -507,7 +507,10 @@ fn a_bound_key_triggers_its_action_and_is_kept_from_the_window() {
 
 #[test]
 fn shift_selects_a_different_binding_on_the_same_key() {
-    let mut session = Session::new();
+    // Super+Shift with a digit is the Mac's for pictures of the screen; bound
+    // here to send the window, to be told from Super with the digit alone.
+    let keys = "bindings:\n  - { keys: Super+Shift+2, action: { move_to_workspace: 2 } }\n";
+    let mut session = Session::with_config(&[("keys.yaml", keys)]);
     let mut client = session.connect();
     session.open(&mut client, "app", (200, 100), RED);
 

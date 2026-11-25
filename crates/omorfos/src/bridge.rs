@@ -591,16 +591,13 @@ items:
       - { label: Away, action: quit, icon: system-suspend }
   - { label: Places, items: [], icon: folder }
 ";
-        // Each with the keys the built-in bindings give what it does.
+        // Each with the keys the built-in bindings give what it does: none,
+        // for ending the session at once (ADR 101).
         let quit = |label: &str, mark| Item::Entry {
             label: label.to_owned(),
             action: Action::Quit,
             mark,
-            keys: vec![
-                Keycap::Sign(Sign::Super),
-                Keycap::Sign(Sign::Shift),
-                Keycap::Text("E".to_owned()),
-            ],
+            keys: Vec::new(),
         };
         let terminal = Action::Open(Application::Terminal);
         let on = Toggled {
@@ -784,7 +781,11 @@ items:
             label: "Wyloguj\u{2026}".to_owned(),
             action: Action::LogOut,
             mark: Mark::Sign(Sign::Quit),
-            keys: Vec::new(),
+            keys: vec![
+                Keycap::Sign(Sign::Super),
+                Keycap::Sign(Sign::Shift),
+                Keycap::Text("Q".to_owned()),
+            ],
         };
         let session = Item::Submenu {
             label: "Session".to_owned(),
@@ -817,13 +818,13 @@ items:
             bindings.press(terminal),
             KeyOutcome::Triggered(&spawn_terminal)
         );
-        let reload = chord(Modifiers::SUPER.with(Modifiers::SHIFT), Keysym::r);
+        let log_out = chord(Modifiers::SUPER.with(Modifiers::SHIFT), Keysym::q);
         assert_eq!(
-            bindings.press(reload),
-            KeyOutcome::Triggered(&Action::ReloadConfig)
+            bindings.press(log_out),
+            KeyOutcome::Triggered(&Action::LogOut)
         );
         assert_eq!(
-            bindings.press(chord(Modifiers::NONE, Keysym::r)),
+            bindings.press(chord(Modifiers::NONE, Keysym::q)),
             KeyOutcome::Unbound
         );
     }

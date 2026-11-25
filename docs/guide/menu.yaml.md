@@ -63,8 +63,8 @@ every workspace" in the accent while the window is so, choosing the row
 again undoing it. A submenu opens beside its row, a little over the edge
 of the menu.
 
-The menu opens with a right click on the desktop or the `show_menu` action
-(`Super+Escape` by default). Click an entry to choose it; click elsewhere or
+The menu opens with a right click on the desktop or the `show_menu` action,
+which has no key unless you bind one. Click an entry to choose it; click elsewhere or
 press Escape to close the menu.
 
 The keyboard steers it too, and so the menu a right click on a titlebar

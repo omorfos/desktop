@@ -49,8 +49,8 @@ some chords of Alt for itself, `Alt+Tab` among them, and those never
 arrive.
 
 `Alt+F4` is WSLg's, too: it closes the window it is pressed in, which is
-the whole of omorfos, with every program inside it. `Super+q` closes one
-window, as everywhere.
+the whole of omorfos, with every program inside it. `Super+q` quits the
+program you are in, as everywhere, and its close button one window.
 
 There are ways on the Windows side as well. They have not been tried
 with omorfos, and none of them is supported:

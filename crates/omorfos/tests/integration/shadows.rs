@@ -317,7 +317,7 @@ fn press(session: &mut Session, code: Keycode, pressed: bool) {
 /// Two windows, and the switcher opened over them by Alt+Tab, with Alt
 /// still held.
 fn switching(theme: &str) -> (Session, Client) {
-    let mut session = Session::with_config(&[("theme.css", theme)]);
+    let mut session = Session::with_config(&[("theme.css", theme), crate::switcher::ALT_TAB]);
     let mut client = session.connect();
     for name in ["one", "two"] {
         session.open(&mut client, name, (200, 100), RED);

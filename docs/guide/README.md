@@ -21,13 +21,13 @@ drawn with the launcher's parts of the theme, its buttons as a question's
 There is a panel along the bottom of every screen, with its workspaces,
 the windows open and the time; notifications come in at the top right.
 `Super+Return` starts a terminal, `Super+space` the launcher, to start
-anything else by name, and a right click on the desktop, or
-`Super+Escape`, opens the menu.
+anything else by name, and a right click on the desktop opens the menu.
 
-Super is the desktop's (see [Super](keys.yaml.md#super)): a chord with it
-that the desktop does not use reaches the program as the same chord with
-Ctrl, so `Super+c` copies, `Super+v` pastes and `Super+z` undoes in every
-program, as Cmd does on a Mac.
+Super is the desktop's (see [Super](keys.yaml.md#super)), and its keys
+are a Mac's, with Super for Command: a chord with it that the desktop does
+not use reaches the program as the same chord with Ctrl, so `Super+c`
+copies, `Super+v` pastes, `Super+z` undoes and `Super+w` closes a tab in
+every program, as Cmd does on a Mac.
 
 The desktop speaks the language your session is in, as `LANG` says,
 where it has the words: English, and Polish for the panel, the lock
@@ -42,18 +42,21 @@ manual pages and `--help` are in English.
 |---|---|
 | `Super+Return` | Start a terminal |
 | `Super+space` | Open the launcher |
-| `Super+Escape` | Open the menu |
-| `Super+Tab` | Go back to the window before, or hold Super to choose one |
-| `Super+q` | Close the window |
-| `Super+m` | Maximize the window, or restore it |
-| `Super+h` | Hide the window |
+| `Super+Tab` | Go back to the program before, or hold Super to choose one |
+| `Super+grave` | Go to the program's next window (the key above Tab) |
+| `Super+q` | Quit the program: close every window of it |
+| `Super+m` | Minimize the window |
+| `Super+h` | Hide the program; `Super+Alt+h` every other |
+| `Super+Alt+Up` | Maximize the window, or restore it |
+| `Super+Alt+Left` | Have the window take the left half; `Super+Alt+Right` the right |
 | `Super+Ctrl+f` | Make the window fullscreen, or not |
+| `Super+Up` | See every window of the workspace |
 | `Super+1` | Go to the first workspace; up to `Super+9` |
-| `Super+Shift+1` | Send the window to the first workspace |
+| `Super+Ctrl+1` | Send the window to the first workspace |
 | `Super+Right` | Go to the next workspace; `Super+Left` the one before |
-| `Print` | Take a picture of every screen |
-| `Super+Shift+r` | Read the configuration again |
-| `Super+Shift+e` | Log out |
+| `Super+Shift+3` | Take a picture of every screen; `Super+Shift+4` pick what of |
+| `Super+Ctrl+q` | Lock the screen |
+| `Super+Shift+q` | Log out, asking first |
 
 Every key there is before you write any is in the table of
 [the built-in bindings](keys.yaml.md#built-in-bindings), and what windows

@@ -14,6 +14,15 @@ const LEFT_BUTTON: u32 = 0x110;
 /// The switcher in rows, which most of these are about.
 const FLAT: (&str, &str) = ("config.yaml", "switcher: { style: flat }\n");
 
+/// The switcher of windows on Alt+Tab, as the ordinary way has it, which
+/// these are about: the Mac's way has programs on Super+Tab, and Alt is the
+/// programs' (ADR 101).
+pub(crate) const ALT_TAB: (&str, &str) = (
+    "keys.yaml",
+    "bindings:\n  - { keys: Alt+Tab, action: switch_windows }\n  \
+     - { keys: Alt+Shift+Tab, action: switch_windows_back }\n",
+);
+
 /// The screen behind the switcher dimmed but not blurred, which takes the
 /// software renderer a while, for what is not about it.
 const UNBLURRED: (&str, &str) = (
@@ -86,7 +95,9 @@ fn three() -> (Session, Client) {
 /// Three windows, opened in turn, the last with focus, with `files` as
 /// the configuration, those on a diagonal larger than their places.
 fn three_with(files: &[(&str, &str)]) -> (Session, Client) {
-    let mut session = Session::with_config(files);
+    let mut files = files.to_vec();
+    files.push(ALT_TAB);
+    let mut session = Session::with_config(&files);
     let mut client = session.connect();
     let size = if files.contains(&FLAT) {
         (200, 100)
@@ -251,7 +262,7 @@ fn opened_by_something_other_than_a_key_it_waits_for_enter() {
 
 #[test]
 fn with_no_windows_there_is_nothing_to_open() {
-    let mut session = Session::with_config(&[FLAT]);
+    let mut session = Session::with_config(&[ALT_TAB, FLAT]);
     alt_tab(&mut session, 1, false);
     assert_eq!(shown(&session), None);
     press(&mut session, key::ALT, false);
@@ -317,7 +328,7 @@ fn title_in(place: Rect, theme: &Theme) -> (i32, i32, i32, i32) {
 #[test]
 fn a_private_window_is_whole_on_the_screen_and_in_a_picture_neither_shown_nor_named() {
     let rules = "rules:\n  - match: { app_id: two }\n    private: true\n";
-    let mut session = Session::with_config(&[FLAT, ("rules.yaml", rules)]);
+    let mut session = Session::with_config(&[ALT_TAB, FLAT, ("rules.yaml", rules)]);
     let mut client = session.connect();
     session.open(&mut client, "one", (200, 100), RED);
     session.open(&mut client, "two", (200, 100), BLUE);
@@ -344,7 +355,7 @@ fn a_private_window_is_whole_on_the_screen_and_in_a_picture_neither_shown_nor_na
 #[test]
 fn a_window_whose_title_comes_to_make_it_private_is_hidden_in_the_next_picture() {
     let rules = "rules:\n  - match: { title: '*Bank*' }\n    private: true\n";
-    let mut session = Session::with_config(&[FLAT, ("rules.yaml", rules)]);
+    let mut session = Session::with_config(&[ALT_TAB, FLAT, ("rules.yaml", rules)]);
     let mut client = session.connect();
     let browser = session.open(&mut client, "browser", (200, 100), BLUE);
     session.open(&mut client, "notes", (200, 100), RED);
@@ -415,7 +426,7 @@ fn a_click_on_a_window_chooses_it_and_anywhere_else_closes_the_switcher() {
 
 #[test]
 fn a_window_that_closes_while_it_is_open_is_taken_out() {
-    let mut session = Session::with_config(&[FLAT]);
+    let mut session = Session::with_config(&[ALT_TAB, FLAT]);
     let mut client = session.connect();
     let one = session.open(&mut client, "one", (200, 100), RED);
     let two = session.open(&mut client, "two", (200, 100), BLUE);
@@ -610,7 +621,7 @@ fn a_window_whose_application_is_named_by_a_path_is_not_shown_with_that_file() {
     let path = data
         .path()
         .join("icons/hicolor/scalable/apps/org.example.Given.svg");
-    let mut session = Session::with_config(&[FLAT]);
+    let mut session = Session::with_config(&[ALT_TAB, FLAT]);
     session
         .compositor_mut()
         .set_data_directories(vec![data.path().to_owned()]);
@@ -630,7 +641,7 @@ fn a_program_gives_its_window_an_icon_by_name_or_as_pixels_but_not_as_a_path() {
     let path = data
         .path()
         .join("icons/hicolor/scalable/apps/org.example.Given.svg");
-    let mut session = Session::with_config(&[FLAT]);
+    let mut session = Session::with_config(&[ALT_TAB, FLAT]);
     session
         .compositor_mut()
         .set_data_directories(vec![data.path().to_owned()]);
@@ -670,7 +681,7 @@ fn a_program_gives_its_window_an_icon_by_name_or_as_pixels_but_not_as_a_path() {
 #[test]
 fn a_program_that_destroys_its_icons_pixels_keeps_its_window_with_its_applications_icon() {
     let data = installed(&[("one", CYAN)], &[]);
-    let mut session = Session::with_config(&[FLAT]);
+    let mut session = Session::with_config(&[ALT_TAB, FLAT]);
     session
         .compositor_mut()
         .set_data_directories(vec![data.path().to_owned()]);
@@ -723,7 +734,7 @@ fn a_program_that_destroys_its_icons_pixels_keeps_its_window_with_its_applicatio
 
 #[test]
 fn an_icon_changed_once_set_or_given_pixels_not_shared_or_not_square_is_refused() {
-    let mut session = Session::with_config(&[FLAT]);
+    let mut session = Session::with_config(&[ALT_TAB, FLAT]);
     let changed = session.connect();
     let window = changed.toplevel("one", "One");
     let (manager, icon) = changed.icon();
@@ -757,7 +768,7 @@ fn an_icon_changed_once_set_or_given_pixels_not_shared_or_not_square_is_refused(
 fn in_a_picture_a_private_window_is_shown_by_its_icon_large_where_its_picture_would_be() {
     let data = installed(&[("one", YELLOW)], &[]);
     let rules = "rules:\n  - match: { app_id: one }\n    private: true\n  - match: { app_id: two }\n    private: true\n";
-    let mut session = Session::with_config(&[FLAT, ("rules.yaml", rules)]);
+    let mut session = Session::with_config(&[ALT_TAB, FLAT, ("rules.yaml", rules)]);
     session
         .compositor_mut()
         .set_data_directories(vec![data.path().to_owned()]);
@@ -956,7 +967,7 @@ fn queued_title(area: Rect, theme: &Theme) -> (i32, i32, i32, i32) {
 fn in_the_queue_a_private_window_is_whole_on_the_screen_and_in_a_picture_an_icon_untitled() {
     let data = installed(&[("one", YELLOW)], &[]);
     let rules = "rules:\n  - match: { app_id: one }\n    private: true\n  - match: { app_id: two }\n    private: true\n";
-    let mut session = Session::with_config(&[("rules.yaml", rules), UNBLURRED]);
+    let mut session = Session::with_config(&[ALT_TAB, ("rules.yaml", rules), UNBLURRED]);
     session
         .compositor_mut()
         .set_data_directories(vec![data.path().to_owned()]);
@@ -999,7 +1010,8 @@ fn in_the_queue_a_private_window_is_whole_on_the_screen_and_in_a_picture_an_icon
 
 #[test]
 fn the_one_that_leaves_the_front_is_drawn_on_its_way_though_six_others_are_shown() {
-    let mut session = Session::with_workspaces();
+    let workspaces = ("config.yaml", crate::common::FOUR_WORKSPACES);
+    let mut session = Session::with_config(&[ALT_TAB, workspaces]);
     session.write_config(UNBLURRED.0, UNBLURRED.1);
     session.compositor_mut().reload_config();
     let mut client = session.connect();
@@ -1129,7 +1141,7 @@ fn held_a_moment_the_switcher_is_shown_and_a_click_before_closes_it_choosing_not
 fn a_window_private_by_blur_is_blurred_in_the_switcher_and_one_private_by_blank_is_blank() {
     let rules = "rules:\n  - match: { app_id: one }\n    private: blur\n  - match: { app_id: two }\n    private: true\n";
     for style in [("config.yaml", ""), FLAT] {
-        let mut session = Session::with_config(&[style, ("rules.yaml", rules), UNBLURRED]);
+        let mut session = Session::with_config(&[ALT_TAB, style, ("rules.yaml", rules), UNBLURRED]);
         session.blurring();
         let mut client = session.connect();
         let size = if style == FLAT {
@@ -1233,7 +1245,7 @@ fn once_shown_the_switcher_and_its_dim_fade_in_quickly() {
 #[test]
 fn a_window_private_by_blur_is_as_blurred_at_the_back_of_the_queue_as_in_front() {
     let rules = "rules:\n  - match: { app_id: private }\n    private: blur\n";
-    let mut session = Session::with_config(&[("rules.yaml", rules), UNBLURRED]);
+    let mut session = Session::with_config(&[ALT_TAB, ("rules.yaml", rules), UNBLURRED]);
     let mut client = session.connect();
     for number in 1..=5 {
         session.open(&mut client, &format!("w{number}"), (800, 500), GREEN);
@@ -1275,7 +1287,7 @@ fn a_window_private_by_blur_is_as_blurred_at_the_back_of_the_queue_as_in_front()
 /// Windows of two programs, `term` and `web`, opened term, web, term, the
 /// last with focus, the switcher in rows.
 fn two_programs() -> (Session, Client) {
-    let mut session = Session::with_config(&[FLAT]);
+    let mut session = Session::with_config(&[ALT_TAB, FLAT]);
     let mut client = session.connect();
     for (name, colour) in [("term", RED), ("web", BLUE), ("term", GREEN)] {
         session.open(&mut client, name, (200, 100), colour);

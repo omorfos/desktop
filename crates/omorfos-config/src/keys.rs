@@ -116,36 +116,56 @@ impl Keys {
 
 impl Default for Keys {
     fn default() -> Self {
+        // The Mac's keys, with Super for Command, and Super+Ctrl where a Mac
+        // has Ctrl alone for the desktop (ADR 101, as accepted). A chord with
+        // Super that nothing here binds reaches the program as Ctrl (ADR 78):
+        // Super+W closes its tab, Super+F finds, Super+N opens a window.
         let mut bindings = vec![
             bind("Super+Return", Action::Open(Application::Terminal)),
             bind("Super+space", Action::ShowLauncher),
-            bind("Super+Escape", Action::ShowMenu),
-            bind("Super+q", Action::Close),
-            bind("Super+m", Action::Maximize),
-            // Find is Super+F, as Ctrl+F (ADR 78).
+            bind("Super+q", Action::CloseProgram),
+            bind("Super+m", Action::Minimize),
+            bind("Super+h", Action::HideProgram),
+            bind("Super+Alt+h", Action::HideOthers),
             bind("Super+Ctrl+f", Action::Fullscreen),
-            bind("Super+h", Action::Minimize),
-            bind("Alt+Tab", Action::SwitchWindows),
-            bind("Alt+Shift+Tab", Action::SwitchWindowsBack),
-            bind("Super+Tab", Action::SwitchWindows),
-            bind("Super+Shift+Tab", Action::SwitchWindowsBack),
-            bind("Super+grave", Action::NextTab),
-            bind("Super+Shift+grave", Action::PreviousTab),
+            bind("Super+Alt+Up", Action::Maximize),
+            bind("Super+Alt+Left", Action::Tile(Half::Left)),
+            bind("Super+Alt+Right", Action::Tile(Half::Right)),
+            bind("Super+Tab", Action::SwitchPrograms),
+            bind("Super+Shift+Tab", Action::SwitchProgramsBack),
+            bind("Super+grave", Action::NextWindow),
+            bind("Super+Shift+grave", Action::PreviousWindow),
+            // A Mac goes through its windows' tabs with Ctrl+Tab, which here
+            // is the program's.
+            bind("Super+Ctrl+Tab", Action::NextTab),
+            bind("Super+Ctrl+Shift+Tab", Action::PreviousTab),
+            bind("Super+Up", Action::Overview),
             bind("Super+Right", Action::NextWorkspace),
             bind("Super+Left", Action::PreviousWorkspace),
-            // A new window is Super+N, as Ctrl+N, and a private one in a
-            // browser Super+Shift+N.
             bind("Super+Ctrl+n", Action::NewWorkspace),
             bind("Super+Ctrl+Shift+n", Action::MoveToNewWorkspace),
+            bind("Super+Ctrl+q", Action::Lock),
+            bind("XF86ScreenSaver", Action::Lock),
+            bind("Super+Shift+q", Action::LogOut),
             bind("Print", Action::Spawn(Started::screenshot())),
             bind("Shift+Print", Action::Spawn(Started::screenshot_copied())),
             bind("Alt+Print", Action::Spawn(Started::screenshot_window())),
-            bind("Super+Shift+r", Action::ReloadConfig),
-            bind("Super+Shift+e", Action::Quit),
-            // The key a laptop has for the screens, which means nothing
-            // else, and is pressed when one has gone dark.
+            bind("Super+Shift+3", Action::Spawn(Started::screenshot())),
+            bind("Super+Shift+4", Action::Spawn(Started::screenshot_picked())),
+            bind("Super+Shift+5", Action::Spawn(Started::screenshot_picked())),
+            bind(
+                "Super+Ctrl+Shift+3",
+                Action::Spawn(Started::screenshot_screens_copied()),
+            ),
+            bind(
+                "Super+Ctrl+Shift+4",
+                Action::Spawn(Started::screenshot_copied()),
+            ),
+            // The keys for the screens, the layout and Mission Control, which
+            // mean nothing else; and Super+F1, as Cmd+F1 mirrors on a Mac.
             bind("XF86Display", Action::NextScreens),
-            // Apple's Mission Control key, F3 on a MacBook.
+            bind("Super+F1", Action::NextScreens),
+            bind("XF86Keyboard", Action::NextLayout),
             bind("XF86LaunchA", Action::Overview),
         ];
         // The keys a keyboard has for the volume, the brightness and what
@@ -187,8 +207,9 @@ impl Default for Keys {
                 &format!("Super+{number}"),
                 Action::Workspace(workspace),
             ));
+            // Super+Shift with 3, 4 and 5 is for pictures of the screen.
             bindings.push(bind(
-                &format!("Super+Shift+{number}"),
+                &format!("Super+Ctrl+{number}"),
                 Action::MoveToWorkspace(workspace),
             ));
         }
@@ -536,7 +557,7 @@ bindings:
     fn a_binding_is_made_beside_the_built_in_ones() {
         let keys = parse("bindings:\n  - { keys: Super+l, action: lock }\n").unwrap();
         assert_eq!(action_for(&keys, "Super+l"), Some(Action::Lock));
-        assert_eq!(action_for(&keys, "Super+q"), Some(Action::Close));
+        assert_eq!(action_for(&keys, "Super+q"), Some(Action::CloseProgram));
         let built_in = Keys::default().bindings().len();
         assert_eq!(keys.bindings().len(), built_in + 1);
         // Written first, and the built-in ones after, as they come.
@@ -568,7 +589,7 @@ bindings:
         let keys = parse("unbind: [Super+h, Mod4+m]").unwrap();
         assert_eq!(action_for(&keys, "Super+h"), None);
         assert_eq!(action_for(&keys, "Super+m"), None);
-        assert_eq!(action_for(&keys, "Super+q"), Some(Action::Close));
+        assert_eq!(action_for(&keys, "Super+q"), Some(Action::CloseProgram));
         assert_eq!(keys.bindings().len(), Keys::default().bindings().len() - 2);
         let error = parse("unbind: [Super+F12]").unwrap_err();
         assert!(
@@ -650,6 +671,67 @@ bindings:
     }
 
     #[test]
+    fn the_built_in_bindings_are_a_macs_with_super_for_command() {
+        let keys = Keys::default();
+        let action_for = |text: &str| action_for(&keys, text);
+        // ADR 101, as accepted.
+        assert_eq!(action_for("Super+q"), Some(Action::CloseProgram));
+        assert_eq!(action_for("Super+w"), None, "the program's, as Ctrl+W");
+        assert_eq!(action_for("Super+m"), Some(Action::Minimize));
+        assert_eq!(action_for("Super+h"), Some(Action::HideProgram));
+        assert_eq!(action_for("Super+Alt+h"), Some(Action::HideOthers));
+        assert_eq!(action_for("Super+Alt+Up"), Some(Action::Maximize));
+        assert_eq!(action_for("Super+Alt+Left"), Some(Action::Tile(Half::Left)));
+        assert_eq!(
+            action_for("Super+Alt+Right"),
+            Some(Action::Tile(Half::Right))
+        );
+        assert_eq!(action_for("Super+Up"), Some(Action::Overview));
+        assert_eq!(action_for("Super+Ctrl+q"), Some(Action::Lock));
+        assert_eq!(action_for("XF86ScreenSaver"), Some(Action::Lock));
+        assert_eq!(action_for("Super+Shift+q"), Some(Action::LogOut));
+        assert_eq!(action_for("Super+F1"), Some(Action::NextScreens));
+        assert_eq!(action_for("XF86Keyboard"), Some(Action::NextLayout));
+        // What the review left without a key: the next layout but on its
+        // own key, the root menu, reloading, and ending at once.
+        for none in [
+            "Super+Alt+space",
+            "Super+Escape",
+            "Super+Shift+r",
+            "Super+Shift+e",
+            "Super+l",
+            "Alt+Tab",
+        ] {
+            assert_eq!(action_for(none), None, "{none}");
+        }
+        // Pictures of the screen as a Mac's: every screen, or picked, kept
+        // where the configuration says, or with Ctrl on the clipboard.
+        let spawned = |started: Started| Some(Action::Spawn(started));
+        assert_eq!(action_for("Super+Shift+3"), spawned(Started::screenshot()));
+        assert_eq!(
+            action_for("Super+Shift+4"),
+            spawned(Started::screenshot_picked())
+        );
+        assert_eq!(
+            action_for("Super+Shift+5"),
+            spawned(Started::screenshot_picked())
+        );
+        assert_eq!(
+            action_for("Super+Ctrl+Shift+3"),
+            spawned(Started::screenshot_screens_copied())
+        );
+        assert_eq!(
+            action_for("Super+Ctrl+Shift+4"),
+            spawned(Started::screenshot_copied())
+        );
+        assert_eq!(Started::screenshot_picked().run.arguments(), ["--pick"]);
+        assert_eq!(
+            Started::screenshot_screens_copied().run.arguments(),
+            ["--to", "clipboard"]
+        );
+    }
+
+    #[test]
     fn the_built_in_bindings_cover_the_essentials_and_do_not_conflict() {
         let keys = Keys::default();
         let action_for = |text: &str| action_for(&keys, text);
@@ -657,7 +739,6 @@ bindings:
             action_for("Super+Return"),
             Some(Action::Open(Application::Terminal))
         );
-        assert_eq!(action_for("Super+q"), Some(Action::Close));
         // A picture of the screen is taken by a program that may.
         let screenshot = action_for("Print");
         assert_eq!(screenshot, Some(Action::Spawn(Started::screenshot())));
@@ -685,18 +766,24 @@ bindings:
         assert_eq!(action_for("Alt+Print"), Some(Action::Spawn(window.clone())));
         assert_eq!(window.run.arguments(), ["--window"]);
         assert!(window.may.contains(&crate::Role::Panel));
-        // Super is the desktop's (ADR 78): the switcher is on it as well as
-        // on Alt, the tabs of a group on the key above Tab, and what macOS
-        // leaves to programs on Cmd is theirs, as Ctrl.
-        assert_eq!(action_for("Alt+Tab"), Some(Action::SwitchWindows));
-        assert_eq!(action_for("Alt+Shift+Tab"), Some(Action::SwitchWindowsBack));
-        assert_eq!(action_for("Super+Tab"), Some(Action::SwitchWindows));
+        // Super is the desktop's (ADR 78): programs on Super+Tab, the
+        // program's windows on the key above Tab, the tabs of a group with
+        // Ctrl, and what macOS leaves to programs on Cmd is theirs, as Ctrl.
+        assert_eq!(action_for("Super+Tab"), Some(Action::SwitchPrograms));
         assert_eq!(
             action_for("Super+Shift+Tab"),
-            Some(Action::SwitchWindowsBack)
+            Some(Action::SwitchProgramsBack)
         );
-        assert_eq!(action_for("Super+grave"), Some(Action::NextTab));
-        assert_eq!(action_for("Super+Shift+grave"), Some(Action::PreviousTab));
+        assert_eq!(action_for("Super+grave"), Some(Action::NextWindow));
+        assert_eq!(
+            action_for("Super+Shift+grave"),
+            Some(Action::PreviousWindow)
+        );
+        assert_eq!(action_for("Super+Ctrl+Tab"), Some(Action::NextTab));
+        assert_eq!(
+            action_for("Super+Ctrl+Shift+Tab"),
+            Some(Action::PreviousTab)
+        );
         assert_eq!(action_for("Super+Ctrl+f"), Some(Action::Fullscreen));
         assert_eq!(action_for("Super+f"), None);
         assert_eq!(action_for("Super+n"), None);
@@ -707,7 +794,7 @@ bindings:
             Some(Action::Workspace(WorkspaceNumber::clamped(3)))
         );
         assert_eq!(
-            action_for("Super+Shift+4"),
+            action_for("Super+Ctrl+4"),
             Some(Action::MoveToWorkspace(WorkspaceNumber::clamped(4)))
         );
         // Workspaces are made as they are wanted, so every digit goes to
