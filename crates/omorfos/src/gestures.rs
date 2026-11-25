@@ -11,6 +11,9 @@
 //! (see `slide.rs`); mostly up or down, they carry the overview open or
 //! closed (see `overview.rs`); anything else they do is nothing.
 
+use std::time::Duration;
+
+use omorfos_core::WorkspaceId;
 use smithay::delegate_pointer_gestures;
 use smithay::input::pointer::{
     GestureHoldBeginEvent, GestureHoldEndEvent, GesturePinchBeginEvent, GesturePinchEndEvent,
@@ -20,12 +23,15 @@ use smithay::reexports::wayland_server::DisplayHandle;
 use smithay::utils::SERIAL_COUNTER;
 use smithay::wayland::pointer_gestures::PointerGesturesState;
 
+use crate::aside::Spread;
 use crate::compositor::Compositor;
 use crate::input::Gesture;
 use crate::slide::Slide;
 
 /// How many fingers swipe from one workspace to the next: three or four.
 const FINGERS: std::ops::RangeInclusive<u32> = 3..=4;
+/// How many fingers pinch or spread for the desktop: the thumb and three.
+const PINCHING: u32 = 4;
 /// How far the fingers go before which way they swipe is told, in the
 /// units the touchpad tells.
 const DECIDED: f64 = 8.0;
@@ -47,6 +53,12 @@ pub(crate) struct Gestures {
     pub(crate) slide: Slide,
     /// A swipe of three fingers or four, while they are on the touchpad.
     swipe: Option<Swipe>,
+    /// A pinch of four fingers, while they are on the touchpad, carrying
+    /// the windows aside or back.
+    pinch: Option<Spread>,
+    /// The windows set aside on a workspace being left, coming back: which
+    /// workspace, and since when.
+    pub(crate) unspreading: Option<(WorkspaceId, Duration)>,
     _protocol: PointerGesturesState,
 }
 
@@ -56,6 +68,8 @@ impl Gestures {
         Self {
             slide: Slide::default(),
             swipe: None,
+            pinch: None,
+            unspreading: None,
             _protocol: PointerGesturesState::new::<Compositor>(display),
         }
     }
@@ -68,8 +82,13 @@ impl Compositor {
         // The overview has the pointer, and the touchpad with it: but for
         // a swipe of ours, none is a program's.
         let swiping = self.protocols.gestures.swipe.is_some();
-        let ours = matches!(gesture, Gesture::SwipeBegin { fingers } if FINGERS.contains(&fingers));
-        if self.overview_open() && !swiping && !ours {
+        let pinching = self.protocols.gestures.pinch.is_some();
+        let ours = match gesture {
+            Gesture::SwipeBegin { fingers } => FINGERS.contains(&fingers),
+            Gesture::PinchBegin { fingers } => fingers == PINCHING,
+            _ => false,
+        };
+        if self.overview_open() && !swiping && !pinching && !ours {
             return;
         }
         let pointer = self.pointer.clone();
@@ -107,6 +126,10 @@ impl Compositor {
                     };
                     pointer.gesture_swipe_end(self, &event);
                 }
+            }
+            Gesture::PinchBegin { fingers: PINCHING } => self.pinch(gesture, time),
+            Gesture::PinchUpdate { .. } | Gesture::PinchEnd { .. } if pinching => {
+                self.pinch(gesture, time);
             }
             Gesture::PinchBegin { fingers } => {
                 let event = GesturePinchBeginEvent {
@@ -154,6 +177,23 @@ impl Compositor {
                 };
                 pointer.gesture_hold_end(self, &event);
             }
+        }
+    }
+
+    /// Takes a pinch of four fingers at `time`, the desktop's from its
+    /// start as a swipe of three is, as a Mac does: spread, the windows go
+    /// aside with the fingers to show the desktop; pinched together, they
+    /// come back.
+    fn pinch(&mut self, gesture: Gesture, time: u32) {
+        let held = self.protocols.gestures.pinch.take();
+        let mut spread = held.unwrap_or_else(|| self.spread_began(time));
+        match gesture {
+            Gesture::PinchEnd { cancelled } => self.spread_ended(spread, cancelled),
+            Gesture::PinchUpdate { scale, .. } => {
+                self.spread_moved(&mut spread, scale, time);
+                self.protocols.gestures.pinch = Some(spread);
+            }
+            _ => self.protocols.gestures.pinch = Some(spread),
         }
     }
 

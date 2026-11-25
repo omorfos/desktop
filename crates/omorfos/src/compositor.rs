@@ -1243,6 +1243,7 @@ impl Compositor {
         // So is a slide of the workspaces that is settling.
         // As is the switcher, while its queue turns and as it fades in.
         let settling = self.protocols.gestures.slide.settling()
+            || self.protocols.gestures.unspreading.is_some()
             || self.switcher_turning()
             || self.switcher_fading()
             || self.overview_moving();
@@ -1376,6 +1377,7 @@ impl Compositor {
         // The window gone to from the overview is raised before the scene
         // is made, so that it is not drawn under the others for a frame.
         self.settle_overview();
+        self.unspread();
         self.sync();
         self.note_use();
         self.rest_or_wake(now);
@@ -1529,6 +1531,7 @@ impl Compositor {
             Action::CloseProgram => self.close_program(),
             Action::HideProgram => self.on_focused(Desktop::hide_program),
             Action::HideOthers => self.on_focused(Desktop::hide_others),
+            Action::ShowDesktop => self.desktop.show_desktop(),
             Action::Maximize => self.on_focused(Desktop::toggle_maximized),
             Action::Fullscreen => self.on_focused(Desktop::toggle_fullscreen),
             Action::Tile(half) => {
@@ -2811,6 +2814,7 @@ impl Compositor {
                             private,
                             on: frame.on,
                             within: frame.within,
+                            clip: frame.clip,
                             stretch,
                             giving,
                             way,
@@ -2934,6 +2938,7 @@ impl Compositor {
                 on: frame.on,
                 // A picture of a window is of it alone, wherever it is.
                 within: None,
+                clip: None,
                 stretch: None,
                 giving: None,
                 way: Way::at(frame.geometry),
@@ -4425,6 +4430,12 @@ impl Compositor {
                 scaling::middle(elements, first, factor)
             });
             scaling::scale(elements, first, around);
+            // Nothing of it reaches past its own workspace, as that slides
+            // or has its windows aside.
+            if let Some(clip) = shown.clip {
+                let area = view.pixels(logical(clip));
+                scaling::crop(elements, first, area, view.scale.factor().into());
+            }
             scaling::scale_panes(&mut glass, 0, around);
             // The glass that blurs it is as large as it is drawn, larger
             // than it is as it comes in if the theme has it so.
@@ -5151,6 +5162,7 @@ render_elements! {
     Frosted=Strip<Frosted<R>>,
     Tinted=Strip<SolidColorRenderElement>,
     Scaled=RescaleRenderElement<Boxed<R>>,
+    Clipped=CropRenderElement<Boxed<R>>,
 }
 
 /// The widest the problem notice gets, and its distance from the edges of
@@ -6443,6 +6455,9 @@ pub(crate) struct Shown {
     /// While its workspace slides, the area of its output: it is drawn on
     /// that output alone, and not on one beside that it is moved into.
     within: Option<Rect>,
+    /// While its workspace slides or has its windows aside, what of its
+    /// output that workspace is drawn on, outside which nothing of it is.
+    clip: Option<Rect>,
     /// How its picture is stretched to fill its frame, while its program
     /// has yet to draw the size the frame has.
     stretch: Option<Stretched>,
@@ -6795,6 +6810,9 @@ struct FrameInfo {
     /// While its workspace slides, the area of its output, outside which
     /// it is not drawn.
     within: Option<Rect>,
+    /// While its workspace slides or has its windows aside, what of its
+    /// output that workspace is drawn on, outside which nothing of it is.
+    clip: Option<Rect>,
 }
 
 impl FrameInfo {
@@ -6885,6 +6903,7 @@ impl FrameInfo {
             standing: frame.standing,
             on: frame.on,
             within: frame.within,
+            clip: frame.clip,
             shown,
             scale,
             hidden,

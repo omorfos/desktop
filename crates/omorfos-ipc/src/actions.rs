@@ -70,6 +70,12 @@ pub const TOLD: &[Told] = &[
     ),
     told!(
         "Windows",
+        "show_desktop",
+        "",
+        "Set every window aside, or bring them back"
+    ),
+    told!(
+        "Windows",
         "shade",
         "",
         "Roll up the focused window, or let it down",

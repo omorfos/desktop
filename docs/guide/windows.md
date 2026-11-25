@@ -159,8 +159,19 @@ half way, however slowly, or flick them, however short a way, and the
 one that came in is shown; lift them short of half way slowly, or flick
 them back, and the one that was there stays. Barely moved fingers
 settling as they lift change nothing. Three fingers or four swiped up open the overview (see [The overview](windows.md#the-overview)),
-and down close it. Every other gesture, as a pinch to zoom, is the
-program's under the pointer.
+and down close it. Four fingers spread apart show the desktop: every
+window of the workspace shown goes with them, straight out from the
+middle of the screen until a sliver of it is left at the edge it comes to,
+and none has the keyboard. Four fingers pinched together bring them back
+the same way. As with the workspaces, the fingers can take the windows
+part of the way and back; lifted past half way, or flicked, they go on,
+and otherwise back. Escape, clicking a sliver, choosing a window anywhere
+and one opening bring them back too (`show_desktop`), and so does leaving
+the workspace, by a key or by fingers beginning to swipe, the windows
+coming back as it slides away. Nothing of one workspace is drawn over the
+one sliding in beside it.
+Every other gesture, as a pinch of two fingers to zoom, is the program's
+under the pointer.
 
 Each screen has its own workspaces, and shows one of them: switching
 workspace on one screen leaves the others as they are. A window dragged

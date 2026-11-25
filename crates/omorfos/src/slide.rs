@@ -104,6 +104,8 @@ impl Compositor {
     /// pointer is on. A slide still settling is taken up from where it is.
     pub(crate) fn swipe_began(&mut self, time: u32) {
         self.desktop.turn_to(self.pointer_position());
+        // The windows set aside come back as the workspace slides away.
+        self.desktop.unspread();
         let slide = &mut self.protocols.gestures.slide;
         slide.settling = None;
         slide.following = Some(Following {

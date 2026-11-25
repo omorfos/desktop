@@ -96,6 +96,12 @@ pub enum Action {
     /// Hide every window of every program but the focused window's, as
     /// Cmd+Option+H does on a Mac.
     HideOthers,
+    /// Set every window of the workspace shown aside, to show the desktop,
+    /// as a Mac does: each slid straight out from the middle of the screen
+    /// until a sliver is left at an edge, not minimized, and back where it
+    /// was once this is asked again, Escape is pressed, a window or its
+    /// sliver is chosen, or one opens, or as its workspace is left.
+    ShowDesktop,
     /// Roll the focused window up into its titlebar, or let it down again.
     Shade,
     /// Keep the focused window above the others, or stop keeping it there.
@@ -479,6 +485,7 @@ mod tests {
         assert_eq!(parse("close_program"), Ok(Action::CloseProgram));
         assert_eq!(parse("hide_program"), Ok(Action::HideProgram));
         assert_eq!(parse("hide_others"), Ok(Action::HideOthers));
+        assert_eq!(parse("show_desktop"), Ok(Action::ShowDesktop));
         assert_eq!(parse("focus_next"), Ok(Action::FocusNext));
         assert_eq!(parse("switch_windows"), Ok(Action::SwitchWindows));
         assert_eq!(parse("overview"), Ok(Action::Overview));

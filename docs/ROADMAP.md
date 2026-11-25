@@ -930,6 +930,20 @@ what only games and touchpads need last.
       windows, a pinch for every program and a spread for the desktop,
       and a page of settings that shows each gesture and changes it;
       built with the keys of stage 4.
+      - [x] Four fingers swiped as three (#160).
+      - [x] Four fingers spread carry every window of the workspace
+            shown straight out from the middle of the screen, a sliver of
+            each left at an edge, and pinched carry them back
+            (`show_desktop`, #158), as do Escape, a sliver clicked, a
+            window chosen or opening, and leaving the workspace, as it
+            slides away; nothing of a workspace is drawn over the one
+            sliding in beside it. The
+            workspaces, the overview and the windows aside follow the
+            fingers by one rule, `fingers.rs`.
+      - [ ] Down, with the overview closed, the program's windows, once
+            `show_program_windows` is there (#141).
+      - [ ] Four fingers pinched, the launcher's every program (#157).
+      - [ ] The page of settings.
 - [x] The session outliving the compositor (ADR 60), the holder first,
       `omorfos-hold`: a small program that binds the socket and starts
       the compositor with it, and again when it ends, with a new version
