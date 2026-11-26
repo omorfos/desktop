@@ -47,6 +47,19 @@ a known gap.
   `Super+2` does not change the workspace, and `Super+Shift+3` still
   takes a picture of the screen.
 
+- **The launcher's look and motion (ADR 109, part 2).** `Super+Space`:
+  a large field with a magnifying glass and "Search" in it, nothing
+  under it, as much room under the field as over it, and the launcher
+  comes in from a little smaller. Type `fi`: it grows to the top hit,
+  outlined under "Top hit", and the rest under "Programs"; `zzzq`, one
+  dim line. Down lights the top hit where it is, and Down again slides
+  the ground to Firefox, past the heading. With nothing typed, the
+  pointer over the launcher shows the row of modes at its bottom;
+  clicking Programs, or `Super+1`, turns the sign into four squares,
+  the launcher widens and grows to the grid and the tiles fade in, with
+  the field where it was. Escape closes it a little quicker than it
+  came. With `appearance.reduce_motion`, all of it at once.
+
 ## Where this is going
 
 omorfos is small, fast and driven by text files, but what is being asked
@@ -2160,7 +2173,16 @@ to false, as `launcher.sums` is (ADR 83).
             digit to the launcher while it is up. What the generic mode
             shows with nothing typed, and the top hit's own heading, are
             the look's;
-      - [ ] the look, from the mockups of 25 November 2026;
+      - [x] the look, from the mockups of 25 November 2026 and the
+            prototype of its motion: a large field, the mode's sign before
+            it and its words in it; nothing under it until something is
+            typed, and one dim line when nothing matches; the top hit
+            outlined under its heading; the row of modes at the bottom
+            while the pointer is over the empty launcher; the size gliding,
+            the lit row's ground sliding, the sign turning and what the
+            next mode shows fading in, and the launcher's own times in and
+            out; all of it still where motion is reduced. The other modes'
+            signs and words come with them;
       - [ ] actions: omorfos's, programs' own from their desktop
             entries, the user's own (`launcher.shortcuts`);
       - [ ] commands, in their mode (taking in the item below);
