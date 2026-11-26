@@ -1783,8 +1783,15 @@ impl Compositor {
     }
 
     /// Focuses the next window of the focused window's program on its
-    /// workspace, or the one before if `back`, going round.
+    /// workspace, or the one before if `back`, going round; or, while the
+    /// switcher is open, goes through the windows of the program it has
+    /// picked there, where they can be seen; or, pressed with keys held,
+    /// opens the switcher on the program's windows, as a quick press of
+    /// them goes back to the one used before.
     fn next_window(&mut self, back: bool) {
+        if self.switch_within(back) || self.switch_program_windows(back) {
+            return;
+        }
         let next = self.desktop.focused();
         if let Some(id) = next.and_then(|id| self.desktop.next_of_program(id, back)) {
             self.desktop.activate(id);
@@ -2892,7 +2899,7 @@ impl Compositor {
     /// same. Once the scene is laid out, with the shadows in use begun.
     fn portray(&mut self, theme: &Theme) {
         let over = self.hover.button;
-        let switched = self.switcher_windows().to_vec();
+        let switched = self.switcher_windows();
         let pictured: Vec<(FrameInfo, Window, WlSurface)> = self
             .capture
             .windows()

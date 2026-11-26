@@ -128,11 +128,14 @@ pub enum Action {
     /// The same, going back: the switcher opens at the program used
     /// longest ago.
     SwitchProgramsBack,
-    /// Focus the next window of the focused window's program on its
-    /// workspace, going round, as Cmd+backquote does.
+    /// With keys held, open the switcher on the focused window's program's
+    /// windows, as Cmd+backquote does: a quick press goes back to the one
+    /// used before. With the switcher open, go through the windows of the
+    /// program it has picked, in it. With no keys held, focus the next
+    /// window of the program on its workspace, going round.
     NextWindow,
-    /// Focus the window of the focused window's program before it on its
-    /// workspace, going round.
+    /// The same, going back: with no keys held, the window of the program
+    /// before the focused one on its workspace, going round.
     PreviousWindow,
     /// Open the overview, every window of the workspace side by side
     /// under the workspaces of the screen, to pick one from; or close it.

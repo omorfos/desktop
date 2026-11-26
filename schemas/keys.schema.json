@@ -103,12 +103,12 @@
         },
         {
           "const": "next_window",
-          "description": "Focus the next window of the focused window's program on its\nworkspace, going round, as Cmd+backquote does.",
+          "description": "With keys held, open the switcher on the focused window's program's\nwindows, as Cmd+backquote does: a quick press goes back to the one\nused before. With the switcher open, go through the windows of the\nprogram it has picked, in it. With no keys held, focus the next\nwindow of the program on its workspace, going round.",
           "type": "string"
         },
         {
           "const": "previous_window",
-          "description": "Focus the window of the focused window's program before it on its\nworkspace, going round.",
+          "description": "The same, going back: with no keys held, the window of the program\nbefore the focused one on its workspace, going round.",
           "type": "string"
         },
         {

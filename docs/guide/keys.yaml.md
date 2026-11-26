@@ -193,7 +193,7 @@ it takes and what it does.
 | `stick` | Have the focused window on every workspace of its screen, or only the one it is on. |
 | `switch_windows`, `switch_windows_back` | Open the switcher, or go on to the next window in it or back. See [Switching windows](windows.md#switching-windows). |
 | `switch_programs`, `switch_programs_back` | Open the switcher with each program once, by its window used last, as Cmd+Tab does, or go on to the next or back; the program chosen comes forward with all its windows on the workspace. |
-| `next_window`, `previous_window` | Focus the next window of the focused window's program on its workspace, or the one before, going round, as Cmd+backquote does. |
+| `next_window`, `previous_window` | With keys held, open the switcher on the focused window's program's windows, in the order they were last used, as Cmd+backquote does: a quick press goes back to the one used before, and held they are shown to go through. With the switcher of programs open, go through the windows of the program it has picked, in it. Asked for with no keys held, as from a script, focus the next window of the program on its workspace, or the one before, at once. |
 | `overview` | Open the overview of the workspace's windows, or close it. See [The overview](windows.md#the-overview). |
 | `show_program_windows` | Open the overview with only the focused program's windows on the workspace, as App Exposé shows them, or close the overview. Three fingers or four swiped down the touchpad open it too, and up close it. See [The overview](windows.md#the-overview). |
 | `focus_next`, `focus_previous` | Cycle windows, without the switcher. |
