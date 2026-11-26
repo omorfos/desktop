@@ -244,9 +244,9 @@ fn slide(
 }
 
 /// Turns the field's sign at `now` from the last mode's, `shown`, into the
-/// one `picker` shows, if the launcher `moves` and the mode has changed,
-/// and on until it is the one shown alone; `turn` is the mode it turns from
-/// and since when, while it turns.
+/// one `picker` shows, and fades in what that mode shows, if the launcher
+/// `moves` and the mode has changed, and on until it is the one shown
+/// alone; `turn` is the mode it turns from and since when, while it turns.
 fn turn_sign(
     picker: &mut Picker,
     (shown, turn): (&mut Option<View>, &mut Option<(View, Duration)>),
@@ -266,6 +266,7 @@ fn turn_sign(
     };
     let turned = turn.map(|(from, began)| (from, share(began)));
     picker.turn_sign(turned.map(|(from, share)| (from, Easing::EaseInOut.at(share))));
+    picker.fade_in(turned.map(|(_, share)| Easing::EaseOut.at(share)));
     *turn = turn.filter(|_| turned.is_some_and(|(_, share)| share < 1.0));
 }
 

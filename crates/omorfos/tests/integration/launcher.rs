@@ -1634,6 +1634,16 @@ fn the_fields_sign_turns_into_the_next_modes_unless_nothing_is_to_move() {
         let square = (x..x + 28).flat_map(|x| (y..y + 28).map(move |y| (x, y)));
         square.map(|(x, y)| picture.at(x, y)).collect::<Vec<u32>>()
     };
+    // Down the first program's tile, its name under where its icon would
+    // be, under the field and its margin: a sixth of the room inside the
+    // launcher's border and padding.
+    let tile = |session: &mut Session| {
+        let picture = session.draw();
+        let (left, top) = corner();
+        let x = left + 13 + (480 - 26) / 12;
+        let ys = top + 13 + 56 + 8..top + 13 + 56 + 8 + 80;
+        ys.map(|y| picture.at(x, y)).collect::<Vec<u32>>()
+    };
     for (files, moves) in [(&[moving][..], true), (&[moving, reduced], false)] {
         let mut session = Session::with_config(files);
         let mut launcher = launcher(&mut session);
@@ -1647,7 +1657,21 @@ fn the_fields_sign_turns_into_the_next_modes_unless_nothing_is_to_move() {
             assert_eq!(sign(&mut session), everything, "setting out");
             settle_at(&mut session, &mut launcher, at(1110));
             assert_ne!(sign(&mut session), everything, "on its way");
+            // What the mode shows fading in as it turns: once the
+            // launcher has grown past the first program's name, and before
+            // the name is all there.
+            settle_at(&mut session, &mut launcher, at(1140));
+            let coming = tile(&mut session);
             settle_at(&mut session, &mut launcher, at(1300));
+            let there = tile(&mut session);
+            let glass = surface();
+            // The name, the first ink down the tile, up to the glass after.
+            let first = (0..there.len()).find(|at| there[*at] != glass);
+            let name = (first.unwrap_or(0)..there.len()).take_while(|at| there[*at] != glass);
+            let name = name.collect::<Vec<usize>>();
+            let past = name.last().map_or(0, |last| last + 1);
+            assert_eq!(coming[past], glass, "grown past it");
+            assert!(name.iter().any(|at| coming[*at] != there[*at]), "fading in");
         }
         let programs = sign(&mut session);
         assert_ne!(programs, everything, "{files:?}");

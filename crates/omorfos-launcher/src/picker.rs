@@ -139,6 +139,9 @@ pub struct Picker {
     /// The mode whose sign the field's is turning from, and how far it has
     /// got, in thousandths.
     turned: Option<(View, u16)>,
+    /// How far what the mode shows has faded in, in thousandths, while it
+    /// comes as the mode changes.
+    faded: Option<u16>,
 }
 
 /// Where the launcher's boxes are, under a theme.
@@ -353,6 +356,7 @@ impl Picker {
             drawn: None,
             slid: None,
             turned: None,
+            faded: None,
         };
         picker.search();
         picker
@@ -421,6 +425,12 @@ impl Picker {
     /// shown alone, with none.
     pub fn turn_sign(&mut self, from: Option<(View, f32)>) {
         self.turned = from.map(|(view, share)| (view, thousandths(share)));
+    }
+
+    /// Draws what the mode shows as far faded in as the share given, from
+    /// 0 to 1, over the launcher and its field; or wholly, with none.
+    pub fn fade_in(&mut self, share: Option<f32>) {
+        self.faded = share.map(thousandths);
     }
 
     /// Draws the lit row's ground where it has slid to, if it is sliding,
@@ -968,13 +978,37 @@ impl Picker {
         let drawing = (&mut *text, words, &mut *icons, scale);
         self.paint_field(&mut canvas, drawing, theme, (layout.input, cursor));
 
+        // What the mode shows, fading in as the mode changes, and drawn
+        // as it is once it has.
+        let look = (theme, scale);
+        if let Some(share) = self.faded.filter(|share| *share < 1000) {
+            let mut contents = Canvas::scaled(width, height, scale);
+            self.paint_contents(&mut contents, (text, words), look, icons, motion);
+            canvas.draw_over(&contents, f32::from(share) / 1000.0);
+        } else {
+            self.paint_contents(&mut canvas, (text, words), look, icons, motion);
+        }
+        canvas
+    }
+
+    /// Draws what the mode shows under the field: what is found, under its
+    /// headings, or that nothing is, and the row of modes.
+    fn paint_contents(
+        &self,
+        canvas: &mut Canvas,
+        (text, words): (&mut Text, &Words),
+        (theme, scale): (&Theme, Scale),
+        icons: &mut Icons,
+        motion: &mut Motion,
+    ) {
+        let layout = self.layout(theme);
         // Under an answer, what Enter does with it, whatever is shown of
         // the programs.
         let copies = words.say("enter-copies", &[]);
         let described = self.show.descriptions;
         let sight = self.first()..self.first() + self.room;
-        self.paint_slid(&mut canvas, &layout, theme);
-        let mut drawing = (&mut canvas, &mut *text, &mut *icons, motion);
+        self.paint_slid(&mut *canvas, &layout, theme);
+        let mut drawing = (&mut *canvas, &mut *text, &mut *icons, motion);
         for (row, (_, item)) in self.found.iter().enumerate() {
             let (line, column) = self.line_of(row);
             if !sight.contains(&line) {
@@ -1023,7 +1057,7 @@ impl Picker {
             } else {
                 "launcher-programs"
             };
-            text.draw(&mut canvas, &words.say(says, &[]), area, style.color, font);
+            text.draw(&mut *canvas, &words.say(says, &[]), area, style.color, font);
         }
         if self.nothing() {
             // Where the first program would be, as what a program says of
@@ -1034,10 +1068,9 @@ impl Picker {
             let font = theme.font(Part::LauncherDescription, States::NONE);
             let typed = [("typed", Value::Words(self.field.text()))];
             let nothing = words.say("nothing-matches", &typed);
-            text.draw(&mut canvas, &nothing, area, said.color, font);
+            text.draw(&mut *canvas, &nothing, area, said.color, font);
         }
-        self.paint_modes(&mut canvas, (text, words, icons, scale), theme);
-        canvas
+        self.paint_modes(&mut *canvas, (text, words, icons, scale), theme);
     }
 
     /// Draws the row of modes, if it is shown: a hairline over it, and
@@ -3209,5 +3242,48 @@ mod tests {
         assert_eq!(sign(&picker), programs, "arrived");
         picker.turn_sign(None);
         assert_eq!(sign(&picker), programs);
+    }
+
+    #[test]
+    fn what_the_next_mode_shows_fades_in_over_the_launcher_and_its_field() {
+        let theme = Theme::default();
+        let glass = argb(theme.style(Part::Launcher, States::NONE).background);
+        let mut picker = several();
+        picker.set_view(View::Mode(Mode::Programs));
+        let shown = painted(&picker);
+        // Down the middle of the first program's tile, under the field.
+        let (left, top, wide, tall) = picker.layout(&theme).tile(0, 0);
+        let x = left.unsigned_abs() + wide / 2;
+        let ys = top.unsigned_abs()..top.unsigned_abs() + tall;
+        let column = |canvas: &Canvas| ys.clone().map(|y| canvas.at(x, y)).collect::<Vec<_>>();
+        assert!(
+            column(&shown).iter().any(|pixel| *pixel != glass),
+            "something there"
+        );
+        // Not yet there: the glass alone; on its way, some of it; there,
+        // as it is.
+        picker.fade_in(Some(0.0));
+        assert!(
+            column(&painted(&picker))
+                .iter()
+                .all(|pixel| *pixel == glass)
+        );
+        picker.fade_in(Some(0.5));
+        let half = column(&painted(&picker));
+        assert!(half != column(&shown) && half.iter().any(|pixel| *pixel != glass));
+        picker.fade_in(Some(1.0));
+        assert_eq!(painted(&picker), shown);
+        picker.fade_in(None);
+        assert_eq!(painted(&picker), shown);
+        // The field is there throughout.
+        picker.fade_in(Some(0.0));
+        assert_eq!(
+            cursor(&picker),
+            cursor(&{
+                let mut still = picker.clone();
+                still.fade_in(None);
+                still
+            })
+        );
     }
 }
