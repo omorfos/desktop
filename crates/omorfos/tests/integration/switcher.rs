@@ -1928,3 +1928,38 @@ fn the_window_gone_to_within_a_program_is_kept_while_another_is_picked_and_back(
     session.step();
     assert_eq!(session.compositor().desktop().focused(), Some(red));
 }
+
+#[test]
+fn a_window_gone_to_within_a_program_alone_comes_forward_and_shows_on_its_card() {
+    let (mut session, _client) = a_program_of_two(&[]);
+    let windows: Vec<_> = session
+        .compositor()
+        .desktop()
+        .windows()
+        .map(|listed| listed.window.id)
+        .collect();
+    let (red, green, blue) = (windows[0], windows[1], windows[2]);
+    super_tab(&mut session);
+    // The red one gone to, another program picked: the program's card in
+    // the queue shows the red one.
+    tap(&mut session, GRAVE);
+    tap(&mut session, key::TAB);
+    session.step();
+    let layout = session.compositor().switcher_layout().unwrap();
+    let shown: Vec<_> = layout.items.iter().map(|item| item.window).collect();
+    assert!(shown.contains(&red) && !shown.contains(&green), "{shown:?}");
+    // Back to it, and let go: the red one alone in front, the green one
+    // still under the blue.
+    press(&mut session, key::SHIFT, true);
+    tap(&mut session, key::TAB);
+    press(&mut session, key::SHIFT, false);
+    press(&mut session, key::SUPER, false);
+    session.step();
+    let stack: Vec<_> = session
+        .compositor()
+        .desktop()
+        .frames()
+        .map(|frame| frame.window().id)
+        .collect();
+    assert_eq!(stack, [green, blue, red]);
+}

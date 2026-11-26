@@ -27,7 +27,8 @@ rather, such as Visual Studio Code, are left alone; a rule with
 on, as Cmd+Tab does on a Mac: every program once, on every workspace and
 minimized or not, by a picture of its window used last, in the order
 they were last used; the program chosen comes forward with all its
-windows on that workspace. `switch_windows`, which `Alt+Tab` has in the
+windows on that workspace, in the order they stood, the one chosen in
+front. `switch_windows`, which `Alt+Tab` has in the
 ordinary way, shows every window instead. A window smaller than its
 place is shown as large as it is, not made larger. It opens at the
 program used before the one you are in, so one `Super+Tab` goes back to
@@ -67,8 +68,10 @@ one before fading as it comes, and the others fainter, the row rising
 into view, and the queue with it to make room, as it first does. A row
 longer than the screen slides along to keep the ring in sight, those
 towards its ends fainter still. Letting go of Super goes to the one it is
-at, and `Super+Shift+grave` goes back. Picking another program and coming
-back finds the program at the window you went to.
+at, alone, the program's others staying where they stood, and
+`Super+Shift+grave` goes back. Picking another program and coming back
+finds the program at the window you went to, and its place in the queue
+shows it meanwhile.
 The switcher of every window takes `Super+grave` and does nothing.
 
 While Super, or Alt, is held, Tab goes on to the next window and
