@@ -1616,6 +1616,46 @@ fn the_lit_rows_ground_slides_to_the_next_row_lit_unless_nothing_is_to_move() {
 }
 
 #[test]
+fn the_fields_sign_turns_into_the_next_modes_unless_nothing_is_to_move() {
+    // Tiles narrow enough that the grid is no wider than the list, so
+    // that the sign stays where it is on the screen.
+    let moving = (
+        "theme.css",
+        "launcher { transition: 180ms; }\nlauncher-tile { min-width: 70px; }\n",
+    );
+    let reduced = ("config.yaml", "appearance: { reduce_motion: true }\n");
+    let at = Duration::from_millis;
+    // The square of the field the sign is in: the launcher's border and
+    // padding and the field's, and half the field's height, in its middle.
+    let sign = |session: &mut Session| {
+        let picture = session.draw();
+        let (left, top) = corner();
+        let (x, y) = (left + 13 + 8, top + 13 + 14);
+        let square = (x..x + 28).flat_map(|x| (y..y + 28).map(move |y| (x, y)));
+        square.map(|(x, y)| picture.at(x, y)).collect::<Vec<u32>>()
+    };
+    for (files, moves) in [(&[moving][..], true), (&[moving, reduced], false)] {
+        let mut session = Session::with_config(files);
+        let mut launcher = launcher(&mut session);
+        settle_at(&mut session, &mut launcher, at(0));
+        session.advance(Duration::from_millis(300));
+        let everything = sign(&mut session);
+        // Every program's mode, the first.
+        chord(&mut session, &[key::SUPER], key::ONE);
+        settle_at(&mut session, &mut launcher, at(1000));
+        if moves {
+            assert_eq!(sign(&mut session), everything, "setting out");
+            settle_at(&mut session, &mut launcher, at(1110));
+            assert_ne!(sign(&mut session), everything, "on its way");
+            settle_at(&mut session, &mut launcher, at(1300));
+        }
+        let programs = sign(&mut session);
+        assert_ne!(programs, everything, "{files:?}");
+        assert_ne!(launcher.deadline(), Some(at(1316)), "{files:?}");
+    }
+}
+
+#[test]
 fn super_with_a_digit_is_the_launchers_while_it_has_the_keyboard() {
     let mut session = Session::new();
     let mut client = session.connect();

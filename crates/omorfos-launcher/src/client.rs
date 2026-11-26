@@ -12,7 +12,7 @@ use std::os::unix::net::UnixStream;
 use std::path::Path;
 use std::time::{Duration, Instant};
 
-use omorfos_config::{Config, Mode, Part, States, Store, Theme};
+use omorfos_config::{Config, Easing, Mode, Part, States, Store, Theme};
 use omorfos_i18n::{LAUNCHER, Words};
 use omorfos_ipc::Client as Ipc;
 use omorfos_shell::sheet::Sheet;
@@ -243,6 +243,35 @@ fn slide(
     });
 }
 
+/// Turns the field's sign at `now` from the last mode's, `shown`, into the
+/// one `picker` shows, if the launcher `moves` and the mode has changed,
+/// and on until it is the one shown alone; `turn` is the mode it turns from
+/// and since when, while it turns.
+fn turn_sign(
+    picker: &mut Picker,
+    (shown, turn): (&mut Option<View>, &mut Option<(View, Duration)>),
+    now: Duration,
+    moves: bool,
+) {
+    // The first picture is of the mode it opens in, with nothing to turn
+    // from.
+    let view = picker.view();
+    if let Some(last) = shown.filter(|last| *last != view) {
+        *turn = moves.then_some((last, now));
+    }
+    *shown = Some(view);
+    let share = |began: Duration| {
+        let gone = now.saturating_sub(began).as_secs_f32();
+        (gone / TURNS.as_secs_f32()).min(1.0)
+    };
+    let turned = turn.map(|(from, began)| (from, share(began)));
+    picker.turn_sign(turned.map(|(from, share)| (from, Easing::EaseInOut.at(share))));
+    *turn = turn.filter(|_| turned.is_some_and(|(_, share)| share < 1.0));
+}
+
+/// How long the field's sign takes to turn into another mode's.
+const TURNS: Duration = Duration::from_millis(220);
+
 /// How long the lit row's ground takes to slide to another row.
 const SLIDES: Duration = Duration::from_millis(150);
 
@@ -341,6 +370,10 @@ struct Shell {
     moves: bool,
     /// The lit row's ground, sliding to the row lit, while one is.
     lit: Option<Lit>,
+    /// The mode last shown, none before the first picture, and the one the
+    /// field's sign is turning from and since when, while it turns.
+    shown: Option<View>,
+    turn: Option<(View, Duration)>,
     /// Whether the launcher may look different from what is on the screen.
     stale: bool,
     /// Whether the launcher is done with.
@@ -464,6 +497,8 @@ impl Shell {
             blink: Blink::new(Duration::ZERO, true),
             moves: false,
             lit: None,
+            shown: None,
+            turn: None,
             // Worth trying to show from the very first turn.
             stale: true,
             done: false,
@@ -486,6 +521,7 @@ impl Shell {
             .any(|face| face.glide.0.moving(now) || face.glide.1.moving(now));
         let lit = self.lit.iter();
         sized
+            || self.turn.is_some()
             || lit
                 .into_iter()
                 .any(|lit| lit.across.moving(now) || lit.down.moving(now))
@@ -499,6 +535,7 @@ impl Shell {
             let (width, height) = (face.glide.0.now(now), face.glide.1.now(now));
             face.size != (width.unsigned_abs(), height.unsigned_abs())
         }) || self.lit.iter().any(|lit| lit.drawn != lit.now(now))
+            || self.turn.is_some()
     }
 
     /// Acts on what a key or a click came to, showing the cursor at once,
@@ -790,6 +827,8 @@ impl Shell {
         self.picker
             .draw_at((size != (width, height)).then_some(size));
         slide((&mut self.picker, &self.theme), &mut self.lit, now, moves);
+        let turning = (&mut self.shown, &mut self.turn);
+        turn_sign(&mut self.picker, turning, now, moves);
         if (face.size, face.top) != (size, top) {
             face.layer.set_size(size.0, size.1);
             face.layer.set_margin(top.cast_signed(), 0, 0, 0);

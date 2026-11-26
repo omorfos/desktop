@@ -136,6 +136,9 @@ pub struct Picker {
     /// Where the lit row's ground has got to on its way to the row lit,
     /// in the list as a whole, while it slides there.
     slid: Option<(i32, i32)>,
+    /// The mode whose sign the field's is turning from, and how far it has
+    /// got, in thousandths.
+    turned: Option<(View, u16)>,
 }
 
 /// Where the launcher's boxes are, under a theme.
@@ -262,6 +265,32 @@ impl Layout {
     }
 }
 
+/// `share`, from 0 to 1, in thousandths.
+#[expect(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    reason = "a share from 0 to 1, made a whole number from 0 to 1000"
+)]
+fn thousandths(share: f32) -> u16 {
+    (share.clamp(0.0, 1.0) * 1000.0).round() as u16
+}
+
+/// A length in units, as a number to be scaled.
+fn scale_of(length: u32) -> f32 {
+    f32::from(u16::try_from(length).unwrap_or(u16::MAX))
+}
+
+/// The whole number of units nearest to `length`, which is no more than a
+/// length that was one.
+#[expect(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    reason = "no more than a length in units, and none less than nothing"
+)]
+fn whole_units(length: f32) -> u32 {
+    length.max(0.0).round() as u32
+}
+
 /// `style` as a row is drawn in it: with the ground of a row not lit if
 /// its ground is drawn `apart`, as it slides from one row to another.
 fn grounded(style: &Style, theme: &Theme, part: Part, apart: bool) -> Style {
@@ -323,6 +352,7 @@ impl Picker {
             pointed: None,
             drawn: None,
             slid: None,
+            turned: None,
         };
         picker.search();
         picker
@@ -384,6 +414,13 @@ impl Picker {
     /// none.
     pub const fn slide_lit(&mut self, place: Option<(i32, i32)>) {
         self.slid = place;
+    }
+
+    /// Draws the field's sign turning from the sign of `from`'s view into
+    /// the one shown, as far as the share given, from 0 to 1; or the one
+    /// shown alone, with none.
+    pub fn turn_sign(&mut self, from: Option<(View, f32)>) {
+        self.turned = from.map(|(view, share)| (view, thousandths(share)));
     }
 
     /// Draws the lit row's ground where it has slid to, if it is sliding,
@@ -1165,9 +1202,21 @@ impl Picker {
             View::Mode(Mode::Programs) => "launcher-search-programs",
             View::Generic | View::Mode(_) => "launcher-search",
         };
-        let pixels = scale.pixels(side.cast_signed()).unsigned_abs();
-        let drawn = icons.sign(sign, pixels, input.color).into_iter();
-        drawn.for_each(|image| canvas.draw_image(square, image));
+        // Turning from the last mode's, that shrinks and fades as this one
+        // grows from three fifths of its size and comes.
+        let (from, share) = self.turned.map_or((None, 1.0), |(view, share)| {
+            (Some(sign_of(view)), f32::from(share) / 1000.0)
+        });
+        let signs = from.map(|from| (from, 1.0 - share)).into_iter();
+        for (sign, share) in signs.chain(std::iter::once((sign, share))) {
+            let large = (0.6 + 0.4 * share) * scale_of(side);
+            let large = whole_units(large);
+            let room = side.saturating_sub(large) / 2;
+            let square = inset(square, Edges::all(room));
+            let pixels = scale.pixels(large.cast_signed()).unsigned_abs();
+            let drawn = icons.sign(sign, pixels, input.color).into_iter();
+            drawn.for_each(|image| canvas.draw_image(square, &image.faded(share)));
+        }
         let typed = self.typed_area(theme);
         if self.field.text().is_empty() {
             let said = theme.style(Part::LauncherDescription, States::NONE);
@@ -3127,5 +3176,38 @@ mod tests {
         picker.room = 2;
         picker.scroll(2);
         assert_eq!(picker.lit_place(&theme), Some(second));
+    }
+
+    #[test]
+    fn the_field_s_sign_turns_from_the_last_mode_s_into_the_next() {
+        let theme = Theme::default();
+        let input = theme.style(Part::LauncherInput, States::NONE);
+        let inside = inset(Layout::new(&theme).input, input.inset());
+        let side = inside.3 / 2;
+        let down = inside.1.unsigned_abs() + (inside.3 - side) / 2;
+        // The square the sign is drawn in, as it is drawn.
+        let sign = |picker: &Picker| {
+            let canvas = painted(picker);
+            let xs = inside.0.unsigned_abs()..inside.0.unsigned_abs() + side;
+            xs.flat_map(|x| (down..down + side).map(move |y| (x, y)))
+                .map(|(x, y)| canvas.at(x, y))
+                .collect::<Vec<u32>>()
+        };
+        let everything = sign(&several());
+        let mut picker = several();
+        picker.set_view(View::Mode(Mode::Programs));
+        let programs = sign(&picker);
+        assert_ne!(everything, programs);
+        // Setting out, it is the last mode's; arrived, the next's; and on
+        // its way, neither.
+        picker.turn_sign(Some((View::Generic, 0.0)));
+        assert_eq!(sign(&picker), everything, "setting out");
+        picker.turn_sign(Some((View::Generic, 0.5)));
+        let half = sign(&picker);
+        assert!(half != everything && half != programs, "on its way");
+        picker.turn_sign(Some((View::Generic, 1.0)));
+        assert_eq!(sign(&picker), programs, "arrived");
+        picker.turn_sign(None);
+        assert_eq!(sign(&picker), programs);
     }
 }
