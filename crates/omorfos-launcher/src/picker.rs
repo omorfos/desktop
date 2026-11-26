@@ -130,6 +130,9 @@ pub struct Picker {
     /// modes while nothing is typed, and the mode in that row it is over.
     hovered: bool,
     pointed: Option<View>,
+    /// How large it is drawn while it is on its way to its size: laid out
+    /// as wide as that, and cut off as short.
+    drawn: Option<(u32, u32)>,
 }
 
 /// Where the launcher's boxes are, under a theme.
@@ -167,6 +170,12 @@ impl Layout {
     /// lines are as tall as a program's tile, and the launcher as wide as
     /// a line of them, if that is wider than it would be.
     fn of(theme: &Theme, grid: bool) -> Self {
+        Self::across(theme, grid, None)
+    }
+
+    /// The same, as wide as `width` if it is given, as the launcher is on
+    /// its way from one width to another.
+    fn across(theme: &Theme, grid: bool, width: Option<u32>) -> Self {
         let launcher = theme.style(Part::Launcher, States::NONE);
         let input = theme.style(Part::LauncherInput, States::NONE);
         let item = theme.style(Part::LauncherItem, States::NONE);
@@ -192,7 +201,8 @@ impl Layout {
         let bare = field
             .saturating_sub(under)
             .saturating_add(launcher.inset().down());
-        let width = launcher.min_width.max(NARROWEST).max(needed);
+        let natural = launcher.min_width.max(NARROWEST).max(needed);
+        let width = width.unwrap_or(natural);
         let whole = (0, 0, width, bare);
         let (left, top, width, _) = inset(whole, launcher.inset());
         let (x, y, wide, _) = inset((left, top, width, field), input.margin);
@@ -297,6 +307,7 @@ impl Picker {
             listing: false,
             hovered: false,
             pointed: None,
+            drawn: None,
         };
         picker.search();
         picker
@@ -325,7 +336,13 @@ impl Picker {
 
     /// How the launcher is laid out under `theme`.
     fn layout(&self, theme: &Theme) -> Layout {
-        Layout::of(theme, self.grid())
+        Layout::across(theme, self.grid(), self.drawn.map(|(width, _)| width))
+    }
+
+    /// Draws it `size` large, as it is on its way to the size it is going
+    /// to, or as large as it is with none.
+    pub const fn draw_at(&mut self, size: Option<(u32, u32)>) {
+        self.drawn = size;
     }
 
     /// The sources of what is shown: every one that is on, or the mode's.
@@ -448,7 +465,7 @@ impl Picker {
     /// tall as the rows it lists, up to as many as it has room for.
     #[must_use]
     pub fn size(&self, theme: &Theme) -> (u32, u32) {
-        let layout = self.layout(theme);
+        let layout = Layout::of(theme, self.grid());
         let modes = if self.modes_shown() { layout.modes } else { 0 };
         let tall = self.tall(&layout).saturating_add(modes);
         (layout.width, layout.bare.saturating_add(tall))
@@ -836,7 +853,7 @@ impl Picker {
         motion: &mut Motion,
     ) -> Canvas {
         let layout = self.layout(theme);
-        let (width, height) = self.size(theme);
+        let (width, height) = self.drawn.unwrap_or_else(|| self.size(theme));
         let whole = (0, 0, width, height);
         let mut canvas = Canvas::scaled(width, height, scale);
         canvas.draw_box(whole, &theme.style(Part::Launcher, States::NONE));
@@ -2928,5 +2945,26 @@ mod tests {
             .unwrap_or_default();
         let grid = picker.mode_area(programs, &theme, text).unwrap_or_default();
         assert!(grid.0 > all.0 + all.2.cast_signed(), "side by side");
+    }
+
+    #[test]
+    fn drawn_on_its_way_to_another_size_the_field_keeps_to_its_edge() {
+        let theme = Theme::default();
+        let mut picker = several();
+        let natural = picker.size(&theme);
+        let start = picker.typed_area(&theme).0;
+        let (_, _, field, _) = picker.layout(&theme).input;
+        // Wider and taller on its way: drawn as large as it is so far, the
+        // field as much wider, and the sign and the text as far from the
+        // left edge.
+        let on_its_way = (natural.0 + 200, natural.1 + 40);
+        picker.draw_at(Some(on_its_way));
+        assert_eq!(picker.size(&theme), natural, "where it is going");
+        let canvas = painted(&picker);
+        assert_eq!((canvas.width(), canvas.height()), on_its_way);
+        assert_eq!(picker.typed_area(&theme).0, start);
+        assert_eq!(picker.layout(&theme).input.2, field + 200);
+        picker.draw_at(None);
+        assert_eq!(painted(&picker).width(), natural.0);
     }
 }

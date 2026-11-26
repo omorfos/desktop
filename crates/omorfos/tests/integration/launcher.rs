@@ -1537,6 +1537,44 @@ fn the_cursor_blinks_from_the_last_key_unless_nothing_is_to_move() {
 }
 
 #[test]
+fn the_launcher_grows_to_what_it_lists_over_a_while_unless_nothing_is_to_move() {
+    let moving = ("theme.css", "launcher { transition: 180ms; }\n");
+    let reduced = ("config.yaml", "appearance: { reduce_motion: true }\n");
+    let at = Duration::from_millis;
+    // Of the three that have an e, the heading over all but the top hit,
+    // the last of the three lines the test's screen has room for: well
+    // under the field alone, and further than the launcher has grown half
+    // way.
+    let (x, y) = row(2);
+    for (files, moves) in [
+        (&[moving][..], true),
+        (&[moving, reduced], false),
+        (&[], false),
+    ] {
+        let mut session = Session::with_config(files);
+        let mut launcher = launcher(&mut session);
+        settle_at(&mut session, &mut launcher, at(0));
+        session.advance(Duration::from_millis(300));
+        let behind = session.draw().at(x, y);
+        assert_ne!(behind, surface(), "{files:?}");
+        press(&mut session, E);
+        settle_at(&mut session, &mut launcher, at(1000));
+        let glides = launcher.deadline() == Some(at(1016));
+        assert_eq!(glides, moves, "{files:?}");
+        if moves {
+            // Setting out, it is as short as it was, and half way there
+            // in half the time.
+            assert_ne!(session.draw().at(x, y), surface());
+            settle_at(&mut session, &mut launcher, at(1100));
+            assert_ne!(session.draw().at(x, y), surface(), "not that far yet");
+            settle_at(&mut session, &mut launcher, at(1200));
+        }
+        assert_eq!(session.draw().at(x, y), surface(), "{files:?}");
+        assert_ne!(launcher.deadline(), Some(at(1216)), "at rest");
+    }
+}
+
+#[test]
 fn super_with_a_digit_is_the_launchers_while_it_has_the_keyboard() {
     let mut session = Session::new();
     let mut client = session.connect();

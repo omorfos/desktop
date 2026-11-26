@@ -19,7 +19,7 @@ use omorfos_shell::sheet::Sheet;
 use omorfos_shell::typing::{Key as Typed, Typing};
 use omorfos_shell::whole;
 use omorfos_ui::field::{Edit, Way};
-use omorfos_ui::{Blink, Canvas, Motion, Scale, Text};
+use omorfos_ui::{Blink, Canvas, Glide, Motion, Scale, Text};
 use rustix::event::{PollFd, PollFlags, Timespec, poll};
 use wayland_client::backend::ReadEventsGuard;
 use wayland_client::protocol::{
@@ -143,6 +143,7 @@ impl Launcher {
         // the cursor as it blinks.
         self.shell.stale |= self.shell.motion.due(now);
         self.shell.stale |= self.shell.blink.changed(now);
+        self.shell.stale |= self.shell.behind(now);
         handled
             .and_then(|()| {
                 let shown = self.shell.show(&self.queue.handle());
@@ -194,8 +195,26 @@ impl Launcher {
         let held = self.shell.held.map(|(_, due)| due);
         let drawn = self.shell.motion.deadline();
         let blinks = self.shell.blink.deadline(self.shell.now);
-        held.into_iter().chain(drawn).chain(blinks).min()
+        // Its size as it glides, a frame at a time.
+        let now = self.shell.now;
+        let glides = self
+            .shell
+            .gliding(now)
+            .then(|| now.saturating_add(Motion::FRAME));
+        held.into_iter()
+            .chain(drawn)
+            .chain(blinks)
+            .chain(glides)
+            .min()
     }
+}
+
+/// How long the launcher takes to glide from one size to the next.
+const GLIDES: Duration = Duration::from_millis(200);
+
+/// One side of the launcher, `length` long, gliding as it does.
+fn glide_at(length: u32) -> Glide {
+    Glide::at(length.cast_signed()).taking(GLIDES)
 }
 
 /// Whether the field's cursor blinks under `config`: as the launcher moves,
@@ -278,6 +297,9 @@ struct Shell {
     motion: Motion,
     /// The field's cursor blinking, from the last key or click.
     blink: Blink<Duration>,
+    /// Whether the launcher moves: its size gliding from one to the next,
+    /// as its cursor blinks.
+    moves: bool,
     /// Whether the launcher may look different from what is on the screen.
     stale: bool,
     /// Whether the launcher is done with.
@@ -340,6 +362,9 @@ struct Face {
     ready: bool,
     /// How many pixels the screen has to a unit.
     scale: Scale,
+    /// Its width and height on their way to the size it is to be, which
+    /// it is drawn at as they go.
+    glide: (Glide, Glide),
 }
 
 impl Shell {
@@ -380,16 +405,36 @@ impl Shell {
             sent: Ok(()),
             motion: Motion::new(),
             blink: Blink::new(Duration::ZERO, true),
+            moves: false,
             // Worth trying to show from the very first turn.
             stale: true,
             done: false,
         }
     }
 
-    /// The same, its cursor blinking, if it is to blink.
+    /// The same, its cursor blinking and its size gliding, if it is to
+    /// move.
     const fn blinking(mut self, blinks: bool) -> Self {
         self.blink = Blink::new(Duration::ZERO, !blinks);
+        self.moves = blinks;
         self
+    }
+
+    /// Whether the launcher's size is still on its way at `now`.
+    fn gliding(&self, now: Duration) -> bool {
+        let face = self.face.iter();
+        face.into_iter()
+            .any(|face| face.glide.0.moving(now) || face.glide.1.moving(now))
+    }
+
+    /// Whether the launcher was last drawn at another size than its size
+    /// has got to at `now`: on its way, or just arrived.
+    fn behind(&self, now: Duration) -> bool {
+        let face = self.face.iter();
+        face.into_iter().any(|face| {
+            let (width, height) = (face.glide.0.now(now), face.glide.1.now(now));
+            face.size != (width.unsigned_abs(), height.unsigned_abs())
+        })
     }
 
     /// Acts on what a key or a click came to, showing the cursor at once,
@@ -663,24 +708,35 @@ impl Shell {
                 top,
                 ready: false,
                 scale: Scale::ONE,
+                glide: (glide_at(width), glide_at(height)),
             }
         });
         let face = self.face.insert(face);
         if !face.ready {
             return behind;
         }
-        // As many rows as match, and the screen it is on may have changed.
-        if (face.size, face.top) != ((width, height), top) {
-            face.layer.set_size(width, height);
+        // As many rows as match, and the screen it is on may have changed:
+        // the size glides there, if the launcher moves, and is drawn as
+        // large as it has got.
+        let (now, moves) = (self.now, self.moves);
+        face.glide.0.go(width.cast_signed(), now, moves);
+        face.glide.1.go(height.cast_signed(), now, moves);
+        let size = (face.glide.0.now(now), face.glide.1.now(now));
+        let size = (size.0.unsigned_abs(), size.1.unsigned_abs());
+        self.picker
+            .draw_at((size != (width, height)).then_some(size));
+        if (face.size, face.top) != (size, top) {
+            face.layer.set_size(size.0, size.1);
             face.layer.set_margin(top.cast_signed(), 0, 0, 0);
-            (face.size, face.top) = ((width, height), top);
+            (face.size, face.top) = (size, top);
         }
         let (text, icons) = ((&mut self.text, &self.words), &mut self.icons);
         self.motion.begin(self.now);
         let look = (&self.theme, face.scale, self.blink.draw(self.now));
         let canvas = self.picker.paint(text, look, icons, &mut self.motion);
         self.motion.end();
-        behind.and(face.sheet.put(shm, &canvas, (width, height), handle))
+        // As large as it has got, in units of layout.
+        behind.and(face.sheet.put(shm, &canvas, face.size, handle))
     }
 }
 
