@@ -376,6 +376,36 @@ impl Canvas {
         }
     }
 
+    /// Draws `other` over this canvas, pixel for pixel from their top left
+    /// corners as far as both go, `opacity` as opaque as it is, from 0,
+    /// not at all, to 1, wholly: what is drawn on one canvas apart, faded
+    /// in over what is under it.
+    pub fn draw_over(&mut self, other: &Self, opacity: f32) {
+        let share = u32::from(self::opacity(255, f64::from(opacity)));
+        let columns = u64::from(self.width.min(other.width)) * 4;
+        // The first `columns` bytes of row `y` of `canvas`.
+        let span = |canvas: &Self, y: u32| {
+            let start = u64::from(y) * u64::from(canvas.width) * 4;
+            let start = usize::try_from(start).unwrap_or(usize::MAX);
+            start..start.saturating_add(usize::try_from(columns).unwrap_or(0))
+        };
+        for y in 0..self.height.min(other.height) {
+            let source = other.pixels.get(span(other, y)).unwrap_or_default();
+            let row = span(self, y);
+            let under = self.pixels.get_mut(row);
+            let under = under.unwrap_or_default().as_chunks_mut::<4>().0;
+            for (under, source) in under.iter_mut().zip(source.as_chunks::<4>().0) {
+                // Premultiplied, as the canvas is: the source made fainter,
+                // and what is under it showing as much as it lets through.
+                let through = 255 - u32::from(source[3]) * share / 255;
+                for (channel, source) in under.iter_mut().zip(source) {
+                    let mixed = u32::from(*source) * share + u32::from(*channel) * through;
+                    *channel = u8::try_from((mixed + 127) / 255).unwrap_or(u8::MAX);
+                }
+            }
+        }
+    }
+
     /// Draws a picture as it is, one of its pixels to each of the canvas's,
     /// with its top left corner at the pixel `(x, y)`, which may be off the
     /// canvas.
@@ -2479,5 +2509,35 @@ mod tests {
         canvas.draw_stroke(&[(4.0, 4.0), (4.0, 4.0)], 4.0, RED, 1.0);
         assert_eq!(canvas.at(4, 4), argb(RED));
         assert_eq!(canvas.at(0, 4), 0);
+    }
+
+    #[test]
+    fn one_canvas_is_drawn_over_another_as_opaque_as_asked() {
+        let mut under = Canvas::new(2, 1);
+        under.fill((0, 0, 2, 1), Color::rgb(0, 0, 255));
+        let mut over = Canvas::new(2, 1);
+        over.fill((0, 0, 1, 1), RED);
+        // Half as opaque: half of each where it has something, and what is
+        // under it as it was where it has nothing.
+        let mut half = Canvas::new(2, 1);
+        half.fill((0, 0, 2, 1), Color::rgb(0, 0, 255));
+        half.draw_over(&over, 0.5);
+        assert_eq!(half.at(0, 0), 0xff80_007f);
+        assert_eq!(half.at(1, 0), under.at(1, 0));
+        // Wholly, and not at all.
+        let mut whole = under.clone();
+        whole.draw_over(&over, 1.0);
+        assert_eq!(whole.at(0, 0), argb(RED));
+        let mut none = under.clone();
+        none.draw_over(&over, 0.0);
+        assert_eq!(none, under);
+        // Over nothing, it is as see-through as asked.
+        let mut empty = Canvas::new(2, 1);
+        empty.draw_over(&over, 0.5);
+        assert_eq!(empty.at(0, 0) >> 24, 0x80);
+        // One of another size is drawn as far as both go.
+        let mut small = Canvas::new(1, 1);
+        small.draw_over(&under, 1.0);
+        assert_eq!(small.at(0, 0), under.at(0, 0));
     }
 }
