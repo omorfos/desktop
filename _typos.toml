@@ -17,9 +17,11 @@ zink = "zink"
 # The time zone database's table of places, as it comes, abbreviations and all.
 # And the translations of the programs' words, which are not English and are
 # read by those who speak their languages (ADR 79); the English is checked.
+# And the record of the built-in theme's looks, which is hashes.
 extend-exclude = [
     "Cargo.lock",
     "crates/omorfos-config/src/zone1970.tab",
+    "crates/omorfos-config/src/looks.golden",
     "crates/omorfos-i18n/i18n/*",
     "!crates/omorfos-i18n/i18n/en",
 ]

@@ -2860,4 +2860,70 @@ mod tests {
         assert_eq!(empty.style(Part::Clock, States::NONE), Style::NONE);
         assert_eq!(empty.font(Part::Clock, States::NONE), &Font::default());
     }
+
+    /// FNV-1a over `text`: a hash whose value does not change from one
+    /// build to the next, as the standard library's may.
+    fn fnv(text: &str) -> u64 {
+        text.bytes().fold(0xcbf2_9ce4_8422_2325, |hash, byte| {
+            (hash ^ u64::from(byte)).wrapping_mul(0x0100_0000_01b3)
+        })
+    }
+
+    /// Every look of the built-in theme, a line for each part in each
+    /// scheme with each accent: its looks in every state, and in every
+    /// state of the part it is in, its fonts, and how it arrives, hashed.
+    fn looks_of_the_built_in_theme() -> String {
+        use std::fmt::Write as _;
+        let accents = [
+            Accent::Cyan,
+            Accent::Blue,
+            Accent::Teal,
+            Accent::Purple,
+            Accent::Pink,
+            Accent::Orange,
+            Accent::Own(Color::rgb(0x12, 0x34, 0x56)),
+        ];
+        let mut lines = String::new();
+        for scheme in [Scheme::Dark, Scheme::Light] {
+            for accent in accents {
+                let theme = Theme::built_in(scheme, accent);
+                for part in Part::ALL {
+                    let holders: Vec<States> = if part.holder().is_some() {
+                        holder_combinations().collect()
+                    } else {
+                        vec![States::NONE]
+                    };
+                    let mut text = format!("{:?}", theme.starting(part));
+                    for states in States::every() {
+                        for holder in &holders {
+                            let style = theme.style_in(part, states, *holder);
+                            write!(text, "{style:?}").unwrap();
+                        }
+                        write!(text, "{:?}", theme.font(part, states)).unwrap();
+                    }
+                    let hash = fnv(&text);
+                    writeln!(lines, "{scheme:?}-{accent:?} {part:?} {hash:016x}").unwrap();
+                }
+            }
+        }
+        lines
+    }
+
+    #[test]
+    fn the_built_in_looks_are_as_they_were() {
+        // A record kept while the theme's syntax changes under it (ADR 110),
+        // which may gain a line for a part added and never changes one.
+        let now = looks_of_the_built_in_theme();
+        if std::env::var_os("OMORFOS_BLESS").is_some() {
+            let path = concat!(env!("CARGO_MANIFEST_DIR"), "/src/looks.golden");
+            std::fs::write(path, &now).unwrap();
+            return;
+        }
+        let kept = include_str!("looks.golden");
+        let changed: Vec<&str> = now
+            .lines()
+            .filter(|line| !kept.lines().any(|was| was == *line))
+            .collect();
+        assert_eq!(changed, [] as [&str; 0], "looks changed, or parts not kept");
+    }
 }
