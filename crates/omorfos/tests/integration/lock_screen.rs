@@ -426,6 +426,14 @@ fn field(session: &mut Session) -> Vec<u32> {
     row(session, FIELD_ROW)
 }
 
+/// How many columns of the field's row the cursor's line takes: one, on or off.
+const CURSOR: usize = 1;
+
+/// In how many places two rows differ.
+fn apart(one: &[u32], other: &[u32]) -> usize {
+    one.iter().zip(other).filter(|(a, b)| a != b).count()
+}
+
 /// A locked session with the configuration `files`, and `kept` as what the
 /// session last kept of it, with a wrong password typed until it has been
 /// heard, and the field as it was at rest before.
@@ -466,14 +474,18 @@ fn the_field_shakes_when_the_password_was_not_right_and_comes_to_rest() {
     let (mut session, mut lock, _there, rest) = wrong(&[("theme.css", theme)], &[]);
     // Frames are shown a sixtieth of a second apart, by the time the
     // compositor tells them at.
+    // The cursor blinks by the wall's clock as the box shakes by the
+    // frames', so the field is at rest where it differs from how it was
+    // by no more than the cursor's line, on or off.
     let mut shown = 0;
     let mut moved = false;
     for _ in 0..200 {
         shown += 16;
         session.send_frames(Duration::from_millis(shown));
         settle(&mut session, &mut lock);
-        moved |= field(&mut session) != rest;
-        if moved && field(&mut session) == rest {
+        let apart = apart(&field(&mut session), &rest);
+        moved |= apart > CURSOR;
+        if moved && apart <= CURSOR {
             return;
         }
     }
