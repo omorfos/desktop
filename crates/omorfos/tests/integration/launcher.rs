@@ -1261,7 +1261,9 @@ fn every_program_is_asked_for_by_starting_the_launcher_onto_its_grid() {
     session.listen();
     session.compositor_mut().set_launcher(stand_in_launcher());
     session.compositor_mut().perform(&Action::ShowPrograms);
-    session.eventually(|session| mark(session, "launcher-arguments") == "--programs;");
+    // It says what it was started with before that it opened.
+    session.eventually(|session| mark(session, "launcher-opened") == "x");
+    assert_eq!(mark(&session, "launcher-arguments"), "--programs;");
     // While it is open, the launcher asked for alone leaves it as it is.
     session.compositor_mut().perform(&Action::ShowLauncher);
     session.advance(Duration::from_millis(100));
@@ -1271,7 +1273,14 @@ fn every_program_is_asked_for_by_starting_the_launcher_onto_its_grid() {
         session.compositor_mut().perform(&Action::ShowLauncher);
         mark(session, "launcher-opened").len() > 1
     });
-    assert_eq!(mark(&session, "launcher-arguments"), "--programs;;");
+    // Asked again until it opened, it may have opened more than once
+    // more, each time onto what it opens onto.
+    let arguments = mark(&session, "launcher-arguments");
+    let again = arguments.strip_prefix("--programs;").unwrap_or_default();
+    assert!(
+        !again.is_empty() && again.chars().all(|one| one == ';'),
+        "{arguments:?}"
+    );
 }
 
 #[test]
