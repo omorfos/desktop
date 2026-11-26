@@ -12,7 +12,7 @@ omorfos\-theme \- theme.css, how the omorfos desktop looks
 The theme is a stylesheet, in a small part of CSS. A rule names parts of the desktop, perhaps in some state, and gives them properties. Yours is laid over the built\-in theme, so you only write what you want changed. A rule of yours always wins over a built\-in one; among your own, the one that names more states wins, and then the later one. It is read again as soon as it is saved, and kept as it was before if it has a mistake.
 .SH PARTS
 .PP
-\fBdesktop\fR, \fBwindow\fR, \fBtile\-line\fR, \fBoffer\fR, \fBtitlebar\fR, \fBtab\fR, \fBwindowcontrols\fR, \fBbutton\-close\fR, \fBbutton\-maximize\fR, \fBbutton\-minimize\fR, \fBmenu\fR, \fBmenu\-item\fR, \fBmenu\-separator\fR, \fBmenu\-sign\fR, \fBmenu\-keys\fR, \fBnotice\fR, \fBnotice\-heading\fR, \fBcapture\fR, \fBcapture\-border\fR, \fBtooltip\fR, \fBpanel\fR, \fBworkspace\fR, \fBtask\fR, \fBclock\fR, \fBpopover\fR, \fBpopover\-item\fR, \fBpopover\-day\fR, \fBpopover\-day\-outside\fR, \fBlauncher\fR, \fBlauncher\-input\fR, \fBlauncher\-item\fR, \fBlauncher\-description\fR, \fBlauncher\-tile\fR, \fBlauncher\-backdrop\fR, \fBnotification\fR, \fBnotification\-title\fR, \fBnotification\-body\fR, \fBnotification\-level\fR, \fBquestion\fR, \fBquestion\-detail\fR, \fBquestion\-button\fR, \fBquestion\-input\fR, \fBswitcher\fR, \fBswitcher\-item\fR, \fBswitcher\-title\fR, \fBswitcher\-window\fR, \fBswitcher\-backdrop\fR, \fBoverview\-window\fR, \fBoverview\-title\fR, \fBoverview\-workspace\fR, \fBoverview\-add\fR, \fBoverview\-backdrop\fR, \fBpicker\fR, \fBsealed\fR, \fBabout\fR, \fBabout\-heading\fR, \fBabout\-detail\fR, \fBabout\-button\fR
+\fBdesktop\fR, \fBwindow\fR, \fBtile\-line\fR, \fBoffer\fR, \fBtitlebar\fR, \fBtab\fR, \fBwindowcontrols\fR, \fBbutton\-close\fR, \fBbutton\-maximize\fR, \fBbutton\-minimize\fR, \fBmenu\fR, \fBmenu\-item\fR, \fBmenu\-separator\fR, \fBmenu\-sign\fR, \fBmenu\-keys\fR, \fBnotice\fR, \fBnotice\-heading\fR, \fBcapture\fR, \fBcapture\-border\fR, \fBtooltip\fR, \fBpanel\fR, \fBworkspace\fR, \fBtask\fR, \fBclock\fR, \fBpopover\fR, \fBpopover\-item\fR, \fBpopover\-day\fR, \fBpopover\-day\-outside\fR, \fBlauncher\fR, \fBlauncher\-input\fR, \fBlauncher\-item\fR, \fBlauncher\-description\fR, \fBlauncher\-tile\fR, \fBlauncher\-top\fR, \fBlauncher\-heading\fR, \fBlauncher\-modes\fR, \fBlauncher\-mode\fR, \fBlauncher\-backdrop\fR, \fBnotification\fR, \fBnotification\-title\fR, \fBnotification\-body\fR, \fBnotification\-level\fR, \fBquestion\fR, \fBquestion\-detail\fR, \fBquestion\-button\fR, \fBquestion\-input\fR, \fBswitcher\fR, \fBswitcher\-item\fR, \fBswitcher\-title\fR, \fBswitcher\-window\fR, \fBswitcher\-backdrop\fR, \fBoverview\-window\fR, \fBoverview\-title\fR, \fBoverview\-workspace\fR, \fBoverview\-add\fR, \fBoverview\-backdrop\fR, \fBpicker\fR, \fBsealed\fR, \fBabout\fR, \fBabout\-heading\fR, \fBabout\-detail\fR, \fBabout\-button\fR
 .SH STATES
 .PP
 \fB:focus\fR, \fB:active\fR, \fB:hover\fR, \fB:urgent\fR, \fB:closing\fR
@@ -361,12 +361,13 @@ launcher {
   border\-radius: 10px;
   box\-shadow: 0 12px 32px rgba(0, 0, 0, 0.36), inset 0 1px var(\-\-glass\-rim);
 }
+/* The field is large, and of the launcher's own glass, as Spotlight's. */
 launcher\-input {
-  height: 32px;
+  height: 56px;
   margin: 0 0 8px 0;
   padding: 0 8px;
-  background: var(\-\-surface\-raised);
   color: var(\-\-text);
+  font\-size: 20pt;
   border\-radius: 6px;
 }
 /* What is typed, when all of it is chosen, as Ctrl+A chooses it. */
@@ -398,6 +399,43 @@ launcher\-tile {
   border\-radius: 10px;
 }
 launcher\-tile:active {
+  background: var(\-\-accent);
+  color: var(\-\-on\-accent);
+}
+/* The best of all, alone at the top of what is found: outlined while the
+ * field has the keyboard, as what Enter takes, and lit as any row. */
+launcher\-top {
+  height: 48px;
+  padding: 6px 8px;
+  color: var(\-\-text);
+  border: 1px solid var(\-\-accent\-tint);
+  border\-radius: 8px;
+}
+launcher\-top:active {
+  background: var(\-\-accent);
+  color: var(\-\-on\-accent);
+}
+/* The heading over each section of what is found. */
+launcher\-heading {
+  height: 24px;
+  padding: 0 8px;
+  color: var(\-\-text\-dim);
+  font\-weight: 600;
+}
+/* The row of modes at the bottom, under a hairline, while the pointer is
+ * over an empty launcher; and a mode in it. */
+launcher\-modes {
+  height: 40px;
+  padding: 8px 0 0 0;
+  border\-top: var(\-\-edge);
+}
+launcher\-mode {
+  padding: 0 12px;
+  color: var(\-\-text);
+  border\-radius: 8px;
+}
+launcher\-mode:hover { background: var(\-\-accent\-tint); }
+launcher\-mode:active {
   background: var(\-\-accent);
   color: var(\-\-on\-accent);
 }

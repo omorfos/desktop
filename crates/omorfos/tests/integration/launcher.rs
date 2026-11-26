@@ -154,7 +154,7 @@ fn corner() -> (i32, i32) {
 fn row(place: i32) -> (i32, i32) {
     let (left, top) = corner();
     // A border and padding, the text field and the room under it.
-    let list = top + 9 + 32 + 8;
+    let list = top + 9 + 56 + 8;
     (left + 400, list + place * 48 + 24)
 }
 
@@ -222,8 +222,8 @@ fn a_sum_typed_is_answered_and_enter_puts_the_answer_on_the_clipboard() {
     // Inside the text field, to the right of anything typed.
     let (left, top) = corner();
     let field = (left + 400, top + 13 + 16);
-    let input = Theme::default().style(Part::LauncherInput, States::NONE);
-    let input = argb(input.background);
+    // The field has no ground of its own: the launcher's glass shows.
+    let input = surface();
     assert_eq!(session.draw().at(field.0, field.1), input);
 
     for code in [FIVE, MINUS, TWO] {

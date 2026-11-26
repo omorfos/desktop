@@ -129,6 +129,21 @@ pub enum Part {
     /// as those and its name. It is [`State::Active`] when it is the one
     /// that would be started.
     LauncherTile,
+    /// The best of all the launcher found, alone at the top in the mode
+    /// that finds everything: a row as `launcher-item` is, its border
+    /// saying it is what Enter takes while nothing is lit. It is
+    /// [`State::Active`] when it is lit.
+    LauncherTop,
+    /// The heading over each section of what the launcher found: its
+    /// colour, font and padding.
+    LauncherHeading,
+    /// The row of the launcher's modes at its bottom, shown while the
+    /// pointer is over an empty launcher: its border, padding and height.
+    LauncherModes,
+    /// A mode in that row, its sign beside its name and its digit:
+    /// [`State::Active`] for the one shown, [`State::Hovered`] under the
+    /// pointer.
+    LauncherMode,
     /// The whole of the screen behind the launcher while it is open. Only
     /// its background is used.
     LauncherBackdrop,
@@ -217,7 +232,7 @@ pub enum Part {
 
 impl Part {
     /// Every part there is.
-    pub const ALL: [Self; 58] = [
+    pub const ALL: [Self; 62] = [
         Self::Desktop,
         Self::Window,
         Self::TileLine,
@@ -251,6 +266,10 @@ impl Part {
         Self::LauncherItem,
         Self::LauncherDescription,
         Self::LauncherTile,
+        Self::LauncherTop,
+        Self::LauncherHeading,
+        Self::LauncherModes,
+        Self::LauncherMode,
         Self::LauncherBackdrop,
         Self::Notification,
         Self::NotificationTitle,
@@ -315,6 +334,10 @@ impl Part {
             Self::LauncherItem => "launcher-item",
             Self::LauncherDescription => "launcher-description",
             Self::LauncherTile => "launcher-tile",
+            Self::LauncherTop => "launcher-top",
+            Self::LauncherHeading => "launcher-heading",
+            Self::LauncherModes => "launcher-modes",
+            Self::LauncherMode => "launcher-mode",
             Self::LauncherBackdrop => "launcher-backdrop",
             Self::Notification => "notification",
             Self::NotificationTitle => "notification-title",
@@ -884,6 +907,10 @@ mod tests {
                 "launcher-item",
                 "launcher-description",
                 "launcher-tile",
+                "launcher-top",
+                "launcher-heading",
+                "launcher-modes",
+                "launcher-mode",
                 "launcher-backdrop",
                 "notification",
                 "notification-title",

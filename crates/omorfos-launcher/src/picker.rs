@@ -1184,7 +1184,6 @@ mod tests {
     #[test]
     fn text_wider_than_the_field_is_cut_at_its_edge_and_never_short_with_an_ellipsis() {
         let theme = Theme::default();
-        let input = theme.style(Part::LauncherInput, States::NONE);
         let mut picker = picker(&["Files"]);
         // Each is tall, where the dots of an ellipsis are low.
         typed(&mut picker, &"W".repeat(60));
@@ -1194,7 +1193,13 @@ mod tests {
             choosing: false,
         };
         picker.key(Key::Edit(home));
-        let inked = inked_columns(&picker, |_| argb(input.background));
+        let inked = inked_columns(&picker, |_| {
+            argb(
+                Theme::default()
+                    .style(Part::Launcher, States::NONE)
+                    .background,
+            )
+        });
         let font = theme.font(Part::LauncherInput, States::NONE);
         let letter = usize::try_from(Text::new().measure("W", font)).unwrap();
         let last = &inked[inked.len() - letter..];
@@ -1204,7 +1209,6 @@ mod tests {
     #[test]
     fn choosing_a_part_of_what_is_typed_leaves_every_letter_where_it_was() {
         let theme = Theme::default();
-        let input = theme.style(Part::LauncherInput, States::NONE);
         let marked = theme.style(Part::LauncherInput, States::NONE.with(State::Active));
         let (left, top, _, _) = several().typed_area(&theme);
         let (left, top) = (left.unsigned_abs(), top.unsigned_abs());
@@ -1212,9 +1216,16 @@ mod tests {
         let inked = |picker: &Picker| {
             let canvas = painted(picker);
             let on_mark = |x: u32| canvas.at(left + x, top) == argb(marked.background);
+            // The field has no ground of its own: off the mark, the
+            // launcher's glass.
+            let glass = theme.style(Part::Launcher, States::NONE).background;
             let ground = |x: u32| {
-                let ground = if on_mark(x - left) { &marked } else { &input };
-                argb(ground.background)
+                let ground = if on_mark(x - left) {
+                    marked.background
+                } else {
+                    glass
+                };
+                argb(ground)
             };
             let marks = (0..200).filter(|x| on_mark(*x)).count();
             (inked_columns(picker, ground), marks)
@@ -1459,7 +1470,7 @@ mod tests {
         let theme = Theme::default();
         // A border and padding each side, and the text field with the
         // room under it.
-        let bare = 2 * 13 + 32 + 8;
+        let bare = 2 * 13 + 56 + 8;
         let mut picker = several();
         // Five rows, each of two lines, and the heading over all but the
         // first, with room for nine.
@@ -1503,10 +1514,10 @@ mod tests {
         let theme = Theme::default();
         let mut picker = several();
         picker.fit(&theme, 1080);
-        // Nine rows at most: 498 tall in all.
-        assert_eq!(picker.top(&theme, 1080), (1080 - 498) / 2);
+        // Nine rows at most: 522 tall in all.
+        assert_eq!(picker.top(&theme, 1080), (1080 - 522) / 2);
         typed(&mut picker, "zzz");
-        assert_eq!(picker.top(&theme, 1080), (1080 - 498) / 2, "however few");
+        assert_eq!(picker.top(&theme, 1080), (1080 - 522) / 2, "however few");
         picker.fit(&theme, 100);
         assert_eq!(picker.top(&theme, 100), 0, "however small the screen");
     }
@@ -1546,7 +1557,11 @@ mod tests {
         let layout = Layout::new(&theme);
         let input = theme.style(Part::LauncherInput, States::NONE);
         let (left, top, width, height) = layout.input;
-        let field = argb(input.background);
+        let field = argb(
+            Theme::default()
+                .style(Part::Launcher, States::NONE)
+                .background,
+        );
         let inked = |picker: &Picker| {
             let canvas = painted(picker);
             let columns = left.unsigned_abs()..left.unsigned_abs() + width;
@@ -2162,9 +2177,12 @@ mod tests {
     fn the_field_has_no_cursor_while_the_programs_have_the_keyboard() {
         let theme = Theme::default();
         let layout = Layout::new(&theme);
-        let input = theme.style(Part::LauncherInput, States::NONE);
         let (left, top, width, height) = layout.input;
-        let field = argb(input.background);
+        let field = argb(
+            Theme::default()
+                .style(Part::Launcher, States::NONE)
+                .background,
+        );
         let inked = |picker: &Picker| {
             let canvas = painted(picker);
             let columns = left.unsigned_abs()..left.unsigned_abs() + width;

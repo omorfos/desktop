@@ -352,12 +352,13 @@ launcher {
   border-radius: 10px;
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.36), inset 0 1px var(--glass-rim);
 }
+/* The field is large, and of the launcher's own glass, as Spotlight's. */
 launcher-input {
-  height: 32px;
+  height: 56px;
   margin: 0 0 8px 0;
   padding: 0 8px;
-  background: var(--surface-raised);
   color: var(--text);
+  font-size: 20pt;
   border-radius: 6px;
 }
 /* What is typed, when all of it is chosen, as Ctrl+A chooses it. */
@@ -389,6 +390,43 @@ launcher-tile {
   border-radius: 10px;
 }
 launcher-tile:active {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+/* The best of all, alone at the top of what is found: outlined while the
+ * field has the keyboard, as what Enter takes, and lit as any row. */
+launcher-top {
+  height: 48px;
+  padding: 6px 8px;
+  color: var(--text);
+  border: 1px solid var(--accent-tint);
+  border-radius: 8px;
+}
+launcher-top:active {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+/* The heading over each section of what is found. */
+launcher-heading {
+  height: 24px;
+  padding: 0 8px;
+  color: var(--text-dim);
+  font-weight: 600;
+}
+/* The row of modes at the bottom, under a hairline, while the pointer is
+ * over an empty launcher; and a mode in it. */
+launcher-modes {
+  height: 40px;
+  padding: 8px 0 0 0;
+  border-top: var(--edge);
+}
+launcher-mode {
+  padding: 0 12px;
+  color: var(--text);
+  border-radius: 8px;
+}
+launcher-mode:hover { background: var(--accent-tint); }
+launcher-mode:active {
   background: var(--accent);
   color: var(--on-accent);
 }
@@ -713,7 +751,7 @@ workspace:active, task:active { border-bottom: none; }
 `menu-separator`, `menu-sign`, `menu-keys`, `notice`, `notice-heading`, `capture`, `capture-border`, `tooltip`, `panel`,
 `workspace`, `task`,
 `clock`, `popover`, `popover-item`, `popover-day`, `popover-day-outside`, `launcher`, `launcher-input`, `launcher-item`,
-`launcher-description`, `launcher-tile`, `launcher-backdrop`, `notification`,
+`launcher-description`, `launcher-tile`, `launcher-top`, `launcher-heading`, `launcher-modes`, `launcher-mode`, `launcher-backdrop`, `notification`,
 `notification-title`, `notification-body`, `notification-level`, `question`, `question-detail`,
 `question-button`, `question-input`, `switcher`, `switcher-item`, `switcher-title`,
 `switcher-window`, `switcher-backdrop`, `overview-window`, `overview-title`,

@@ -1755,7 +1755,12 @@ mod tests {
             (style(Part::Task, ACTIVE), None),
             (style(Part::Clock, States::NONE), Some(Part::Panel)),
             (style(Part::Launcher, States::NONE), None),
-            (style(Part::LauncherInput, States::NONE), None),
+            // What is typed is on the launcher's glass, the field having
+            // none of its own.
+            (
+                style(Part::LauncherInput, States::NONE),
+                Some(Part::Launcher),
+            ),
             (
                 style(Part::LauncherItem, States::NONE),
                 Some(Part::Launcher),
@@ -2230,15 +2235,29 @@ mod tests {
             let font = theme.font(part, States::NONE);
             // Inter where it is installed, and otherwise what the system has.
             assert_eq!(font.family, "Inter, sans-serif", "{part:?}");
-            assert_eq!(font.size, Font::default().size, "{part:?}");
+            // But for what is typed in the launcher, large, as Spotlight's
+            // is (ADR 109).
+            let size = if part == Part::LauncherInput {
+                20
+            } else {
+                Font::default().size.get()
+            };
+            assert_eq!(font.size.get(), size, "{part:?}");
         }
-        // Only a notification's title, and the headings of "About", are
-        // heavier than the rest.
+        // Only a notification's title, and the headings of "About" and of
+        // the launcher's sections, are heavier than the rest.
         let heavy = Part::ALL.into_iter();
         let heavy: Vec<Part> = heavy
             .filter(|part| theme.font(*part, States::NONE).weight != 400)
             .collect();
-        assert_eq!(heavy, [Part::NotificationTitle, Part::AboutHeading]);
+        assert_eq!(
+            heavy,
+            [
+                Part::LauncherHeading,
+                Part::NotificationTitle,
+                Part::AboutHeading
+            ]
+        );
         let theme = Theme::parse(
             "* { font-family: \"DejaVu Sans\"; }\n\
              panel { font-size: 9pt; }\n\
