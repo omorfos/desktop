@@ -212,6 +212,45 @@ impl Launcher {
 /// How long the launcher takes to glide from one size to the next.
 const GLIDES: Duration = Duration::from_millis(200);
 
+/// Slides the lit row's ground, `lit`, to the row lit at `now` in what
+/// `picker` shows under `theme`, from the row lit before, if the launcher
+/// `moves`; and puts it there at once if none was.
+fn slide(
+    (picker, theme): (&mut Picker, &Theme),
+    lit: &mut Option<Lit>,
+    now: Duration,
+    moves: bool,
+) {
+    let place = picker.lit_place(theme);
+    let next = match (place, lit.take()) {
+        (Some((across, down)), Some(mut lit)) => {
+            lit.across.go(across, now, moves);
+            lit.down.go(down, now, moves);
+            Some(lit)
+        }
+        (Some((across, down)), None) => Some(Lit {
+            across: slide_at(across),
+            down: slide_at(down),
+            drawn: (across, down),
+        }),
+        (None, _) => None,
+    };
+    let slid = next.map(|lit| lit.now(now));
+    picker.slide_lit(slid.filter(|slid| Some(*slid) != place));
+    *lit = next.map(|lit| Lit {
+        drawn: lit.now(now),
+        ..lit
+    });
+}
+
+/// How long the lit row's ground takes to slide to another row.
+const SLIDES: Duration = Duration::from_millis(150);
+
+/// The lit row's ground at `place` along one line, sliding as it does.
+fn slide_at(place: i32) -> Glide {
+    Glide::at(place).taking(SLIDES)
+}
+
 /// One side of the launcher, `length` long, gliding as it does.
 fn glide_at(length: u32) -> Glide {
     Glide::at(length.cast_signed()).taking(GLIDES)
@@ -300,6 +339,8 @@ struct Shell {
     /// Whether the launcher moves: its size gliding from one to the next,
     /// as its cursor blinks.
     moves: bool,
+    /// The lit row's ground, sliding to the row lit, while one is.
+    lit: Option<Lit>,
     /// Whether the launcher may look different from what is on the screen.
     stale: bool,
     /// Whether the launcher is done with.
@@ -351,6 +392,22 @@ impl Backdrop {
 }
 
 /// The launcher's surface.
+/// The lit row's ground on its way to the row lit, in the list as a whole,
+/// and where it was last drawn.
+#[derive(Debug, Clone, Copy)]
+struct Lit {
+    across: Glide,
+    down: Glide,
+    drawn: (i32, i32),
+}
+
+impl Lit {
+    /// Where it has got to at `now`.
+    fn now(&self, now: Duration) -> (i32, i32) {
+        (self.across.now(now), self.down.now(now))
+    }
+}
+
 struct Face {
     sheet: Sheet,
     layer: zwlr_layer_surface_v1::ZwlrLayerSurfaceV1,
@@ -406,6 +463,7 @@ impl Shell {
             motion: Motion::new(),
             blink: Blink::new(Duration::ZERO, true),
             moves: false,
+            lit: None,
             // Worth trying to show from the very first turn.
             stale: true,
             done: false,
@@ -423,8 +481,14 @@ impl Shell {
     /// Whether the launcher's size is still on its way at `now`.
     fn gliding(&self, now: Duration) -> bool {
         let face = self.face.iter();
-        face.into_iter()
-            .any(|face| face.glide.0.moving(now) || face.glide.1.moving(now))
+        let sized = face
+            .into_iter()
+            .any(|face| face.glide.0.moving(now) || face.glide.1.moving(now));
+        let lit = self.lit.iter();
+        sized
+            || lit
+                .into_iter()
+                .any(|lit| lit.across.moving(now) || lit.down.moving(now))
     }
 
     /// Whether the launcher was last drawn at another size than its size
@@ -434,7 +498,7 @@ impl Shell {
         face.into_iter().any(|face| {
             let (width, height) = (face.glide.0.now(now), face.glide.1.now(now));
             face.size != (width.unsigned_abs(), height.unsigned_abs())
-        })
+        }) || self.lit.iter().any(|lit| lit.drawn != lit.now(now))
     }
 
     /// Acts on what a key or a click came to, showing the cursor at once,
@@ -725,6 +789,7 @@ impl Shell {
         let size = (size.0.unsigned_abs(), size.1.unsigned_abs());
         self.picker
             .draw_at((size != (width, height)).then_some(size));
+        slide((&mut self.picker, &self.theme), &mut self.lit, now, moves);
         if (face.size, face.top) != (size, top) {
             face.layer.set_size(size.0, size.1);
             face.layer.set_margin(top.cast_signed(), 0, 0, 0);

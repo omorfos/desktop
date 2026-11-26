@@ -1575,6 +1575,47 @@ fn the_launcher_grows_to_what_it_lists_over_a_while_unless_nothing_is_to_move() 
 }
 
 #[test]
+fn the_lit_rows_ground_slides_to_the_next_row_lit_unless_nothing_is_to_move() {
+    let moving = ("theme.css", "launcher { transition: 180ms; }\n");
+    let reduced = ("config.yaml", "appearance: { reduce_motion: true }\n");
+    let at = Duration::from_millis;
+    for (files, moves) in [(&[moving][..], true), (&[moving, reduced], false)] {
+        let mut session = Session::with_config(files);
+        let mut launcher = launcher(&mut session);
+        settle_at(&mut session, &mut launcher, at(0));
+        session.advance(Duration::from_millis(300));
+        press(&mut session, E);
+        settle_at(&mut session, &mut launcher, at(1000));
+        settle_at(&mut session, &mut launcher, at(1300));
+        // The first lit is lit where it is, with nothing to slide from.
+        press(&mut session, DOWN);
+        settle_at(&mut session, &mut launcher, at(2000));
+        assert!(lit_at(&mut session, 0, 1), "{files:?}");
+        assert_ne!(launcher.deadline(), Some(at(2016)), "{files:?}");
+        // The next, Files, past the heading, the list scrolled a line to
+        // show it: the ground sets out from the top hit, goes over the
+        // heading, and gets there.
+        press(&mut session, DOWN);
+        settle_at(&mut session, &mut launcher, at(3000));
+        if moves {
+            assert_eq!(launcher.deadline(), Some(at(3016)));
+            assert!(lit_at(&mut session, 1, 1), "setting out");
+            assert!(!lit_at(&mut session, 1, 3));
+            settle_at(&mut session, &mut launcher, at(3075));
+            assert!(lit_at(&mut session, 1, 2), "over the heading");
+            settle_at(&mut session, &mut launcher, at(3150));
+            assert!(lit_at(&mut session, 1, 3), "there");
+            // The lines now in sight are taller, and the launcher grows
+            // to them over its own while.
+            settle_at(&mut session, &mut launcher, at(3200));
+        }
+        assert!(lit_at(&mut session, 1, 3), "{files:?}");
+        assert!(!lit_at(&mut session, 1, 1), "{files:?}");
+        assert_ne!(launcher.deadline(), Some(at(3216)), "{files:?}");
+    }
+}
+
+#[test]
 fn super_with_a_digit_is_the_launchers_while_it_has_the_keyboard() {
     let mut session = Session::new();
     let mut client = session.connect();

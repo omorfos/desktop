@@ -3,7 +3,7 @@
 //!
 //! Nothing here knows of Wayland or of sockets.
 
-use omorfos_config::{Color, Edges, Launcher as Show, Mode, Part, State, States, Theme};
+use omorfos_config::{Color, Edges, Launcher as Show, Mode, Part, State, States, Style, Theme};
 use omorfos_i18n::{Value, Words};
 use omorfos_ipc::Request;
 use omorfos_ui::field::{Edit, Field, Reach, Way};
@@ -133,6 +133,9 @@ pub struct Picker {
     /// How large it is drawn while it is on its way to its size: laid out
     /// as wide as that, and cut off as short.
     drawn: Option<(u32, u32)>,
+    /// Where the lit row's ground has got to on its way to the row lit,
+    /// in the list as a whole, while it slides there.
+    slid: Option<(i32, i32)>,
 }
 
 /// Where the launcher's boxes are, under a theme.
@@ -259,6 +262,17 @@ impl Layout {
     }
 }
 
+/// `style` as a row is drawn in it: with the ground of a row not lit if
+/// its ground is drawn `apart`, as it slides from one row to another.
+fn grounded(style: &Style, theme: &Theme, part: Part, apart: bool) -> Style {
+    let ground = theme.style(part, States::NONE).background;
+    let background = if apart { ground } else { style.background };
+    Style {
+        background,
+        ..*style
+    }
+}
+
 /// The sign of `view`, before the field and in the row of modes.
 const fn sign_of(view: View) -> Sign {
     match view {
@@ -308,6 +322,7 @@ impl Picker {
             hovered: false,
             pointed: None,
             drawn: None,
+            slid: None,
         };
         picker.search();
         picker
@@ -343,6 +358,61 @@ impl Picker {
     /// to, or as large as it is with none.
     pub const fn draw_at(&mut self, size: Option<(u32, u32)>) {
         self.drawn = size;
+    }
+
+    /// Where the lit row is in the list as a whole, from the top left of
+    /// its first line, however far it is scrolled: what its ground slides
+    /// to as another is lit. None while no row is lit.
+    #[must_use]
+    pub fn lit_place(&self, theme: &Theme) -> Option<(i32, i32)> {
+        let layout = self.layout(theme);
+        let lit = self.listing && self.chosen < self.count();
+        let (line, column) = lit.then(|| self.line_of(self.chosen))?;
+        let above = (0..line).map(|line| self.line_height(&layout, line));
+        let down = above.fold(0, u32::saturating_add);
+        let across = u32::try_from(column).unwrap_or(u32::MAX);
+        let across = if self.grid() {
+            across.saturating_mul(layout.cell())
+        } else {
+            0
+        };
+        Some((across.cast_signed(), down.cast_signed()))
+    }
+
+    /// Draws the lit row's ground at `place` in the list as a whole, as it
+    /// slides there, rather than under the row lit; or under it, with
+    /// none.
+    pub const fn slide_lit(&mut self, place: Option<(i32, i32)>) {
+        self.slid = place;
+    }
+
+    /// Draws the lit row's ground where it has slid to, if it is sliding,
+    /// within the lines in sight and no further.
+    fn paint_slid(&self, canvas: &mut Canvas, layout: &Layout, theme: &Theme) {
+        let Some((across, down)) = self.slid.filter(|_| self.listing) else {
+            return;
+        };
+        let (line, column) = self.line_of(self.chosen);
+        let (part, (_, _, wide, tall)) = if self.grid() {
+            (Part::LauncherTile, layout.tile(0, column))
+        } else if line == self.head().0 && self.head().1 > 0 {
+            (Part::LauncherTop, self.line_area(layout, line))
+        } else {
+            (Part::LauncherItem, self.line_area(layout, line))
+        };
+        let style = theme.style(part, States::NONE.with(State::Active));
+        let (left, top, width) = layout.list;
+        let scrolled = (0..self.first()).map(|line| self.line_height(layout, line));
+        let scrolled = scrolled.fold(0, u32::saturating_add).cast_signed();
+        let at = (
+            left.saturating_add(across),
+            top.saturating_add(down - scrolled),
+        );
+        let area = inset((at.0, at.1, wide, tall), style.margin);
+        let sight = self.first()..self.first() + self.shown();
+        let shown = sight.map(|line| self.line_height(layout, line));
+        let within = (left, top, width, shown.fold(0, u32::saturating_add));
+        canvas.draw_box_within(area, &style, (within, 0));
     }
 
     /// The sources of what is shown: every one that is on, or the mode's.
@@ -866,6 +936,7 @@ impl Picker {
         let copies = words.say("enter-copies", &[]);
         let described = self.show.descriptions;
         let sight = self.first()..self.first() + self.room;
+        self.paint_slid(&mut canvas, &layout, theme);
         let mut drawing = (&mut canvas, &mut *text, &mut *icons, motion);
         for (row, (_, item)) in self.found.iter().enumerate() {
             let (line, column) = self.line_of(row);
@@ -873,9 +944,11 @@ impl Picker {
                 continue;
             }
             let place = line - self.first();
-            // Lit only while the programs have the keyboard.
+            // Lit only while the programs have the keyboard; its ground
+            // drawn apart while it slides there.
             let lit = self.listing && row == self.chosen;
             let states = States::NONE.when(State::Active, lit);
+            let states = (states, self.slid.is_some());
             // A row is the same row whichever program is in it.
             let key = u64::try_from(row).unwrap_or(u64::MAX);
             // The top hit is outlined as what Enter takes.
@@ -1000,13 +1073,13 @@ impl Picker {
         &self,
         (canvas, text, icons, motion): &mut Drawing<'_>,
         (theme, scale): (&Theme, Scale),
-        (part, key, states): (Part, u64, States),
+        (part, key, (states, apart)): (Part, u64, (States, bool)),
         place: Area,
         (name, says, icon): (&str, Option<&str>, Option<&str>),
     ) {
         let style = motion.style(theme, part, key, states);
         let area = inset(place, style.margin);
-        canvas.draw_box(area, &style);
+        canvas.draw_box(area, &grounded(&style, theme, part, apart));
         let mut room = inset(area, style.inset());
         if self.show.icons {
             // A square as tall as the row's two lines.
@@ -1043,13 +1116,13 @@ impl Picker {
         &self,
         (canvas, text, icons, motion): &mut Drawing<'_>,
         (theme, scale): (&Theme, Scale),
-        (key, states): (u64, States),
+        (key, (states, apart)): (u64, (States, bool)),
         place: Area,
         found: &Found,
     ) {
         let style = motion.style(theme, Part::LauncherTile, key, states);
         let area = inset(place, style.margin);
-        canvas.draw_box(area, &style);
+        canvas.draw_box(area, &grounded(&style, theme, Part::LauncherTile, apart));
         let (left, top, width, height) = inset(area, style.inset());
         let side = width / 2;
         if self.show.icons {
@@ -2966,5 +3039,93 @@ mod tests {
         assert_eq!(picker.layout(&theme).input.2, field + 200);
         picker.draw_at(None);
         assert_eq!(painted(&picker).width(), natural.0);
+    }
+
+    #[test]
+    fn while_the_lit_row_slides_its_ground_is_drawn_where_it_has_got_to_in_the_list() {
+        let theme = Theme::default();
+        let lit = lit(&theme);
+        let layout = Layout::new(&theme);
+        // Towards the right-hand end of line `line`, clear of any words.
+        let at = |canvas: &Canvas, line: i32| {
+            let (_, y) = row(line);
+            let (left, _, width) = layout.list;
+            canvas.at(left.unsigned_abs() + width - 20, y.unsigned_abs())
+        };
+        let mut picker = every();
+        assert_eq!(picker.lit_place(&theme), None, "nothing lit");
+        // The top hit, under its heading, and Files, under the next.
+        picker.key(Key::Down);
+        let first = picker.lit_place(&theme).unwrap_or_default();
+        assert_eq!(first, (0, layout.heading.cast_signed()));
+        picker.key(Key::Down);
+        let second = picker.lit_place(&theme).unwrap_or_default();
+        let apart = (layout.top + layout.heading).cast_signed();
+        assert_eq!(second, (0, first.1 + apart));
+        // Half way there: over the heading between them, and not yet over
+        // the middle of Files' row.
+        picker.slide_lit(Some((0, first.1 + apart / 2)));
+        let canvas = painted(&picker);
+        assert_eq!(at(&canvas, 2), lit, "between");
+        assert_ne!(at(&canvas, 3), lit, "not there yet");
+        assert_ne!(at(&canvas, 1), lit, "nor still where it was");
+        // Never past the list, into the field above it.
+        picker.slide_lit(Some((0, -200)));
+        let canvas = painted(&picker);
+        let (left, top, width) = layout.list;
+        let above = (0..top.unsigned_abs())
+            .flat_map(|y| (left.unsigned_abs()..left.unsigned_abs() + width).map(move |x| (x, y)));
+        assert!(above.into_iter().all(|(x, y)| canvas.at(x, y) != lit));
+        // Arrived, it is the row's own.
+        picker.slide_lit(None);
+        assert_eq!(at(&painted(&picker), 3), lit);
+        // Back up to the top hit, half way: its ground is the top hit's,
+        // over the heading between them.
+        let mut back = every();
+        back.key(Key::Down);
+        back.key(Key::Down);
+        back.key(Key::Up);
+        assert_eq!(back.lit_place(&theme), Some(first));
+        back.slide_lit(Some((0, first.1 + apart / 2)));
+        let top = argb(
+            theme
+                .style(Part::LauncherTop, States::NONE.with(State::Active))
+                .background,
+        );
+        assert_eq!(at(&painted(&back), 2), top, "the top hit's ground, between");
+        // Across the grid, half way from the first tile to the second.
+        let mut grid = several();
+        grid.set_view(View::Mode(Mode::Programs));
+        grid.key(Key::Down);
+        let (_, down) = grid.lit_place(&theme).unwrap_or_default();
+        grid.key(Key::Edit(Edit::Move {
+            way: Way::On,
+            reach: Reach::Character,
+            choosing: false,
+        }));
+        let cell = Layout::of(&theme, true).cell().cast_signed();
+        assert_eq!(grid.lit_place(&theme), Some((cell, down)));
+        grid.slide_lit(Some((cell / 2, down)));
+        let tile = argb(
+            theme
+                .style(Part::LauncherTile, States::NONE.with(State::Active))
+                .background,
+        );
+        let (left, top_, wide, _) = Layout::of(&theme, true).tile(0, 0);
+        let canvas = painted(&grid);
+        let y = top_.unsigned_abs() + 10;
+        // Where the first tile and the second meet, lit; the first's own
+        // left end, not.
+        let meet = left.unsigned_abs() + wide;
+        assert_eq!(canvas.at(meet, y), tile, "between them");
+        assert_ne!(
+            canvas.at(left.unsigned_abs() + 4, y),
+            tile,
+            "the first's end"
+        );
+        // Scrolled, it is where it is in the list as a whole.
+        picker.room = 2;
+        picker.scroll(2);
+        assert_eq!(picker.lit_place(&theme), Some(second));
     }
 }
