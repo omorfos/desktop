@@ -25,9 +25,10 @@ const LONGEST: usize = 64;
 const GAP: u32 = 10;
 
 /// The room between a mode's sign, its name and its digit, in the row of
-/// modes, and between one mode and the next.
+/// modes, and between one mode and the next: enough for the ring round
+/// the mode the keyboard is on to stand clear of its neighbour.
 const BESIDE: u32 = 7;
-const APART: u32 = 6;
+const APART: u32 = 12;
 
 /// How large the sign of the key held for a mode is drawn after its name,
 /// and the room between it and the digit, which stands for the `+`: as a

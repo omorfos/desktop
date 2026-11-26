@@ -425,8 +425,8 @@ launcher-heading {
 /* The row of modes at the bottom, under a hairline, while the pointer is
  * over an empty launcher; and a mode in it. */
 launcher-modes {
-  height: 40px;
-  padding: 8px 0 0 0;
+  height: 56px;
+  padding: 11px 12px 12px 12px;
   border-top: var(--edge);
 }
 launcher-mode {

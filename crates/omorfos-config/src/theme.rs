@@ -1689,6 +1689,22 @@ mod tests {
                 "{part:?}"
             );
         }
+        // The row of modes at the bottom keeps its modes as far in from
+        // the launcher's corners as their curves are from its own, so the
+        // two run evenly, and the ring round one the keyboard is on with
+        // them.
+        let modes = theme.style(Part::LauncherModes, States::NONE);
+        let mode = theme.style(Part::LauncherMode, States::NONE);
+        let tall = modes.height - modes.inset().down();
+        assert!(mode.radius <= tall / 2, "a pill at most");
+        let ring = theme.style(Part::LauncherMode, States::NONE.with(State::Focused));
+        assert!(ring.outline.width + ring.outline_offset < edge + modes.inset().left);
+        for (inner, side) in [
+            (modes.inset().left, "left"),
+            (modes.inset().bottom, "bottom"),
+        ] {
+            assert_eq!(launcher.radius, edge + inner + mode.radius, "{side}");
+        }
     }
 
     #[test]
