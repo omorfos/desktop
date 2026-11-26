@@ -349,7 +349,10 @@ launcher {
   backdrop-filter: blur(var(--blur));
   color: var(--text);
   border: var(--edge);
-  border-radius: 10px;
+  /* With nothing typed, a bar with half circles for ends, round about
+   * its field's: half as tall as the two of them, its field and its
+   * border and padding. */
+  border-radius: 41px;
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.36), inset 0 1px var(--glass-rim);
   /* A little slower to come than the rest, and slower again to leave. */
   transition: 220ms ease-out;
@@ -365,7 +368,7 @@ launcher-input {
   padding: 0 8px;
   color: var(--text);
   font-size: 20pt;
-  border-radius: 6px;
+  border-radius: 28px;
 }
 /* What is typed, when all of it is chosen, as Ctrl+A chooses it. */
 launcher-input:active {
@@ -375,10 +378,10 @@ launcher-input:active {
 /* A row has two lines: the name, and under it what the program says of
  * itself, if the launcher shows that; its icon is as tall as both. */
 launcher-item {
-  height: 48px;
-  padding: 6px 8px;
+  height: 56px;
+  padding: 8px 14px;
   color: var(--text);
-  border-radius: 6px;
+  border-radius: 28px;
 }
 launcher-item:active {
   background: var(--accent);
@@ -393,7 +396,7 @@ launcher-tile {
   min-width: 112px;
   padding: 8px;
   color: var(--text);
-  border-radius: 10px;
+  border-radius: 16px;
 }
 launcher-tile:active {
   background: var(--accent);
@@ -402,11 +405,11 @@ launcher-tile:active {
 /* The best of all, alone at the top of what is found: outlined while the
  * field has the keyboard, as what Enter takes, and lit as any row. */
 launcher-top {
-  height: 48px;
-  padding: 6px 8px;
+  height: 56px;
+  padding: 8px 14px;
   color: var(--text);
   border: 1px solid var(--accent-tint);
-  border-radius: 8px;
+  border-radius: 28px;
 }
 launcher-top:active {
   background: var(--accent);
@@ -429,7 +432,7 @@ launcher-modes {
 launcher-mode {
   padding: 0 12px;
   color: var(--text);
-  border-radius: 8px;
+  border-radius: 16px;
 }
 launcher-mode:hover { background: var(--accent-tint); }
 launcher-mode:active {
@@ -852,7 +855,7 @@ is measured to the outside of its border.
 | `border-color`, `border-width` | a color; `0` to `16px` | |
 | `outline` | a width, `solid` or `none`, a color | a line round the outside of the box, any of them in any order; its corners are rounded by as much more than the box's as it is out, unless the box's are square. A ring round what the keyboard is on, as `question-button:focus` has it; the eye in the password field has its ring close round it, there being no room to stand off |
 | `outline-color`, `outline-width`, `outline-offset` | a color; `0` to `16px`; `0` to `16px` | how far out the outline is, with nothing drawn between |
-| `border-radius` | `0` to `32px` | rounds the corners of the box; a `menu`'s rows are kept to its corners, so the first and last, highlighted, follow the curve, as `overflow: hidden` would have it |
+| `border-radius` | `0` to `64px` | rounds the corners of the box, no more than half as round as the box is wide or tall, so that one as round as it is tall is rounded whole; a `menu`'s rows are kept to its corners, so the first and last, highlighted, follow the curve, as `overflow: hidden` would have it |
 | `padding`, `margin` | one to four sizes, `0` to `64px` | all; top and bottom, then sides; top, sides, bottom; or top, right, bottom, left. A `menu`'s rows begin inside its border and padding: with none, as in the built-in theme, the first and last reach its border; `menu { padding: 4px 0; }` leaves room above and below them |
 | `height` | `16px` to `64px` | of `titlebar`, `menu-item`, `panel`, `launcher-input`, `launcher-item`, `popover-day` and `question-button` |
 | `min-width`, `max-width` | `0` to `4096px` | of `workspace`, `task` and `clock`, and of `popover-day`, whose height or `min-width`, whichever is more, is how large each day of a month is, and each day of the months beside it, each arrow and each day of the week; `max-width: 0` is no limit. The launcher is as wide as its `min-width`, and so is each program in its grid, `launcher-tile`, and so is each button of a titlebar, which is not there at all if that is `0` |

@@ -714,7 +714,9 @@ fn settings(
         ("outline-color", None) => one(color(value).map(Setting::OutlineColor)),
         ("outline-width", None) => one(size(value, "px", 0, 16).map(Setting::OutlineWidth)),
         ("outline-offset", None) => one(size(value, "px", 0, 16).map(Setting::OutlineOffset)),
-        ("border-radius", None) => one(size(value, "px", 0, 32).map(Setting::Radius)),
+        // As round as half the tallest a part is, and enough for a box
+        // taller, as the launcher is, to be rounded whole.
+        ("border-radius", None) => one(size(value, "px", 0, 64).map(Setting::Radius)),
         ("padding", side) => around(value, side, Setting::Padding),
         ("margin", side) => around(value, side, Setting::Margin),
         ("height", None) => one(size(value, "px", 16, 64).map(Setting::Height)),
@@ -1662,6 +1664,30 @@ mod tests {
         for part in Part::ALL {
             assert_eq!(still.style(part, FOCUSED).transition, Transition::NONE);
             assert_eq!(still.style(part, closing).transition, Transition::NONE);
+        }
+    }
+
+    #[test]
+    fn the_empty_launcher_is_a_bar_rounded_whole_about_its_field() {
+        // Its ends half circles, the field's within them too, the two
+        // curves as far apart as the launcher's border and padding.
+        let theme = Theme::default();
+        let launcher = theme.style(Part::Launcher, States::NONE);
+        let field = theme.style(Part::LauncherInput, States::NONE);
+        let edge = launcher.inset().top;
+        assert_eq!(edge, launcher.inset().bottom);
+        assert_eq!(2 * launcher.radius, field.height + 2 * edge);
+        assert_eq!(field.radius, field.height / 2);
+        assert_eq!(launcher.radius, field.radius + edge);
+        // Its rows and its top hit as tall as its field and as round, so
+        // that every curve in it runs evenly about the next.
+        for part in [Part::LauncherItem, Part::LauncherTop] {
+            let row = theme.style(part, States::NONE);
+            assert_eq!(
+                (row.height, row.radius),
+                (field.height, field.radius),
+                "{part:?}"
+            );
         }
     }
 
@@ -2649,7 +2675,7 @@ mod tests {
     fn sizes_outside_what_can_be_drawn_are_refused() {
         let cases = [
             ("window { border-width: 17px }", "from 0px to 16px"),
-            ("window { border-radius: 33px }", "from 0px to 32px"),
+            ("window { border-radius: 65px }", "from 0px to 64px"),
             ("tab { border-bottom-width: 99 }", "from 0px to 16px"),
             ("titlebar { height: 8px }", "from 16px to 64px"),
             ("titlebar { height: 1.5px }", "in whole px"),
@@ -2670,6 +2696,10 @@ mod tests {
             let message = problem(stylesheet);
             assert!(message.contains(expected), "{stylesheet}: {message}");
         }
+        // As round as half the tallest a part is, and a launcher taller
+        // than that rounded whole.
+        let round = Theme::parse("launcher { border-radius: 64px }").unwrap();
+        assert_eq!(round.style(Part::Launcher, States::NONE).radius, 64);
     }
 
     #[test]

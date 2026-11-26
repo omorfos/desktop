@@ -2053,24 +2053,24 @@ mod tests {
         picker.fit(&theme, 1080);
         assert_eq!(picker.size(&theme), (wide, bare));
         // Five rows, each of two lines, and a heading of 24 over the top
-        // hit and another over the rest, with room for nine.
+        // hit and another over the rest, with room for eight.
         let mut picker = every();
         picker.fit(&theme, 1080);
-        assert_eq!(picker.size(&theme), (wide, bare + under + 2 * 24 + 5 * 48));
+        assert_eq!(picker.size(&theme), (wide, bare + under + 2 * 24 + 5 * 56));
         let mut picker = several();
         typed(&mut picker, "fi");
-        assert_eq!(picker.size(&theme), (wide, bare + under + 2 * 24 + 2 * 48));
+        assert_eq!(picker.size(&theme), (wide, bare + under + 2 * 24 + 2 * 56));
         typed(&mut picker, "zzz");
         assert_eq!(
             picker.size(&theme),
-            (wide, bare + under + 48),
+            (wide, bare + under + 56),
             "a row to say so"
         );
-        // A smaller screen has room for fewer: three lines, two of them
-        // headings.
+        // A smaller screen has room for fewer: two lines, the top hit and
+        // its heading.
         let mut picker = every();
         picker.fit(&theme, 480);
-        assert_eq!(picker.size(&theme), (wide, bare + under + 2 * 24 + 48));
+        assert_eq!(picker.size(&theme), (wide, bare + under + 24 + 56));
         picker.fit(&theme, 100);
         assert_eq!(
             picker.size(&theme),
@@ -2089,7 +2089,7 @@ mod tests {
         typed(&mut long, "program");
         long.fit(&wide, 480);
         // Its two headings and its top hit as the built-in theme has them.
-        assert_eq!(long.size(&wide), (600, 40 + 2 * 24 + 48 + 6 * 22));
+        assert_eq!(long.size(&wide), (600, 40 + 2 * 24 + 56 + 6 * 22));
         let narrow = Theme::parse("launcher { min-width: 10px; }").unwrap();
         assert_eq!(long.size(&narrow).0, NARROWEST);
 
@@ -2107,10 +2107,10 @@ mod tests {
         let theme = Theme::default();
         let mut picker = several();
         picker.fit(&theme, 1080);
-        // Nine rows at most: 522 tall in all.
-        assert_eq!(picker.top(&theme, 1080), (1080 - 522) / 2);
+        // Eight rows at most: 538 tall in all.
+        assert_eq!(picker.top(&theme, 1080), (1080 - 538) / 2);
         typed(&mut picker, "zzz");
-        assert_eq!(picker.top(&theme, 1080), (1080 - 522) / 2, "however few");
+        assert_eq!(picker.top(&theme, 1080), (1080 - 538) / 2, "however few");
         picker.fit(&theme, 100);
         assert_eq!(picker.top(&theme, 100), 0, "however small the screen");
     }
@@ -2242,7 +2242,9 @@ mod tests {
         };
         // Files, under the heading, has an icon as tall as the row's two
         // lines; Calculator has none, and room is left where it would be.
-        assert_eq!(green(&canvas, 3), 36);
+        let item = theme.style(Part::LauncherItem, States::NONE);
+        let side = item.height - item.inset().down();
+        assert_eq!(green(&canvas, 3), usize::try_from(side).unwrap_or_default());
         assert_eq!(green(&canvas, 1), 0);
         // Calculator is the top hit, outlined: its room for an icon is
         // inside its border too.
@@ -2458,7 +2460,9 @@ mod tests {
         let start = left.unsigned_abs() + best.inset().left;
         let lines = (middle - half + 4..middle + half - 4).map(i32::unsigned_abs);
         let lit_at = |x: u32| lines.clone().all(|y| canvas.at(x, y) == lit(&theme));
-        let beside = start..start + best.height - best.inset().down() + GAP;
+        // Clear of its round end, to past where its icon would be.
+        let round = left.unsigned_abs() + best.radius;
+        let beside = round..start + best.height - best.inset().down() + GAP;
         assert!(beside.clone().all(lit_at));
         let past = beside.end..beside.end + 40;
         assert!(!past.into_iter().all(lit_at));
@@ -2962,7 +2966,9 @@ mod tests {
         let style = theme.style(Part::LauncherTop, States::NONE);
         let (left, top) = (left.unsigned_abs(), top.unsigned_abs());
         let glass = canvas.at(left + 1, top.saturating_sub(4));
-        let edge = (left + 20..left + width - 20).map(|x| canvas.at(x, top));
+        // Along its top, between its round ends.
+        let round = style.radius;
+        let edge = (left + round..left + width - round).map(|x| canvas.at(x, top));
         assert!(
             edge.into_iter().all(|pixel| pixel != glass),
             "{:?}",

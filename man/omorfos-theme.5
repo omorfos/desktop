@@ -358,7 +358,10 @@ launcher {
   backdrop\-filter: blur(var(\-\-blur));
   color: var(\-\-text);
   border: var(\-\-edge);
-  border\-radius: 10px;
+  /* With nothing typed, a bar with half circles for ends, round about
+   * its field's: half as tall as the two of them, its field and its
+   * border and padding. */
+  border\-radius: 41px;
   box\-shadow: 0 12px 32px rgba(0, 0, 0, 0.36), inset 0 1px var(\-\-glass\-rim);
   /* A little slower to come than the rest, and slower again to leave. */
   transition: 220ms ease\-out;
@@ -374,7 +377,7 @@ launcher\-input {
   padding: 0 8px;
   color: var(\-\-text);
   font\-size: 20pt;
-  border\-radius: 6px;
+  border\-radius: 28px;
 }
 /* What is typed, when all of it is chosen, as Ctrl+A chooses it. */
 launcher\-input:active {
@@ -384,10 +387,10 @@ launcher\-input:active {
 /* A row has two lines: the name, and under it what the program says of
  * itself, if the launcher shows that; its icon is as tall as both. */
 launcher\-item {
-  height: 48px;
-  padding: 6px 8px;
+  height: 56px;
+  padding: 8px 14px;
   color: var(\-\-text);
-  border\-radius: 6px;
+  border\-radius: 28px;
 }
 launcher\-item:active {
   background: var(\-\-accent);
@@ -402,7 +405,7 @@ launcher\-tile {
   min\-width: 112px;
   padding: 8px;
   color: var(\-\-text);
-  border\-radius: 10px;
+  border\-radius: 16px;
 }
 launcher\-tile:active {
   background: var(\-\-accent);
@@ -411,11 +414,11 @@ launcher\-tile:active {
 /* The best of all, alone at the top of what is found: outlined while the
  * field has the keyboard, as what Enter takes, and lit as any row. */
 launcher\-top {
-  height: 48px;
-  padding: 6px 8px;
+  height: 56px;
+  padding: 8px 14px;
   color: var(\-\-text);
   border: 1px solid var(\-\-accent\-tint);
-  border\-radius: 8px;
+  border\-radius: 28px;
 }
 launcher\-top:active {
   background: var(\-\-accent);
@@ -438,7 +441,7 @@ launcher\-modes {
 launcher\-mode {
   padding: 0 12px;
   color: var(\-\-text);
-  border\-radius: 8px;
+  border\-radius: 16px;
 }
 launcher\-mode:hover { background: var(\-\-accent\-tint); }
 launcher\-mode:active {
