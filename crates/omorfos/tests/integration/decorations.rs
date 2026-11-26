@@ -384,7 +384,7 @@ fn the_title_is_written_on_the_titlebar() {
         .count();
     assert!(
         inked > 30,
-        "expected glyphs on the titlebar, found {inked} changed pixels"
+        "expected glyphs on the window > titlebar, found {inked} changed pixels"
     );
 }
 
@@ -500,11 +500,11 @@ fn a_frame_that_loses_focus_is_redrawn_in_the_unfocused_colours() {
 
 #[test]
 fn a_frame_gets_to_the_colours_of_its_focus_over_the_time_the_theme_gives() {
-    let theme = "window, titlebar { transition: 100ms linear; }\n\
+    let theme = "window, window > titlebar { transition: 100ms linear; }\n\
                  window { border: 1px solid #ff0000; }\n\
-                 window:focus { border-color: #0000ff; }\n\
-                 titlebar { background: #ff0000; }\n\
-                 titlebar:focus { background: #0000ff; }\n";
+                 window:focus-within { border-color: #0000ff; }\n\
+                 window > titlebar { background: #ff0000; }\n\
+                 window:focus-within > titlebar { background: #0000ff; }\n";
     let mut session = Session::with_config(&[("theme.css", theme)]);
     let mut client = session.connect();
     let (red, blue) = (0xffff_0000, 0xff00_00ff);
@@ -603,7 +603,7 @@ fn a_window_and_its_frame_go_from_the_screen_over_the_time_the_theme_gives() {
     // As large as it is all the while, for its edges to be where they are.
     let theme = format!(
         "{EDGED}window {{ transition: 100ms linear; }}\n\
-         window:closing {{ scale: 1 }}\n"
+         window:state(closing) {{ scale: 1 }}\n"
     );
     let theme = theme.as_str();
     let mut session =
@@ -680,7 +680,7 @@ fn a_window_that_closes_fades_out_as_it_last_was() {
 #[test]
 fn a_titlebar_the_theme_fills_with_a_gradient_runs_from_one_colour_to_the_other() {
     let theme = "* { transition: none; }\n\
-                 titlebar, titlebar:focus { background: linear-gradient(to right, #f00, #00f); }\n";
+                 window > titlebar, window:focus-within > titlebar { background: linear-gradient(to right, #f00, #00f); }\n";
     let mut session = Session::with_config(&[("theme.css", theme)]);
     let mut client = session.connect();
     let _window = session.open_decorated(&mut client, "first", (200, 100), RED);
@@ -943,7 +943,7 @@ fn the_buttons_are_coloured_with_the_pointer_on_any_whether_or_not_their_frame_h
 #[test]
 fn a_theme_can_style_the_button_under_the_pointer_apart_from_the_other_two() {
     let white = 0xffff_ffff;
-    let theme = "button-close:hover { background: #fff; }";
+    let theme = "window > titlebar > controls > button.close:hover { background: #fff; }";
     let mut session = Session::with_config(&[("theme.css", theme)]);
     let mut client = session.connect();
     session.open_decorated(&mut client, "first", (200, 100), RED);
@@ -1406,8 +1406,8 @@ fn a_theme_change_restyles_existing_frames() {
     session.write_config(
         "theme.css",
         "window { border-width: 4px; border-radius: 0; }\n\
-         window:focus { border-color: #00ff00; }\n\
-         titlebar:focus { background: #0000ff; color: #ffffff; }\n",
+         window:focus-within { border-color: #00ff00; }\n\
+         window:focus-within > titlebar { background: #0000ff; color: #ffffff; }\n",
     );
     session.compositor_mut().reload_config();
     session.roundtrip(&mut client);
@@ -1443,7 +1443,7 @@ fn open_said_to_be(session: &mut Session, client: &mut Client, size: (i32, i32),
 #[test]
 fn a_window_said_to_be_enormous_is_kept_in_a_frame_that_can_be_drawn() {
     // What is behind the overview not blurred, which takes a while.
-    let theme = "overview-backdrop { backdrop-filter: none; }\n";
+    let theme = "overview::backdrop { backdrop-filter: none; }\n";
     let mut session = Session::with_config(&[("theme.css", theme)]);
     let mut client = session.connect();
     open_said_to_be(&mut session, &mut client, ENORMOUS, true);
@@ -1473,7 +1473,7 @@ fn a_window_said_to_be_enormous_is_kept_in_a_frame_that_can_be_drawn() {
 #[test]
 fn a_window_with_no_frame_of_ours_said_to_be_enormous_does_not_stop_the_screen_being_drawn() {
     // What is behind the switcher not blurred, which takes a while.
-    let theme = "switcher-backdrop { backdrop-filter: none; }\n";
+    let theme = "switcher::backdrop { backdrop-filter: none; }\n";
     let mut session = Session::with_config(&[("theme.css", theme)]);
     let mut client = session.connect();
     open_said_to_be(&mut session, &mut client, ENORMOUS, false);

@@ -36,7 +36,7 @@ the program's file (`foot` finds `foot.desktop`), or else the icon theme's
 icon of that name. Most others have a sign, such as a magnifying glass
 for `show_launcher`; and one that turns something on and off, such as a
 cup for `stay_awake`, has its sign in the accent on a faint square of it
-while it is on, as `menu-sign:active` in the theme has it. Give an item
+while it is on, as `menu > item:checked > icon` in the theme has it. Give an item
 an `icon`, the name of one of the icon theme's icons or the path of a
 picture, to have that instead; a submenu has nothing unless it has one:
 
@@ -55,7 +55,7 @@ caret, the option sign and a broad arrow up, and Enter, Space, Tab,
 Backspace and the arrows by theirs; other keys as written on them, as `Q`,
 `Esc` or `Del`; each a little apart, where a `+` would be. So Run… has the
 sign of Super and of Space beside it. A row whose action has no binding
-has none. Their colour is `menu-keys` in the theme.
+has none. Their colour is `menu > item > kbd` in the theme.
 
 The menu a right click on a titlebar opens is the same: a sign for what
 each row does, those of "Maximize", "Shade", "Keep above" and "Show on

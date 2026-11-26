@@ -304,9 +304,10 @@ impl Part {
         Self::AboutButton,
     ];
 
-    /// What the part is called in a stylesheet.
+    /// The name a stylesheet called the part by before ADR 110, kept only
+    /// to say what it is called now.
     #[must_use]
-    pub const fn name(self) -> &'static str {
+    pub const fn former(self) -> &'static str {
         match self {
             Self::Desktop => "desktop",
             Self::Window => "window",
@@ -770,13 +771,6 @@ impl Part {
             _ => None,
         }
     }
-
-    /// The name a stylesheet called the part by before ADR 110, kept only
-    /// to say what it is called now.
-    #[must_use]
-    pub const fn former(self) -> &'static str {
-        self.name()
-    }
 }
 
 /// Whether two names are the same, as the tables are checked while the
@@ -812,8 +806,9 @@ const fn repeats(path: &[Node]) -> bool {
     false
 }
 
-/// Whether some path has a type twice, which matching a selector against
-/// the tree takes there never to be.
+/// Whether some path has a type twice, which would make `button button`
+/// mean one button or two, and the suggestions said of a selector that
+/// reaches nothing, by the types they share with it, unclear.
 const fn a_kind_twice() -> bool {
     let mut any = false;
     let mut part = 0;
@@ -902,11 +897,6 @@ impl States {
     /// Which of the [`States::COMBINATIONS`] this is.
     pub(crate) const fn index(self) -> usize {
         self.0 as usize
-    }
-
-    /// How many states these are.
-    pub(crate) const fn count(self) -> u32 {
-        self.0.count_ones()
     }
 
     /// Whether every one of these states is among `others`.
@@ -1078,7 +1068,7 @@ pub struct Style {
     /// background lets it be seen (`backdrop-filter`); 0 for not at all.
     pub blur: u32,
     /// How see-through and how large it is drawn as a whole: what it goes
-    /// to as it leaves, while it is `:closing`.
+    /// to as it leaves, while it is `:state(closing)`.
     pub presence: Presence,
     /// Whether it is drawn at all, and given room: false where the theme
     /// says `display: none`. Only the parts whose description says so read
@@ -1087,7 +1077,7 @@ pub struct Style {
 }
 
 /// How see-through and how large a part is drawn as a whole: once it is
-/// there, as it arrives (`@starting-style`), and as it leaves (`:closing`),
+/// there, as it arrives (`@starting-style`), and as it leaves (`:state(closing)`),
 /// from one to the other over its transition.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Presence {
@@ -1224,12 +1214,12 @@ mod tests {
             let alone = States::NONE.with(state);
             assert!(alone.has(state));
             assert_eq!(alone.with(state), alone);
-            assert_eq!(alone.count(), 1);
+            assert_eq!(alone.0.count_ones(), 1);
         }
         let both = States::NONE.with(State::Focused).with(State::Active);
         assert!(both.has(State::Focused) && both.has(State::Active));
         assert!(!both.has(State::Hovered));
-        assert_eq!(both.count(), 2);
+        assert_eq!(both.0.count_ones(), 2);
         let hovered = States::NONE.with(State::Hovered);
         assert_eq!(States::NONE.when(State::Hovered, true), hovered);
         assert_eq!(both.when(State::Hovered, false), both);
@@ -1307,8 +1297,8 @@ mod tests {
     }
 
     #[test]
-    fn parts_and_states_have_the_names_a_stylesheet_calls_them_by() {
-        let parts: Vec<&str> = Part::ALL.iter().map(|part| part.name()).collect();
+    fn parts_had_the_names_a_stylesheet_called_them_by_before_the_tree() {
+        let parts: Vec<&str> = Part::ALL.iter().map(|part| part.former()).collect();
         assert_eq!(
             parts,
             [
@@ -1484,6 +1474,22 @@ mod tests {
     }
 
     #[test]
+    fn the_tree_is_written_from_elements_and_states_spelled_on_them() {
+        let close = classed("button", &["close"]);
+        assert_eq!(
+            (close.kind, close.classes, close.pseudo),
+            ("button", &["close"][..], None)
+        );
+        assert_eq!(node("menu").classes, [] as [&str; 0]);
+        assert_eq!(backdrop("launcher").pseudo, Some("backdrop"));
+        let spelled = own(State::Hovered, 2, ":hover");
+        assert_eq!(
+            (spelled.slot, spelled.node, spelled.name),
+            (Slot::Own(State::Hovered), 2, ":hover")
+        );
+    }
+
+    #[test]
     fn a_path_with_a_type_twice_is_told_from_one_without() {
         assert!(same("kbd", "kbd"));
         assert!(!same("kbd", "kbds"));
@@ -1557,12 +1563,5 @@ mod tests {
         assert_eq!(found("question"), Some(Part::Question));
         assert_eq!(found("wallpaper"), None);
         assert_eq!(found("menu"), None, "drawn by the compositor, sent by none");
-    }
-
-    #[test]
-    fn an_old_name_is_kept_only_to_point_to_the_new() {
-        for part in Part::ALL {
-            assert_eq!(part.former(), part.name(), "{part:?}");
-        }
     }
 }

@@ -27,7 +27,7 @@ pub(crate) const ALT_TAB: (&str, &str) = (
 /// software renderer a while, for what is not about it.
 const UNBLURRED: (&str, &str) = (
     "theme.css",
-    "switcher-backdrop { backdrop-filter: none; }\n",
+    "switcher::backdrop { backdrop-filter: none; }\n",
 );
 
 fn press(session: &mut Session, code: Keycode, pressed: bool) {
@@ -1291,14 +1291,14 @@ fn behind_the_switcher_its_screen_is_dimmed_and_blurred_unless_the_theme_says_no
     let cases = [
         ("", true, true, diagonal),
         (
-            "switcher-backdrop { backdrop-filter: none; }\n\
+            "switcher::backdrop { backdrop-filter: none; }\n\
              switcher { backdrop-filter: none; }\n",
             true,
             false,
             FLAT,
         ),
         (
-            "switcher-backdrop { background: transparent; backdrop-filter: none; }\n\
+            "switcher::backdrop { background: transparent; backdrop-filter: none; }\n\
              switcher { backdrop-filter: none; }\n",
             false,
             false,

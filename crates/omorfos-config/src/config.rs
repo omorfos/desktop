@@ -288,7 +288,7 @@ mod tests {
                 "rules.yaml",
                 "rules:\n  - match: { app_id: mpv }\n    fullscreen: true\n",
             ),
-            ("theme.css", "clock { color: #ff0000; }\n"),
+            ("theme.css", "panel > clock { color: #ff0000; }\n"),
             ("menu.yaml", "items: [separator]\n"),
         ]);
         assert_eq!(diagnostics, [""; 0]);
@@ -368,7 +368,7 @@ mod tests {
         // A theme that is wrong is still too: the built-in one, where there
         // was nothing of the user's to keep, in the scheme chosen now.
         let light = "appearance: { scheme: light, reduce_motion: true }\n";
-        let broken = "clock { color: huge; }\n";
+        let broken = "panel > clock { color: huge; }\n";
         let (started, _) = load(&[("config.yaml", reduced)]);
         let fresh = directory(&[("config.yaml", light), ("theme.css", broken)]);
         let (after, diagnostics) = Config::load(fresh.path(), &started);
@@ -379,8 +379,8 @@ mod tests {
 
     #[test]
     fn a_wrong_theme_keeps_the_scheme_it_was_built_in_until_it_is_mended() {
-        let own = "clock { color: #ff0000; }\n";
-        let broken = "clock { color: huge; }\n";
+        let own = "panel > clock { color: #ff0000; }\n";
+        let broken = "panel > clock { color: huge; }\n";
         let light = "appearance: { scheme: light, accent: orange }\n";
         // A scheme chosen while the theme is wrong waits for it.
         let kept = directory(&[("theme.css", own)]);
@@ -419,7 +419,7 @@ mod tests {
             ("theme.css", "* {\n  font-size: huge;\n}\n"),
         ]);
         let fallback = Config {
-            theme: Theme::parse("clock { color: #ff0000; }").unwrap(),
+            theme: Theme::parse("panel > clock { color: #ff0000; }").unwrap(),
             ..Config::default()
         };
 
@@ -443,7 +443,7 @@ mod tests {
     fn a_theme_left_over_from_before_stylesheets_is_pointed_out() {
         let (config, diagnostics) = load(&[
             ("theme.yaml", "colors: { accent: '#ff0000' }\n"),
-            ("theme.css", "clock { color: #00ff00; }\n"),
+            ("theme.css", "panel > clock { color: #00ff00; }\n"),
         ]);
         assert_eq!(
             diagnostics,

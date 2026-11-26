@@ -504,7 +504,7 @@ mod tests {
 
         // A workspace's name, and what says the radios are off, cut short
         // by the theme too.
-        let narrow = Theme::parse("workspace, clock { max-width: 20px; }").unwrap();
+        let narrow = Theme::parse("panel > workspace, panel > clock { max-width: 20px; }").unwrap();
         let named = Bar::new(&state, "left", WIDTH, said, &narrow, &mut Text::new());
         let all: Vec<Hint> = (0..800).filter_map(|x| hinted(&named, x)).collect();
         assert!(all.contains(&Hint::Whole("code".to_owned())));
@@ -909,7 +909,7 @@ mod tests {
     #[test]
     fn room_kept_around_a_button_is_not_part_of_it() {
         let (plain, _) = styled("");
-        let (bar, theme) = styled("workspace { margin: 3px 5px; }");
+        let (bar, theme) = styled("panel > workspace { margin: 3px 5px; }");
         let (plain, spaced) = (spans(&plain), spans(&bar));
         assert_eq!(spaced[0].0, 5);
         assert_eq!(
@@ -936,7 +936,7 @@ mod tests {
     #[test]
     fn padding_makes_a_button_wider_than_its_label() {
         let (plain, _) = styled("");
-        let (padded, _) = styled("workspace { padding: 0 30px; }");
+        let (padded, _) = styled("panel > workspace { padding: 0 30px; }");
         let width = |bar: &Bar, index: usize| {
             let span = spans(bar)[index];
             span.1 - span.0
@@ -947,11 +947,12 @@ mod tests {
 
     #[test]
     fn a_button_is_held_to_its_narrowest_and_its_widest() {
-        let (bar, _) = styled("workspace { min-width: 100px; } task { max-width: 50px; }");
+        let (bar, _) =
+            styled("panel > workspace { min-width: 100px; } panel > task { max-width: 50px; }");
         let widths: Vec<u32> = spans(&bar).iter().map(|span| span.1 - span.0).collect();
         assert_eq!(widths, [100, 100, 50, 50]);
         // With no limit, the windows share all the room there is.
-        let (bar, _) = styled("task { max-width: 0; }");
+        let (bar, _) = styled("panel > task { max-width: 0; }");
         let spans = spans(&bar);
         assert!(spans[3].1 - spans[3].0 > 240, "{spans:?}");
     }
@@ -960,7 +961,7 @@ mod tests {
     fn a_bar_and_its_buttons_can_have_rounded_corners_and_borders() {
         let (bar, theme) = styled(
             "panel { border-radius: 12px; border: 2px solid #ff0000; }\n\
-             workspace { border-radius: 6px; margin: 2px; }",
+             panel > workspace { border-radius: 6px; margin: 2px; }",
         );
         let canvas = bar.paint(&mut Text::new(), &theme, Scale::ONE, &mut Motion::new());
         assert_eq!(canvas.at(0, 0), 0, "the corner is cut away");
@@ -979,7 +980,7 @@ mod tests {
 
     #[test]
     fn the_clock_is_a_box_like_any_other() {
-        let (bar, theme) = styled("clock { background: #00ff00; margin: 0 7px 0 0; }");
+        let (bar, theme) = styled("panel > clock { background: #00ff00; margin: 0 7px 0 0; }");
         let canvas = bar.paint(&mut Text::new(), &theme, Scale::ONE, &mut Motion::new());
         let green = argb(Color::rgb(0, 255, 0));
         assert_eq!(canvas.at(WIDTH - 8, 1), green);

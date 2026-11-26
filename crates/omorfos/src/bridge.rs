@@ -413,7 +413,10 @@ mod tests {
         let built_in = Config::default();
         assert_eq!(built_in.theme.button_layout(), drawn(&built_in));
         assert_eq!(drawn(&built_in), "close,minimize,maximize:");
-        let without = config("theme.css", "button-minimize { min-width: 0 }\n");
+        let without = config(
+            "theme.css",
+            "window > titlebar > controls > button.minimize { min-width: 0 }\n",
+        );
         assert_eq!(without.theme.button_layout(), drawn(&without));
         assert_eq!(drawn(&without), "close,maximize:");
     }
@@ -462,9 +465,9 @@ mod tests {
     fn decoration_sizes_come_from_the_theme() {
         let theme = config(
             "theme.css",
-            "window { border-width: 3px; }\ntitlebar { height: 40px; }\n\
-             button-close { min-width: 16px; margin: 0 2px; }\n\
-             button-maximize { min-width: 0; }\n",
+            "window { border-width: 3px; }\nwindow > titlebar { height: 40px; }\n\
+             window > titlebar > controls > button.close { min-width: 16px; margin: 0 2px; }\n\
+             window > titlebar > controls > button.maximize { min-width: 0; }\n",
         );
         assert_eq!(
             settings(&theme).decoration,

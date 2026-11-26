@@ -205,8 +205,8 @@ fn clicking_a_workspace_on_the_bar_shows_it() {
 
 #[test]
 fn a_workspace_gets_to_the_colour_of_being_shown_over_the_time_the_theme_gives() {
-    let theme = "workspace { background: #ff0000; transition: 100ms linear; }\n\
-                 workspace:active { background: #0000ff; }\n";
+    let theme = "panel > workspace { background: #ff0000; transition: 100ms linear; }\n\
+                 panel > workspace:checked { background: #0000ff; }\n";
     let mut session =
         Session::with_config(&[("theme.css", theme), ("config.yaml", FOUR_WORKSPACES)]);
     let mut panel = panel(&mut session);
@@ -384,7 +384,7 @@ fn the_bar_follows_the_theme_as_it_is_saved() {
     session.write_config(
         "theme.css",
         "panel { height: 40px; background: #102030; }\n\
-         workspace, task { background: #102030; }\n",
+         panel > workspace, panel > task { background: #102030; }\n",
     );
 
     session.eventually(|session| {
@@ -1031,7 +1031,7 @@ fn a_theme_saved_while_the_month_is_open_closes_it_and_it_opens_again_as_the_the
     assert!(above_the_bar(&mut session, WIDTH - 100, tall - 4));
     assert!(!above_the_bar(&mut session, WIDTH - wide - 10, 20));
     let theme = format!(
-        "{UNSHADED}popover-day, popover-day-outside {{ height: 40px; min-width: 40px; }}\n"
+        "{UNSHADED}popover > calendar > day, popover > calendar > day.outside {{ height: 40px; min-width: 40px; }}\n"
     );
     session.write_config("theme.css", &theme);
     let panel = RefCell::new(panel);

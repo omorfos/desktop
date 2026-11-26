@@ -470,7 +470,7 @@ fn wrong(
 #[test]
 fn the_field_shakes_when_the_password_was_not_right_and_comes_to_rest() {
     // The tests' sessions keep still unless a part says otherwise.
-    let theme = "question { transition: 120ms; }\n";
+    let theme = "dialog.question { transition: 120ms; }\n";
     let (mut session, mut lock, _there, rest) = wrong(&[("theme.css", theme)], &[]);
     // Frames are shown a sixtieth of a second apart, by the time the
     // compositor tells them at.
@@ -496,10 +496,10 @@ fn the_field_shakes_when_the_password_was_not_right_and_comes_to_rest() {
 fn a_theme_that_moves_nothing_or_motion_reduced_has_the_field_keep_still() {
     // The tests' sessions keep still unless a part says otherwise, as the
     // question does here but for the setting.
-    let moving = ("theme.css", "question { transition: 120ms; }\n");
+    let moving = ("theme.css", "dialog.question { transition: 120ms; }\n");
     let reduced = ("config.yaml", "appearance: { reduce_motion: true }\n");
     let still: [&[(&str, &str)]; 2] = [
-        &[("theme.css", "question { transition: none; }\n")],
+        &[("theme.css", "dialog.question { transition: none; }\n")],
         &[moving, reduced],
     ];
     for files in still {
@@ -516,7 +516,7 @@ fn a_theme_that_moves_nothing_or_motion_reduced_has_the_field_keep_still() {
 fn a_lock_screen_started_after_the_configuration_went_wrong_honours_what_the_session_kept() {
     // Motion was reduced when the session last kept the configuration;
     // the file has gone wrong since, and its defaults would shake the field.
-    let moving = ("theme.css", "question { transition: 120ms; }\n");
+    let moving = ("theme.css", "dialog.question { transition: 120ms; }\n");
     let broken = ("config.yaml", "appearance: [\n");
     let kept = ("config.yaml", "appearance: { reduce_motion: true }\n");
     let (mut session, mut lock, _there, rest) = wrong(&[moving, broken], &[kept]);
@@ -653,7 +653,8 @@ fn who_has_no_face_of_their_own_is_shown_a_circle_with_their_initials() {
 fn who_is_to_unlock_comes_into_view_as_the_theme_has_things_move() {
     let there = tempfile::TempDir::new().unwrap();
     crate::wallpaper::png(&there.path().join("face.png"), (8, 8), |_, _| RED);
-    let mut session = Session::with_config(&[("theme.css", "question { transition: 120ms; }\n")]);
+    let mut session =
+        Session::with_config(&[("theme.css", "dialog.question { transition: 120ms; }\n")]);
     let mut lock = awake(&mut session, there.path(), &[Way::Password]);
     assert!(!inked(&mut session, NAME_ROW), "not yet");
     let middle = usize::try_from(WIDTH / 2).unwrap();
@@ -1184,7 +1185,7 @@ fn super_and_a_chooses_all_that_is_typed_to_type_over_or_take_out_and_ctrl_and_a
 fn the_cursor_blinks_from_the_last_key_unless_nothing_is_to_move() {
     // The tests' sessions keep still unless a part says otherwise, as the
     // box does here.
-    let moving = ("theme.css", "question { transition: 120ms; }\n");
+    let moving = ("theme.css", "dialog.question { transition: 120ms; }\n");
     for (files, blinks) in [(&[moving][..], true), (&[], false)] {
         let there = tempfile::TempDir::new().unwrap();
         let mut session = Session::with_config(files);

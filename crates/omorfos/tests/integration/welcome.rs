@@ -279,7 +279,7 @@ fn a_click_on_skip_closes_the_card_and_one_beside_it_does_nothing() {
     let state = tempfile::TempDir::new().unwrap();
     let chosen = Chosen::default();
     // A backdrop that dims what is behind, as a theme may have it.
-    let dimmed = "launcher-backdrop { background: rgba(0, 0, 0, 0.4); }";
+    let dimmed = "launcher::backdrop { background: rgba(0, 0, 0, 0.4); }";
     let theme = omorfos_config::Theme::parse(dimmed).unwrap();
     let marked = state.path().join("welcomed");
     let (mut card, (width, height)) =

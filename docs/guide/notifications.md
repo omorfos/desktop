@@ -52,13 +52,13 @@ applications work with it as they are. It needs the session's D-Bus, which
 a session started from a login manager has.
 
 How notifications look is in `theme.css`, under `notification`,
-`notification-title`, `notification-body` and `notification-level`; a
-critical one is `notification:urgent`. Their width is `min-width`, and
+`notification > title`, `notification > body` and `notification > meter`; a
+critical one is `notification:state(urgent)`. Their width is `min-width`, and
 `margin` is the room between them and around them.
 
 A notification can say how full something is, out of 100, by the usual
 `value` hint, as the volume and brightness keys do: it is drawn as a bar
-of `notification-level` under what it says. One sent with the hint
+of `notification > meter` under what it says. One sent with the hint
 `synchronous` (or `x-canonical-private-synchronous`, or
 `x-dunst-stack-tag`) takes the place of the one showing with the same
 tag, so that holding a key down shows one notification that changes

@@ -2155,16 +2155,18 @@ mod tests {
         // Shorter rows, more of them.
         let wide = Theme::parse(
             "launcher { min-width: 600px; padding: 0; border: none; }\n\
-             launcher-input { margin: 0; height: 40px; }\n\
-             launcher-item { height: 20px; margin: 1px 0; }",
+             launcher > input { margin: 0; height: 40px; }\n\
+             launcher > list > item { height: 20px; margin: 1px 0; }",
         )
         .unwrap();
         let many: Vec<String> = (0..20).map(|n| format!("Program {n:02}")).collect();
         let mut long = self::picker(&many.iter().map(String::as_str).collect::<Vec<_>>());
         typed(&mut long, "program");
         long.fit(&wide, 480);
-        // Its two headings and its top hit as the built-in theme has them.
-        assert_eq!(long.size(&wide), (600, 40 + 2 * 24 + 56 + 6 * 22));
+        // Its two headings as the built-in theme has them, and its top hit
+        // as the rest: the top hit is an item, which `item` reaches, as
+        // `.top` names apart (ADR 110).
+        assert_eq!(long.size(&wide), (600, 40 + 2 * 24 + 7 * 22));
         let narrow = Theme::parse("launcher { min-width: 10px; }").unwrap();
         assert_eq!(long.size(&narrow).0, NARROWEST);
 
@@ -3513,8 +3515,10 @@ mod tests {
         let name = text.measure("Programs", font);
         let edge = left.unsigned_abs() + style.inset().left + side + BESIDE + name + CHIP_APART;
         let middle = top.unsigned_abs() + tall / 2;
-        let bare =
-            Theme::parse("launcher-mode-key { border: none; background: transparent; }").unwrap();
+        let bare = Theme::parse(
+            "launcher > modes > button > kbd { border: none; background: transparent; }",
+        )
+        .unwrap();
         let chipped = painted(&picker).at(edge, middle);
         let plain = still(&picker, &bare, Scale::ONE, &mut Icons::default()).at(edge, middle);
         assert_ne!(chipped, plain, "its edge");
@@ -3523,7 +3527,7 @@ mod tests {
     #[test]
     fn a_theme_can_leave_the_modes_keys_out() {
         let shown = Theme::default();
-        let hidden = Theme::parse("launcher-mode-key { display: none; }").unwrap();
+        let hidden = Theme::parse("launcher > modes > button > kbd { display: none; }").unwrap();
         let text = &mut Text::new();
         let mut picker = several();
         let (x, y) = field_at(&shown);

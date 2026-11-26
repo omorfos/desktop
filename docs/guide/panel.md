@@ -28,8 +28,8 @@ click puts it away until the pointer leaves what was clicked.
 
 It is a program of its own, started with the session, and started again if
 it crashes. How it looks is in `theme.css`, under `panel`, `workspace`,
-`task` and `clock`, the month under `popover`, `popover-item`,
-`popover-day` and `popover-day-outside`, and its tooltips under `tooltip`;
+`task` and `clock`, the month under `popover`, `popover > item`,
+`popover > calendar > day` and `popover > calendar > day.outside`, and its tooltips under `tooltip`;
 it follows the file as you save it.
 
 To go without it, or to use another panel that speaks layer-shell, such as

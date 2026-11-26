@@ -58,8 +58,9 @@
 }
 
 /* Colours take a moment to change when a part's state does. To have them
- * change at once, write `* { transition: none; }` in your theme. */
-* {
+ * change at once, write `*, *::backdrop { transition: none; }` in your
+ * theme. */
+*, *::backdrop {
   font-family: Inter, sans-serif; /* Inter where it is installed */
   font-size: 11pt;
   transition: 120ms ease-out;
@@ -69,29 +70,55 @@
  * change, and leaves quicker than it came, so that what has been dismissed
  * is not in the way of what is next: it comes over its own transition,
  * from how it is in @starting-style, a little small and not yet seen; and
- * it goes over the one it has :closing, to how it is then, a little less
+ * it goes over the one it has :state(closing), to how it is then, a little less
  * small. `scale` is only for this: how large a part is drawn as it comes
  * and goes. */
-window, menu, notice, tooltip, panel, notification, launcher, switcher, question, about {
+window,
+menu,
+notice,
+tooltip,
+panel,
+notification,
+launcher,
+switcher,
+dialog.question,
+dialog.about {
   transition: 180ms ease-out;
 }
-window:closing, menu:closing, notice:closing, tooltip:closing, panel:closing,
-notification:closing, launcher:closing, switcher:closing, question:closing, about:closing {
+window:state(closing),
+menu:state(closing),
+notice:state(closing),
+tooltip:state(closing),
+panel:state(closing),
+notification:state(closing),
+launcher:state(closing),
+switcher:state(closing),
+dialog.question:state(closing),
+dialog.about:state(closing) {
   transition: 120ms ease-in;
   scale: 98%;
   opacity: 0;
 }
 @starting-style {
-  window, menu, notice, tooltip, panel, notification, launcher, switcher, question, about {
+  window,
+  menu,
+  notice,
+  tooltip,
+  panel,
+  notification,
+  launcher,
+  switcher,
+  dialog.question,
+  dialog.about {
     scale: 96%;
     opacity: 0;
   }
 }
 /* What dims the screen behind the launcher only fades, being as large as
  * the screen. */
-launcher-backdrop:closing { opacity: 0; }
+launcher:state(closing)::backdrop { opacity: 0; }
 @starting-style {
-  launcher-backdrop { opacity: 0; }
+  launcher::backdrop { opacity: 0; }
 }
 
 desktop { background: var(--background); }
@@ -111,31 +138,31 @@ window {
    * `backdrop-filter: none` gives programs no blur. */
   backdrop-filter: blur(24px);
 }
-window:focus { box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28); }
+window:focus-within { box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28); }
 
 /* The line between windows that share a workspace. */
-tile-line { color: var(--border); }
+desktop > separator { color: var(--border); }
 
 /* A window offered in a part with nothing in it: the box round its picture
  * and its title, and the title, brighter under the pointer. */
-offer {
+desktop > button.offer {
   color: var(--text-dim);
   border: 1px solid var(--border);
   border-radius: 10px;
 }
-offer:hover { color: var(--text); }
+desktop > button.offer:hover { color: var(--text); }
 
 /* A titlebar is thick glass: what is behind it blurred, under the surface
  * at as much of itself as text on it needs. `backdrop-filter: none` and a
  * background that cannot be seen through make it solid. */
-titlebar {
+window > titlebar {
   height: 48px;
   background: var(--glass-thick-dim);
   color: var(--text-dim);
   backdrop-filter: blur(var(--blur));
   box-shadow: inset 0 1px var(--glass-rim);
 }
-titlebar:focus {
+window:focus-within > titlebar {
   background: var(--glass-thick);
   color: var(--text);
 }
@@ -143,13 +170,13 @@ titlebar:focus {
 /* A title in a titlebar: in the middle of it where it is alone. Where
  * there are several, each is a tab, and the border on the left is the
  * line between one tab and the next. */
-tab {
+window > titlebar > tab {
   padding: 0 12px;
   color: var(--text-dim);
   border-left: 1px solid var(--border);
 }
-tab:active { border-bottom: 2px solid var(--border); }
-tab:active:focus {
+window > titlebar > tab:checked { border-bottom: 2px solid var(--border); }
+window:focus-within > titlebar > tab:checked {
   color: var(--text);
   border-bottom-color: var(--accent);
 }
@@ -157,11 +184,14 @@ tab:active:focus {
 /* The buttons at the left of a titlebar: close, minimize, maximize. Each
  * is a box in its share of the titlebar, as wide as its min-width with its
  * margin around it, and its color is that of the sign drawn on it. They
- * are :focus with their frame, and each is :hover while the pointer is on
- * it. They are in windowcontrols, which is :hover while the pointer is on
- * any of them: named before a button, as below, it has all three show
- * their signs at once. Give one a min-width of 0 to do without it. */
-button-close, button-minimize, button-maximize {
+ * are in a window that is :focus-within, and each is :hover while the
+ * pointer is on it. They are in the titlebar's controls, which are :hover
+ * while the pointer is on any of them: named before a button, as below,
+ * they have all three show their signs at once. Give one a min-width of 0
+ * to do without it. */
+window > titlebar > controls > button.close,
+window > titlebar > controls > button.minimize,
+window > titlebar > controls > button.maximize {
   min-width: 16px;
   margin: 16px 4px;
   border: 1px solid var(--button-rim);
@@ -169,16 +199,20 @@ button-close, button-minimize, button-maximize {
   background: var(--border);
   color: transparent;
 }
-button-close { margin-left: 12px; }
-button-close:focus, windowcontrols:hover button-close { background: var(--close); }
-button-minimize:focus, windowcontrols:hover button-minimize {
+window > titlebar > controls > button.close { margin-left: 12px; }
+window:focus-within > titlebar > controls > button.close,
+window > titlebar > controls:hover > button.close { background: var(--close); }
+window:focus-within > titlebar > controls > button.minimize,
+window > titlebar > controls:hover > button.minimize {
   background: var(--minimize);
 }
-button-maximize:focus, windowcontrols:hover button-maximize {
+window:focus-within > titlebar > controls > button.maximize,
+window > titlebar > controls:hover > button.maximize {
   background: var(--maximize);
 }
-windowcontrols:hover button-close, windowcontrols:hover button-minimize,
-windowcontrols:hover button-maximize {
+window > titlebar > controls:hover > button.close,
+window > titlebar > controls:hover > button.minimize,
+window > titlebar > controls:hover > button.maximize {
   color: var(--on-button);
 }
 
@@ -193,34 +227,34 @@ menu {
 }
 /* A sign is 8 from the row's start, from its top and bottom, and from its
  * label. */
-menu-item {
+menu > item {
   height: 32px;
   padding: 0 12px 0 8px;
   color: var(--text);
 }
-menu-item:hover { background: var(--surface-raised); }
-menu-separator { color: var(--border); }
+menu > item:hover { background: var(--surface-raised); }
+menu > separator { color: var(--border); }
 /* What stands before a row's label, in the accent on a faint square of it
  * while what the row turns on and off is on. */
-menu-sign {
+menu > item > icon {
   padding: 3px;
   border-radius: 6px;
   color: var(--text);
 }
-menu-sign:active {
+menu > item:checked > icon {
   background: var(--accent-tint);
   color: var(--accent);
 }
 /* The keys that do what a row does, at its end. */
-menu-keys { color: var(--text-dim); }
+menu > item > kbd { color: var(--text-dim); }
 /* The row the keyboard is on, in the accent: seen from across the room,
  * where the pointer's is only raised. */
-menu-item:focus {
+menu > item:focus {
   background: var(--accent);
   color: var(--on-accent);
 }
-menu-sign:focus { color: var(--on-accent); }
-menu-keys:focus { color: var(--on-accent); }
+menu > item:focus > icon { color: var(--on-accent); }
+menu > item:focus > kbd { color: var(--on-accent); }
 
 /* What is wrong with the configuration, when it was last read. */
 /* Its glass is as thick as the prompt's: what is wrong is said in red,
@@ -234,7 +268,7 @@ notice {
   border-radius: 10px;
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.36), inset 0 1px var(--glass-rim);
 }
-notice-heading { color: var(--danger); }
+notice > heading { color: var(--danger); }
 
 tooltip {
   padding: 4px 8px;
@@ -255,7 +289,7 @@ capture {
 
 /* The line round a screen or a window while it is shared or recorded,
  * which is in no picture of it. */
-capture-border { border: 2px solid var(--capture); }
+frame.capture { border: 2px solid var(--capture); }
 
 /* The panel, and what is on it: the workspaces, a task for each window on
  * the one being shown, and the clock. A margin on the panel moves it in
@@ -267,18 +301,18 @@ panel {
   backdrop-filter: blur(var(--blur));
   color: var(--text);
 }
-workspace, task {
+panel > workspace, panel > task {
   padding: 0 12px;
   color: var(--text);
 }
-workspace { min-width: 28px; }
-task { max-width: 240px; }
-workspace:active, task:active {
+panel > workspace { min-width: 28px; }
+panel > task { max-width: 240px; }
+panel > workspace:checked, panel > task:checked {
   background: var(--surface-raised);
   color: var(--text);
   border-bottom: 2px solid var(--accent);
 }
-clock {
+panel > clock {
   padding: 0 12px;
   color: var(--text);
 }
@@ -297,12 +331,12 @@ popover {
   border-radius: 10px;
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.36), inset 0 1px var(--glass-rim);
 }
-popover-item {
+popover > item {
   color: var(--text);
   border-radius: 6px;
 }
-popover-item:hover { background: var(--surface-raised); }
-popover-day, popover-day-outside {
+popover > item:hover { background: var(--surface-raised); }
+popover > calendar > day, popover > calendar > day.outside {
   height: 32px;
   min-width: 32px;
   margin: 2px;
@@ -310,18 +344,21 @@ popover-day, popover-day-outside {
   border: 1px solid var(--border-faint);
   border-radius: 6px;
 }
-popover-day-outside { color: var(--text-faint); }
-popover-day:focus, popover-day-outside:focus { border-color: var(--border); }
-popover-day:hover, popover-day-outside:hover {
+popover > calendar > day.outside { color: var(--text-faint); }
+popover > calendar > day:state(in-line),
+popover > calendar > day.outside:state(in-line) { border-color: var(--border); }
+popover > calendar > day:hover, popover > calendar > day.outside:hover {
   background: var(--surface-raised);
   border: 2px solid var(--accent);
 }
-popover-day:active, popover-day-outside:active {
+popover > calendar > day:state(today),
+popover > calendar > day.outside:state(today) {
   background: var(--accent);
   border-color: var(--accent);
   color: var(--on-accent);
 }
-popover-day:active:hover, popover-day-outside:active:hover {
+popover > calendar > day:state(today):hover,
+popover > calendar > day.outside:state(today):hover {
   border-color: var(--text);
 }
 
@@ -342,12 +379,12 @@ launcher {
   /* A little slower to come than the rest, and slower again to leave. */
   transition: 220ms ease-out;
 }
-launcher:closing {
+launcher:state(closing) {
   transition: 140ms ease-in;
   scale: 96%;
 }
 /* The field is large, and of the launcher's own glass, as Spotlight's. */
-launcher-input {
+launcher > input {
   height: 56px;
   margin: 0 0 8px 0;
   padding: 0 8px;
@@ -356,52 +393,52 @@ launcher-input {
   border-radius: 28px;
 }
 /* What is typed, when all of it is chosen, as Ctrl+A chooses it. */
-launcher-input:active {
+launcher > input::selection {
   background: var(--accent);
   color: var(--on-accent);
 }
 /* A row has two lines: the name, and under it what the program says of
  * itself, if the launcher shows that; its icon is as tall as both. */
-launcher-item {
+launcher > list > item {
   height: 56px;
   padding: 8px 14px;
   color: var(--text);
   border-radius: 28px;
 }
-launcher-item:active {
+launcher > list > item:checked {
   background: var(--accent);
   color: var(--on-accent);
 }
 /* What a program says of itself, where the launcher is set to show it. */
-launcher-description { color: var(--text-dim); }
-launcher-description:active { color: var(--on-accent); }
+launcher > list > item > description { color: var(--text-dim); }
+launcher > list > item:checked > description { color: var(--on-accent); }
 /* A program in the grid of every program: its icon, half as wide as the
  * room inside its padding, over its name. It is as wide as its min-width. */
-launcher-tile {
+launcher > grid > item {
   min-width: 112px;
   padding: 8px;
   color: var(--text);
   border-radius: 16px;
 }
-launcher-tile:active {
+launcher > grid > item:checked {
   background: var(--accent);
   color: var(--on-accent);
 }
 /* The best of all, alone at the top of what is found: outlined while the
  * field has the keyboard, as what Enter takes, and lit as any row. */
-launcher-top {
+launcher > list > item.top {
   height: 56px;
   padding: 8px 14px;
   color: var(--text);
   border: 1px solid var(--accent-tint);
   border-radius: 28px;
 }
-launcher-top:active {
+launcher > list > item.top:checked {
   background: var(--accent);
   color: var(--on-accent);
 }
 /* The heading over each section of what is found. */
-launcher-heading {
+launcher > list > heading {
   height: 24px;
   padding: 0 8px;
   color: var(--text-dim);
@@ -409,31 +446,31 @@ launcher-heading {
 }
 /* The row of modes at the bottom, under a hairline, while the pointer is
  * over an empty launcher; and a mode in it. */
-launcher-modes {
+launcher > modes {
   height: 56px;
   padding: 11px 12px 12px 12px;
   border-top: var(--edge);
 }
-launcher-mode {
+launcher > modes > button {
   padding: 0 12px;
   color: var(--text);
   border-radius: 16px;
 }
-launcher-mode:hover { background: var(--accent-tint); }
-launcher-mode:active {
+launcher > modes > button:hover { background: var(--accent-tint); }
+launcher > modes > button:checked {
   background: var(--accent);
   color: var(--on-accent);
 }
 /* The mode the keyboard is on, after Down past the last row, has a ring
  * of the accent a little way out, as a button of a question has. */
-launcher-mode:focus {
+launcher > modes > button:focus {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 /* The key that goes to a mode, after its name, in a faint chip of its
  * own: dim, and a size smaller, as a menu's keys are. `display: none`
  * leaves it out. */
-launcher-mode-key {
+launcher > modes > button > kbd {
   padding: 2px 5px;
   color: var(--text-dim);
   font-size: 9pt;
@@ -441,14 +478,14 @@ launcher-mode-key {
   border: var(--edge);
   border-radius: 6px;
 }
-launcher-mode-key:active { color: var(--on-accent); }
+launcher > modes > button:checked > kbd { color: var(--on-accent); }
 /* The rest of the screen while the launcher is open. A click on it closes
  * the launcher. Give it a see-through colour to dim what is behind. */
-launcher-backdrop { background: transparent; }
+launcher::backdrop { background: transparent; }
 
 /* A notification. The margin is the room between one and the next, and
  * between them and the edges of the screen. One a program marks critical
- * is :urgent. */
+ * is :state(urgent). */
 notification {
   min-width: 340px;
   margin: 8px;
@@ -462,15 +499,15 @@ notification {
 }
 notification:hover { border-color: var(--border-strong); }
 notification:focus { border-color: var(--accent); }
-notification:urgent { border-color: var(--danger); }
-notification-title {
+notification:state(urgent) { border-color: var(--danger); }
+notification > title {
   color: var(--text);
   font-weight: 600;
 }
-notification-body { color: var(--text-dim); }
+notification > body { color: var(--text-dim); }
 /* How full something a notification tells of is, such as the volume: the
  * background is the whole, the colour how much of it is full. */
-notification-level {
+notification > meter {
   margin-top: 8px;
   background: var(--border);
   color: var(--accent);
@@ -478,9 +515,9 @@ notification-level {
 }
 
 /* What the portals ask: whether an application may see the screen, and
- * what asks for a password. The button that gives is :active. The border
+ * what asks for a password. The button that gives is :default. The border
  * is also the ring of the loupe a colour on the screen is picked with. */
-question {
+dialog.question {
   padding: 20px;
   background: var(--surface);
   color: var(--text);
@@ -488,36 +525,36 @@ question {
   border-radius: 12px;
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.36);
 }
-question-detail { color: var(--text-dim); }
-question-button {
+dialog.question > detail { color: var(--text-dim); }
+dialog.question > button {
   height: 36px;
   padding: 0 20px;
   background: var(--surface-dim);
   color: var(--text);
   border-radius: 6px;
 }
-question-button:hover { background: var(--surface-raised); }
-question-button:active {
+dialog.question > button:hover { background: var(--surface-raised); }
+dialog.question > button:default {
   background: var(--accent);
   color: var(--on-accent);
 }
 /* What the keyboard is on has a ring of the accent, a little way out from
  * it, which shows round a button filled with the accent as well as round
  * one that is not. */
-question-button:focus {
+dialog.question > button:focus {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
-question-input {
+dialog.question > input {
   padding: 8px;
   background: var(--surface-raised);
   color: var(--text);
   border: 1px solid var(--border-strong);
   border-radius: 6px;
 }
-question-input:focus { border-color: var(--accent); }
+dialog.question > input:focus { border-color: var(--accent); }
 /* What is typed, when all of it is chosen, as Ctrl+A chooses it. */
-question-input:active {
+dialog.question > input::selection {
   background: var(--accent);
   color: var(--on-accent);
 }
@@ -526,7 +563,7 @@ question-input:active {
  * title. In rows, the box is in the middle of the screen, each place in it
  * with its picture over its title, as wide as its min-width. On a diagonal,
  * the box is under the queue, with the title of the one picked. The one
- * picked is :active. */
+ * picked is :checked. */
 switcher {
   padding: 12px;
   background: var(--glass-thick);
@@ -535,61 +572,61 @@ switcher {
   border-radius: 12px;
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.36), inset 0 1px var(--glass-rim);
 }
-switcher-item {
+switcher > item {
   min-width: 200px;
   padding: 8px;
   border: 2px solid transparent;
   border-radius: 6px;
 }
-switcher-item:active {
+switcher > item:checked {
   background: var(--surface-raised);
   border-color: var(--accent);
 }
-switcher-title { color: var(--text); }
+switcher > item > title { color: var(--text); }
 /* On a diagonal, each window in the switcher: its border round its picture,
- * its padding away. The one picked is :active. */
-switcher-window {
+ * its padding away. The one picked is :checked. */
+switcher > thumbnail {
   padding: 4px;
   border: 2px solid transparent;
   border-radius: 10px;
 }
-switcher-window:active { border-color: var(--accent); }
+switcher > thumbnail:checked { border-color: var(--accent); }
 /* The screen behind the switcher: dimmed, and blurred out of focus. */
-switcher-backdrop {
+switcher::backdrop {
   background: rgba(0, 0, 0, 0.35);
   backdrop-filter: blur(16px);
 }
 /* The overview: each window in it, its border round its picture, its
- * padding away, the one picked :active; the title of the one picked, under
- * it; each workspace in the strip along the top, the one shown :active
+ * padding away, the one picked :checked; the title of the one picked,
+ * under it; each workspace in the strip along the top, the one shown :checked
  * and one under the pointer :hover; the button after them that makes a
  * new workspace, its plus in its colour; and the screen behind it all,
  * dimmed and blurred out of focus. */
-overview-window {
+overview > thumbnail {
   padding: 4px;
   border: 2px solid transparent;
   border-radius: 10px;
 }
-overview-window:active { border-color: var(--accent); }
-overview-title {
+overview > thumbnail:checked { border-color: var(--accent); }
+overview > title {
   padding: 4px 10px;
   background: var(--surface);
   color: var(--text);
   border-radius: 6px;
 }
-overview-workspace {
+overview > workspace {
   border: 2px solid var(--border);
   border-radius: 6px;
 }
-overview-workspace:hover { border-color: var(--text); }
-overview-workspace:active { border-color: var(--accent); }
-overview-add {
+overview > workspace:hover { border-color: var(--text); }
+overview > workspace:checked { border-color: var(--accent); }
+overview > button.add {
   border: 2px solid var(--border);
   border-radius: 6px;
   color: var(--text);
 }
-overview-add:hover { border-color: var(--text); }
-overview-backdrop {
+overview > button.add:hover { border-color: var(--text); }
+overview::backdrop {
   background: rgba(0, 0, 0, 0.5);
   backdrop-filter: blur(16px);
 }
@@ -616,7 +653,7 @@ sealed {
  * the overview's button that closes, on its top left corner while the
  * pointer is on it, coming and going as a menu does, puts it away,
  * and its button copies what the computer is. */
-about {
+dialog.about {
   padding: 20px;
   background: var(--glass-thick);
   backdrop-filter: blur(var(--blur));
@@ -625,21 +662,21 @@ about {
   border-radius: 12px;
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.36), inset 0 1px var(--glass-rim);
 }
-about-heading {
+dialog.about > heading {
   color: var(--text);
   font-weight: 600;
 }
-about-detail { color: var(--text-dim); }
-about-button {
+dialog.about > detail { color: var(--text-dim); }
+dialog.about > button {
   padding: 4px 12px;
   background: var(--surface-dim);
   color: var(--text);
   border-radius: 6px;
 }
-about-button:hover { background: var(--surface-raised); }
+dialog.about > button:hover { background: var(--surface-raised); }
 /* For a moment once it has copied, it says so, in the colour of what is
  * done, with a tick. */
-about-button:active {
+dialog.about > button:state(copied) {
   background: var(--success);
   color: var(--background);
 }

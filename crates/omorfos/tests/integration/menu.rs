@@ -160,8 +160,8 @@ fn the_first_and_last_rows_reach_the_menus_border_unless_the_theme_pads_it() {
 
 #[test]
 fn a_row_gets_to_the_colour_of_being_pointed_at_over_the_time_the_theme_gives() {
-    let theme = "menu-item { background: #ff0000; transition: 100ms linear; }\n\
-                 menu-item:hover { background: #0000ff; }\n";
+    let theme = "menu > item { background: #ff0000; transition: 100ms linear; }\n\
+                 menu > item:hover { background: #0000ff; }\n";
     let files = [
         ("menu.yaml", MENU),
         ("keys.yaml", KEYS),
@@ -246,7 +246,7 @@ fn the_menu_grows_into_its_place_as_it_comes_and_shrinks_as_it_goes() {
     // Seen whole as it comes and goes, so that only its size changes, and
     // with no shadow, so that its edge is its own.
     let theme = "menu { transition: 100ms linear; box-shadow: none; }\n\
-                 menu:closing { opacity: 1; scale: 50%; }\n\
+                 menu:state(closing) { opacity: 1; scale: 50%; }\n\
                  @starting-style { menu { opacity: 1; } }\n";
     let mut session = Session::with_config(&[("menu.yaml", MENU), ("theme.css", theme)]);
     open_menu(&mut session);

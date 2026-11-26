@@ -2984,7 +2984,7 @@ impl Compositor {
                 // Until it has drawn something it is not in the picture.
                 let drawn = with_renderer_surface_state(surface, |state| state.buffer().is_some());
                 let mut parts = Part::ALL.into_iter();
-                let part = parts.find(|part| part.name() == layer.namespace());
+                let part = parts.find(|part| part.namespace() == Some(layer.namespace()));
                 let part = part.filter(|_| drawn == Some(true));
                 let mut hasher = DefaultHasher::new();
                 surface.id().hash(&mut hasher);
@@ -4354,7 +4354,7 @@ impl Compositor {
                 scaling::around(gone.seen.scale, || scaling::middle(elements, first, factor));
             scaling::scale(elements, first, around);
             scaling::scale_panes(&mut glass, 0, around);
-            let apart = |pane: Pane| pane.apart(&(gone.since, gone.part.name()));
+            let apart = |pane: Pane| pane.apart(&(gone.since, gone.part));
             panes.extend(glass.into_iter().map(apart));
         }
     }

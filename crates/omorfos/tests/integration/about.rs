@@ -32,7 +32,7 @@ const GROUND: (i32, i32) = (12 + 8, HEIGHT / 2);
 /// renderer takes seconds a picture: over the plain background it is the
 /// same colour.
 fn unblurred() -> Session {
-    Session::with_config(&[("theme.css", "about { backdrop-filter: none; }\n")])
+    Session::with_config(&[("theme.css", "dialog.about { backdrop-filter: none; }\n")])
 }
 
 fn about(session: &mut Session) {
@@ -147,8 +147,8 @@ fn about_asked_for_again_goes_and_is_painted_again_as_the_scheme_changes() {
 
 #[test]
 fn about_fades_out_as_it_goes_and_a_theme_may_give_it_no_shadow() {
-    let theme = "about { backdrop-filter: none; }\n\
-                 about:closing { transition: 100ms linear; }\n";
+    let theme = "dialog.about { backdrop-filter: none; }\n\
+                 dialog.about:state(closing) { transition: 100ms linear; }\n";
     let mut session = Session::with_config(&[("theme.css", theme)]);
     about(&mut session);
     for pressed in [true, false] {
@@ -169,7 +169,7 @@ fn about_fades_out_as_it_goes_and_a_theme_may_give_it_no_shadow() {
     session.settle();
     assert_eq!(session.draw().at(GROUND.0, GROUND.1), BACKGROUND);
 
-    let theme = "about { backdrop-filter: none; box-shadow: none; }\n";
+    let theme = "dialog.about { backdrop-filter: none; box-shadow: none; }\n";
     session.write_config("theme.css", theme);
     session.compositor_mut().reload_config();
     about(&mut session);
@@ -207,9 +207,9 @@ fn red(session: &mut Session) -> Vec<(i32, i32)> {
 #[test]
 fn the_button_that_closes_about_is_on_its_top_left_corner_while_the_pointer_is_on_it() {
     // It comes and goes as a menu does.
-    let theme = "about { backdrop-filter: none; }\n\
+    let theme = "dialog.about { backdrop-filter: none; }\n\
                  menu { transition: 100ms linear; }\n\
-                 menu:closing { transition: 100ms linear; }\n";
+                 menu:state(closing) { transition: 100ms linear; }\n";
     let mut session = Session::with_config(&[("theme.css", theme)]);
     // Beside "About", in the corner of the screen below it.
     point(&mut session, (4, HEIGHT - 4));
@@ -287,7 +287,7 @@ fn a_press_in_the_top_right_corner_of_about_where_a_button_once_was_does_nothing
 /// being 2: too short for all that "About" lists. Its "About" has neither
 /// blur nor shadow, so that its ground is one colour all over.
 fn short(more: &[(&str, &str)]) -> Session {
-    let theme = "about { backdrop-filter: none; box-shadow: none; }\n";
+    let theme = "dialog.about { backdrop-filter: none; box-shadow: none; }\n";
     let mut files = vec![
         ("theme.css", theme),
         ("config.yaml", "output: { scale: 2 }\n"),
@@ -394,7 +394,7 @@ fn about_says_at_its_foot_how_it_is_put_away_and_that_line_does_not_scroll() {
 
 #[test]
 fn what_about_says_at_its_foot_is_in_the_middle() {
-    let theme = "about { backdrop-filter: none; box-shadow: none; }\n";
+    let theme = "dialog.about { backdrop-filter: none; box-shadow: none; }\n";
     let mut session = Session::with_config(&[("theme.css", theme)]);
     about(&mut session);
     let rows = seen(&mut session);

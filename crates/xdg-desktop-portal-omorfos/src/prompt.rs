@@ -723,7 +723,7 @@ impl Face {
         let name = if still.is_some() {
             "omorfos-prompt"
         } else {
-            Part::Question.name()
+            Part::Question.namespace().unwrap_or_default()
         };
         let layer = globals.layers.get_layer_surface(
             &surface,

@@ -415,7 +415,7 @@ fn at_once(session: &mut Session, seen: impl Fn(&Picture) -> bool) -> bool {
 fn the_question_casts_the_shadow_of_its_part_and_takes_it_with_it_at_once() {
     // Round the box, which is 440 across in the middle of the screen; and
     // however long the theme says the part takes to change.
-    let theme = "question { transition: 1s linear; box-shadow: 0 0 0 8px #00000080; }\n";
+    let theme = "dialog.question { transition: 1s linear; box-shadow: 0 0 0 8px #00000080; }\n";
     let daemon = Daemon::start();
     let mut session = Session::with_config(&[("theme.css", theme)]);
     let _running = start(&mut session, &daemon, ITS_OWN);
@@ -1008,7 +1008,7 @@ fn the_question_takes_the_look_of_the_theme_and_ends_with_the_session() {
     std::fs::create_dir_all(&config).unwrap();
     std::fs::write(
         config.join("theme.css"),
-        "question { background: #ff0000; }",
+        "dialog.question { background: #ff0000; }",
     )
     .unwrap();
     session.eventually(|session| session.draw().at(WIDTH / 2, HEIGHT / 2) == RED);

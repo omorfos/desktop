@@ -156,7 +156,7 @@ impl Motion {
     /// How much there is to see of the `part` that goes by `key`, from 0 to
     /// 1, which is shown only while it is `wanted`, as a button is while
     /// the pointer is near: it comes over the time the theme gives the
-    /// part to come in, and goes over its time `:closing`, setting out from
+    /// part to come in, and goes over its time `:state(closing)`, setting out from
     /// as much of it as there was when that changed. Asked of it in every
     /// picture, wanted or not, for as long as it could be there; one not
     /// yet asked after is not there.
@@ -250,7 +250,7 @@ impl Motion {
 
     /// How much there is still to see of a `part` that went from the
     /// picture at `since`, and how large it is: all of it at that moment,
-    /// on its way to how it is when it is `:closing`, and nothing once the
+    /// on its way to how it is when it is `:state(closing)`, and nothing once the
     /// time the theme gives the part to leave in, its transition then, has
     /// gone by.
     ///
@@ -302,13 +302,13 @@ mod tests {
     const HOVERED: States = States::NONE.with(State::Hovered);
 
     fn theme() -> Theme {
-        let stylesheet = "task { background: #f00; transition: 100ms linear; }
-                          task:hover { background: #00f; }
-                          task:closing { opacity: 0; scale: 50%; }
-                          clock { background: #f00; transition: none; }
-                          clock:hover { background: #00f; }
-                          clock:closing { opacity: 0; }
-                          @starting-style { task, clock { opacity: 0; scale: 80% } }";
+        let stylesheet = "notification { background: #f00; transition: 100ms linear; }
+                          notification:hover { background: #00f; }
+                          notification:state(closing) { opacity: 0; scale: 50%; }
+                          window { background: #f00; transition: none; }
+                          window:focus-within { background: #00f; }
+                          window:state(closing) { opacity: 0; }
+                          @starting-style { notification, window { opacity: 0; scale: 80% } }";
         Theme::parse(stylesheet).unwrap()
     }
 
@@ -338,18 +338,19 @@ mod tests {
     /// at `now`, and whether the picture has to be drawn again.
     fn faded(motion: &mut Motion, wanted: bool, now: u64) -> (f32, bool) {
         motion.begin(millis(now));
-        let seen = motion.fade(&theme(), Part::Task, 3, wanted);
+        let seen = motion.fade(&theme(), Part::Notification, 3, wanted);
         (seen, motion.end())
     }
 
     #[test]
     fn what_is_shown_only_while_wanted_comes_over_its_time_and_goes_over_its_time_closing() {
-        let theme = "task { transition: 100ms linear; } task:closing { transition: 50ms linear; }";
+        let theme = "notification { transition: 100ms linear; } \
+                     notification:state(closing) { transition: 50ms linear; }";
         let theme = Theme::parse(theme).unwrap();
         let mut motion = Motion::new();
         let mut faded = |wanted, at| {
             motion.begin(millis(at));
-            let seen = motion.fade(&theme, Part::Task, 3, wanted);
+            let seen = motion.fade(&theme, Part::Notification, 3, wanted);
             (seen, motion.end())
         };
         let near = |(seen, moving): (f32, bool), wanted: f32| {
@@ -395,27 +396,42 @@ mod tests {
     fn a_part_drawn_for_the_first_time_looks_as_its_state_says() {
         let mut motion = Motion::new();
         assert_eq!(motion.deadline(), None);
-        assert_eq!(drawn(&mut motion, Part::Task, HOVERED, 0), (BLUE, false));
-        assert_eq!(drawn(&mut motion, Part::Task, HOVERED, 500), (BLUE, false));
+        assert_eq!(
+            drawn(&mut motion, Part::Notification, HOVERED, 0),
+            (BLUE, false)
+        );
+        assert_eq!(
+            drawn(&mut motion, Part::Notification, HOVERED, 500),
+            (BLUE, false)
+        );
     }
 
     #[test]
     fn a_part_whose_state_changes_gets_to_its_new_look_over_time() {
         let mut motion = Motion::new();
-        drawn(&mut motion, Part::Task, States::NONE, 1000);
-        assert_eq!(drawn(&mut motion, Part::Task, HOVERED, 1000), (RED, true));
-        let (half, moving) = drawn(&mut motion, Part::Task, HOVERED, 1050);
+        drawn(&mut motion, Part::Notification, States::NONE, 1000);
+        assert_eq!(
+            drawn(&mut motion, Part::Notification, HOVERED, 1000),
+            (RED, true)
+        );
+        let (half, moving) = drawn(&mut motion, Part::Notification, HOVERED, 1050);
         assert!(near(half, PURPLE), "{half:?}");
         assert!(moving);
-        assert_eq!(drawn(&mut motion, Part::Task, HOVERED, 1100), (BLUE, false));
-        assert_eq!(drawn(&mut motion, Part::Task, HOVERED, 9000), (BLUE, false));
+        assert_eq!(
+            drawn(&mut motion, Part::Notification, HOVERED, 1100),
+            (BLUE, false)
+        );
+        assert_eq!(
+            drawn(&mut motion, Part::Notification, HOVERED, 9000),
+            (BLUE, false)
+        );
     }
 
     #[test]
     fn a_button_gets_to_its_look_over_time_when_the_controls_it_is_in_change_state() {
         let theme = Theme::parse(
-            "button-close { background: #f00; transition: 100ms linear; }\n\
-             windowcontrols:hover button-close { background: #00f; }",
+            "window > titlebar > controls > button.close { background: #f00; transition: 100ms linear; }\n\
+             window > titlebar > controls:hover > button.close { background: #00f; }",
         )
         .unwrap();
         let mut motion = Motion::new();
@@ -436,15 +452,15 @@ mod tests {
     #[test]
     fn a_part_that_turns_back_half_way_sets_out_from_where_it_had_got_to() {
         let mut motion = Motion::new();
-        drawn(&mut motion, Part::Task, States::NONE, 0);
-        drawn(&mut motion, Part::Task, HOVERED, 0);
-        let (half, _) = drawn(&mut motion, Part::Task, States::NONE, 50);
+        drawn(&mut motion, Part::Notification, States::NONE, 0);
+        drawn(&mut motion, Part::Notification, HOVERED, 0);
+        let (half, _) = drawn(&mut motion, Part::Notification, States::NONE, 50);
         assert!(near(half, PURPLE), "no jump as it turns: {half:?}");
-        let (later, moving) = drawn(&mut motion, Part::Task, States::NONE, 100);
+        let (later, moving) = drawn(&mut motion, Part::Notification, States::NONE, 100);
         assert!(near(later, (191, 0, 64)), "{later:?}");
         assert!(moving);
         assert_eq!(
-            drawn(&mut motion, Part::Task, States::NONE, 150),
+            drawn(&mut motion, Part::Notification, States::NONE, 150),
             (RED, false)
         );
     }
@@ -452,25 +468,26 @@ mod tests {
     #[test]
     fn a_part_whose_theme_gives_it_no_time_changes_at_once() {
         let mut motion = Motion::new();
-        drawn(&mut motion, Part::Clock, States::NONE, 0);
-        assert_eq!(drawn(&mut motion, Part::Clock, HOVERED, 0), (BLUE, false));
+        drawn(&mut motion, Part::Window, States::NONE, 0);
+        let focused = States::NONE.with(State::Focused);
+        assert_eq!(drawn(&mut motion, Part::Window, focused, 0), (BLUE, false));
     }
 
     #[test]
     fn parts_of_a_kind_are_told_apart_and_each_goes_its_own_way() {
         let (theme, mut motion) = (theme(), Motion::new());
         motion.begin(millis(0));
-        motion.style(&theme, Part::Task, 1, States::NONE);
-        motion.style(&theme, Part::Task, 2, States::NONE);
+        motion.style(&theme, Part::Notification, 1, States::NONE);
+        motion.style(&theme, Part::Notification, 2, States::NONE);
         motion.end();
         motion.begin(millis(50));
-        let first = motion.style(&theme, Part::Task, 1, HOVERED);
-        let second = motion.style(&theme, Part::Task, 2, States::NONE);
+        let first = motion.style(&theme, Part::Notification, 1, HOVERED);
+        let second = motion.style(&theme, Part::Notification, 2, States::NONE);
         assert_eq!((first.background, second.background), (RED, RED));
         assert!(motion.end());
         motion.begin(millis(100));
-        let first = motion.style(&theme, Part::Task, 1, HOVERED);
-        let second = motion.style(&theme, Part::Task, 2, States::NONE);
+        let first = motion.style(&theme, Part::Notification, 1, HOVERED);
+        let second = motion.style(&theme, Part::Notification, 2, States::NONE);
         assert!(near(first.background, PURPLE), "{first:?}");
         assert_eq!(second.background, RED);
     }
@@ -478,18 +495,18 @@ mod tests {
     #[test]
     fn a_picture_with_something_on_its_way_is_due_again_a_moment_later() {
         let mut motion = Motion::new();
-        drawn(&mut motion, Part::Task, States::NONE, 1000);
+        drawn(&mut motion, Part::Notification, States::NONE, 1000);
         assert_eq!(motion.deadline(), None);
         assert!(!motion.due(millis(5000)), "nothing to draw again");
 
-        drawn(&mut motion, Part::Task, HOVERED, 1000);
+        drawn(&mut motion, Part::Notification, HOVERED, 1000);
         assert_eq!(motion.deadline(), Some(millis(1016)));
         assert!(!motion.due(millis(1010)), "not yet");
         assert!(motion.due(millis(1016)));
         assert!(!motion.due(millis(1016)), "said once");
         assert_eq!(motion.deadline(), None);
 
-        drawn(&mut motion, Part::Task, HOVERED, 1100);
+        drawn(&mut motion, Part::Notification, HOVERED, 1100);
         assert_eq!(motion.deadline(), None, "it has arrived");
     }
 
@@ -511,40 +528,40 @@ mod tests {
     #[test]
     fn something_that_comes_into_the_picture_is_all_there_after_a_while() {
         let mut motion = Motion::new();
-        assert_eq!(present(&mut motion, Part::Task, 1000), (0, true));
+        assert_eq!(present(&mut motion, Part::Notification, 1000), (0, true));
         assert_eq!(motion.deadline(), Some(millis(1016)));
-        assert_eq!(present(&mut motion, Part::Task, 1050), (50, true));
-        assert_eq!(present(&mut motion, Part::Task, 1100), (100, false));
-        assert_eq!(present(&mut motion, Part::Task, 5000), (100, false));
+        assert_eq!(present(&mut motion, Part::Notification, 1050), (50, true));
+        assert_eq!(present(&mut motion, Part::Notification, 1100), (100, false));
+        assert_eq!(present(&mut motion, Part::Notification, 5000), (100, false));
         assert_eq!(motion.deadline(), None);
     }
 
     #[test]
     fn something_that_was_out_of_the_picture_comes_in_afresh() {
         let mut motion = Motion::new();
-        present(&mut motion, Part::Task, 0);
-        present(&mut motion, Part::Task, 500);
+        present(&mut motion, Part::Notification, 0);
+        present(&mut motion, Part::Notification, 500);
         motion.begin(millis(600));
         motion.end();
-        assert_eq!(present(&mut motion, Part::Task, 700), (0, true));
+        assert_eq!(present(&mut motion, Part::Notification, 700), (0, true));
     }
 
     #[test]
     fn something_that_arrived_with_what_is_around_it_is_all_there_at_once() {
         let mut motion = Motion::new();
         motion.begin(millis(1000));
-        motion.arrived(Part::Task, 7);
-        let seen = motion.presence(&theme(), Part::Task, 7);
+        motion.arrived(Part::Notification, 7);
+        let seen = motion.presence(&theme(), Part::Notification, 7);
         assert_eq!(seen, Seen::WHOLE);
         assert!(!motion.end(), "nothing on its way");
         // Once it is in the picture, it is there as anything else is.
-        assert_eq!(present(&mut motion, Part::Task, 1010), (100, false));
+        assert_eq!(present(&mut motion, Part::Notification, 1010), (100, false));
     }
 
     #[test]
     fn something_whose_theme_gives_it_no_time_is_all_there_at_once() {
         let mut motion = Motion::new();
-        assert_eq!(present(&mut motion, Part::Clock, 0), (100, false));
+        assert_eq!(present(&mut motion, Part::Window, 0), (100, false));
     }
 
     #[test]
@@ -552,21 +569,21 @@ mod tests {
         let (theme, mut motion) = (theme(), Motion::new());
         let mut seen = |now: u64| {
             motion.begin(millis(now));
-            let seen = motion.presence(&theme, Part::Task, 7);
+            let seen = motion.presence(&theme, Part::Notification, 7);
             (hundredths(seen.opacity), hundredths(seen.scale))
         };
         assert_eq!(seen(0), (0, 80));
         assert_eq!(seen(50), (50, 90));
         assert_eq!(seen(100), (100, 100));
         // Without one, it is there as it is from the first.
-        let plain = Theme::parse("task { transition: 100ms linear; }").unwrap();
+        let plain = Theme::parse("panel > task { transition: 100ms linear; }").unwrap();
         let mut motion = Motion::new();
         motion.begin(millis(0));
         assert_eq!(motion.presence(&plain, Part::Task, 7), Seen::WHOLE);
         // One that is faint once there comes from nothing to that, and is
         // drawn as a share of it.
-        let faint = "task { opacity: 0.5; transition: 100ms linear; }\n\
-                     @starting-style { task { opacity: 0 } }";
+        let faint = "panel > task { opacity: 0.5; transition: 100ms linear; }\n\
+                     @starting-style { panel > task { opacity: 0 } }";
         let faint = Theme::parse(faint).unwrap();
         motion.begin(millis(50));
         let seen = motion.presence(&faint, Part::Task, 8);
@@ -580,7 +597,7 @@ mod tests {
         let (theme, mut motion) = (theme(), Motion::new());
         let mut left = |now: u64| {
             motion.begin(millis(now));
-            let left = motion.leaving(&theme, Part::Task, millis(1000));
+            let left = motion.leaving(&theme, Part::Notification, millis(1000));
             let left = left.map(|seen| (hundredths(seen.opacity), hundredths(seen.scale)));
             (left, motion.end())
         };
@@ -588,7 +605,7 @@ mod tests {
         assert_eq!(left(1050), (Some((50, 75)), true));
         assert_eq!(left(1100), (None, false));
         // However much of it is seen as it is closing.
-        let kept = Theme::parse("task { transition: 100ms linear; }").unwrap();
+        let kept = Theme::parse("panel > task { transition: 100ms linear; }").unwrap();
         let mut motion = Motion::new();
         motion.begin(millis(1050));
         let seen = motion.leaving(&kept, Part::Task, millis(1000));
@@ -615,7 +632,7 @@ mod tests {
     fn something_leaves_over_the_time_its_theme_gives_it_closing() {
         let theme = Theme::parse(
             "launcher { transition: 200ms linear; }\n\
-             launcher:closing { transition: 50ms linear; opacity: 0; }\n\
+             launcher:state(closing) { transition: 50ms linear; opacity: 0; }\n\
              @starting-style { launcher { opacity: 0 } }",
         )
         .unwrap();
@@ -639,17 +656,20 @@ mod tests {
     fn something_whose_theme_gives_it_no_time_has_gone_at_once() {
         let mut motion = Motion::new();
         motion.begin(millis(1000));
-        assert_eq!(motion.leaving(&theme(), Part::Clock, millis(1000)), None);
+        assert_eq!(motion.leaving(&theme(), Part::Window, millis(1000)), None);
         assert!(!motion.end());
     }
 
     #[test]
     fn a_part_left_out_of_a_picture_is_forgotten() {
         let mut motion = Motion::new();
-        drawn(&mut motion, Part::Task, States::NONE, 0);
+        drawn(&mut motion, Part::Notification, States::NONE, 0);
         motion.begin(millis(10));
         assert!(!motion.end());
         // Had it been remembered it would set out from red.
-        assert_eq!(drawn(&mut motion, Part::Task, HOVERED, 20), (BLUE, false));
+        assert_eq!(
+            drawn(&mut motion, Part::Notification, HOVERED, 20),
+            (BLUE, false)
+        );
     }
 }

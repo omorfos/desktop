@@ -50,9 +50,11 @@ pub(crate) fn root<T: JsonSchema>() -> Value {
 /// file may have, by the path written to reach it, as
 /// `config.yaml appearance.accent`, and one for each value a key may be
 /// given by name, as `config.yaml appearance.accent = "cyan"`; sorted, a
-/// line each. A line taken away is a promise taken away, which a commit
-/// has to mark as breaking. Kept in `schemas/promised.txt` beside the
-/// schemas.
+/// line each; and each element of the theme, as `theme.css launcher >
+/// modes > button`, and each state it can be in, as `theme.css launcher >
+/// modes > button :hover` (ADR 110). A line taken away is a promise taken
+/// away, which a commit has to mark as breaking. Kept in
+/// `schemas/promised.txt` beside the schemas.
 #[must_use]
 pub fn promised() -> String {
     let files = [
@@ -70,6 +72,16 @@ pub fn promised() -> String {
             lines: &mut lines,
         };
         promises.walk(schema, "");
+    }
+    for part in crate::Part::ALL {
+        let selector = part.selector();
+        let path = part.path();
+        for one in part.spellings() {
+            let on = path.get(one.node).filter(|_| one.node + 1 < path.len());
+            let before = on.map_or(String::new(), |node| node.kind.to_owned());
+            lines.insert(format!("theme.css {selector} {before}{}", one.name));
+        }
+        lines.insert(format!("theme.css {selector}"));
     }
     lines.into_iter().map(|line| line + "\n").collect()
 }

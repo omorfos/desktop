@@ -11,7 +11,8 @@ use std::collections::HashMap;
 use std::fmt;
 use std::sync::Arc;
 
-use crate::css::{self, Declaration, Rule, Selector, Sheet};
+use crate::css::{self, Declaration, Rule, Sheet};
+use crate::matching::{self, Reached};
 use crate::scheme;
 use crate::style::CLEAR;
 use crate::value::{
@@ -436,21 +437,21 @@ fn declared(sheet: &Sheet, by_user: bool) -> impl Iterator<Item = Variable<'_>> 
     })
 }
 
-/// A selector, the settings its rule makes, and how it ranks among the
-/// others that apply to the same part.
+/// A part a selector reaches, the settings its rule makes, and how it
+/// ranks among the others that reach the same part.
 struct Ranked<'a> {
-    selector: Selector,
-    /// The user's rules outrank the built-in ones; then a rule for a part
-    /// outranks one for every part; then the one naming more states, its
-    /// own and those of the part it is in; then, as CSS has it, one that
-    /// names the part it is in as well.
-    rank: (bool, bool, u32, bool),
+    reached: Reached,
+    /// The user's rules outrank the built-in ones, however specific; then,
+    /// as CSS has it, the selector naming more classes and states, then
+    /// more types (ADR 110).
+    rank: (bool, (u32, u32)),
     settings: &'a [Setting],
 }
 
 /// The rules of a stylesheet understood: for each, whether it is the
-/// user's, what it applies to, and the settings it makes.
-type Understood<'a> = Vec<(bool, &'a [Selector], Vec<Setting>)>;
+/// user's, the parts each of its selectors reaches with how specific that
+/// selector is, and the settings it makes.
+type Understood = Vec<(bool, Vec<(Reached, (u32, u32))>, Vec<Setting>)>;
 
 /// Works a theme out from the built-in stylesheet and the user's.
 ///
@@ -484,7 +485,11 @@ fn build(built_in: &Sheet, own: &Sheet) -> Result<Table, Problem> {
             font: Font::default(),
         };
         let mut opacity = u8::MAX;
-        look.apply(&resting, (part, states, holder), &mut opacity);
+        look.apply(
+            &resting[part as usize],
+            (part, states, holder),
+            &mut opacity,
+        );
         look.fade(opacity);
         look
     };
@@ -492,7 +497,7 @@ fn build(built_in: &Sheet, own: &Sheet) -> Result<Table, Problem> {
         for states in States::every() {
             let look = look(part, states, States::NONE);
             if states == States::NONE {
-                starting.push(look.arriving(&arriving, part));
+                starting.push(look.arriving(&arriving[part as usize], part));
             }
             looks.push(look);
         }
@@ -514,56 +519,63 @@ fn build(built_in: &Sheet, own: &Sheet) -> Result<Table, Problem> {
 
 /// Understands the rules of each stylesheet, the user's or not, those of
 /// `@starting-style` if `starting`.
-fn understand<'a>(
-    sheets: [(bool, &'a [Rule]); 2],
+fn understand(
+    sheets: [(bool, &[Rule]); 2],
     variables: &Variables,
     starting: bool,
-) -> Result<Understood<'a>, Problem> {
+) -> Result<Understood, Problem> {
     let mut understood = Vec::new();
     for (by_user, rules) in sheets {
         for rule in rules {
+            let mut reached = Vec::new();
+            for selector in &rule.selectors {
+                let specificity = matching::specificity(selector);
+                let parts = matching::reach(selector)
+                    .map_err(|fault| (by_user.then_some(fault.offset), fault.message))?;
+                reached.extend(parts.into_iter().map(|one| (one, specificity)));
+            }
             // A part is only drawn larger or smaller as it comes and goes.
-            let closing = States::NONE.with(State::Closing);
-            let selectors = rule.selectors.iter();
-            let resting = !starting && selectors.clone().any(|one| !closing.within(one.states));
+            let resting = !starting
+                && reached
+                    .iter()
+                    .any(|(one, _)| !one.states.has(State::Closing));
             let mut all = Vec::new();
             for declaration in &rule.declarations {
                 let settings = settings(declaration, by_user, variables)?;
                 if resting && settings.iter().any(|one| matches!(one, Setting::Scale(_))) {
                     let message = "`scale` is how large a part is drawn as it comes and goes: \
                                    give it in `@starting-style`, or to a part that is \
-                                   `:closing`";
+                                   `:state(closing)`";
                     return Err((by_user.then_some(declaration.at), message.to_owned()));
                 }
                 all.extend(settings);
             }
-            understood.push((by_user, &rule.selectors[..], all));
+            understood.push((by_user, reached, all));
         }
     }
     Ok(understood)
 }
 
-/// Each selector of each rule understood, in the order they are applied:
-/// the one that ranks highest last.
-fn ranked<'a>(understood: &'a Understood) -> Vec<Ranked<'a>> {
-    let ranked = understood
-        .iter()
-        .flat_map(|(by_user, selectors, settings)| {
-            selectors.iter().map(move |selector| Ranked {
-                selector: *selector,
-                rank: (
-                    *by_user,
-                    selector.part.is_some(),
-                    selector.states.count() + selector.within.map_or(0, States::count),
-                    selector.within.is_some(),
-                ),
-                settings,
-            })
-        });
+/// Each part each selector of each rule reaches, the parts' apart, each
+/// part's in the order they are applied: the one that ranks highest last.
+/// Kept apart, a look is worked out from what reaches its part alone,
+/// rather than from every rule, as a selector such as `*` reaches each.
+fn ranked(understood: &Understood) -> Vec<Vec<Ranked<'_>>> {
+    let ranked = understood.iter().flat_map(|(by_user, reached, settings)| {
+        reached.iter().map(move |(one, specificity)| Ranked {
+            reached: *one,
+            rank: (*by_user, *specificity),
+            settings,
+        })
+    });
     let mut ranked: Vec<Ranked> = ranked.collect();
     // The sort is stable, so among equals the later rule is applied later.
     ranked.sort_by_key(|rule| rule.rank);
-    ranked
+    let mut parts: Vec<Vec<Ranked>> = Part::ALL.iter().map(|_| Vec::new()).collect();
+    for rule in ranked {
+        parts[rule.reached.part as usize].push(rule);
+    }
+    parts
 }
 
 /// Applies `change` to the side named, or to every side.
@@ -596,11 +608,9 @@ impl Look {
         opacity: &mut u8,
     ) {
         let applies = |rule: &&Ranked| {
-            let selector = rule.selector;
-            let within = selector.within.is_none_or(|within| within.within(holder));
-            selector.part.is_none_or(|named| named == part)
-                && selector.states.within(states)
-                && within
+            let reached = rule.reached;
+            let within = reached.within.is_none_or(|within| within.within(holder));
+            reached.part == part && reached.states.within(states) && within
         };
         for rule in ranked.iter().filter(applies) {
             for setting in rule.settings {
@@ -1261,8 +1271,8 @@ mod tests {
     fn a_part_arrives_as_its_starting_style_says_and_goes_as_it_is_closing() {
         let closing = States::NONE.with(State::Closing);
         let theme = Theme::parse(
-            "@starting-style { clock { scale: 96%; opacity: 0 } }\n\
-             clock:closing { scale: 0.98; opacity: 50% }",
+            "@starting-style { panel > clock { scale: 96%; opacity: 0 } }\n\
+             panel > clock:state(closing) { scale: 0.98; opacity: 50% }",
         )
         .unwrap();
         let whole = Presence::WHOLE;
@@ -1292,7 +1302,7 @@ mod tests {
         assert_eq!(theme.style(Part::Clock, States::NONE).presence, whole);
         // Without one, a part arrives as it is, however see-through that is.
         assert_eq!(theme.starting(Part::Workspace), whole);
-        let faint = Theme::parse("workspace { opacity: 0.5 }").unwrap();
+        let faint = Theme::parse("panel > workspace { opacity: 0.5 }").unwrap();
         let faint = faint.starting(Part::Workspace);
         assert_eq!(
             faint,
@@ -1304,7 +1314,7 @@ mod tests {
         // It is ranked as any rule is, and its variables are the theme's.
         let ranked = Theme::parse(
             ":root { --from: 90% }\n\
-             @starting-style { * { scale: 50% } clock { scale: var(--from) } }",
+             @starting-style { * { scale: 50% } panel > clock { scale: var(--from) } }",
         )
         .unwrap();
         assert_eq!(ranked.starting(Part::Clock).scale, 900);
@@ -1314,9 +1324,9 @@ mod tests {
     #[test]
     fn a_button_looks_as_a_rule_for_it_within_its_controls_says_while_they_are_in_its_states() {
         let theme = Theme::parse(
-            "button-close { background: #000 }\n\
-             windowcontrols:hover button-close { background: #f00 }\n\
-             button-close:hover { color: #00f }",
+            "window > titlebar > controls > button.close { background: #000 }\n\
+             window > titlebar > controls:hover > button.close { background: #f00 }\n\
+             window > titlebar > controls > button.close:hover { color: #00f }",
         )
         .unwrap();
         let hovered = States::NONE.with(State::Hovered);
@@ -1338,7 +1348,7 @@ mod tests {
         let minimize = theme.style_in(Part::ButtonMinimize, States::NONE, hovered);
         assert_ne!(minimize.background, RED);
         // A part in no other is as it is, whatever is asked of the other.
-        let tab = Theme::parse("tab { background: #f00 }").unwrap();
+        let tab = Theme::parse("window > titlebar > tab { background: #f00 }").unwrap();
         assert_eq!(
             tab.style_in(Part::Tab, States::NONE, hovered).background,
             RED
@@ -1346,22 +1356,30 @@ mod tests {
     }
 
     #[test]
-    fn a_rule_naming_the_part_a_button_is_in_outranks_one_naming_as_many_states_without() {
+    fn of_two_rules_for_a_button_the_more_specific_wins_and_then_the_later() {
+        // As CSS counts them (ADR 110): a state of the controls it is in
+        // counts as one of its own, and of two as specific, the later wins.
         let hovered = States::NONE.with(State::Hovered);
-        for stylesheet in [
-            "windowcontrols:hover button-close { background: #f00 }\n\
-             button-close:hover { background: #000 }",
-            "button-close:hover { background: #000 }\n\
-             windowcontrols:hover button-close { background: #f00 }",
+        for (stylesheet, wins) in [
+            (
+                "window > titlebar > controls:hover > button.close { background: #f00 }\n\
+                 window > titlebar > controls > button.close:hover { background: #000 }",
+                Color::rgb(0, 0, 0),
+            ),
+            (
+                "window > titlebar > controls > button.close:hover { background: #000 }\n\
+                 window > titlebar > controls:hover > button.close { background: #f00 }",
+                RED,
+            ),
         ] {
             let theme = Theme::parse(stylesheet).unwrap();
             let close = theme.style_in(Part::ButtonClose, hovered, hovered);
-            assert_eq!(close.background, RED, "{stylesheet}");
+            assert_eq!(close.background, wins, "{stylesheet}");
         }
-        // One naming more states wins all the same.
+        // One naming more states wins wherever it is.
         let theme = Theme::parse(
-            "windowcontrols:hover button-close { background: #000 }\n\
-             button-close:hover:focus { background: #f00 }",
+            "window:focus-within > titlebar > controls > button.close:hover { background: #f00 }\n\
+             window > titlebar > controls:hover > button.close { background: #000 }",
         )
         .unwrap();
         let both = hovered.with(State::Focused);
@@ -1398,35 +1416,37 @@ mod tests {
     }
 
     #[test]
-    fn a_part_named_within_one_it_is_not_in_is_an_error() {
-        for (stylesheet, expected) in [
-            ("windowcontrols tab { color: red }", "only button-close"),
-            ("tab button-close { color: red }", "only button-close"),
-            ("* button-close { color: red }", "only button-close"),
-            ("windowcontrols * { color: red }", "only button-close"),
-            (
-                "windowcontrols button-close menu { color: red }",
-                "and no more",
-            ),
-            ("windowcontrols nope { color: red }", "expected `{`"),
-            (
-                "windowcontrols:active button-close { color: red }",
-                "only ever :focus",
-            ),
-            (
-                "@starting-style { windowcontrols button-close { opacity: 0 } }",
-                "nor the part it is in",
-            ),
-        ] {
-            let message = problem(stylesheet);
-            assert!(message.contains(expected), "{stylesheet}: {message}");
+    fn the_selector_of_a_list_that_reaches_nothing_is_the_one_reported() {
+        let message =
+            problem("window > titlebar > tab,\n  launcher > button,\n  menu { color: red }");
+        assert!(
+            message.starts_with("2:3: this reaches no element of the desktop"),
+            "{message}"
+        );
+        assert!(message.contains("`launcher > modes > button`"), "{message}");
+    }
+
+    #[test]
+    fn a_rule_of_the_user_beats_a_built_in_one_however_specific() {
+        // The built-in theme colours the close button with the pointer on
+        // the controls, naming three types, a class and a state.
+        let hovered = States::NONE.with(State::Hovered);
+        let theme = Theme::parse("button { background: #f00; }").unwrap();
+        for part in [Part::ButtonClose, Part::LauncherMode, Part::QuestionButton] {
+            assert_eq!(
+                theme.style_in(part, hovered, hovered).background,
+                RED,
+                "{part:?}"
+            );
         }
+        let built_in = Theme::default().style_in(Part::ButtonClose, hovered, hovered);
+        assert_ne!(built_in.background, RED);
     }
 
     #[test]
     fn a_scale_is_from_none_to_twice_the_size_and_only_as_a_part_comes_and_goes() {
         let scaled = |value: &str| {
-            let theme = format!("@starting-style {{ clock {{ scale: {value} }} }}");
+            let theme = format!("@starting-style {{ panel > clock {{ scale: {value} }} }}");
             Theme::parse(&theme).map(|theme| theme.starting(Part::Clock).scale)
         };
         assert_eq!(scaled("0"), Ok(0));
@@ -1439,17 +1459,25 @@ mod tests {
                 "{wrong}: {message}"
             );
         }
-        let message = problem("clock {\n  scale: 96%;\n}");
+        let message = problem("panel > clock {\n  scale: 96%;\n}");
         assert!(message.starts_with("2:3: "), "{message}");
         assert!(message.contains("as it comes and goes"), "{message}");
-        assert!(problem("clock, menu:closing { scale: 1 }").contains("comes and goes"));
-        assert!(Theme::parse("clock:closing, menu:hover:closing { scale: 1 }").is_ok());
+        assert!(
+            problem("panel > clock, menu:state(closing) { scale: 1 }").contains("comes and goes")
+        );
+        assert!(
+            Theme::parse(
+                "panel > clock:state(closing), notification:hover:state(closing) { scale: 1 }"
+            )
+            .is_ok()
+        );
     }
 
     #[test]
     fn programs_are_told_the_font_most_text_is_written_in_as_gtk_writes_one() {
         assert_eq!(Theme::default().font_name(), "Inter, sans-serif 11");
-        let theme = Theme::parse("menu-item { font-family: Cantarell; font-size: 10pt }").unwrap();
+        let theme =
+            Theme::parse("menu > item { font-family: Cantarell; font-size: 10pt }").unwrap();
         assert_eq!(theme.font_name(), "Cantarell 10");
     }
 
@@ -1461,7 +1489,7 @@ mod tests {
             "JetBrains Mono, monospace 11"
         );
         let own = ":root { --font-monospace: 'Fira Code', var(--plain) ; --plain: monospace }\n\
-                   menu-item { font-size: 10pt }";
+                   menu > item { font-size: 10pt }";
         let theme = Theme::parse(own).unwrap();
         assert_eq!(theme.monospace_font_name(), "Fira Code, monospace 10");
         let message = problem("\n:root { --font-monospace: , ; }");
@@ -1474,9 +1502,11 @@ mod tests {
     #[test]
     fn programs_are_told_the_buttons_of_a_titlebar_stand_at_the_left_as_the_theme_has_them() {
         assert_eq!(Theme::default().button_layout(), "close,minimize,maximize:");
-        let without = Theme::parse("button-maximize { min-width: 0 }").unwrap();
+        let without =
+            Theme::parse("window > titlebar > controls > button.maximize { min-width: 0 }")
+                .unwrap();
         assert_eq!(without.button_layout(), "close,minimize:", "not there");
-        let none = "button-close, button-maximize, button-minimize { min-width: 0 }";
+        let none = "window > titlebar > controls > button.close, window > titlebar > controls > button.maximize, window > titlebar > controls > button.minimize { min-width: 0 }";
         let none = Theme::parse(none).unwrap();
         assert_eq!(none.button_layout(), ":", "none at all");
     }
@@ -1488,10 +1518,15 @@ mod tests {
             theme.font(Part::Clock, States::NONE).family.clone()
         };
         assert_eq!(
-            family("clock { font-family: \"Inter Display\",Inter ,  'DejaVu Sans', sans-serif }"),
+            family(
+                "panel > clock { font-family: \"Inter Display\",Inter ,  'DejaVu Sans', sans-serif }"
+            ),
             "Inter Display, Inter, DejaVu Sans, sans-serif"
         );
-        assert_eq!(family("clock { font-family: monospace }"), "monospace");
+        assert_eq!(
+            family("panel > clock { font-family: monospace }"),
+            "monospace"
+        );
     }
 
     #[test]
@@ -1528,25 +1563,36 @@ mod tests {
             delay: 0,
             easing: Easing::EaseOut,
         };
-        assert_eq!(change("tab { transition: 150ms ease-out; }"), gentle);
-        assert_eq!(change("tab { transition: all ease-out 0.15s; }"), gentle);
+        assert_eq!(
+            change("window > titlebar > tab { transition: 150ms ease-out; }"),
+            gentle
+        );
+        assert_eq!(
+            change("window > titlebar > tab { transition: all ease-out 0.15s; }"),
+            gentle
+        );
         assert_eq!(change("* { transition: .15s ease-out; }"), gentle);
         assert_eq!(
-            change("tab { transition: 150ms; }").easing,
+            change("window > titlebar > tab { transition: 150ms; }").easing,
             Easing::Ease,
             "as CSS does when it is not told"
         );
         assert_eq!(
-            change("tab { transition-duration: 150ms; transition-timing-function: ease-out; }"),
+            change(
+                "window > titlebar > tab { transition-duration: 150ms; transition-timing-function: ease-out; }"
+            ),
             gentle
         );
         assert_eq!(
-            change("* { transition: 1s linear; } tab { transition: none; }"),
+            change("* { transition: 1s linear; } window > titlebar > tab { transition: none; }"),
             Transition::NONE,
             "said all at once, what is left out is as if never said"
         );
         assert_eq!(
-            change("* { transition: 1s linear; } tab { transition-duration: 0s; }").easing,
+            change(
+                "* { transition: 1s linear; } window > titlebar > tab { transition-duration: 0s; }"
+            )
+            .easing,
             Easing::Linear
         );
     }
@@ -1559,17 +1605,24 @@ mod tests {
             delay: 50,
             easing: Easing::EaseOut,
         };
-        assert_eq!(change("tab { transition: 150ms ease-out 50ms; }"), waiting);
         assert_eq!(
-            change("tab { transition: all 0.15s .05s ease-out; }"),
+            change("window > titlebar > tab { transition: 150ms ease-out 50ms; }"),
             waiting
         );
         assert_eq!(
-            change("tab { transition: 150ms ease-out; transition-delay: 50ms; }"),
+            change("window > titlebar > tab { transition: all 0.15s .05s ease-out; }"),
             waiting
         );
         assert_eq!(
-            change("* { transition: 1s 1s; } tab { transition: 150ms ease-out; }"),
+            change(
+                "window > titlebar > tab { transition: 150ms ease-out; transition-delay: 50ms; }"
+            ),
+            waiting
+        );
+        assert_eq!(
+            change(
+                "* { transition: 1s 1s; } window > titlebar > tab { transition: 150ms ease-out; }"
+            ),
             Transition {
                 delay: 0,
                 ..waiting
@@ -1582,7 +1635,7 @@ mod tests {
     fn colours_change_along_a_curve_a_theme_gives() {
         let easing = |stylesheet: &str| styled(Part::Tab, stylesheet).transition.easing;
         assert_eq!(
-            easing("tab { transition: 200ms cubic-bezier(0.2, 0, 0, 1); }"),
+            easing("window > titlebar > tab { transition: 200ms cubic-bezier(0.2, 0, 0, 1); }"),
             Easing::CubicBezier {
                 x1: 200,
                 y1: 0,
@@ -1591,7 +1644,9 @@ mod tests {
             }
         );
         assert_eq!(
-            easing("tab { transition-timing-function: cubic-bezier(.4,-0.5,.6,1.5); }"),
+            easing(
+                "window > titlebar > tab { transition-timing-function: cubic-bezier(.4,-0.5,.6,1.5); }"
+            ),
             Easing::CubicBezier {
                 x1: 400,
                 y1: -500,
@@ -1604,7 +1659,9 @@ mod tests {
 
     #[test]
     fn a_state_can_have_a_change_of_its_own() {
-        let theme = Theme::parse("tab { transition: 300ms; } tab:active { transition: 50ms; }");
+        let theme = Theme::parse(
+            "window > titlebar > tab { transition: 300ms; } window > titlebar > tab:checked { transition: 50ms; }",
+        );
         let theme = theme.unwrap();
         assert_eq!(
             theme.style(Part::Tab, States::NONE).transition.duration,
@@ -1660,7 +1717,7 @@ mod tests {
                 assert_eq!(style(closing), gentle, "{part:?}");
             }
         }
-        let still = Theme::parse("* { transition: none; }").unwrap();
+        let still = Theme::parse("*, *::backdrop { transition: none; }").unwrap();
         for part in Part::ALL {
             assert_eq!(still.style(part, FOCUSED).transition, Transition::NONE);
             assert_eq!(still.style(part, closing).transition, Transition::NONE);
@@ -1709,23 +1766,23 @@ mod tests {
 
     #[test]
     fn a_change_that_is_not_understood_is_an_error() {
-        let message = problem("tab { transition: background 150ms; }");
+        let message = problem("window > titlebar > tab { transition: background 150ms; }");
         assert!(
             message.contains("`background` is not part of a transition"),
             "{message}"
         );
-        let message = problem("tab { transition: 11s; }");
+        let message = problem("window > titlebar > tab { transition: 11s; }");
         assert!(message.contains("`11s` is not a time"), "{message}");
-        let message = problem("tab { transition-duration: soon; }");
+        let message = problem("window > titlebar > tab { transition-duration: soon; }");
         assert!(message.contains("`soon` is not a time"), "{message}");
-        let message = problem("tab { transition-timing-function: bouncy; }");
+        let message = problem("window > titlebar > tab { transition-timing-function: bouncy; }");
         assert!(
             message.contains("`bouncy` is not a way for colours to change"),
             "{message}"
         );
-        let message = problem("tab { transition: 1s 2s 3s; }");
+        let message = problem("window > titlebar > tab { transition: 1s 2s 3s; }");
         assert!(message.contains("`3s` is one time too many"), "{message}");
-        let message = problem("tab { transition-delay: 11s; }");
+        let message = problem("window > titlebar > tab { transition-delay: 11s; }");
         assert!(message.contains("`11s` is not a time"), "{message}");
         for curve in [
             "cubic-bezier(1.5, 0, 0, 1)",
@@ -1735,7 +1792,9 @@ mod tests {
             "cubic-bezier(0, 0, 1, 11)",
             "cubic-bezier(0, 0, 1, 1",
         ] {
-            let message = problem(&format!("tab {{ transition-timing-function: {curve}; }}"));
+            let message = problem(&format!(
+                "window > titlebar > tab {{ transition-timing-function: {curve}; }}"
+            ));
             assert!(
                 message.contains("not a way for colours to change")
                     && message.contains("cubic-bezier("),
@@ -1939,7 +1998,7 @@ mod tests {
         assert!(ratio >= 3.0, "{which}: the keyboard's row: {ratio:.2} to 1");
         for part in [Part::MenuItem, Part::MenuSign, Part::MenuKeys] {
             let ratio = style(part, FOCUSED).color.contrast(keyed);
-            let name = part.name();
+            let name = part.selector();
             assert!(
                 ratio >= 4.5,
                 "{which}: {name} on the keyboard's row: {ratio:.2} to 1"
@@ -2026,7 +2085,7 @@ mod tests {
         // What asks for a password is its own, for safety and not for
         // looks, and a row within a sheet of glass is not glass again.
         assert_eq!(blur(&built_in, Part::MenuItem), 0);
-        let own = Theme::parse("titlebar { backdrop-filter: blur(20px); }").unwrap();
+        let own = Theme::parse("window > titlebar { backdrop-filter: blur(20px); }").unwrap();
         assert_eq!(blur(&own, Part::Titlebar), 20);
         assert_eq!(blur(&own, Part::About), 32, "and no other");
     }
@@ -2186,8 +2245,8 @@ mod tests {
     fn a_still_theme_only_fades_and_no_quicker_change_is_slowed() {
         let theme = Theme::parse(
             "menu { transition: 400ms 50ms ease-out; }\n\
-             menu:closing { scale: 90%; opacity: 0; }\n\
-             menu-item { transition: 80ms linear; }\n\
+             menu:state(closing) { scale: 90%; opacity: 0; }\n\
+             menu > item { transition: 80ms linear; }\n\
              @starting-style { menu { scale: 50%; opacity: 0; } }\n",
         )
         .unwrap();
@@ -2326,11 +2385,11 @@ mod tests {
         let theme = Theme::parse(
             "* { font-family: \"DejaVu Sans\"; }\n\
              panel { font-size: 9pt; }\n\
-             clock { font-family: 'monospace'; font-weight: bold; }\n\
-             notice-heading { font-weight: 600; font-style: italic; }\n\
-             task:active { font-style: oblique; }\n\
-             task { font-style: normal; font-weight: normal; }\n\
-             tab:active { font-size: 14 }",
+             panel > clock { font-family: 'monospace'; font-weight: bold; }\n\
+             notice > heading { font-weight: 600; font-style: italic; }\n\
+             panel > task:checked { font-style: oblique; }\n\
+             panel > task { font-style: normal; font-weight: normal; }\n\
+             window > titlebar > tab:checked { font-size: 14 }",
         );
         let theme = theme.unwrap();
         let font = |part, states| {
@@ -2410,8 +2469,8 @@ mod tests {
     fn a_variable_may_stand_for_others_and_be_part_of_a_value() {
         let theme = Theme::parse(
             ":root { --loud: var( --accent ); --mine: var(--loud); --thick: 3px; }\n\
-             clock { color: var(--mine); background-color: transparent; }\n\
-             task { border: var(--thick) solid var(--mine); padding: 0 var(--thick); }",
+             panel > clock { color: var(--mine); background-color: transparent; }\n\
+             panel > task { border: var(--thick) solid var(--mine); padding: 0 var(--thick); }",
         );
         let theme = theme.unwrap();
         let clock = theme.style(Part::Clock, States::NONE);
@@ -2422,7 +2481,7 @@ mod tests {
         // The last word on a variable is the one that counts.
         let clock = styled(
             Part::Clock,
-            ":root { --mine: #f00; --mine: #00f; } clock { color: var(--mine) }",
+            ":root { --mine: #f00; --mine: #00f; } panel > clock { color: var(--mine) }",
         );
         assert_eq!(clock.color, Color::rgb(0, 0, 255));
     }
@@ -2431,7 +2490,7 @@ mod tests {
     fn ones_own_rule_wins_over_a_built_in_one_however_particular() {
         // The built-in theme has a rule for a tab that is active and
         // focused. A plain rule of the user's still has the last word.
-        let theme = Theme::parse("tab { color: #f00; }").unwrap();
+        let theme = Theme::parse("window > titlebar > tab { color: #f00; }").unwrap();
         assert_eq!(theme.style(Part::Tab, States::NONE).color, RED);
         assert_eq!(
             theme.style(Part::Tab, FOCUSED.with(State::Active)).color,
@@ -2442,12 +2501,12 @@ mod tests {
     #[test]
     fn among_ones_own_rules_the_more_particular_wins_and_then_the_later() {
         let theme = Theme::parse(
-            "tab:active:focus { color: #00f; }\n\
-             tab:active { color: #0f0; }\n\
-             tab { color: #f00; }\n\
+            "window:focus-within > titlebar > tab:checked { color: #00f; }\n\
+             window > titlebar > tab:checked { color: #0f0; }\n\
+             window > titlebar > tab { color: #f00; }\n\
              * { color: #fff; background: #000; }\n\
-             clock { color: #f00; }\n\
-             clock { color: #0f0; }",
+             panel > clock { color: #f00; }\n\
+             panel > clock { color: #0f0; }",
         );
         let theme = theme.unwrap();
         let color = |part, states| theme.style(part, states).color;
@@ -2465,7 +2524,10 @@ mod tests {
 
     #[test]
     fn a_rule_for_several_parts_applies_to_each() {
-        let theme = Theme::parse("clock, notice-heading, tab:active { color: #f00 }").unwrap();
+        let theme = Theme::parse(
+            "panel > clock, notice > heading, window > titlebar > tab:checked { color: #f00 }",
+        )
+        .unwrap();
         assert_eq!(theme.style(Part::Clock, States::NONE).color, RED);
         assert_eq!(theme.style(Part::NoticeHeading, States::NONE).color, RED);
         assert_eq!(theme.style(Part::Tab, ACTIVE).color, RED);
@@ -2493,7 +2555,7 @@ mod tests {
     #[test]
     fn every_property_can_be_set() {
         let theme = Theme::parse(
-            "task {\n\
+            "panel > task {\n\
                background: #010101;\n\
                color: #020202;\n\
                border-color: #030303;\n\
@@ -2569,81 +2631,91 @@ mod tests {
     #[test]
     fn padding_and_margins_take_one_to_four_sizes_or_one_for_a_side() {
         let padding = |value: &str| {
-            let edges = styled(Part::Clock, &format!("clock {{ padding: {value}; }}")).padding;
+            let edges = styled(
+                Part::Clock,
+                &format!("panel > clock {{ padding: {value}; }}"),
+            )
+            .padding;
             (edges.top, edges.right, edges.bottom, edges.left)
         };
         assert_eq!(padding("4px"), (4, 4, 4, 4));
         assert_eq!(padding("1px 2px"), (1, 2, 1, 2));
         assert_eq!(padding("1px 2px 3px"), (1, 2, 3, 2));
         assert_eq!(padding("1px 2px 3px 4px"), (1, 2, 3, 4));
-        let clock = styled(Part::Clock, "clock { padding: 0; padding-top: 7px; }");
+        let clock = styled(
+            Part::Clock,
+            "panel > clock { padding: 0; padding-top: 7px; }",
+        );
         assert_eq!((clock.padding.top, clock.padding.left), (7, 0));
-        let clock = styled(Part::Clock, "clock { margin: 2px; margin-right: 8px }");
+        let clock = styled(
+            Part::Clock,
+            "panel > clock { margin: 2px; margin-right: 8px }",
+        );
         assert_eq!((clock.margin.top, clock.margin.right), (2, 8));
 
-        let message = problem("clock { padding: 1px 2px 3px 4px 5px; }");
+        let message = problem("panel > clock { padding: 1px 2px 3px 4px 5px; }");
         assert!(message.contains("one to four"), "{message}");
-        let message = problem("clock { margin-top: 1px 2px; }");
+        let message = problem("panel > clock { margin-top: 1px 2px; }");
         assert!(message.contains("one size for a side"), "{message}");
-        let message = problem("clock { padding: 1px wide; }");
+        let message = problem("panel > clock { padding: 1px wide; }");
         assert!(message.contains("`wide` is not a size"), "{message}");
-        let message = problem("clock { margin: 65px; }");
+        let message = problem("panel > clock { margin: 65px; }");
         assert!(message.contains("from 0px to 64px"), "{message}");
     }
 
     #[test]
     fn a_border_may_be_given_all_at_once_for_every_side_or_for_one() {
-        let task = styled(Part::Task, "task { border: 2px solid red; }");
+        let task = styled(Part::Task, "panel > task { border: 2px solid red; }");
         assert_eq!(task.border, Edges::all(line(RED, 2)));
-        let task = styled(Part::Task, "task { border: rgb(255, 0, 0) 3px; }");
+        let task = styled(Part::Task, "panel > task { border: rgb(255, 0, 0) 3px; }");
         assert_eq!(task.border, Edges::all(line(RED, 3)));
         let task = styled(
             Part::Task,
-            "task { border: 2px solid red; border-top: none; }",
+            "panel > task { border: 2px solid red; border-top: none; }",
         );
         assert_eq!((task.border.top.width, task.border.left.width), (0, 2));
-        let task = styled(Part::Task, "task { border-left: 5px solid #f00; }");
+        let task = styled(Part::Task, "panel > task { border-left: 5px solid #f00; }");
         assert_eq!(task.border.left, line(RED, 5));
         assert_eq!(task.border.right.width, 0);
         let task = styled(
             Part::Task,
-            "task { border: 1px solid red; border-right-width: 6px; border-top: hidden; }",
+            "panel > task { border: 1px solid red; border-right-width: 6px; border-top: hidden; }",
         );
         assert_eq!(task.border.right, line(RED, 6));
         assert_eq!(task.border.top, line(RED, 0));
         // Naming only the kind of line changes nothing.
         assert_eq!(
-            styled(Part::Task, "task { border: solid; }"),
+            styled(Part::Task, "panel > task { border: solid; }"),
             Theme::default().style(Part::Task, States::NONE)
         );
 
-        let message = problem("task { border: 99px solid red; }");
+        let message = problem("panel > task { border: 99px solid red; }");
         assert!(message.contains("from 0px to 16px"), "{message}");
-        let message = problem("task { border: 1px dotted red; }");
+        let message = problem("panel > task { border: 1px dotted red; }");
         assert!(message.contains("`dotted` is not a color"), "{message}");
     }
 
     #[test]
     fn an_outline_is_given_all_at_once_or_a_property_at_a_time() {
-        let task = styled(Part::Task, "task { outline: 2px solid red; }");
+        let task = styled(Part::Task, "panel > task { outline: 2px solid red; }");
         assert_eq!((task.outline, task.outline_offset), (line(RED, 2), 0));
         let task = styled(
             Part::Task,
-            "task { outline: red 3px; outline-offset: 4px; outline-width: 1px; }",
+            "panel > task { outline: red 3px; outline-offset: 4px; outline-width: 1px; }",
         );
         assert_eq!((task.outline, task.outline_offset), (line(RED, 1), 4));
         let task = styled(
             Part::Task,
-            "task { outline-color: red; outline-width: 2px; outline: none; }",
+            "panel > task { outline-color: red; outline-width: 2px; outline: none; }",
         );
         assert_eq!(task.outline, line(RED, 0));
         assert_eq!(task.border, Edges::all(Line::NONE), "it is no border");
 
-        let message = problem("task { outline-offset: 17px; }");
+        let message = problem("panel > task { outline-offset: 17px; }");
         assert!(message.contains("from 0px to 16px"), "{message}");
-        let message = problem("task { outline-top: 1px solid red; }");
+        let message = problem("panel > task { outline-top: 1px solid red; }");
         assert!(message.contains("is not a property"), "{message}");
-        let message = problem("task { outline: 1px dashed red; }");
+        let message = problem("panel > task { outline: 1px dashed red; }");
         assert!(message.contains("`dashed` is not a color"), "{message}");
     }
 
@@ -2692,13 +2764,19 @@ mod tests {
         let cases = [
             ("window { border-width: 17px }", "from 0px to 16px"),
             ("window { border-radius: 65px }", "from 0px to 64px"),
-            ("tab { border-bottom-width: 99 }", "from 0px to 16px"),
-            ("titlebar { height: 8px }", "from 16px to 64px"),
-            ("titlebar { height: 1.5px }", "in whole px"),
-            ("titlebar { height: 2em }", "`2em` is not a size"),
-            ("titlebar { height: -20px }", "`-20px` is not a size"),
-            ("task { min-width: 5000px }", "from 0px to 4096px"),
-            ("task { max-width: wide }", "`wide` is not a size"),
+            (
+                "window > titlebar > tab { border-bottom-width: 99 }",
+                "from 0px to 16px",
+            ),
+            ("window > titlebar { height: 8px }", "from 16px to 64px"),
+            ("window > titlebar { height: 1.5px }", "in whole px"),
+            ("window > titlebar { height: 2em }", "`2em` is not a size"),
+            (
+                "window > titlebar { height: -20px }",
+                "`-20px` is not a size",
+            ),
+            ("panel > task { min-width: 5000px }", "from 0px to 4096px"),
+            ("panel > task { max-width: wide }", "`wide` is not a size"),
             ("* { font-size: 200pt }", "from 6pt to 72pt"),
             ("* { font-size: 12px }", "in whole pt"),
             ("* { font-weight: 50 }", "`50` is not a font weight"),
@@ -2722,27 +2800,27 @@ mod tests {
     fn display_none_leaves_a_part_out_and_block_or_inline_put_it_back() {
         let key = |theme: &Theme| theme.style(Part::LauncherModeKey, States::NONE).displayed;
         assert!(key(&Theme::default()), "shown unless a theme says");
-        let hidden = Theme::parse("launcher-mode-key { display: none; }").unwrap();
+        let hidden = Theme::parse("launcher > modes > button > kbd { display: none; }").unwrap();
         assert!(!key(&hidden));
         for shown in ["block", "inline"] {
             let theme = format!(
-                "launcher-mode-key {{ display: none }}\nlauncher-mode-key {{ display: {shown} }}"
+                "launcher > modes > button > kbd {{ display: none }}\nlauncher > modes > button > kbd {{ display: {shown} }}"
             );
             assert!(key(&Theme::parse(&theme).unwrap()), "{shown}");
         }
         // Only on the part it is said of.
         assert!(hidden.style(Part::LauncherMode, States::NONE).displayed);
-        let message = problem("launcher-mode-key { display: flex; }");
+        let message = problem("launcher > modes > button > kbd { display: flex; }");
         assert!(message.contains("`flex` is not a display"), "{message}");
     }
 
     #[test]
     fn a_property_that_takes_no_side_is_not_one_with_a_side() {
         for stylesheet in [
-            "tab { color-left: #fff; }",
-            "tab { height-top: 20px; }",
-            "tab { border-top-left-radius: 4px; }",
-            "tab { font-size-bottom: 12pt; }",
+            "window > titlebar > tab { color-left: #fff; }",
+            "window > titlebar > tab { height-top: 20px; }",
+            "window > titlebar > tab { border-top-left-radius: 4px; }",
+            "window > titlebar > tab { font-size-bottom: 12pt; }",
         ] {
             let message = problem(stylesheet);
             assert!(
@@ -2755,19 +2833,25 @@ mod tests {
     #[test]
     fn a_mistake_is_reported_where_it_was_written() {
         assert_eq!(
-            problem("tab {\n  colour: #fff;\n}"),
+            problem("window > titlebar > tab {\n  colour: #fff;\n}"),
             format!("2:3: `colour` is not a property; the properties are {PROPERTIES}")
         );
-        assert!(problem("tab {\n  color: banana;\n}").starts_with("2:10: `banana` is not a color"));
-        assert_eq!(
-            problem("clock { color: var(--nope); }"),
-            "1:16: there is no variable `--nope`"
+        assert!(
+            problem("window > titlebar > tab {\n  color: banana;\n}")
+                .starts_with("2:10: `banana` is not a color")
         );
         assert_eq!(
-            problem("clock { color: var(--accent; }"),
-            "1:16: this `var(` is never closed with `)`"
+            problem("panel > clock { color: var(--nope); }"),
+            "1:24: there is no variable `--nope`"
         );
-        assert!(problem("gadget { }").starts_with("1:1: `gadget` is not a part"));
+        assert_eq!(
+            problem("panel > clock { color: var(--accent; }"),
+            "1:24: this `var(` is never closed with `)`"
+        );
+        assert!(problem("gadget { }").starts_with("1:1: `gadget` is no element of the desktop"));
+        // What is written wrongly is said where it is, as what reaches
+        // nothing is.
+        assert!(problem("tab {\n  color").starts_with("2:8: expected `:` after `color`"));
     }
 
     #[test]
@@ -2779,25 +2863,27 @@ mod tests {
             message.starts_with("2:19: `banana` is not a color"),
             "{message}"
         );
-        let message = problem(":root { --mine: var(--gone); }\nclock { color: var(--mine); }");
+        let message =
+            problem(":root { --mine: var(--gone); }\npanel > clock { color: var(--mine); }");
         assert_eq!(message, "1:17: there is no variable `--gone`");
         // A built-in variable put to a use it does not fit is the fault of
         // the rule that did so.
-        let message = problem("\nclock { height: var(--accent); }");
+        let message = problem("\npanel > clock { height: var(--accent); }");
         assert!(
-            message.starts_with("2:17: `#22d3ee` is not a size"),
+            message.starts_with("2:25: `#22d3ee` is not a size"),
             "{message}"
         );
     }
 
     #[test]
     fn variables_that_go_round_in_a_circle_are_refused() {
-        let message = problem(":root { --a: var(--b); --b: var(--a); }\nclock { color: var(--a) }");
+        let message =
+            problem(":root { --a: var(--b); --b: var(--a); }\npanel > clock { color: var(--a) }");
         assert!(message.contains("stands for itself"), "{message}");
         assert!(message.starts_with("1:"), "{message}");
         // A long way round that does end is no circle.
         let chain = ":root { --a: #f00; --b: var(--a); --c: var(--b); --d: var(--c); }\n\
-                     clock { color: var(--d) }";
+                     panel > clock { color: var(--d) }";
         assert_eq!(styled(Part::Clock, chain).color, RED);
     }
 
@@ -2806,7 +2892,7 @@ mod tests {
         let long = "x".repeat(600);
         let stylesheet = format!(
             ":root {{ --long: {long}; --twice: var(--long) var(--long); }}\n\
-             clock {{ font-family: var(--twice); }}"
+             panel > clock {{ font-family: var(--twice); }}"
         );
         let message = problem(&stylesheet);
         assert!(message.contains("grows too long"), "{message}");
@@ -2821,11 +2907,13 @@ mod tests {
             write!(stylesheet, " --v{index}: #000;").unwrap();
         }
         stylesheet.push_str(" }\n");
-        let everything = Part::ALL.map(Part::name).join(", ");
-        for index in 0..5000 {
+        let everything = Part::ALL.map(Part::selector).join(", ");
+        // As many rules naming every element as come to the most selectors
+        // a stylesheet may have, each using a variable of the 5000.
+        for index in (0..5000).step_by(84) {
             writeln!(stylesheet, "{everything} {{ color: var(--v{index}); }}").unwrap();
         }
-        stylesheet.push_str("clock { color: #f00; }");
+        stylesheet.push_str("panel > clock { color: #f00; }");
         let theme = Theme::parse(&stylesheet).unwrap();
         assert_eq!(theme.style(Part::Clock, States::NONE).color, RED);
         let menu = theme.style(Part::Menu, States::NONE);
@@ -2834,11 +2922,14 @@ mod tests {
 
     #[test]
     fn a_theme_equals_its_copies_and_others_that_work_out_the_same() {
-        let theme = Theme::parse("clock { color: #f00 }").unwrap();
+        let theme = Theme::parse("panel > clock { color: #f00 }").unwrap();
         let copy = theme.clone();
         assert_eq!(theme, copy);
-        assert_eq!(theme, Theme::parse("clock{color:red;}").unwrap());
-        assert_ne!(theme, Theme::parse("clock { color: #f01 }").unwrap());
+        assert_eq!(theme, Theme::parse("panel > clock{color:red;}").unwrap());
+        assert_ne!(
+            theme,
+            Theme::parse("panel > clock { color: #f01 }").unwrap()
+        );
     }
 
     #[test]
@@ -2859,71 +2950,5 @@ mod tests {
         };
         assert_eq!(empty.style(Part::Clock, States::NONE), Style::NONE);
         assert_eq!(empty.font(Part::Clock, States::NONE), &Font::default());
-    }
-
-    /// FNV-1a over `text`: a hash whose value does not change from one
-    /// build to the next, as the standard library's may.
-    fn fnv(text: &str) -> u64 {
-        text.bytes().fold(0xcbf2_9ce4_8422_2325, |hash, byte| {
-            (hash ^ u64::from(byte)).wrapping_mul(0x0100_0000_01b3)
-        })
-    }
-
-    /// Every look of the built-in theme, a line for each part in each
-    /// scheme with each accent: its looks in every state, and in every
-    /// state of the part it is in, its fonts, and how it arrives, hashed.
-    fn looks_of_the_built_in_theme() -> String {
-        use std::fmt::Write as _;
-        let accents = [
-            Accent::Cyan,
-            Accent::Blue,
-            Accent::Teal,
-            Accent::Purple,
-            Accent::Pink,
-            Accent::Orange,
-            Accent::Own(Color::rgb(0x12, 0x34, 0x56)),
-        ];
-        let mut lines = String::new();
-        for scheme in [Scheme::Dark, Scheme::Light] {
-            for accent in accents {
-                let theme = Theme::built_in(scheme, accent);
-                for part in Part::ALL {
-                    let holders: Vec<States> = if part.holder().is_some() {
-                        holder_combinations().collect()
-                    } else {
-                        vec![States::NONE]
-                    };
-                    let mut text = format!("{:?}", theme.starting(part));
-                    for states in States::every() {
-                        for holder in &holders {
-                            let style = theme.style_in(part, states, *holder);
-                            write!(text, "{style:?}").unwrap();
-                        }
-                        write!(text, "{:?}", theme.font(part, states)).unwrap();
-                    }
-                    let hash = fnv(&text);
-                    writeln!(lines, "{scheme:?}-{accent:?} {part:?} {hash:016x}").unwrap();
-                }
-            }
-        }
-        lines
-    }
-
-    #[test]
-    fn the_built_in_looks_are_as_they_were() {
-        // A record kept while the theme's syntax changes under it (ADR 110),
-        // which may gain a line for a part added and never changes one.
-        let now = looks_of_the_built_in_theme();
-        if std::env::var_os("OMORFOS_BLESS").is_some() {
-            let path = concat!(env!("CARGO_MANIFEST_DIR"), "/src/looks.golden");
-            std::fs::write(path, &now).unwrap();
-            return;
-        }
-        let kept = include_str!("looks.golden");
-        let changed: Vec<&str> = now
-            .lines()
-            .filter(|line| !kept.lines().any(|was| was == *line))
-            .collect();
-        assert_eq!(changed, [] as [&str; 0], "looks changed, or parts not kept");
     }
 }

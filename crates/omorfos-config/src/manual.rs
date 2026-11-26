@@ -13,7 +13,7 @@ use omorfos_ipc::manual::Page;
 use serde_json::Value;
 
 use crate::schema::root;
-use crate::{Action, General, Keys, Menu, MenuItem, Part, Rules, State};
+use crate::{Action, General, Keys, Menu, MenuItem, Part, Rules};
 
 /// The pages every page of the configuration points to, at its end.
 const SEE_ALSO: &[&str] = &[
@@ -301,24 +301,39 @@ fn theme(built_in: &str) -> String {
     page.paragraph("`$XDG_CONFIG_HOME/omorfos/theme.css`, usually `~/.config/omorfos/theme.css`");
     page.section("Description");
     page.paragraph(
-        "The theme is a stylesheet, in a small part of CSS. A rule names parts of the desktop, \
-         perhaps in some state, and gives them properties. Yours is laid over the built-in \
-         theme, so you only write what you want changed. A rule of yours always wins over a \
-         built-in one; among your own, the one that names more states wins, and then the later \
-         one. It is read again as soon as it is saved, and kept as it was before if it has a \
-         mistake.",
+        "The theme is a stylesheet, in a part of CSS. Everything the desktop draws is an \
+         element in a tree, and a rule names elements as CSS does, by type, class, state and \
+         where they are, perhaps nested in another rule, and gives them properties. Yours is \
+         laid over the built-in theme, so you only write what you want changed. A rule of \
+         yours always wins over a built-in one; among your own, the more specific wins, as in \
+         CSS, and then the later one. A selector that reaches no element is a mistake. It is \
+         read again as soon as it is saved, and kept as it was before if it has a mistake.",
     );
-    page.section("Parts");
-    let parts: Vec<&str> = Part::ALL.iter().map(|part| part.name()).collect();
-    page.paragraph(&format!("`{}`", parts.join("`, `")));
-    page.section("States");
-    let states: Vec<String> = State::ALL
-        .iter()
-        .map(|state| format!(":{}", state.name()))
-        .collect();
-    page.paragraph(&format!("`{}`", states.join("`, `")));
+    page.section("Elements");
+    page.paragraph(
+        "Each element, at its place in the tree, and the states it can be in, each written \
+         on the element it is of:",
+    );
+    for part in Part::ALL {
+        let path = part.path();
+        let states: Vec<String> = part
+            .spellings()
+            .iter()
+            .map(|one| {
+                let on = path.get(one.node).filter(|_| one.node + 1 < path.len());
+                let before = on.map_or(String::new(), |node| node.kind.to_owned());
+                format!("`{before}{}`", one.name)
+            })
+            .collect();
+        let states = if states.is_empty() {
+            String::new()
+        } else {
+            format!(": {}", states.join(", "))
+        };
+        page.paragraph(&format!("`{}`{states}", part.selector()));
+    }
     page.section("The built-in theme");
-    page.paragraph("Every part there is:");
+    page.paragraph("Every element there is:");
     page.verbatim(built_in);
     page.see_also(&others(name));
     page.finish()
@@ -656,7 +671,7 @@ mod tests {
             "nothing said first: {rules}"
         );
         let theme = &pages[4].1;
-        assert!(theme.contains("\\fBswitcher\\-window\\fR"), "{theme}");
+        assert!(theme.contains("\\fBswitcher > thumbnail\\fR"), "{theme}");
         assert!(theme.contains("\\fB:hover\\fR"), "{theme}");
         assert!(theme.contains("\n* { font\\-size: 11pt; }\n"), "{theme}");
     }

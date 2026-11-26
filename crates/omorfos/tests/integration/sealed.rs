@@ -245,7 +245,7 @@ fn the_prompt_casts_the_shadow_of_a_question_on_the_dim() {
     assert!(shaded(under, open), "{under:08x} over {open:08x}");
 
     // A theme may cast none.
-    let theme = "question { box-shadow: none; }\n";
+    let theme = "dialog.question { box-shadow: none; }\n";
     let (mut session, _app) = busy_with(&[("theme.css", theme)]);
     let _asking = ask(&mut session, Roles::ASK);
     let picture = session.draw();
@@ -259,7 +259,7 @@ fn the_prompt_casts_the_shadow_of_a_question_on_the_dim() {
 fn the_prompt_casts_its_shadow_round_where_it_takes_the_pointer() {
     // A hard shadow, four pixels round the box, and blue to be told from
     // the window and the dim.
-    let theme = "question { box-shadow: 0 0 0 4px #0000ff; }\n";
+    let theme = "dialog.question { box-shadow: 0 0 0 4px #0000ff; }\n";
     let (mut session, _app) = busy_with(&[("theme.css", theme)]);
     let (mut asker, surface, _role) = ask(&mut session, Roles::ASK);
     // The prompt's box is its right half; the rest is room it keeps.

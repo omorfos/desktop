@@ -99,7 +99,7 @@ mod tests {
     #[test]
     fn a_theme_that_writes_dark_on_light_is_light() {
         let theme = "menu { background: #ffffff; color: #101010; }\n\
-                     launcher-item:active { background: #ff0000; }";
+                     launcher > list > item:checked { background: #ff0000; }";
         let theme = Theme::parse(theme).unwrap();
         let appearance = Appearance::of(&theme, &General::default(), Scheme::Dark);
         assert!(!appearance.dark);

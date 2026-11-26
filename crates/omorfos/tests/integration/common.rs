@@ -3542,14 +3542,15 @@ impl Dispatch<zxdg_output_v1::ZxdgOutputV1, ()> for ClientState {
     }
 }
 
-/// A theme with a rule after it that has every part change colour, and
-/// come onto the screen, at once. A theme that says how long some part
-/// takes outranks it for that part.
+/// A theme with a rule after it that has every element change colour, and
+/// come onto the screen, at once, what is behind one over the screen
+/// among them. A theme that says how long some element takes outranks it
+/// for that element, naming its type where this names none.
 ///
 /// A theme that is broken is not read at all, and the built-in one, which
 /// takes its time, is used: a test of that lets time pass.
 fn still(theme: &str) -> String {
-    format!("{theme}\n* {{ transition: none; }}\n")
+    format!("{theme}\n*, *::backdrop {{ transition: none; }}\n")
 }
 
 /// Writes `script` to `path` as a program that may be run.

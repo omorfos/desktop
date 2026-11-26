@@ -90,7 +90,7 @@ fn a_line_is_drawn_between_two_windows_that_share_a_workspace() {
     assert!(!session.draw().damaged, "and not drawn again as it is");
 
     // It takes the colour the theme gives it.
-    session.write_config("theme.css", "tile-line { color: #ff00ff; }\n");
+    session.write_config("theme.css", "desktop > separator { color: #ff00ff; }\n");
     session.eventually(|session| session.draw().at(320, 300) == MAGENTA);
 }
 

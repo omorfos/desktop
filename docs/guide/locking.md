@@ -68,7 +68,7 @@ types nothing, so start typing your password after it. Backspace held
 down goes on taking out, at the pace of `keyboard.repeat_rate` and
 `repeat_delay`, and Super+A, as Cmd+A on a Mac, chooses all of what you
 typed (Ctrl+A with `defaults: ordinary` in `keys.yaml`),
-which `question-input:active` marks, for Backspace to take it out at once
+which `dialog.question > input::selection` marks, for Backspace to take it out at once
 or what you type next to take its place. Escape, or being
 left alone for 30 seconds, empties the field and shows only the time
 again, the rest going the way it came; a key, a button or the pointer
@@ -83,7 +83,7 @@ shown whole, and cut short only where it would be wider than the screen.
 
 It asks PAM, so whatever your system's login accepts unlocks it. A wrong
 password shakes the field, as the administrator's prompt does, unless the
-theme has nothing move (`question { transition: none; }`), and then
+theme has nothing move (`dialog.question { transition: none; }`), and then
 nothing comes into view or goes gradually either, nor does the field's
 cursor blink. A finger on
 the reader and a security key, such as a YubiKey, are asked for at the
@@ -109,7 +109,7 @@ Restart, Shut Down and Log Out ask first, since the programs that are open
 close and what is not saved in them is lost; Cancel or Escape says no.
 Sleep is done at once, and you come back to the lock screen. Tab moves
 from the field to each button in turn, and Shift+Tab back; Enter presses
-the one you are on, which looks `question-button:focus`. Asked whether to
+the one you are on, which looks `dialog.question > button:focus`. Asked whether to
 go ahead, you are on Cancel, so that pressing Enter twice loses nothing;
 typing goes back to the field. When a
 program keeps the machine from turning off, such as a download, the

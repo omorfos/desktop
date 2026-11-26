@@ -65,7 +65,7 @@ mod tests {
         let (longer, _) = button_size(&mut text, &theme, "Shut down the machine now");
         assert!(longer > wide);
         // A theme can hold it to a narrowest.
-        let narrowest = Theme::parse("question-button { min-width: 300px; }").unwrap();
+        let narrowest = Theme::parse("dialog.question > button { min-width: 300px; }").unwrap();
         assert_eq!(button_size(&mut text, &narrowest, "OK").0, 300);
     }
 

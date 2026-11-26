@@ -1,13 +1,18 @@
 # `theme.css`
 
-The theme is a stylesheet, in a small part of CSS. A rule names parts of
-the desktop, perhaps in some state, and gives them properties. Yours is
-laid over the built-in theme, so you only write what you want changed. A
-rule of yours always wins over a built-in one; among your own, the one that
-names more states wins, and then the later one.
+The theme is a stylesheet, in a part of CSS. Everything the desktop draws
+is an element in a tree, as a web page's are: a `button` in a titlebar's
+`controls`, an `item` in the launcher's `list`. A rule names elements as
+CSS does, by type, class, state and where they are, and gives them
+properties: `button { border-radius: 8px; }` rounds every button there
+is. Yours is laid over the built-in theme, so you only write what you want
+changed. A rule of yours always wins over a built-in one, however
+specific the built-in one is; among your own, the more specific wins, as
+in CSS, and then the later one.
 
-The whole built-in theme, which is also every part there is, is folded
-away here; open it to see how a part is drawn before changing it.
+The whole built-in theme, which also names every element there is, is
+folded away here; open it to see how an element is drawn before changing
+it.
 
 <details>
 <summary>The built-in theme</summary>
@@ -73,8 +78,9 @@ away here; open it to see how a part is drawn before changing it.
 }
 
 /* Colours take a moment to change when a part's state does. To have them
- * change at once, write `* { transition: none; }` in your theme. */
-* {
+ * change at once, write `*, *::backdrop { transition: none; }` in your
+ * theme. */
+*, *::backdrop {
   font-family: Inter, sans-serif; /* Inter where it is installed */
   font-size: 11pt;
   transition: 120ms ease-out;
@@ -84,29 +90,55 @@ away here; open it to see how a part is drawn before changing it.
  * change, and leaves quicker than it came, so that what has been dismissed
  * is not in the way of what is next: it comes over its own transition,
  * from how it is in @starting-style, a little small and not yet seen; and
- * it goes over the one it has :closing, to how it is then, a little less
+ * it goes over the one it has :state(closing), to how it is then, a little less
  * small. `scale` is only for this: how large a part is drawn as it comes
  * and goes. */
-window, menu, notice, tooltip, panel, notification, launcher, switcher, question, about {
+window,
+menu,
+notice,
+tooltip,
+panel,
+notification,
+launcher,
+switcher,
+dialog.question,
+dialog.about {
   transition: 180ms ease-out;
 }
-window:closing, menu:closing, notice:closing, tooltip:closing, panel:closing,
-notification:closing, launcher:closing, switcher:closing, question:closing, about:closing {
+window:state(closing),
+menu:state(closing),
+notice:state(closing),
+tooltip:state(closing),
+panel:state(closing),
+notification:state(closing),
+launcher:state(closing),
+switcher:state(closing),
+dialog.question:state(closing),
+dialog.about:state(closing) {
   transition: 120ms ease-in;
   scale: 98%;
   opacity: 0;
 }
 @starting-style {
-  window, menu, notice, tooltip, panel, notification, launcher, switcher, question, about {
+  window,
+  menu,
+  notice,
+  tooltip,
+  panel,
+  notification,
+  launcher,
+  switcher,
+  dialog.question,
+  dialog.about {
     scale: 96%;
     opacity: 0;
   }
 }
 /* What dims the screen behind the launcher only fades, being as large as
  * the screen. */
-launcher-backdrop:closing { opacity: 0; }
+launcher:state(closing)::backdrop { opacity: 0; }
 @starting-style {
-  launcher-backdrop { opacity: 0; }
+  launcher::backdrop { opacity: 0; }
 }
 
 desktop { background: var(--background); }
@@ -126,31 +158,31 @@ window {
    * `backdrop-filter: none` gives programs no blur. */
   backdrop-filter: blur(24px);
 }
-window:focus { box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28); }
+window:focus-within { box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28); }
 
 /* The line between windows that share a workspace. */
-tile-line { color: var(--border); }
+desktop > separator { color: var(--border); }
 
 /* A window offered in a part with nothing in it: the box round its picture
  * and its title, and the title, brighter under the pointer. */
-offer {
+desktop > button.offer {
   color: var(--text-dim);
   border: 1px solid var(--border);
   border-radius: 10px;
 }
-offer:hover { color: var(--text); }
+desktop > button.offer:hover { color: var(--text); }
 
 /* A titlebar is thick glass: what is behind it blurred, under the surface
  * at as much of itself as text on it needs. `backdrop-filter: none` and a
  * background that cannot be seen through make it solid. */
-titlebar {
+window > titlebar {
   height: 48px;
   background: var(--glass-thick-dim);
   color: var(--text-dim);
   backdrop-filter: blur(var(--blur));
   box-shadow: inset 0 1px var(--glass-rim);
 }
-titlebar:focus {
+window:focus-within > titlebar {
   background: var(--glass-thick);
   color: var(--text);
 }
@@ -158,13 +190,13 @@ titlebar:focus {
 /* A title in a titlebar: in the middle of it where it is alone. Where
  * there are several, each is a tab, and the border on the left is the
  * line between one tab and the next. */
-tab {
+window > titlebar > tab {
   padding: 0 12px;
   color: var(--text-dim);
   border-left: 1px solid var(--border);
 }
-tab:active { border-bottom: 2px solid var(--border); }
-tab:active:focus {
+window > titlebar > tab:checked { border-bottom: 2px solid var(--border); }
+window:focus-within > titlebar > tab:checked {
   color: var(--text);
   border-bottom-color: var(--accent);
 }
@@ -172,11 +204,14 @@ tab:active:focus {
 /* The buttons at the left of a titlebar: close, minimize, maximize. Each
  * is a box in its share of the titlebar, as wide as its min-width with its
  * margin around it, and its color is that of the sign drawn on it. They
- * are :focus with their frame, and each is :hover while the pointer is on
- * it. They are in windowcontrols, which is :hover while the pointer is on
- * any of them: named before a button, as below, it has all three show
- * their signs at once. Give one a min-width of 0 to do without it. */
-button-close, button-minimize, button-maximize {
+ * are in a window that is :focus-within, and each is :hover while the
+ * pointer is on it. They are in the titlebar's controls, which are :hover
+ * while the pointer is on any of them: named before a button, as below,
+ * they have all three show their signs at once. Give one a min-width of 0
+ * to do without it. */
+window > titlebar > controls > button.close,
+window > titlebar > controls > button.minimize,
+window > titlebar > controls > button.maximize {
   min-width: 16px;
   margin: 16px 4px;
   border: 1px solid var(--button-rim);
@@ -184,16 +219,20 @@ button-close, button-minimize, button-maximize {
   background: var(--border);
   color: transparent;
 }
-button-close { margin-left: 12px; }
-button-close:focus, windowcontrols:hover button-close { background: var(--close); }
-button-minimize:focus, windowcontrols:hover button-minimize {
+window > titlebar > controls > button.close { margin-left: 12px; }
+window:focus-within > titlebar > controls > button.close,
+window > titlebar > controls:hover > button.close { background: var(--close); }
+window:focus-within > titlebar > controls > button.minimize,
+window > titlebar > controls:hover > button.minimize {
   background: var(--minimize);
 }
-button-maximize:focus, windowcontrols:hover button-maximize {
+window:focus-within > titlebar > controls > button.maximize,
+window > titlebar > controls:hover > button.maximize {
   background: var(--maximize);
 }
-windowcontrols:hover button-close, windowcontrols:hover button-minimize,
-windowcontrols:hover button-maximize {
+window > titlebar > controls:hover > button.close,
+window > titlebar > controls:hover > button.minimize,
+window > titlebar > controls:hover > button.maximize {
   color: var(--on-button);
 }
 
@@ -208,34 +247,34 @@ menu {
 }
 /* A sign is 8 from the row's start, from its top and bottom, and from its
  * label. */
-menu-item {
+menu > item {
   height: 32px;
   padding: 0 12px 0 8px;
   color: var(--text);
 }
-menu-item:hover { background: var(--surface-raised); }
-menu-separator { color: var(--border); }
+menu > item:hover { background: var(--surface-raised); }
+menu > separator { color: var(--border); }
 /* What stands before a row's label, in the accent on a faint square of it
  * while what the row turns on and off is on. */
-menu-sign {
+menu > item > icon {
   padding: 3px;
   border-radius: 6px;
   color: var(--text);
 }
-menu-sign:active {
+menu > item:checked > icon {
   background: var(--accent-tint);
   color: var(--accent);
 }
 /* The keys that do what a row does, at its end. */
-menu-keys { color: var(--text-dim); }
+menu > item > kbd { color: var(--text-dim); }
 /* The row the keyboard is on, in the accent: seen from across the room,
  * where the pointer's is only raised. */
-menu-item:focus {
+menu > item:focus {
   background: var(--accent);
   color: var(--on-accent);
 }
-menu-sign:focus { color: var(--on-accent); }
-menu-keys:focus { color: var(--on-accent); }
+menu > item:focus > icon { color: var(--on-accent); }
+menu > item:focus > kbd { color: var(--on-accent); }
 
 /* What is wrong with the configuration, when it was last read. */
 /* Its glass is as thick as the prompt's: what is wrong is said in red,
@@ -249,7 +288,7 @@ notice {
   border-radius: 10px;
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.36), inset 0 1px var(--glass-rim);
 }
-notice-heading { color: var(--danger); }
+notice > heading { color: var(--danger); }
 
 tooltip {
   padding: 4px 8px;
@@ -270,7 +309,7 @@ capture {
 
 /* The line round a screen or a window while it is shared or recorded,
  * which is in no picture of it. */
-capture-border { border: 2px solid var(--capture); }
+frame.capture { border: 2px solid var(--capture); }
 
 /* The panel, and what is on it: the workspaces, a task for each window on
  * the one being shown, and the clock. A margin on the panel moves it in
@@ -282,18 +321,18 @@ panel {
   backdrop-filter: blur(var(--blur));
   color: var(--text);
 }
-workspace, task {
+panel > workspace, panel > task {
   padding: 0 12px;
   color: var(--text);
 }
-workspace { min-width: 28px; }
-task { max-width: 240px; }
-workspace:active, task:active {
+panel > workspace { min-width: 28px; }
+panel > task { max-width: 240px; }
+panel > workspace:checked, panel > task:checked {
   background: var(--surface-raised);
   color: var(--text);
   border-bottom: 2px solid var(--accent);
 }
-clock {
+panel > clock {
   padding: 0 12px;
   color: var(--text);
 }
@@ -312,12 +351,12 @@ popover {
   border-radius: 10px;
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.36), inset 0 1px var(--glass-rim);
 }
-popover-item {
+popover > item {
   color: var(--text);
   border-radius: 6px;
 }
-popover-item:hover { background: var(--surface-raised); }
-popover-day, popover-day-outside {
+popover > item:hover { background: var(--surface-raised); }
+popover > calendar > day, popover > calendar > day.outside {
   height: 32px;
   min-width: 32px;
   margin: 2px;
@@ -325,18 +364,21 @@ popover-day, popover-day-outside {
   border: 1px solid var(--border-faint);
   border-radius: 6px;
 }
-popover-day-outside { color: var(--text-faint); }
-popover-day:focus, popover-day-outside:focus { border-color: var(--border); }
-popover-day:hover, popover-day-outside:hover {
+popover > calendar > day.outside { color: var(--text-faint); }
+popover > calendar > day:state(in-line),
+popover > calendar > day.outside:state(in-line) { border-color: var(--border); }
+popover > calendar > day:hover, popover > calendar > day.outside:hover {
   background: var(--surface-raised);
   border: 2px solid var(--accent);
 }
-popover-day:active, popover-day-outside:active {
+popover > calendar > day:state(today),
+popover > calendar > day.outside:state(today) {
   background: var(--accent);
   border-color: var(--accent);
   color: var(--on-accent);
 }
-popover-day:active:hover, popover-day-outside:active:hover {
+popover > calendar > day:state(today):hover,
+popover > calendar > day.outside:state(today):hover {
   border-color: var(--text);
 }
 
@@ -357,12 +399,12 @@ launcher {
   /* A little slower to come than the rest, and slower again to leave. */
   transition: 220ms ease-out;
 }
-launcher:closing {
+launcher:state(closing) {
   transition: 140ms ease-in;
   scale: 96%;
 }
 /* The field is large, and of the launcher's own glass, as Spotlight's. */
-launcher-input {
+launcher > input {
   height: 56px;
   margin: 0 0 8px 0;
   padding: 0 8px;
@@ -371,52 +413,52 @@ launcher-input {
   border-radius: 28px;
 }
 /* What is typed, when all of it is chosen, as Ctrl+A chooses it. */
-launcher-input:active {
+launcher > input::selection {
   background: var(--accent);
   color: var(--on-accent);
 }
 /* A row has two lines: the name, and under it what the program says of
  * itself, if the launcher shows that; its icon is as tall as both. */
-launcher-item {
+launcher > list > item {
   height: 56px;
   padding: 8px 14px;
   color: var(--text);
   border-radius: 28px;
 }
-launcher-item:active {
+launcher > list > item:checked {
   background: var(--accent);
   color: var(--on-accent);
 }
 /* What a program says of itself, where the launcher is set to show it. */
-launcher-description { color: var(--text-dim); }
-launcher-description:active { color: var(--on-accent); }
+launcher > list > item > description { color: var(--text-dim); }
+launcher > list > item:checked > description { color: var(--on-accent); }
 /* A program in the grid of every program: its icon, half as wide as the
  * room inside its padding, over its name. It is as wide as its min-width. */
-launcher-tile {
+launcher > grid > item {
   min-width: 112px;
   padding: 8px;
   color: var(--text);
   border-radius: 16px;
 }
-launcher-tile:active {
+launcher > grid > item:checked {
   background: var(--accent);
   color: var(--on-accent);
 }
 /* The best of all, alone at the top of what is found: outlined while the
  * field has the keyboard, as what Enter takes, and lit as any row. */
-launcher-top {
+launcher > list > item.top {
   height: 56px;
   padding: 8px 14px;
   color: var(--text);
   border: 1px solid var(--accent-tint);
   border-radius: 28px;
 }
-launcher-top:active {
+launcher > list > item.top:checked {
   background: var(--accent);
   color: var(--on-accent);
 }
 /* The heading over each section of what is found. */
-launcher-heading {
+launcher > list > heading {
   height: 24px;
   padding: 0 8px;
   color: var(--text-dim);
@@ -424,31 +466,31 @@ launcher-heading {
 }
 /* The row of modes at the bottom, under a hairline, while the pointer is
  * over an empty launcher; and a mode in it. */
-launcher-modes {
+launcher > modes {
   height: 56px;
   padding: 11px 12px 12px 12px;
   border-top: var(--edge);
 }
-launcher-mode {
+launcher > modes > button {
   padding: 0 12px;
   color: var(--text);
   border-radius: 16px;
 }
-launcher-mode:hover { background: var(--accent-tint); }
-launcher-mode:active {
+launcher > modes > button:hover { background: var(--accent-tint); }
+launcher > modes > button:checked {
   background: var(--accent);
   color: var(--on-accent);
 }
 /* The mode the keyboard is on, after Down past the last row, has a ring
  * of the accent a little way out, as a button of a question has. */
-launcher-mode:focus {
+launcher > modes > button:focus {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 /* The key that goes to a mode, after its name, in a faint chip of its
  * own: dim, and a size smaller, as a menu's keys are. `display: none`
  * leaves it out. */
-launcher-mode-key {
+launcher > modes > button > kbd {
   padding: 2px 5px;
   color: var(--text-dim);
   font-size: 9pt;
@@ -456,14 +498,14 @@ launcher-mode-key {
   border: var(--edge);
   border-radius: 6px;
 }
-launcher-mode-key:active { color: var(--on-accent); }
+launcher > modes > button:checked > kbd { color: var(--on-accent); }
 /* The rest of the screen while the launcher is open. A click on it closes
  * the launcher. Give it a see-through colour to dim what is behind. */
-launcher-backdrop { background: transparent; }
+launcher::backdrop { background: transparent; }
 
 /* A notification. The margin is the room between one and the next, and
  * between them and the edges of the screen. One a program marks critical
- * is :urgent. */
+ * is :state(urgent). */
 notification {
   min-width: 340px;
   margin: 8px;
@@ -477,15 +519,15 @@ notification {
 }
 notification:hover { border-color: var(--border-strong); }
 notification:focus { border-color: var(--accent); }
-notification:urgent { border-color: var(--danger); }
-notification-title {
+notification:state(urgent) { border-color: var(--danger); }
+notification > title {
   color: var(--text);
   font-weight: 600;
 }
-notification-body { color: var(--text-dim); }
+notification > body { color: var(--text-dim); }
 /* How full something a notification tells of is, such as the volume: the
  * background is the whole, the colour how much of it is full. */
-notification-level {
+notification > meter {
   margin-top: 8px;
   background: var(--border);
   color: var(--accent);
@@ -493,9 +535,9 @@ notification-level {
 }
 
 /* What the portals ask: whether an application may see the screen, and
- * what asks for a password. The button that gives is :active. The border
+ * what asks for a password. The button that gives is :default. The border
  * is also the ring of the loupe a colour on the screen is picked with. */
-question {
+dialog.question {
   padding: 20px;
   background: var(--surface);
   color: var(--text);
@@ -503,36 +545,36 @@ question {
   border-radius: 12px;
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.36);
 }
-question-detail { color: var(--text-dim); }
-question-button {
+dialog.question > detail { color: var(--text-dim); }
+dialog.question > button {
   height: 36px;
   padding: 0 20px;
   background: var(--surface-dim);
   color: var(--text);
   border-radius: 6px;
 }
-question-button:hover { background: var(--surface-raised); }
-question-button:active {
+dialog.question > button:hover { background: var(--surface-raised); }
+dialog.question > button:default {
   background: var(--accent);
   color: var(--on-accent);
 }
 /* What the keyboard is on has a ring of the accent, a little way out from
  * it, which shows round a button filled with the accent as well as round
  * one that is not. */
-question-button:focus {
+dialog.question > button:focus {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
-question-input {
+dialog.question > input {
   padding: 8px;
   background: var(--surface-raised);
   color: var(--text);
   border: 1px solid var(--border-strong);
   border-radius: 6px;
 }
-question-input:focus { border-color: var(--accent); }
+dialog.question > input:focus { border-color: var(--accent); }
 /* What is typed, when all of it is chosen, as Ctrl+A chooses it. */
-question-input:active {
+dialog.question > input::selection {
   background: var(--accent);
   color: var(--on-accent);
 }
@@ -541,7 +583,7 @@ question-input:active {
  * title. In rows, the box is in the middle of the screen, each place in it
  * with its picture over its title, as wide as its min-width. On a diagonal,
  * the box is under the queue, with the title of the one picked. The one
- * picked is :active. */
+ * picked is :checked. */
 switcher {
   padding: 12px;
   background: var(--glass-thick);
@@ -550,61 +592,61 @@ switcher {
   border-radius: 12px;
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.36), inset 0 1px var(--glass-rim);
 }
-switcher-item {
+switcher > item {
   min-width: 200px;
   padding: 8px;
   border: 2px solid transparent;
   border-radius: 6px;
 }
-switcher-item:active {
+switcher > item:checked {
   background: var(--surface-raised);
   border-color: var(--accent);
 }
-switcher-title { color: var(--text); }
+switcher > item > title { color: var(--text); }
 /* On a diagonal, each window in the switcher: its border round its picture,
- * its padding away. The one picked is :active. */
-switcher-window {
+ * its padding away. The one picked is :checked. */
+switcher > thumbnail {
   padding: 4px;
   border: 2px solid transparent;
   border-radius: 10px;
 }
-switcher-window:active { border-color: var(--accent); }
+switcher > thumbnail:checked { border-color: var(--accent); }
 /* The screen behind the switcher: dimmed, and blurred out of focus. */
-switcher-backdrop {
+switcher::backdrop {
   background: rgba(0, 0, 0, 0.35);
   backdrop-filter: blur(16px);
 }
 /* The overview: each window in it, its border round its picture, its
- * padding away, the one picked :active; the title of the one picked, under
- * it; each workspace in the strip along the top, the one shown :active
+ * padding away, the one picked :checked; the title of the one picked,
+ * under it; each workspace in the strip along the top, the one shown :checked
  * and one under the pointer :hover; the button after them that makes a
  * new workspace, its plus in its colour; and the screen behind it all,
  * dimmed and blurred out of focus. */
-overview-window {
+overview > thumbnail {
   padding: 4px;
   border: 2px solid transparent;
   border-radius: 10px;
 }
-overview-window:active { border-color: var(--accent); }
-overview-title {
+overview > thumbnail:checked { border-color: var(--accent); }
+overview > title {
   padding: 4px 10px;
   background: var(--surface);
   color: var(--text);
   border-radius: 6px;
 }
-overview-workspace {
+overview > workspace {
   border: 2px solid var(--border);
   border-radius: 6px;
 }
-overview-workspace:hover { border-color: var(--text); }
-overview-workspace:active { border-color: var(--accent); }
-overview-add {
+overview > workspace:hover { border-color: var(--text); }
+overview > workspace:checked { border-color: var(--accent); }
+overview > button.add {
   border: 2px solid var(--border);
   border-radius: 6px;
   color: var(--text);
 }
-overview-add:hover { border-color: var(--text); }
-overview-backdrop {
+overview > button.add:hover { border-color: var(--text); }
+overview::backdrop {
   background: rgba(0, 0, 0, 0.5);
   backdrop-filter: blur(16px);
 }
@@ -631,7 +673,7 @@ sealed {
  * the overview's button that closes, on its top left corner while the
  * pointer is on it, coming and going as a menu does, puts it away,
  * and its button copies what the computer is. */
-about {
+dialog.about {
   padding: 20px;
   background: var(--glass-thick);
   backdrop-filter: blur(var(--blur));
@@ -640,21 +682,21 @@ about {
   border-radius: 12px;
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.36), inset 0 1px var(--glass-rim);
 }
-about-heading {
+dialog.about > heading {
   color: var(--text);
   font-weight: 600;
 }
-about-detail { color: var(--text-dim); }
-about-button {
+dialog.about > detail { color: var(--text-dim); }
+dialog.about > button {
   padding: 4px 12px;
   background: var(--surface-dim);
   color: var(--text);
   border-radius: 6px;
 }
-about-button:hover { background: var(--surface-raised); }
+dialog.about > button:hover { background: var(--surface-raised); }
 /* For a moment once it has copied, it says so, in the colour of what is
  * done, with a tick. */
-about-button:active {
+dialog.about > button:state(copied) {
   background: var(--success);
   color: var(--background);
 }
@@ -769,55 +811,136 @@ panel {
   border-radius: 10px;
   background: rgba(27, 29, 35, 0.8);
 }
-workspace, task {
+panel workspace, panel task {
   margin: 3px 2px;
   border-radius: 6px;
 }
-workspace:active, task:active { border-bottom: none; }
+panel > workspace:checked, panel > task:checked { border-bottom: none; }
 ```
 
-**Parts** are `desktop`, `window`, `tile-line`, `offer`, `titlebar`, `tab`, `windowcontrols`, `button-close`,
-`button-maximize`, `button-minimize`, `menu`, `menu-item`,
-`menu-separator`, `menu-sign`, `menu-keys`, `notice`, `notice-heading`, `capture`, `capture-border`, `tooltip`, `panel`,
-`workspace`, `task`,
-`clock`, `popover`, `popover-item`, `popover-day`, `popover-day-outside`, `launcher`, `launcher-input`, `launcher-item`,
-`launcher-description`, `launcher-tile`, `launcher-top`, `launcher-heading`, `launcher-modes`, `launcher-mode`, `launcher-mode-key`, `launcher-backdrop`, `notification`,
-`notification-title`, `notification-body`, `notification-level`, `question`, `question-detail`,
-`question-button`, `question-input`, `switcher`, `switcher-item`, `switcher-title`,
-`switcher-window`, `switcher-backdrop`, `overview-window`, `overview-title`,
-`overview-workspace`, `overview-add`, `overview-backdrop`, `picker`,
-`sealed`, `about`, `about-heading`, `about-detail` and `about-button`. `*` is every part. Several can share a rule:
-`workspace, task { ... }`.
+**Elements** are these, each at its place in the tree, with the states
+it can be in and the element each is written on. Nothing else is drawn;
+`list`, `grid`, `calendar`, `modes` and the like are there to be named
+before what is in them.
 
-**States** follow a part: `:focus` (it has the keyboard, or its window
-has), `:active` (the tab or workspace being shown, or the task of the
-window with focus, or the program the launcher would start, or the sign of
-a row of the menu whose window or session is so), `:hover` (the
-pointer is over it), `:urgent` (a notification its sender marked as
-critical) and `:closing` (it is going from the screen). A part can be in
-several: `tab:active:focus`.
+| Element | States |
+|---|---|
+| `desktop` | — |
+| `window` | `:focus-within`, `:state(closing)` |
+| `desktop > separator` | — |
+| `desktop > button.offer` | `:hover` |
+| `window > titlebar` | `window:focus-within` |
+| `window > titlebar > tab` | `:checked`, `window:focus-within` |
+| `window > titlebar > controls` | `window:focus-within`, `:hover` |
+| `window > titlebar > controls > button.close` | `window:focus-within`, `:hover`, `controls:hover` |
+| `window > titlebar > controls > button.maximize` | `window:focus-within`, `:hover`, `controls:hover` |
+| `window > titlebar > controls > button.minimize` | `window:focus-within`, `:hover`, `controls:hover` |
+| `menu` | `:state(closing)` |
+| `menu > item` | `:hover`, `:focus` |
+| `menu > separator` | — |
+| `menu > item > icon` | `item:hover`, `item:focus`, `item:checked` |
+| `menu > item > kbd` | `item:hover`, `item:focus` |
+| `notice` | `:state(closing)` |
+| `notice > heading` | — |
+| `capture` | — |
+| `frame.capture` | — |
+| `tooltip` | `:state(closing)` |
+| `panel` | `:state(closing)` |
+| `panel > workspace` | `:checked` |
+| `panel > task` | `:checked`, `:state(closing)` |
+| `panel > clock` | `:state(closing)` |
+| `popover` | `:state(closing)` |
+| `popover > item` | `:hover` |
+| `popover > calendar > day` | `:hover`, `:state(today)`, `:state(in-line)` |
+| `popover > calendar > day.outside` | `:hover`, `:state(today)`, `:state(in-line)` |
+| `launcher` | `:state(closing)` |
+| `launcher > input` | `::selection` |
+| `launcher > list > item` | `:checked` |
+| `launcher > list > item > description` | `item:checked` |
+| `launcher > grid > item` | `:checked` |
+| `launcher > list > item.top` | `:checked` |
+| `launcher > list > heading` | — |
+| `launcher > modes` | — |
+| `launcher > modes > button` | `:checked`, `:hover`, `:focus` |
+| `launcher > modes > button > kbd` | `button:checked` |
+| `launcher::backdrop` | `launcher:state(closing)` |
+| `notification` | `:state(urgent)`, `:hover`, `:focus`, `:state(closing)` |
+| `notification > title` | — |
+| `notification > body` | — |
+| `notification > meter` | — |
+| `dialog.question` | `:state(closing)` |
+| `dialog.question > detail` | — |
+| `dialog.question > button` | `:default`, `:hover`, `:focus` |
+| `dialog.question > input` | `:focus`, `::selection` |
+| `switcher` | `:state(closing)` |
+| `switcher > item` | `:checked` |
+| `switcher > item > title` | — |
+| `switcher > thumbnail` | `:checked` |
+| `switcher::backdrop` | — |
+| `overview > thumbnail` | `:checked` |
+| `overview > title` | — |
+| `overview > workspace` | `:checked`, `:hover` |
+| `overview > button.add` | `:hover` |
+| `overview::backdrop` | — |
+| `picker` | — |
+| `sealed` | — |
+| `dialog.about` | `:state(closing)` |
+| `dialog.about > heading` | — |
+| `dialog.about > detail` | — |
+| `dialog.about > button` | `:hover`, `:state(copied)` |
 
-**A part within another.** The three buttons of a titlebar are in
-`windowcontrols`, as GTK calls the box that holds them, and a rule can
-name it before one of them, as CSS writes a part within another, to say
-how the button looks while that box is in some states:
-`windowcontrols:hover button-close` is the close button while the pointer
-is on any of the three, as the built-in theme has all three show their
-signs then, and `button-close:hover` is the close button with the
-pointer on it alone. Nothing of `windowcontrols` itself is drawn. No
-other part is in another, and a rule names a part and the one it is in
-and no more. Of two rules that name as many states, the one that names
-the part it is in wins.
+**Naming them** is as in CSS:
+
+- `button` is every button, wherever it is; `*` every element but what
+  is behind something over the whole screen, which `*::backdrop` is.
+- `button.close` is a button of the class `close`: the classes are in
+  the table, and a theme adds none.
+- `window button` is a button anywhere in a window, and `window >
+  titlebar` a titlebar directly in one.
+- `launcher::backdrop` is what is behind the launcher over the screen.
+- A state follows the element it is of, which may be one further out:
+  `window:focus-within > titlebar` is a titlebar whose window has the
+  keyboard, `controls:hover button.close` the close button while the
+  pointer is on any of the three, and `button.close:hover` while it is on
+  that one. In this step a state can be named of the element itself, and
+  of those the table names it with; `menu:state(closing) item` is not read
+  yet (ADR 110, step 2).
+- Rules may be nested, as CSS Nesting has them, eight deep:
+  `launcher { modes { button { … } } }` is `launcher modes button`, and
+  `button { &.close { … } &:hover { … } > kbd { … } }` is `button.close`,
+  `button:hover` and `button > kbd`.
+- Several can share a rule: `panel workspace, panel task { ... }`.
+
+Of two rules for one element, the one naming more classes and states
+wins, then the one naming more types, then the later, as CSS counts them.
+A selector that reaches no element is an error, which says why and names
+the nearest there are; one that reaches some elements and not others is
+not: `button:checked` is the launcher's mode shown, and no other button.
+
+**States** are the web's, meaning what they mean there: `:hover` (the
+pointer is on it), `:focus` (the keyboard is on it), `:focus-within` (a
+window whose content has the keyboard), `:checked` (the one picked or
+shown, as a radio button is, or what is turned on, as a box ticked),
+`:default` (a question's button that gives, the one Enter takes) and
+`::selection` (what is chosen of what is typed). Those the web has no word
+for are written as CSS writes a state of one's own, `:state(name)`:
+`:state(urgent)` (a notification its sender marked critical),
+`:state(closing)` (it is going from the screen), `:state(today)`,
+`:state(in-line)` (a day in the week or on the weekday of today) and
+`:state(copied)`. `:checked` is, as in CSS, pressed, which nothing is
+drawn as yet. Two are not quite the web's yet: `::selection` is a state
+of its field, so that what reaches the field reaches what is chosen in
+it; and `:root` declares variables alone (ADR 110, step 3).
 
 **Coming and going.** A part that comes and goes, as a window, the menu,
 the notice or a component's panel, notification or launcher does, comes
 over its own `transition`, from how it is in `@starting-style`, and leaves
-over the one it has `:closing`, for how it is then; so that it can leave
+over the one it has `:state(closing)`, for how it is then; so that it can leave
 quicker than it came:
 
 ```css
 menu { transition: 180ms ease-out; }
-menu:closing { transition: 120ms ease-in; scale: 98%; opacity: 0; }
+menu:state(closing) { transition: 120ms ease-in; scale: 98%; opacity: 0; }
 @starting-style {
   menu { scale: 96%; opacity: 0; }
 }
@@ -827,11 +950,12 @@ Of each, only how see-through the part is (`opacity`) and how large it is
 drawn (`scale`) are taken so far: its colours stay as they are while it
 comes and goes. What it draws is made larger or smaller about its middle,
 its shadow and its glass with it. A part with no `@starting-style` is there
-at once, as in CSS, and one whose `:closing` look can be seen stays as it
+at once, as in CSS, and one whose `:state(closing)` look can be seen stays as it
 is until its time to leave is up. The built-in theme gives both to the
-parts that come and go, as above, and has `launcher-backdrop` fade in and
+parts that come and go, as above, and has `launcher::backdrop` fade in and
 out without changing size, so yours keeps them unless it says otherwise.
-`@starting-style` holds rules for parts in no state, and nothing else.
+`@starting-style` holds rules for elements in no state, and nothing else;
+rules may be nested within it.
 
 **Nothing moving.** With `appearance.reduce_motion: true` in `config.yaml`,
 whatever the theme says, a part that comes and goes keeps its size and
@@ -841,7 +965,7 @@ a key or by three fingers or four, which change it as they lift if they went far
 enough or fast enough; the box that asks for a password, and the lock
 screen's field, do not shake at a wrong one, and the cursor in a field
 does not blink; nor does it where the theme has the box it is in move
-nothing, `launcher` or `question`. Programs are told, to move
+nothing, `launcher` or `dialog.question`. Programs are told, to move
 nothing either: through the settings portal's `reduced-motion` and GNOME's
 `enable-animations`, which GTK and libadwaita read, in a sandbox too, and
 as `Gtk/EnableAnimations` to programs written for X11. Day turning into
@@ -856,23 +980,23 @@ is measured to the outside of its border.
 | Property | Value | Notes |
 |---|---|---|
 | `background` | a colour, a gradient, or a colour and a gradient over it | what the part is filled with; what it leaves out is none, as in CSS, so a gradient alone has no colour under it. `background-color` gives the colour alone and `background-image` the gradient alone, or `none` |
-| `color` | a color | text; for `menu-separator` and `tile-line`, the line |
+| `color` | a color | text; for `menu > separator` and `desktop > separator`, the line |
 | `opacity` | `0` to `1`, or a percentage | of everything the part draws |
-| `display` | `none`, `block` or `inline` | `none` leaves the part out, and the room it took; `block` and `inline` put it back. Read by `launcher-mode-key` only |
-| `scale` | `0` to `2`, or `0%` to `200%` | how large the part is drawn as it comes and goes, as a share of its size: in `@starting-style`, and while it is `:closing`, and nowhere else |
+| `display` | `none`, `block` or `inline` | `none` leaves the part out, and the room it took; `block` and `inline` put it back. Read by `launcher > modes > button > kbd` only |
+| `scale` | `0` to `2`, or `0%` to `200%` | how large the part is drawn as it comes and goes, as a share of its size: in `@starting-style`, and while it is `:state(closing)`, and nowhere else |
 | `border` | a width, `solid` or `none`, a color | any of them, in any order |
 | `border-color`, `border-width` | a color; `0` to `16px` | |
-| `outline` | a width, `solid` or `none`, a color | a line round the outside of the box, any of them in any order; its corners are rounded by as much more than the box's as it is out, unless the box's are square. A ring round what the keyboard is on, as `question-button:focus` has it; the eye in the password field has its ring close round it, there being no room to stand off |
+| `outline` | a width, `solid` or `none`, a color | a line round the outside of the box, any of them in any order; its corners are rounded by as much more than the box's as it is out, unless the box's are square. A ring round what the keyboard is on, as `dialog.question > button:focus` has it; the eye in the password field has its ring close round it, there being no room to stand off |
 | `outline-color`, `outline-width`, `outline-offset` | a color; `0` to `16px`; `0` to `16px` | how far out the outline is, with nothing drawn between |
 | `border-radius` | `0` to `64px` | rounds the corners of the box, no more than half as round as the box is wide or tall, so that one as round as it is tall is rounded whole; a `menu`'s rows are kept to its corners, so the first and last, highlighted, follow the curve, as `overflow: hidden` would have it |
 | `padding`, `margin` | one to four sizes, `0` to `64px` | all; top and bottom, then sides; top, sides, bottom; or top, right, bottom, left. A `menu`'s rows begin inside its border and padding: with none, as in the built-in theme, the first and last reach its border; `menu { padding: 4px 0; }` leaves room above and below them |
-| `height` | `16px` to `64px` | of `titlebar`, `menu-item`, `panel`, `launcher-input`, `launcher-item`, `popover-day` and `question-button` |
-| `min-width`, `max-width` | `0` to `4096px` | of `workspace`, `task` and `clock`, and of `popover-day`, whose height or `min-width`, whichever is more, is how large each day of a month is, and each day of the months beside it, each arrow and each day of the week; `max-width: 0` is no limit. The launcher is as wide as its `min-width`, and so is each program in its grid, `launcher-tile`, and so is each button of a titlebar, which is not there at all if that is `0` |
-| `font-family`, `font-size` | a name, or names apart by commas; `6pt` to `72pt` | the first of the names that is installed, or a generic one such as `sans-serif`, is used, and `sans-serif` if none is: the built-in theme's `Inter, sans-serif` is Inter where it is installed. Programs are told the font of `menu-item`, which is as most text is, as GTK writes one, `Inter, sans-serif 11`: in the settings toolkits follow under X11 and through the settings portal's `font-name`. The variable `--font-monospace`, names as `font-family` takes them, is the monospaced font programs are told for code and terminals, at the same size, `JetBrains Mono, monospace 11`, through the settings portal's `monospace-font-name`; X11 has no setting for it |
+| `height` | `16px` to `64px` | of `titlebar`, `menu > item`, `panel`, `launcher > input`, `launcher > list > item`, `popover > calendar > day` and `dialog.question > button` |
+| `min-width`, `max-width` | `0` to `4096px` | of `workspace`, `task` and `clock`, and of `popover > calendar > day`, whose height or `min-width`, whichever is more, is how large each day of a month is, and each day of the months beside it, each arrow and each day of the week; `max-width: 0` is no limit. The launcher is as wide as its `min-width`, and so is each program in its grid, `launcher > grid > item`, and so is each button of a titlebar, which is not there at all if that is `0` |
+| `font-family`, `font-size` | a name, or names apart by commas; `6pt` to `72pt` | the first of the names that is installed, or a generic one such as `sans-serif`, is used, and `sans-serif` if none is: the built-in theme's `Inter, sans-serif` is Inter where it is installed. Programs are told the font of `menu > item`, which is as most text is, as GTK writes one, `Inter, sans-serif 11`: in the settings toolkits follow under X11 and through the settings portal's `font-name`. The variable `--font-monospace`, names as `font-family` takes them, is the monospaced font programs are told for code and terminals, at the same size, `JetBrains Mono, monospace 11`, through the settings portal's `monospace-font-name`; X11 has no setting for it |
 | `font-weight`, `font-style` | `normal`, `bold`, `100` to `900`; `normal`, `italic` | |
 | `transition` | a time up to `10s`, perhaps a second up to `10s`, and perhaps `linear`, `ease`, `ease-in`, `ease-out`, `ease-in-out` or `cubic-bezier(x1, y1, x2, y2)`; or `none` | how long the part's colours take to change when its state does, how long they wait first, and how; also `transition-duration`, `transition-delay` and `transition-timing-function`. In `cubic-bezier()` each x is from 0 to 1 and each y from -10 to 10, as in CSS; a curve that goes before its start or past its end goes no further than either |
-| `box-shadow` | `none`, or across and down, perhaps how soft and how far it spreads, in px, then a color | the shadow the part casts, as `0 8px 24px rgba(0, 0, 0, 0.28)`: across and down from `-64px` to `64px`, soft from `0` to `64px`, spread from `-32px` to `32px`. After a comma, or alone, one `inset`: a sharp line inside the border along the side it falls from, as wide as it falls, following the corners, as `inset 0 1px rgba(255, 255, 255, 0.06)` is light along the top, with neither a soft edge nor a spread; drawn wherever the part is drawn as a box, its titlebar among them. Cast by `window`, but not while it is maximized or fullscreen, nor by a program that draws its own frame; by `menu`, and by the pictures of arrangements, which are drawn as a menu; by `notice`, and by `tooltip` over the mark that says the screen is captured, though not by a component's tooltip, such as the panel's; by `switcher`, under the switcher on Super+Tab and the windows shown in it; by the parts the components show, such as `launcher`; and by `question` under the box that asks for a password, which it follows as the box shakes, and under what an application asks through the portals. Each notification casts its own; the shadow of one panel or notification does not fall on another beside it. It changes with the part's state, as its colours do |
-| `backdrop-filter` | `none`, or `blur()` of `0px` to `64px` | makes the part glass: what is behind it, blurred by as much as a Gaussian's deviation, as CSS has it, but never less than `16px`, below which what is behind could still be read, is drawn under the part where its `background` lets it be seen. A part whose background cannot be seen through has none. Under `menu`, and the pictures of arrangements, which are drawn as a menu; `notice`; `tooltip`, under what the mark says; `switcher`; `question`, under the box that asks for a password, and what an application asks through the portals; `sealed`, under the dim of every screen while a password is asked for, which is blurred and is the dim alone where blur cannot be drawn; `switcher-backdrop`, likewise under the dim of the screen the switcher is on; `overview-backdrop`, under the dim of the screen the overview is on; and the parts the components show, such as `panel` and `notification`, under each surface. Under `titlebar`, with its top corners rounded as the window's are; a `tab` in a frame of several is drawn over it, and covers it unless its own `background` can be seen through too. On `window`, how far what is behind a program is blurred where it asks to be see-through (`ext-background-effect-v1`, or KDE's `org_kde_kwin_blur`, which Ghostty's `background-blur` asks through); `none` gives programs no blur, and those that ask through the first are told so. Such glass has no tint, the program drawing its own, and is nothing at all where blur cannot be drawn. A part keeps its glass as it fades out. Glass is drawn solid in the part's `background`, or halfway along its gradient where it has no colour, made opaque, where blur cannot be drawn: on a graphics card whose blur, tried as omorfos starts, is not as it should be, which you are told once; and with `appearance.reduce_transparency` |
+| `box-shadow` | `none`, or across and down, perhaps how soft and how far it spreads, in px, then a color | the shadow the part casts, as `0 8px 24px rgba(0, 0, 0, 0.28)`: across and down from `-64px` to `64px`, soft from `0` to `64px`, spread from `-32px` to `32px`. After a comma, or alone, one `inset`: a sharp line inside the border along the side it falls from, as wide as it falls, following the corners, as `inset 0 1px rgba(255, 255, 255, 0.06)` is light along the top, with neither a soft edge nor a spread; drawn wherever the part is drawn as a box, its titlebar among them. Cast by `window`, but not while it is maximized or fullscreen, nor by a program that draws its own frame; by `menu`, and by the pictures of arrangements, which are drawn as a menu; by `notice`, and by `tooltip` over the mark that says the screen is captured, though not by a component's tooltip, such as the panel's; by `switcher`, under the switcher on Super+Tab and the windows shown in it; by the parts the components show, such as `launcher`; and by `dialog.question` under the box that asks for a password, which it follows as the box shakes, and under what an application asks through the portals. Each notification casts its own; the shadow of one panel or notification does not fall on another beside it. It changes with the part's state, as its colours do |
+| `backdrop-filter` | `none`, or `blur()` of `0px` to `64px` | makes the part glass: what is behind it, blurred by as much as a Gaussian's deviation, as CSS has it, but never less than `16px`, below which what is behind could still be read, is drawn under the part where its `background` lets it be seen. A part whose background cannot be seen through has none. Under `menu`, and the pictures of arrangements, which are drawn as a menu; `notice`; `tooltip`, under what the mark says; `switcher`; `dialog.question`, under the box that asks for a password, and what an application asks through the portals; `sealed`, under the dim of every screen while a password is asked for, which is blurred and is the dim alone where blur cannot be drawn; `switcher::backdrop`, likewise under the dim of the screen the switcher is on; `overview::backdrop`, under the dim of the screen the overview is on; and the parts the components show, such as `panel` and `notification`, under each surface. Under `titlebar`, with its top corners rounded as the window's are; a `tab` in a frame of several is drawn over it, and covers it unless its own `background` can be seen through too. On `window`, how far what is behind a program is blurred where it asks to be see-through (`ext-background-effect-v1`, or KDE's `org_kde_kwin_blur`, which Ghostty's `background-blur` asks through); `none` gives programs no blur, and those that ask through the first are told so. Such glass has no tint, the program drawing its own, and is nothing at all where blur cannot be drawn. A part keeps its glass as it fades out. Glass is drawn solid in the part's `background`, or halfway along its gradient where it has no colour, made opaque, where blur cannot be drawn: on a graphics card whose blur, tried as omorfos starts, is not as it should be, which you are told once; and with `appearance.reduce_transparency` |
 
 `border`, `padding` and `margin` can name one side: `border-bottom`,
 `border-left-color`, `padding-top`, `margin-right`.
@@ -904,11 +1028,12 @@ on gaining focus or a menu row when the pointer comes onto it, its
 background, text and border colours go from the old to the new over the
 time its `transition` gives, written as `150ms` or `0.2s`. It is the
 `transition` of the state being entered that counts, so
-`menu-item:hover { transition: none; }` lights a row at once and lets it
+`menu > item:hover { transition: none; }` lights a row at once and lets it
 fade when the pointer leaves. Everything takes 120ms unless you say
-otherwise; `* { transition: none; }` turns it all off. A second time is
-how long the colours wait before they change, as in CSS: `menu-item:hover
-{ transition: 80ms ease-out 300ms; }` lights a row only once the pointer
+otherwise; `*, *::backdrop { transition: none; }` turns it all off. A
+second time is how long the colours wait before they change, as in CSS:
+`menu > item:hover { transition: 80ms ease-out 300ms; }` lights a row only
+once the pointer
 has rested on it. Only colours
 change this way. Sizes change at once, so that nothing moves under the
 pointer, and a `transition` names no property: all the colours of a part
@@ -919,14 +1044,14 @@ start.
 the same time: a window with its frame over `window`'s `transition`, the
 menu over `menu`'s, the notice over `notice`'s, and the panel, the launcher
 with what is behind it, and the notifications over `panel`'s, `launcher`'s,
-`launcher-backdrop`'s and `notification`'s. A window goes and comes each
+`launcher::backdrop`'s and `notification`'s. A window goes and comes each
 time it is hidden and shown: when its workspace is left and returned to, or
 when it is minimized and brought back, so that one workspace fades into
 the next. Showing another tab of a frame is neither. `window { transition:
 none; }` has windows there and gone at once and leaves everything else as
 it was. A panel of a program that is not part of omorfos comes and goes at
 once, and so does one notification among others that stay, and the
-question an application has asked, whatever `question`'s `transition`, so
+question an application has asked, whatever `dialog.question`'s `transition`, so
 that it is not in the picture of the screen it leads to.
 
 **A window that changes size fills its frame at once.** Until its
@@ -959,14 +1084,14 @@ Not every part uses every property yet:
   `border-radius` and `color`, which is the colour of the sign on each: a
   cross, a bar and a plus. They stand at the left, the cross outermost,
   and programs that draw their own titlebars are told the same. Each is
-  `:hover` while the pointer is on it, and `windowcontrols`, which holds
+  `:hover` while the pointer is on it, and `window > titlebar > controls`, which holds
   them, while it is on any of them.
-- `padding` is honoured by `tab`, `menu-item`, `menu-sign`, `notice`,
-  `panel`, `workspace`, `task`, `clock`, `question` (the room round what
-  a box that asks holds) and `question-button` (the room either side of
+- `padding` is honoured by `tab`, `menu > item`, `menu > item > icon`, `notice`,
+  `panel`, `workspace`, `task`, `clock`, `dialog.question` (the room round what
+  a box that asks holds) and `dialog.question > button` (the room either side of
   its words, which with them makes it as wide as it is).
-- `border-radius` is honoured by `window`, `tab`, `menu`, `menu-item`,
-  `menu-sign`, `notice`, `capture`, `panel`, `workspace`, `task` and
+- `border-radius` is honoured by `window`, `tab`, `menu`, `menu > item`,
+  `menu > item > icon`, `notice`, `capture`, `panel`, `workspace`, `task` and
   `clock`.
 - A window's border is the same on every side: its `border-top` stands for
   all four. The sizes of a window's frame and titlebar are taken from the

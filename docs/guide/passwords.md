@@ -13,12 +13,12 @@ ordinary way, work as on the lock screen. The eye at the end of the field shows 
 hides it again, and says so when the pointer rests on it. Tab moves from
 the field to the eye, Cancel and Authenticate in turn, and Shift+Tab
 back; Enter presses the one you are on, which looks
-`question-button:focus`, and typing goes back to the field. A click on a
+`dialog.question > button:focus`, and typing goes back to the field. A click on a
 button counts as it is let go on it, and a click on Authenticate does
 nothing until the box has been up for half a second (ADR 111); Enter,
 in the field or on Authenticate, hands over what you typed at once. A wrong
 password is asked for again, and the box shakes; a theme that has the
-`question` part change at once, `question { transition: none; }`, keeps it
+`dialog.question` part change at once, `dialog.question { transition: none; }`, keeps it
 still, and its cursor too, which otherwise blinks.
 
 While it asks, everything else is dimmed and blurred, and the keyboard and the
@@ -33,7 +33,7 @@ mean to type: the rest of the password, and Enter, go nowhere rather than
 into the window under it. Answered by you, with Enter, Escape or a click,
 the box gives the keyboard back at once. The dim is the theme's `sealed` part, blurred as
 far as its `backdrop-filter` says, and the box
-is drawn as the `question` parts, its field as `question-input`.
+is drawn as the `dialog.question` parts, its field as `dialog.question > input`.
 
 What you type goes only to polkit's own helper, which checks it, and is
 not kept once it has been handed over. Programs written for X11, and one in a

@@ -845,7 +845,7 @@ fn wrong(files: &[(&str, &str)]) -> (Session, Asker, JoinHandle<Result<(), Strin
 #[test]
 fn the_box_shakes_when_what_was_typed_was_not_right_and_comes_to_rest() {
     // The tests' sessions keep still unless a part says otherwise.
-    let theme = "question { transition: 120ms; }\n";
+    let theme = "dialog.question { transition: 120ms; }\n";
     let (mut session, _asker, _answer) = wrong(&[("theme.css", theme)]);
     // Frames are shown a sixtieth of a second apart, by the time the
     // compositor tells them at.
@@ -870,10 +870,10 @@ fn the_box_shakes_when_what_was_typed_was_not_right_and_comes_to_rest() {
 fn a_theme_that_moves_nothing_or_motion_reduced_has_the_box_keep_still() {
     // The tests' sessions keep still unless a part says otherwise, as the
     // question does here but for the setting.
-    let moving = ("theme.css", "question { transition: 120ms; }\n");
+    let moving = ("theme.css", "dialog.question { transition: 120ms; }\n");
     let reduced = ("config.yaml", "appearance: { reduce_motion: true }\n");
     let still: [&[(&str, &str)]; 2] = [
-        &[("theme.css", "question { transition: none; }\n")],
+        &[("theme.css", "dialog.question { transition: none; }\n")],
         &[moving, reduced],
     ];
     for files in still {
@@ -908,7 +908,7 @@ fn edge_shadowed(session: &mut Session) -> (i32, bool) {
 
 #[test]
 fn the_box_casts_its_shadow_where_it_is_as_it_shakes() {
-    let theme = "question { transition: 120ms; box-shadow: 0 0 0 4px #ff0000; }\n";
+    let theme = "dialog.question { transition: 120ms; box-shadow: 0 0 0 4px #ff0000; }\n";
     let (mut session, _asker, _answer) = wrong(&[("theme.css", theme)]);
     let rest = (WIDTH - SIZE.0.cast_signed()) / 2;
     // The time each frame is shown at is held still until the box has
@@ -1761,7 +1761,7 @@ fn the_cursor_blinks_from_the_last_key_unless_nothing_is_to_move() {
     // blinks is watched until it has been seen both ways, for as long as
     // it blinks at most, and one that does not for long enough to have
     // blinked both ways and more.
-    let moving = ("theme.css", "question { transition: 120ms; }\n");
+    let moving = ("theme.css", "dialog.question { transition: 120ms; }\n");
     for (files, blinks) in [(&[moving][..], true), (&[], false)] {
         let mut session = Session::with_config(files);
         let asker = start(&mut session);

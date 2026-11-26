@@ -819,8 +819,8 @@ fn keys_do_not_repeat_when_the_keyboard_is_set_not_to() {
 
 #[test]
 fn a_row_gets_to_the_colour_of_being_chosen_over_the_time_the_theme_gives() {
-    let theme = "launcher-item, launcher-top { background: #ff0000; transition: 100ms linear; }\n\
-                 launcher-item:active, launcher-top:active { background: #0000ff; }\n";
+    let theme = "launcher > list > item, launcher > list > item.top { background: #ff0000; transition: 100ms linear; }\n\
+                 launcher > list > item:checked, launcher > list > item.top:checked { background: #0000ff; }\n";
     let mut session = Session::with_config(&[("theme.css", theme)]);
     let mut launcher = launcher(&mut session);
     let at = Duration::from_millis;
@@ -1048,7 +1048,7 @@ fn a_click_closes_the_launcher_though_the_pointer_has_not_moved_since_it_opened(
 
 #[test]
 fn the_rest_of_the_screen_can_be_dimmed_while_the_launcher_is_open() {
-    let theme = "launcher-backdrop { background: #0000ff; }\n";
+    let theme = "launcher::backdrop { background: #0000ff; }\n";
     let mut session = Session::with_config(&[("theme.css", theme)]);
     let mut launcher = launcher(&mut session);
     settle(&mut session, &mut launcher);
@@ -1066,7 +1066,7 @@ fn the_rest_of_the_screen_can_be_dimmed_while_the_launcher_is_open() {
 
 #[test]
 fn the_dim_behind_the_launcher_fades_in_and_out_with_it() {
-    let theme = "launcher-backdrop { background: #0000ff; transition: 100ms linear; }\n";
+    let theme = "launcher::backdrop { background: #0000ff; transition: 100ms linear; }\n";
     let mut session = Session::with_config(&[("theme.css", theme)]);
     let mut launcher = launcher(&mut session);
     settle(&mut session, &mut launcher);
@@ -1648,7 +1648,7 @@ fn the_fields_sign_turns_into_the_next_modes_unless_nothing_is_to_move() {
     // that the sign stays where it is on the screen.
     let moving = (
         "theme.css",
-        "launcher { transition: 180ms; }\nlauncher-tile { min-width: 70px; }\n",
+        "launcher { transition: 180ms; }\nlauncher > grid > item { min-width: 70px; }\n",
     );
     let reduced = ("config.yaml", "appearance: { reduce_motion: true }\n");
     let at = Duration::from_millis;

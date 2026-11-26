@@ -35,8 +35,8 @@ pub(crate) const GLAZED: u64 = CEILING + GLASS;
 
 /// A theme whose titlebars are solid, as they were before they were
 /// glass.
-const SOLID: &str = "titlebar { background: var(--surface-dim); }\n\
-                     titlebar:focus { background: var(--surface); }\n";
+const SOLID: &str = "window > titlebar { background: var(--surface-dim); }\n\
+                     window:focus-within > titlebar { background: var(--surface); }\n";
 
 #[test]
 fn a_session_with_nothing_changing_draws_nothing_wakes_for_nothing_and_allocates_little() {

@@ -14,11 +14,11 @@ use crate::windows::{BACKGROUND, RED};
 /// A theme in which nothing moves or casts a shadow, and what is behind a
 /// program is blurred by 16 pixels where it asks.
 pub(crate) const BLURRED: &str = "* { transition: none; }\n\
-                       window, window:focus { box-shadow: none; backdrop-filter: blur(16px); }\n";
+                       window, window:focus-within { box-shadow: none; backdrop-filter: blur(16px); }\n";
 
 /// The same, but giving programs no blur.
 pub(crate) const UNBLURRED: &str = "* { transition: none; }\n\
-                         window, window:focus { box-shadow: none; backdrop-filter: none; }\n";
+                         window, window:focus-within { box-shadow: none; backdrop-filter: none; }\n";
 
 /// What a program is told the compositor can do: blur.
 const BLUR: u32 = 1;

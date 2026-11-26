@@ -159,15 +159,15 @@ orders. A mode not built yet takes no number, and today only `programs`,
 the grid of every program, is. While the launcher is open, `Super` with a
 digit is its own, not the workspaces'.
 
-How it looks is in `theme.css`, under `launcher`, `launcher-input`,
-`launcher-item`, `launcher-description`, `launcher-tile`, a program in
-the grid, as wide as its `min-width`, `launcher-top`, the best of all,
-`launcher-heading`, a section's heading, `launcher-modes` and
-`launcher-mode`, the row of modes and one in it, `launcher-mode:focus`
-the one the keyboard is on, and `launcher-mode-key`,
+How it looks is in `theme.css`, under `launcher`, `launcher > input`,
+`launcher > list > item`, `launcher > list > item > description`, `launcher > grid > item`, a program in
+the grid, as wide as its `min-width`, `launcher > list > item.top`, the best of all,
+`launcher > list > heading`, a section's heading, `launcher > modes` and
+`launcher > modes > button`, the row of modes and one in it, `launcher > modes > button:focus`
+the one the keyboard is on, and `launcher > modes > button > kbd`,
 the key after a mode's name, which `launcher-mode-key { display: none; }`
-leaves out; `launcher-input:active` is
-what is typed when all of it is chosen. `launcher-backdrop` is the rest
+leaves out; `launcher > input::selection` is
+what is typed when all of it is chosen. `launcher::backdrop` is the rest
 of the screen while it is open: give it a see-through background, such as
 `rgba(0, 0, 0, 0.4)`, to dim what is behind. To open the launcher with
 another key, bind `show_launcher` in `keys.yaml`.

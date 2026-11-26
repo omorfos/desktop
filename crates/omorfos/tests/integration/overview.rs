@@ -23,7 +23,7 @@ const LEFT_BUTTON: u32 = 0x110;
 /// software renderer a while, for what is not about it.
 const UNBLURRED: (&str, &str) = (
     "theme.css",
-    "overview-backdrop { backdrop-filter: none; }\n",
+    "overview::backdrop { backdrop-filter: none; }\n",
 );
 
 /// How long the overview takes to glide open or closed, and a little more.
@@ -942,7 +942,7 @@ fn the_windows_keep_their_stacking_as_they_glide_and_the_one_gone_to_rises_closi
 fn a_window_that_asks_for_blur_behind_it_has_it_in_the_overview_too() {
     // Programs may have blur, but the overview's own backdrop is not.
     let theme = format!(
-        "{}window, window:focus {{ backdrop-filter: blur(16px); }}\n",
+        "{}window, window:focus-within {{ backdrop-filter: blur(16px); }}\n",
         UNBLURRED.1
     );
     let mut session = Session::with_config(&[(UNBLURRED.0, &theme)]);
@@ -1193,9 +1193,9 @@ fn the_window_picked_has_a_button_to_close_it_which_asks_its_program() {
 
 #[test]
 fn the_button_that_closes_comes_and_goes_as_a_menu_does_as_another_window_is_picked() {
-    let theme = "overview-backdrop { backdrop-filter: none; }\n\
+    let theme = "overview::backdrop { backdrop-filter: none; }\n\
                  menu { transition: 100ms linear; }\n\
-                 menu:closing { transition: 100ms linear; }\n";
+                 menu:state(closing) { transition: 100ms linear; }\n";
     let mut session = Session::with_config(&[("theme.css", theme)]);
     let mut client = session.connect();
     session.open(&mut client, "first", (180, 120), RED);

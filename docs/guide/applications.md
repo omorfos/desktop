@@ -24,9 +24,9 @@ click a window to take it whole or anywhere else to take that screen,
 Enter to take every screen, as one, and Escape or another button to give
 it nothing after all. What is picked is
 saved among your pictures as `Print` saves them. The question is not in
-the picture, and the red mark shows while it is taken. The question is drawn as `question`, what giving would let
-the application see as `question-detail`, and the buttons as
-`question-button`, the one that gives `:active`.
+the picture, and the red mark shows while it is taken. The question is drawn as `dialog.question`, what giving would let
+the application see as `dialog.question > detail`, and the buttons as
+`dialog.question > button`, the one that gives `:default`.
 
 An application can ask for a colour on the screen too, as a drawing
 program's colour picker does. Nothing is asked: a still picture of each

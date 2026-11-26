@@ -18,7 +18,7 @@ const BOTTOM: i32 = 147;
 /// A theme in which a window casts a shadow straight down, darker while it
 /// has focus.
 const SHADOWED: &str = "window { box-shadow: 0 8px 16px #00000060; }\n\
-                        window:focus { box-shadow: 0 8px 16px #000000c0; }\n";
+                        window:focus-within { box-shadow: 0 8px 16px #000000c0; }\n";
 
 /// How dark a pixel is: how far below the background its green falls.
 fn darkness(pixel: u32) -> u32 {
@@ -47,7 +47,7 @@ fn a_side_of_a_shadow_is_as_dark_to_its_ends_as_in_its_middle() {
     // Cast hard, down and to the right, so that each side is evenly dark
     // but for the rounded corners of the window: its right side along the
     // window, and its bottom under it.
-    let hard = "window, window:focus { box-shadow: 8px 8px 0 #000000c0; }\n";
+    let hard = "window, window:focus-within { box-shadow: 8px 8px 0 #000000c0; }\n";
     let mut session = Session::with_config(&[("theme.css", hard)]);
     let mut client = session.connect();
     session.open_decorated(&mut client, "app", (200, 100), RED);
@@ -81,8 +81,8 @@ fn a_window_without_focus_casts_the_shadow_its_theme_gives_that() {
 #[test]
 fn a_theme_without_shadows_casts_none() {
     let none = "* { transition: none; }\n\
-                window, window:focus, menu, notice, switcher { box-shadow: none; }\n\
-                switcher-backdrop { background: transparent; backdrop-filter: none; }\n";
+                window, window:focus-within, menu, notice, switcher { box-shadow: none; }\n\
+                switcher::backdrop { background: transparent; backdrop-filter: none; }\n";
     // With a mistake in the keys, so that the notice says so.
     let mut session = Session::with_config(&[("theme.css", none), ("keys.yaml", "nonsense: [")]);
     let mut client = session.connect();
@@ -141,7 +141,7 @@ fn a_menu_casts_the_shadow_its_theme_gives_it() {
 fn what_goes_from_the_screen_takes_its_shadow_with_it_as_it_fades() {
     let theme = "menu, window { transition: 100ms linear; }\n\
                  menu { box-shadow: 8px 0 8px #000000c0; }\n\
-                 window, window:focus { box-shadow: 0 8px 16px #000000c0; }\n";
+                 window, window:focus-within { box-shadow: 0 8px 16px #000000c0; }\n";
     let mut session = Session::with_config(&[("theme.css", theme)]);
     let mut client = session.connect();
     session.open_decorated(&mut client, "app", (200, 100), RED);
@@ -228,7 +228,7 @@ fn a_panel_that_goes_takes_its_shadow_with_it_as_it_fades() {
 
 #[test]
 fn windows_that_cast_the_same_shadow_each_cast_it() {
-    let same = "window, window:focus { box-shadow: 0 8px 16px #000000c0; }\n";
+    let same = "window, window:focus-within { box-shadow: 0 8px 16px #000000c0; }\n";
     let mut session = Session::with_config(&[("theme.css", same)]);
     let mut client = session.connect();
     session.open_decorated(&mut client, "first", (200, 100), RED);
@@ -339,9 +339,9 @@ fn the_switcher_casts_the_shadow_its_theme_gives_it_and_takes_it_when_it_closes(
     // Cast round it, under the windows shown small in it and its own
     // pixels alike.
     let theme = "* { transition: none; }\n\
-                 window, window:focus { box-shadow: none; }\n\
+                 window, window:focus-within { box-shadow: none; }\n\
                  switcher { box-shadow: 0 0 0 8px #000000c0; }\n\
-                 switcher-backdrop { background: transparent; backdrop-filter: none; }\n";
+                 switcher::backdrop { background: transparent; backdrop-filter: none; }\n";
     let (mut session, _client) = switching(theme);
     let area = session.compositor().switcher_layout().unwrap().area;
     let (left, middle) = (
@@ -365,7 +365,7 @@ fn the_switcher_casts_the_shadow_its_theme_gives_it_and_takes_it_when_it_closes(
 #[test]
 fn the_pictures_of_arrangements_cast_the_shadow_of_a_menu() {
     let theme = "* { transition: none; }\n\
-                 window, window:focus { box-shadow: none; }\n\
+                 window, window:focus-within { box-shadow: none; }\n\
                  menu { box-shadow: 0 8px 8px #000000c0; }\n";
     let mut session = Session::with_config(&[("theme.css", theme)]);
     let mut client = session.connect();

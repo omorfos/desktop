@@ -92,12 +92,12 @@ it, it is blank, in the background colour of the `capture` part, with
 its icon large in the middle and no title; or, with `private: blur`, its
 picture blurred, and blank where blur cannot be drawn, with no title.
 How the switcher looks is `switcher`,
-`switcher-item` (the one picked is `:active`, and `min-width` is how wide
-each is in rows) and `switcher-title` in `theme.css`. On a diagonal,
+`switcher > item` (the one picked is `:checked`, and `min-width` is how wide
+each is in rows) and `switcher > item > title` in `theme.css`. On a diagonal,
 `switcher` is the box under the queue that the title is in, and each
-window is a `switcher-window`: its border round its picture, its
+window is a `switcher > thumbnail`: its border round its picture, its
 `padding` away, and the accent round the one picked. Behind the
-switcher, its screen is dimmed by `switcher-backdrop`'s background and
+switcher, its screen is dimmed by `switcher::backdrop`'s background and
 blurred out of focus by its `backdrop-filter`, in rows as on a diagonal;
 with `appearance.reduce_transparency` it is the dim alone. The actions are
 `switch_windows` and `switch_windows_back`; `focus_next` and
@@ -167,10 +167,10 @@ in and out over the theme's `menu` and `menu:closing` transitions. A
 private window is shown to you as any other is; in a picture of the
 screen it is blank or blurred, as its rule says, without its title.
 
-How it looks is `overview-window` (the border round the window picked,
-`:active`), `overview-title`, `overview-workspace` (the one shown is
-`:active`, one under the pointer `:hover`), `overview-add` (the plus, in
-its `color`, `:hover` under the pointer) and `overview-backdrop`, whose
+How it looks is `overview > thumbnail` (the border round the window picked,
+`:checked`), `overview > title`, `overview > workspace` (the one shown is
+`:checked`, one under the pointer `:hover`), `overview > button.add` (the plus, in
+its `color`, `:hover` under the pointer) and `overview::backdrop`, whose
 background dims the screen and whose `backdrop-filter` blurs it.
 
 ## Workspaces
@@ -294,7 +294,7 @@ which it and the windows either side of it go to as a window sent
 somewhere does.
 Dragged, it keeps pace with the windows, going on as they have drawn
 themselves the size it gave them, and is let go where the pointer is.
-The theme draws it as `tile-line`, in a window's border colour unless
+The theme draws it as `desktop > separator`, in a window's border colour unless
 told otherwise. When a window closes or leaves, the one beside it has
 its room. A window that opens when every part is taken opens on the
 desktop.
@@ -302,7 +302,7 @@ desktop.
 A part with nothing in it shows the windows of the desktop the workspace
 was made from, small, each in a box with its icon and its title under
 it, which the theme draws as `offer`: its border round the box, and its
-colour and font for the title, `offer:hover` under the pointer. The icon
+colour and font for the title, `desktop > button.offer:hover` under the pointer. The icon
 is the one the program gives its window, or else its application's, as
 in the switcher. The pictures of a row stand on one line and their titles
 are on another. Click anywhere in a box to put its window there. A window
@@ -318,7 +318,7 @@ one window has the workspace to itself its titlebar comes back under
 them: its buttons, its menu, and the second button to leave fullscreen. Against the bottom, the panels along the
 bottom come back. They slide in from that edge, the titlebar with the
 panels, over the time the theme's `panel` transition gives one to come
-in, and out the same way over the time `panel:closing` gives one to go:
+in, and out the same way over the time `panel:state(closing)` gives one to go:
 180 ms and 120 ms in the built-in theme. With `panel { transition: none;
 }`, or `reduce_motion`, they are there and gone at once. They are laid
 over the window, which does not change size. They stay while the pointer is on them or still moving, so that a

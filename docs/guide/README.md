@@ -16,7 +16,7 @@ again. The `show_welcome` action shows it again, from a key or an entry
 of `menu.yaml`. Where `config.yaml` is written in a way it will not change, as a
 section written on one line, it says so and leaves the file alone. It is
 drawn with the launcher's parts of the theme, its buttons as a question's
-(`question-button`).
+(`dialog.question > button`).
 
 There is a panel along the bottom of every screen, with its workspaces,
 the windows open and the time; notifications come in at the top right.

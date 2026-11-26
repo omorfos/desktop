@@ -465,7 +465,7 @@ fn leaving_fullscreen_puts_the_panels_back_where_they_are() {
 /// A theme in which panels come in and go as the built-in theme has them.
 const SLIDING: (&str, &str) = (
     "theme.css",
-    "panel { transition: 180ms ease-out; }\npanel:closing { transition: 120ms ease-in; }\n",
+    "panel { transition: 180ms ease-out; }\npanel:state(closing) { transition: 120ms ease-in; }\n",
 );
 
 /// How far down from the top of the screen, and up from the bottom, what

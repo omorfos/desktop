@@ -28,6 +28,7 @@ mod kept;
 mod keys;
 #[cfg(feature = "schema")]
 pub mod manual;
+mod matching;
 mod menu;
 mod night;
 mod paths;
@@ -70,7 +71,7 @@ pub use rules::{Match, Private, Rule, Rules};
 pub use scheme::{Accent, Scheme, SchemeChoice};
 pub use screens::{Facts, NamedScreens, Said, ScreenMatch};
 pub use store::{STEP, Store, TURNING};
-pub use style::{Edges, Line, Part, Presence, Shadow, State, States, Style};
+pub use style::{Edges, Line, Node, Part, Presence, Shadow, Slot, Spelling, State, States, Style};
 pub use theme::{Font, STILL, Theme, ThemeError};
 pub use transition::{Easing, Transition};
 pub use wallpaper::{

@@ -66,7 +66,7 @@ fn glass_of_two_blurs_over_the_desktop_alone_is_not_blurred_again_while_nothing_
     // nothing but the desktop behind it, and too far apart for either to
     // reach the other.
     let theme = format!(
-        "{GLASS}window, window:focus {{ box-shadow: none; backdrop-filter: blur(24px); }}\n"
+        "{GLASS}window, window:focus-within {{ box-shadow: none; backdrop-filter: blur(24px); }}\n"
     );
     let mut session = Session::with_config(&[("theme.css", &theme)]);
     session.blurring();
@@ -241,7 +241,7 @@ fn glass_is_solid_where_transparency_is_to_be_reduced() {
 
 #[test]
 fn a_menu_of_glass_over_a_red_window_is_red_there_and_not_beside_it() {
-    let theme = "window, window:focus { box-shadow: none; }\n\
+    let theme = "window, window:focus-within { box-shadow: none; }\n\
                  menu { background: rgba(255, 255, 255, 0.5); \
                  backdrop-filter: blur(8px); box-shadow: none; }\n";
     let mut session = Session::with_config(&[("theme.css", theme)]);
@@ -298,7 +298,7 @@ impl Frosting<PixmanRenderer, Drawn> for Counting {
 #[test]
 fn a_menu_of_glass_coming_in_over_a_window_keeps_its_picture_as_it_grows() {
     // As it comes in, from a little smaller than it is, over 100 ms.
-    let theme = "window, window:focus { box-shadow: none; }\n\
+    let theme = "window, window:focus-within { box-shadow: none; }\n\
                  menu { background: rgba(255, 255, 255, 0.5); transition: 100ms linear; \
                  backdrop-filter: blur(8px); box-shadow: none; }\n";
     let mut session = Session::with_config(&[("theme.css", theme)]);
@@ -323,7 +323,7 @@ fn a_menu_of_glass_coming_in_over_a_window_keeps_its_picture_as_it_grows() {
 
 #[test]
 fn a_menu_fading_out_keeps_its_glass_as_it_goes() {
-    let theme = "window, window:focus { box-shadow: none; }\n\
+    let theme = "window, window:focus-within { box-shadow: none; }\n\
                  menu { background: rgba(255, 255, 255, 0.5); transition: 100ms linear; \
                  backdrop-filter: blur(8px); box-shadow: none; }\n";
     let mut session = Session::with_config(&[("theme.css", theme)]);
@@ -377,8 +377,8 @@ fn a_panel_fading_out_keeps_its_glass_as_it_goes() {
 /// A theme in which a titlebar is glass, white at half over what is behind
 /// it blurred by 8 pixels, and a window casts no shadow and takes a moment
 /// to go.
-const TITLEBAR: &str = "window, window:focus { box-shadow: none; transition: 100ms linear; }\n\
-                        titlebar, titlebar:focus { background: rgba(255, 255, 255, 0.5); \
+const TITLEBAR: &str = "window, window:focus-within { box-shadow: none; transition: 100ms linear; }\n\
+                        window > titlebar, window:focus-within > titlebar { background: rgba(255, 255, 255, 0.5); \
                         backdrop-filter: blur(8px); }\n";
 
 /// The row of the screen a titlebar's glass is tried along: near its top,
@@ -506,7 +506,7 @@ fn the_prompt_that_asks_for_a_secret_is_glass_if_the_theme_makes_its_question_so
         // The session under the dim is not blurred, so that what is
         // blurred is the question's alone.
         let theme = format!(
-            "question {{ background: rgba(255, 255, 255, 0.5); \
+            "dialog.question {{ background: rgba(255, 255, 255, 0.5); \
              backdrop-filter: {glass}; box-shadow: none; }}\n\
              sealed {{ backdrop-filter: none; }}\n"
         );

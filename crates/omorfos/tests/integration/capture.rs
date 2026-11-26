@@ -1523,7 +1523,7 @@ fn a_picture_of_a_window_has_its_frame_and_the_shadow_it_casts_wherever_it_is() 
     // A shadow with a hard edge, wider while the window has focus.
     let theme = "* { transition: none; }\n\
                  window { box-shadow: 0 0 0 4px #00000080; }\n\
-                 window:focus { box-shadow: 0 0 0 8px #00000080; }\n";
+                 window:focus-within { box-shadow: 0 0 0 8px #00000080; }\n";
     let mut session = Session::with_config(&[("theme.css", theme)]);
     let mut app = session.connect();
     session.open_decorated(&mut app, "editor", (200, 100), RED);
@@ -1564,7 +1564,7 @@ fn a_picture_of_a_window_has_its_frame_and_the_shadow_it_casts_wherever_it_is() 
 #[test]
 fn a_picture_of_a_window_rolled_up_is_of_its_titlebar_and_the_shadow_that_casts() {
     let theme = "* { transition: none; }\n\
-                 window, window:focus { box-shadow: 0 0 0 8px #00000080; }\n";
+                 window, window:focus-within { box-shadow: 0 0 0 8px #00000080; }\n";
     let mut session = Session::with_config(&[("theme.css", theme)]);
     let mut app = session.connect();
     session.open_decorated(&mut app, "editor", (200, 100), RED);

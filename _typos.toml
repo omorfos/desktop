@@ -21,7 +21,7 @@ zink = "zink"
 extend-exclude = [
     "Cargo.lock",
     "crates/omorfos-config/src/zone1970.tab",
-    "crates/omorfos-config/src/looks.golden",
+    "crates/omorfos-config/tests/looks.golden",
     "crates/omorfos-i18n/i18n/*",
     "!crates/omorfos-i18n/i18n/en",
 ]

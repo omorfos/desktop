@@ -1319,8 +1319,8 @@ mod tests {
     /// of a titlebar is a colour of the theme's.
     fn solid() -> Theme {
         let solid = "window { border-width: 1px; }\n\
-                     titlebar { background: var(--surface-dim); }\n\
-                     titlebar:focus { background: var(--surface); }";
+                     window > titlebar { background: var(--surface-dim); }\n\
+                     window:focus-within > titlebar { background: var(--surface); }";
         Theme::parse(solid).unwrap()
     }
 
@@ -1597,9 +1597,10 @@ mod tests {
         use omorfos_core::MenuMetrics;
 
         let red = Color::rgb(255, 0, 0);
-        let theme =
-            Theme::parse("menu { border-radius: 16px; } menu-item:hover { background: #ff0000; }")
-                .unwrap();
+        let theme = Theme::parse(
+            "menu { border-radius: 16px; } menu > item:hover { background: #ff0000; }",
+        )
+        .unwrap();
         let mut text = Text::new();
         let entry = |label: &str| Item::Entry {
             label: label.to_owned(),
@@ -1817,7 +1818,7 @@ mod tests {
     #[test]
     fn a_titlebar_that_can_be_seen_through_is_so_within_its_outline() {
         let theme = "window { border-width: 1px; }\n\
-                     titlebar:focus { background: rgba(255, 255, 255, 0.5); }";
+                     window:focus-within > titlebar { background: rgba(255, 255, 255, 0.5); }";
         let theme = Theme::parse(theme).unwrap();
         let mut text = Text::new();
         let canvas = titlebar(
@@ -1959,8 +1960,8 @@ mod tests {
 
     #[test]
     fn a_theme_can_do_without_a_button_and_the_title_takes_its_room() {
-        let theme = "button-close, button-maximize, button-minimize { min-width: 0; }\n\
-                     titlebar:focus { background: var(--surface); }";
+        let theme = "window > titlebar > controls > button.close, window > titlebar > controls > button.maximize, window > titlebar > controls > button.minimize { min-width: 0; }\n\
+                     window:focus-within > titlebar { background: var(--surface); }";
         let theme = Theme::parse(theme).unwrap();
         let mut text = Text::new();
         let canvas = titlebar(

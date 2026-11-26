@@ -397,3 +397,137 @@ rules.yaml rules[].private = "blur"
 rules.yaml rules[].shaded
 rules.yaml rules[].sticky
 rules.yaml rules[].workspace
+theme.css capture
+theme.css desktop
+theme.css desktop > button.offer
+theme.css desktop > button.offer :hover
+theme.css desktop > separator
+theme.css dialog.about
+theme.css dialog.about :state(closing)
+theme.css dialog.about > button
+theme.css dialog.about > button :hover
+theme.css dialog.about > button :state(copied)
+theme.css dialog.about > detail
+theme.css dialog.about > heading
+theme.css dialog.question
+theme.css dialog.question :state(closing)
+theme.css dialog.question > button
+theme.css dialog.question > button :default
+theme.css dialog.question > button :focus
+theme.css dialog.question > button :hover
+theme.css dialog.question > detail
+theme.css dialog.question > input
+theme.css dialog.question > input ::selection
+theme.css dialog.question > input :focus
+theme.css frame.capture
+theme.css launcher
+theme.css launcher :state(closing)
+theme.css launcher > grid > item
+theme.css launcher > grid > item :checked
+theme.css launcher > input
+theme.css launcher > input ::selection
+theme.css launcher > list > heading
+theme.css launcher > list > item
+theme.css launcher > list > item :checked
+theme.css launcher > list > item > description
+theme.css launcher > list > item > description item:checked
+theme.css launcher > list > item.top
+theme.css launcher > list > item.top :checked
+theme.css launcher > modes
+theme.css launcher > modes > button
+theme.css launcher > modes > button :checked
+theme.css launcher > modes > button :focus
+theme.css launcher > modes > button :hover
+theme.css launcher > modes > button > kbd
+theme.css launcher > modes > button > kbd button:checked
+theme.css launcher::backdrop
+theme.css launcher::backdrop :state(closing)
+theme.css menu
+theme.css menu :state(closing)
+theme.css menu > item
+theme.css menu > item :focus
+theme.css menu > item :hover
+theme.css menu > item > icon
+theme.css menu > item > icon item:checked
+theme.css menu > item > icon item:focus
+theme.css menu > item > icon item:hover
+theme.css menu > item > kbd
+theme.css menu > item > kbd item:focus
+theme.css menu > item > kbd item:hover
+theme.css menu > separator
+theme.css notice
+theme.css notice :state(closing)
+theme.css notice > heading
+theme.css notification
+theme.css notification :focus
+theme.css notification :hover
+theme.css notification :state(closing)
+theme.css notification :state(urgent)
+theme.css notification > body
+theme.css notification > meter
+theme.css notification > title
+theme.css overview > button.add
+theme.css overview > button.add :hover
+theme.css overview > thumbnail
+theme.css overview > thumbnail :checked
+theme.css overview > title
+theme.css overview > workspace
+theme.css overview > workspace :checked
+theme.css overview > workspace :hover
+theme.css overview::backdrop
+theme.css panel
+theme.css panel :state(closing)
+theme.css panel > clock
+theme.css panel > clock :state(closing)
+theme.css panel > task
+theme.css panel > task :checked
+theme.css panel > task :state(closing)
+theme.css panel > workspace
+theme.css panel > workspace :checked
+theme.css picker
+theme.css popover
+theme.css popover :state(closing)
+theme.css popover > calendar > day
+theme.css popover > calendar > day :hover
+theme.css popover > calendar > day :state(in-line)
+theme.css popover > calendar > day :state(today)
+theme.css popover > calendar > day.outside
+theme.css popover > calendar > day.outside :hover
+theme.css popover > calendar > day.outside :state(in-line)
+theme.css popover > calendar > day.outside :state(today)
+theme.css popover > item
+theme.css popover > item :hover
+theme.css sealed
+theme.css switcher
+theme.css switcher :state(closing)
+theme.css switcher > item
+theme.css switcher > item :checked
+theme.css switcher > item > title
+theme.css switcher > thumbnail
+theme.css switcher > thumbnail :checked
+theme.css switcher::backdrop
+theme.css tooltip
+theme.css tooltip :state(closing)
+theme.css window
+theme.css window :focus-within
+theme.css window :state(closing)
+theme.css window > titlebar
+theme.css window > titlebar > controls
+theme.css window > titlebar > controls :hover
+theme.css window > titlebar > controls > button.close
+theme.css window > titlebar > controls > button.close :hover
+theme.css window > titlebar > controls > button.close controls:hover
+theme.css window > titlebar > controls > button.close window:focus-within
+theme.css window > titlebar > controls > button.maximize
+theme.css window > titlebar > controls > button.maximize :hover
+theme.css window > titlebar > controls > button.maximize controls:hover
+theme.css window > titlebar > controls > button.maximize window:focus-within
+theme.css window > titlebar > controls > button.minimize
+theme.css window > titlebar > controls > button.minimize :hover
+theme.css window > titlebar > controls > button.minimize controls:hover
+theme.css window > titlebar > controls > button.minimize window:focus-within
+theme.css window > titlebar > controls window:focus-within
+theme.css window > titlebar > tab
+theme.css window > titlebar > tab :checked
+theme.css window > titlebar > tab window:focus-within
+theme.css window > titlebar window:focus-within
