@@ -3433,6 +3433,21 @@ impl Desktop {
         !last || (occupied && set.desktops().len() < Self::MOST_WORKSPACES)
     }
 
+    /// Whether another desktop can be made after the last of `output`'s:
+    /// only while that has a window of its own on it, not only one on every
+    /// workspace, so that there is never more than one empty one past the
+    /// others, and while there is room for another.
+    #[must_use]
+    pub fn makes_another(&self, output: usize) -> bool {
+        self.sets.get(output).is_some_and(|set| {
+            let desktops = set.desktops();
+            let last = desktops.last().map(|last| &set.workspaces[*last]);
+            let groups = last.into_iter().flat_map(|last| last.groups.iter());
+            let occupied = groups.into_iter().any(|group| !group.standing.sticky);
+            occupied && desktops.len() < Self::MOST_WORKSPACES
+        })
+    }
+
     /// Shows the following workspace on the current output, making one
     /// after the last if [`Desktop::goes_on`] says there is to be one.
     pub fn next_workspace(&mut self) {
@@ -6182,6 +6197,25 @@ mod tests {
         desktop.let_go_aside(true);
         assert_ne!(desktop.sent(), sent);
         assert_eq!(at(&desktop), Point::new(48 - 800, 126));
+    }
+
+    #[test]
+    fn another_desktop_is_made_only_after_one_with_a_window_on_it() {
+        let mut desktop = Desktop::new(Settings::default(), 1);
+        desktop.set_outputs(vec![SCREEN]);
+        assert!(!desktop.makes_another(0), "the only one empty");
+        let term = open(&mut desktop, "term");
+        assert!(desktop.makes_another(0));
+        desktop.new_workspace();
+        assert!(!desktop.makes_another(0), "the new one empty");
+        // A window there, and another can be made after it.
+        desktop.move_to_workspace(term, 1);
+        assert!(desktop.makes_another(0));
+        // Not for a window on every workspace alone, nor past the most.
+        desktop.toggle_sticky(term);
+        desktop.new_workspace();
+        assert!(!desktop.makes_another(0));
+        assert!(!desktop.makes_another(5), "no such output");
     }
 
     #[test]

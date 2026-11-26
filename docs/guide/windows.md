@@ -150,7 +150,10 @@ The strip has each desktop of the screen as a small picture of itself,
 its wallpaper and its windows where they stand, the one shown in the
 accent. Point at one and it is lit; click it and the overview shows its
 windows, which glide in from where they are. The plus after the last
-makes a new workspace and goes to it, empty, for windows to come. A
+makes a new workspace and goes to it, empty, for windows to come; it is
+there only while the last desktop has a window on it, so that there is
+never more than one empty one, and back once a window comes to the new
+one. A
 desktop under the pointer has the same close button, while there are others:
 as a Mac's on a Space, it takes the desktop away and gives its windows to
 the one before it, or after it if it is the first, as they are, nothing

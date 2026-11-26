@@ -1744,7 +1744,10 @@ the first than on the last.
       miniatures to go to, with a plus after them that makes another; and
       three fingers swiped up the touchpad carrying it open, down closed.
 - [ ] Dragging a window in the overview onto a workspace in its strip, to
-      move it there.
+      move it there; and onto the plus after the strip, to make a new
+      workspace and move it there in one, the plus staying, the new
+      workspace not being empty (asked for by the maintainer on 26
+      November 2026).
 - [ ] Known gaps in the overview: the windows of a workspace left in it
       go at once rather than glide out; which window is over which on a
       workspace not shown is the order they were made in; a window's
