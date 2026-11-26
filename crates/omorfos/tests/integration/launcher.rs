@@ -196,9 +196,10 @@ fn what_is_typed_reaches_the_launcher_and_enter_starts_the_program() {
     assert!(!settle(&mut session, &mut launcher));
     let picture = session.draw();
     let x = row(0).0;
-    assert_eq!(picture.at(x, row(1).1), lit());
+    // Under the heading over all but the first.
+    assert_eq!(picture.at(x, row(2).1), lit());
     // Lens does not match, and the launcher ends above where it would be.
-    let below = picture.at(x, row(2).1);
+    let below = picture.at(x, row(3).1);
     assert!(![surface(), lit()].contains(&below), "{below:#x}");
 
     press(&mut session, key::RETURN);
@@ -621,16 +622,17 @@ fn the_wheel_and_the_touchpad_scroll_the_list_and_the_pointer_chooses_in_it() {
     settle(&mut session, &mut launcher);
     assert_eq!(chosen(&mut session), None);
 
-    // A notch of the wheel scrolls the list a row, and lights nothing.
+    // A notch of the wheel scrolls the list a row, and lights nothing; in
+    // sight, the heading over all but Alpha, Bravo and Charlie.
     scroll(&mut session, 15.0);
     settle(&mut session, &mut launcher);
     assert_eq!(chosen(&mut session), None);
-    // The pointer chooses Delta, the third in sight, and the list stays.
+    // The pointer chooses Charlie, the third in sight, and the list stays.
     point(&mut session, row(2));
     settle(&mut session, &mut launcher);
     assert_eq!(chosen(&mut session), Some(2));
     // A touchpad goes by less at a time, and gets there as it adds up;
-    // Delta stays chosen while it is in sight.
+    // Charlie stays chosen while it is in sight.
     for _ in 0..2 {
         scroll(&mut session, 7.0);
         settle(&mut session, &mut launcher);
@@ -638,8 +640,8 @@ fn the_wheel_and_the_touchpad_scroll_the_list_and_the_pointer_chooses_in_it() {
     }
     scroll(&mut session, 7.0);
     settle(&mut session, &mut launcher);
-    assert_eq!(chosen(&mut session), Some(1), "Delta, a row higher");
-    // Moving the pointer on chooses what is under it, Echo, and does not
+    assert_eq!(chosen(&mut session), Some(1), "Charlie, a row higher");
+    // Moving the pointer on chooses what is under it, Delta, and does not
     // scroll the list back.
     let (x, y) = row(2);
     point(&mut session, (x - 10, y));
@@ -649,17 +651,17 @@ fn the_wheel_and_the_touchpad_scroll_the_list_and_the_pointer_chooses_in_it() {
     // chosen program out of sight gives way to the nearest in sight.
     scroll(&mut session, -21.0);
     settle(&mut session, &mut launcher);
-    assert_eq!(chosen(&mut session), Some(2), "Delta");
+    assert_eq!(chosen(&mut session), Some(2), "Charlie");
     scroll(&mut session, -1.0e9);
     settle(&mut session, &mut launcher);
-    assert_eq!(chosen(&mut session), Some(2), "Charlie");
+    assert_eq!(chosen(&mut session), Some(2), "Bravo");
     // Nor is what was beyond the first kept, to be scrolled back first.
     scroll(&mut session, 15.0);
     settle(&mut session, &mut launcher);
-    assert_eq!(chosen(&mut session), Some(1), "Charlie, a row higher");
+    assert_eq!(chosen(&mut session), Some(1), "Bravo, a row higher");
     press(&mut session, key::RETURN);
     settle(&mut session, &mut launcher);
-    session.eventually(|session| mark(session, "charlie") == "x");
+    session.eventually(|session| mark(session, "bravo") == "x");
 }
 
 #[test]
@@ -710,12 +712,15 @@ fn a_key_held_down_is_taken_again_and_again_until_it_is_let_go() {
     settle_at(&mut session, &mut launcher, ms(399));
     assert_eq!(chosen(&mut session), Some(0));
     settle_at(&mut session, &mut launcher, ms(400));
-    assert_eq!(chosen(&mut session), Some(1), "and then steadily");
+    // The second, under the heading over all but the first.
+    assert_eq!(chosen(&mut session), Some(2), "and then steadily");
 
     // Down is taken once more as it is let go, before the launcher hears
     // that it was: the third, and Up back to the second.
     hold(&mut session, DOWN, false);
     hold(&mut session, UP, true);
+    // The list scrolled a line to show the third, the second is a line
+    // higher on the screen.
     settle_at(&mut session, &mut launcher, ms(500));
     assert_eq!(chosen(&mut session), Some(1));
     // Thirty times a second: one more by a little after the pause.
@@ -774,7 +779,8 @@ fn a_row_gets_to_the_colour_of_being_chosen_over_the_time_the_theme_gives() {
     let rows = |session: &mut Session| {
         let picture = session.draw();
         let color = |place| picture.at(row(place).0, row(place).1);
-        (color(0), color(1))
+        // The second under the heading over all but the first.
+        (color(0), color(2))
     };
     // Down lights the first, which the field had kept unlit, and then
     // the second; each row on its way while the other comes.
@@ -821,6 +827,7 @@ fn the_pointer_chooses_a_program_and_a_click_starts_it() {
     let mut session = Session::new();
     let mut launcher = launcher(&mut session);
     settle(&mut session, &mut launcher);
+    // Firefox, under the heading over all but Files.
     let (x, y) = row(2);
     let motion = |session: &mut Session, x: i32, y: i32| {
         let (x, y) = (f64::from(x), f64::from(y));
@@ -841,7 +848,7 @@ fn the_pointer_chooses_a_program_and_a_click_starts_it() {
         session.compositor_mut().input(button, 0);
     }
     assert!(settle(&mut session, &mut launcher));
-    session.eventually(|session| mark(session, "lens") == "x");
+    session.eventually(|session| mark(session, "firefox") == "x");
 }
 
 fn click(session: &mut Session, x: i32, y: i32) {
@@ -1463,4 +1470,17 @@ fn super_and_1_goes_to_the_programs_grid_and_escape_back() {
     press(&mut session, key::RETURN);
     assert!(settle(&mut session, &mut launcher));
     session.eventually(|session| mark(session, "firefox") == "x");
+}
+
+#[test]
+fn the_generic_mode_starts_the_top_hit_on_enter() {
+    let mut session = Session::new();
+    let mut launcher = launcher(&mut session);
+    settle(&mut session, &mut launcher);
+    press(&mut session, F);
+    press(&mut session, I);
+    press(&mut session, key::RETURN);
+    assert!(settle(&mut session, &mut launcher));
+    session.eventually(|session| mark(session, "files") == "x");
+    assert_eq!(mark(&session, "firefox"), "");
 }

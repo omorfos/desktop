@@ -39,6 +39,14 @@ a known gap.
   second on and half off, from each key, and stays shown ten seconds
   after the last. With `appearance.reduce_motion`, it does not blink.
 
+- **The launcher's modes and top hit (ADR 109, part 1).** `Super+Space`,
+  type `fi`: Files alone at the top, Firefox under a heading, Programs;
+  Enter starts Files, Down lights it and Down again Firefox, past the
+  heading. `Super+1` goes to the grid of every program, `Super+0` or
+  Escape back, and Escape again closes it. With the launcher open,
+  `Super+2` does not change the workspace, and `Super+Shift+3` still
+  takes a picture of the screen.
+
 ## Where this is going
 
 omorfos is small, fast and driven by text files, but what is being asked
@@ -2106,8 +2114,15 @@ to false, as `launcher.sums` is (ADR 83).
       each turned off or ordered in `config.yaml`; other programs' results
       through GNOME's search providers and KDE's runners. In the ADR's
       order:
-      - [ ] the model: the sources, the sections and the top hit, the
-            modes and Super with a digit, `launcher.order`;
+      - [x] the model: the sources, the sections and the top hit, the
+            modes and Super with a digit, `launcher.order`: programs and
+            sums the first two sources; the generic mode a top hit and
+            the programs under their heading; `Super+1` and on the modes
+            built, today the programs' grid, which finds programs alone,
+            `Super+0` or Escape back; the compositor hands Super with a
+            digit to the launcher while it is up. What the generic mode
+            shows with nothing typed, and the top hit's own heading, are
+            the look's;
       - [ ] the look, from the mockups of 25 November 2026;
       - [ ] actions: omorfos's, programs' own from their desktop
             entries, the user's own (`launcher.shortcuts`);

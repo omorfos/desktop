@@ -7,3 +7,7 @@ nothing-matches = Nothing matches “{ $typed }”
 
 # Under the answer to a sum typed, which Enter puts on the clipboard.
 enter-copies = Enter copies the answer
+
+# Over the programs found after the best match of all, in the launcher's
+# mode that finds everything.
+launcher-programs = Programs

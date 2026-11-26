@@ -2,7 +2,10 @@
 
 `Super+Space`, or **Run…** in the root menu, opens the launcher: a box on
 the screen the pointer is on. Type part of a program's name and the list
-narrows to the programs that have it, those that begin with it first. Up
+narrows to the programs that have it, those that begin with it first: the
+best of all alone at the top, the one Enter starts, and the rest under a
+heading, Programs. A sum's answer, where what is typed is one, is the best
+of all, and the programs follow it. Up
 and Down choose among them, the list following the one chosen. While you
 type, no program is lit, and Enter starts the first that matches. Down,
 or the pointer over a program, gives the programs the keyboard, as in
@@ -136,7 +139,8 @@ launcher:
 
 A mode left out comes after those named, in that order: the list only
 orders. A mode not built yet takes no number, and today only `programs`,
-the grid of every program, is.
+the grid of every program, is. While the launcher is open, `Super` with a
+digit is its own, not the workspaces'.
 
 How it looks is in `theme.css`, under `launcher`, `launcher-input`,
 `launcher-item`, `launcher-description` and `launcher-tile`, a program in

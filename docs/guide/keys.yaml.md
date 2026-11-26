@@ -56,7 +56,9 @@ Mac's read Command: `Super+c`, `x`, `v`, `a` and `z` copy, cut, paste,
 choose all and undo, and Ctrl with those letters does nothing there;
 `Super` with the arrows goes to the ends of what is typed, and
 `Super+BackSpace` takes out all before the cursor. In the ordinary way
-they read Ctrl instead, as everything else does.
+they read Ctrl instead, as everything else does. Super with a digit,
+while the launcher is open, goes to its modes, not to a workspace
+([Modes](launcher.md#modes)).
 
 A program that needs every key, as a virtual machine, a remote desktop
 or a game may, can ask for them (`keyboard-shortcuts-inhibit`), and is
