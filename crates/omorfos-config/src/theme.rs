@@ -1617,14 +1617,24 @@ mod tests {
             Part::Tooltip,
             Part::Panel,
             Part::Notification,
-            Part::Launcher,
             Part::Switcher,
             Part::Question,
             Part::About,
         ];
         let closing = States::NONE.with(State::Closing);
         let theme = Theme::default();
-        for part in Part::ALL {
+        // The launcher a little slower in and out, from and to a little
+        // smaller, as ADR 109's look has it.
+        let launcher = |states| theme.style(Part::Launcher, states);
+        assert_eq!(launcher(States::NONE).transition, at(220, Easing::EaseOut));
+        assert_eq!(launcher(closing).transition, at(140, Easing::EaseIn));
+        let small = Presence {
+            opacity: 0,
+            scale: 960,
+        };
+        assert_eq!(launcher(closing).presence, small);
+        assert_eq!(theme.starting(Part::Launcher), small);
+        for part in Part::ALL.into_iter().filter(|part| *part != Part::Launcher) {
             let style = |states| theme.style(part, states).transition;
             if comes_and_goes.contains(&part) {
                 assert_eq!(style(States::NONE), coming, "{part:?}");

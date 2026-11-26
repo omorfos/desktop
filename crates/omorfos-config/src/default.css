@@ -336,6 +336,12 @@ launcher {
   border: var(--edge);
   border-radius: 10px;
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.36), inset 0 1px var(--glass-rim);
+  /* A little slower to come than the rest, and slower again to leave. */
+  transition: 220ms ease-out;
+}
+launcher:closing {
+  transition: 140ms ease-in;
+  scale: 96%;
 }
 /* The field is large, and of the launcher's own glass, as Spotlight's. */
 launcher-input {
