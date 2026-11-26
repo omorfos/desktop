@@ -2805,10 +2805,13 @@ impl Desktop {
     }
 
     /// Brings the program `id` is a window of forward, as choosing it with
-    /// Cmd+Tab does: every window of it on `id`'s workspace activated, and
-    /// `id` last, so that it is in front with the keyboard.
+    /// Cmd+Tab does: every window of it on `id`'s workspace activated in the
+    /// order they stood, the lowest first, so that they keep it, and `id`
+    /// last, so that it is in front with the keyboard.
     pub fn activate_program(&mut self, id: WindowId) {
-        for window in self.program_here(id) {
+        let mut windows = self.program_here(id);
+        windows.sort_by_key(|window| self.locate(*window).map(|at| at.group));
+        for window in windows {
             self.activate(window);
         }
         self.activate(id);
@@ -6197,6 +6200,26 @@ mod tests {
         desktop.let_go_aside(true);
         assert_ne!(desktop.sent(), sent);
         assert_eq!(at(&desktop), Point::new(48 - 800, 126));
+    }
+
+    #[test]
+    fn a_program_brought_forward_keeps_its_windows_in_the_order_they_stood() {
+        let mut desktop = desktop();
+        let (a, b, c) = (
+            open(&mut desktop, "term"),
+            open(&mut desktop, "term"),
+            open(&mut desktop, "term"),
+        );
+        // Standing in another order than they were opened in, the first
+        // raised, as a window maximized in front, and another program over
+        // them all.
+        desktop.activate(a);
+        let other = open(&mut desktop, "web");
+        assert_eq!(stack(&desktop), [b, c, a, other]);
+        // The program brought forward by the second: all of it over the
+        // other, in the order it stood, but for the one chosen, on top.
+        desktop.activate_program(b);
+        assert_eq!(stack(&desktop), [other, c, a, b]);
     }
 
     #[test]

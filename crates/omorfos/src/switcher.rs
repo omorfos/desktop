@@ -807,11 +807,13 @@ impl Compositor {
 
     /// Closes the switcher, choosing the window it is at if `chosen`.
     pub(crate) fn close_switcher(&mut self, chosen: bool) {
-        let picked = self
-            .switch
-            .open
-            .take()
-            .map(|switching| (switching.switcher.chosen(), switching.programs));
+        // A program comes forward whole, as a Mac's does; but one gone
+        // through window by window has only the window gone to come forward,
+        // the others staying as they stood.
+        let picked = self.switch.open.take().map(|switching| {
+            let whole = switching.programs && !switching.switcher.gone_within();
+            (switching.switcher.chosen(), whole)
+        });
         match picked.filter(|_| chosen) {
             Some((window, true)) => self.desktop.activate_program(window),
             Some((window, false)) => self.desktop.activate(window),
