@@ -418,7 +418,14 @@ impl Shell {
         // goes over.
         let (theme, text) = (&self.theme, &mut self.text);
         self.stale |= self.picker.drag(x, y, theme, text);
+        self.stale |= self.picker.hover(Some((x, y)), theme, text);
         self.stale |= self.picker.point(x, y, &self.theme);
+    }
+
+    /// Takes in the pointer leaving the launcher, which hides the row of
+    /// modes.
+    fn left(&mut self) {
+        self.stale |= self.picker.hover(None, &self.theme, &mut self.text);
     }
 
     /// Takes in a scroll of the wheel or the touchpad, `by` so far downwards:
@@ -864,6 +871,7 @@ impl Dispatch<wl_pointer::WlPointer, ()> for Shell {
                 surface_y,
                 ..
             } => shell.moved(surface_x, surface_y),
+            wl_pointer::Event::Leave { .. } => shell.left(),
             wl_pointer::Event::Axis {
                 axis: WEnum::Value(wl_pointer::Axis::VerticalScroll),
                 value,

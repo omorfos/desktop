@@ -17,7 +17,8 @@ use std::time::{Duration, Instant};
 use omorfos::{Input, Scale};
 use omorfos_config::{Action, Color, Part, State, States, Theme};
 use omorfos_ipc::Client as Ipc;
-use omorfos_launcher::{App, Launcher, Numbers, Picker};
+use omorfos_launcher::{App, Launcher, Numbers, Picker, View};
+use omorfos_ui::Text;
 use smithay::input::keyboard::Keycode;
 use smithay::reexports::wayland_server::ListeningSocket;
 
@@ -876,6 +877,68 @@ fn escape_closes_the_launcher_and_starts_nothing() {
     session.advance(Duration::from_millis(50));
     assert_eq!(mark(&session, "files"), "");
     assert_eq!(mark(&session, "firefox"), "");
+}
+
+#[test]
+fn the_pointer_over_the_empty_launcher_offers_the_modes_and_a_click_goes_to_one() {
+    let mut session = Session::new();
+    let mut launcher = launcher(&mut session);
+    settle(&mut session, &mut launcher);
+    let motion = |session: &mut Session, (x, y): (i32, i32)| {
+        let (x, y) = (f64::from(x), f64::from(y));
+        session.compositor_mut().input(Input::Motion { x, y }, 0);
+    };
+    // Where the launcher's own drawing has the button for every program,
+    // once the pointer is over it.
+    let theme = Theme::default();
+    let mut picker = Picker::new(
+        Vec::new(),
+        omorfos_config::Launcher::default(),
+        Numbers::Point,
+    );
+    let (x, y) = field_middle();
+    let (left, top) = corner();
+    let text = &mut Text::new();
+    picker.hover(Some((x - left, y - top)), &theme, text);
+    let programs = View::Mode(omorfos_config::Mode::Programs);
+    let (across, down, wide, tall) = picker.mode_area(programs, &theme, text).unwrap();
+    let button = (
+        left + across + wide.cast_signed() / 2,
+        top + down + tall.cast_signed() / 2,
+    );
+    // Not there until the pointer comes over the launcher: the launcher's
+    // shadow is there, and then the button.
+    let before = session.draw().at(button.0, button.1);
+    motion(&mut session, (x, y));
+    session.eventually(|session| {
+        settle(session, &mut launcher);
+        session.draw().at(button.0, button.1) != before
+    });
+    // Gone as the pointer leaves it, and back as it comes again.
+    motion(&mut session, (2, 2));
+    session.eventually(|session| {
+        settle(session, &mut launcher);
+        session.draw().at(button.0, button.1) == before
+    });
+    // Over the launcher again, which grows the row under the pointer, and
+    // down onto the button.
+    motion(&mut session, (x, y));
+    settle(&mut session, &mut launcher);
+    motion(&mut session, button);
+    settle(&mut session, &mut launcher);
+    for pressed in [true, false] {
+        let click = Input::Button {
+            button: LEFT,
+            pressed,
+        };
+        session.compositor_mut().input(click, 0);
+    }
+    settle(&mut session, &mut launcher);
+    // Every program, with nothing typed: Down lights the first.
+    press(&mut session, DOWN);
+    press(&mut session, key::RETURN);
+    assert!(settle(&mut session, &mut launcher));
+    session.eventually(|session| mark(session, "files") == "x");
 }
 
 #[test]

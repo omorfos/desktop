@@ -24,6 +24,11 @@ const LONGEST: usize = 64;
 /// The room between a program's icon and its name.
 const GAP: u32 = 10;
 
+/// The room between a mode's sign, its name and its digit, in the row of
+/// modes, and between one mode and the next.
+const BESIDE: u32 = 7;
+const APART: u32 = 6;
+
 /// The narrowest the launcher is made, whatever the theme says.
 const NARROWEST: u32 = 160;
 
@@ -121,6 +126,10 @@ pub struct Picker {
     /// there, rather than on what is typed: the field has no cursor then,
     /// and every arrow walks the programs.
     listing: bool,
+    /// Whether the pointer is over the launcher, which shows the row of
+    /// modes while nothing is typed, and the mode in that row it is over.
+    hovered: bool,
+    pointed: Option<View>,
 }
 
 /// Where the launcher's boxes are, under a theme.
@@ -132,6 +141,9 @@ struct Layout {
     bare: u32,
     /// The room between the field and what is under it, if anything is.
     under: u32,
+    /// How tall the row of modes is, with the room the theme keeps round
+    /// it.
+    modes: u32,
     input: Area,
     /// The room the list has: its left, its top and its width.
     list: (i32, i32, u32),
@@ -161,6 +173,7 @@ impl Layout {
         let tile = theme.style(Part::LauncherTile, States::NONE);
         let heading = theme.style(Part::LauncherHeading, States::NONE);
         let best = theme.style(Part::LauncherTop, States::NONE);
+        let modes = theme.style(Part::LauncherModes, States::NONE);
         let (columns, pitch, needed) = if grid {
             let wide = tile.min_width.saturating_add(tile.margin.across());
             let tall = tile_height(theme).saturating_add(tile.margin.down());
@@ -187,6 +200,7 @@ impl Layout {
             width: whole.2,
             bare,
             under,
+            modes: modes.height.saturating_add(modes.margin.down()),
             input: (x, y, wide, input.height),
             list: (left, top.saturating_add_unsigned(field), width),
             pitch,
@@ -235,6 +249,22 @@ impl Layout {
     }
 }
 
+/// The sign of `view`, before the field and in the row of modes.
+const fn sign_of(view: View) -> Sign {
+    match view {
+        View::Mode(Mode::Programs) => Sign::Programs,
+        View::Generic | View::Mode(_) => Sign::Search,
+    }
+}
+
+/// The message that names `view` in the row of modes.
+const fn says_of(view: View) -> &'static str {
+    match view {
+        View::Mode(Mode::Programs) => "launcher-mode-programs",
+        View::Generic | View::Mode(_) => "launcher-mode-all",
+    }
+}
+
 /// How tall a program's tile in the grid is under `theme`: its icon, half
 /// as wide as the room inside its padding, the room under that, and a line
 /// for its name.
@@ -265,6 +295,8 @@ impl Picker {
             dragging: false,
             view: View::Generic,
             listing: false,
+            hovered: false,
+            pointed: None,
         };
         picker.search();
         picker
@@ -310,11 +342,96 @@ impl Picker {
     /// in the configuration's order, or with 0 to the generic one; a number
     /// no mode has does nothing.
     fn go_to(&mut self, number: u8) {
-        let built = self.show.order.modes().filter(|mode| BUILT.contains(mode));
-        let mut views = std::iter::once(View::Generic).chain(built.map(View::Mode));
-        if let Some(view) = views.nth(usize::from(number)) {
+        let view = self.views().nth(usize::from(number));
+        if let Some(view) = view {
             self.set_view(view);
         }
+    }
+
+    /// Every view there is to go to, in the order of their numbers: the
+    /// generic one, and those built in the configuration's order.
+    fn views(&self) -> impl Iterator<Item = View> + '_ {
+        let built = self.show.order.modes().filter(|mode| BUILT.contains(mode));
+        std::iter::once(View::Generic).chain(built.map(View::Mode))
+    }
+
+    /// Whether the row of modes is shown: while the pointer is over the
+    /// launcher and nothing is typed.
+    fn modes_shown(&self) -> bool {
+        self.hovered && self.field.text().is_empty()
+    }
+
+    /// Takes in where the pointer is over the launcher, or that it has
+    /// left it, which shows or hides the row of modes, and marks the mode
+    /// in it the pointer is over. `text` measures the modes' names.
+    /// Returns whether that changed anything.
+    pub fn hover(&mut self, over: Option<(i32, i32)>, theme: &Theme, text: &mut Text) -> bool {
+        let was = (self.hovered, self.pointed);
+        self.hovered = over.is_some();
+        self.pointed = over.and_then(|(x, y)| self.mode_at(x, y, theme, text));
+        was != (self.hovered, self.pointed)
+    }
+
+    /// The mode whose button in the row of modes a point is on, if the
+    /// row is shown and the point is on one.
+    fn mode_at(&self, x: i32, y: i32, theme: &Theme, text: &mut Text) -> Option<View> {
+        let on = |(left, top, wide, tall): Area| {
+            let across = x.checked_sub(left).and_then(|x| u32::try_from(x).ok());
+            let down = y.checked_sub(top).and_then(|y| u32::try_from(y).ok());
+            across.is_some_and(|x| x < wide) && down.is_some_and(|y| y < tall)
+        };
+        let mut buttons = self.mode_areas(theme, text).into_iter();
+        buttons.find(|(_, area)| on(*area)).map(|(view, _)| view)
+    }
+
+    /// Where the button for `view` is in the row of modes, while the row
+    /// is shown. `text` measures the modes' names.
+    pub fn mode_area(&self, view: View, theme: &Theme, text: &mut Text) -> Option<Area> {
+        let mut buttons = self.mode_areas(theme, text).into_iter();
+        buttons
+            .find(|(each, _)| *each == view)
+            .map(|(_, area)| area)
+    }
+
+    /// Each mode's button in the row of modes, left to right, as wide as
+    /// its sign, its name and its digit side by side; none while the row
+    /// is not shown.
+    fn mode_areas(&self, theme: &Theme, text: &mut Text) -> Vec<(View, Area)> {
+        if !self.modes_shown() {
+            return Vec::new();
+        }
+        let ((left, top, _, tall), side) = self.modes_row(theme);
+        let style = theme.style(Part::LauncherMode, States::NONE);
+        let font = theme.font(Part::LauncherMode, States::NONE);
+        let mut across = left;
+        let mut areas = Vec::new();
+        for (number, view) in self.views().enumerate() {
+            let name = text.measure(says_of(view), font);
+            let digit = (number > 0).then(|| text.measure(&number.to_string(), font));
+            let digit = digit.map_or(0, |digit| BESIDE.saturating_add(digit));
+            let wide = style.inset().across().saturating_add(side);
+            let wide = wide.saturating_add(BESIDE).saturating_add(name);
+            let wide = wide.saturating_add(digit);
+            areas.push((view, (across, top, wide, tall)));
+            across = across.saturating_add_unsigned(wide.saturating_add(APART));
+        }
+        areas
+    }
+
+    /// The room inside the row of modes, at the bottom, under what is
+    /// listed, and how large each mode's sign is in it.
+    fn modes_row(&self, theme: &Theme) -> (Area, u32) {
+        let layout = self.layout(theme);
+        let launcher = theme.style(Part::Launcher, States::NONE);
+        let modes = theme.style(Part::LauncherModes, States::NONE);
+        let style = theme.style(Part::LauncherMode, States::NONE);
+        let (left, _, width) = layout.list;
+        let above = layout.bare.saturating_sub(launcher.inset().bottom);
+        let top = above.saturating_add(self.tall(&layout)).cast_signed();
+        let row = inset((left, top, width, layout.modes), modes.margin);
+        let inside = inset(row, modes.inset());
+        let side = inside.3.saturating_sub(style.inset().down()) / 2;
+        (inside, side)
     }
 
     /// Lists as many rows as fit in half of a screen `height` units tall,
@@ -332,7 +449,9 @@ impl Picker {
     #[must_use]
     pub fn size(&self, theme: &Theme) -> (u32, u32) {
         let layout = self.layout(theme);
-        (layout.width, layout.bare.saturating_add(self.tall(&layout)))
+        let modes = if self.modes_shown() { layout.modes } else { 0 };
+        let tall = self.tall(&layout).saturating_add(modes);
+        (layout.width, layout.bare.saturating_add(tall))
     }
 
     /// How tall what is shown under the field is: each line in sight, as
@@ -618,6 +737,10 @@ impl Picker {
             self.field.place(at, false);
             return Outcome::Stay;
         }
+        if let Some(view) = self.mode_at(x, y, theme, text) {
+            self.set_view(view);
+            return Outcome::Stay;
+        }
         let over = self.row_at(x, y, theme);
         self.chosen = over.unwrap_or(self.chosen);
         over.map_or(Outcome::Stay, |_| self.start())
@@ -713,13 +836,8 @@ impl Picker {
         motion: &mut Motion,
     ) -> Canvas {
         let layout = self.layout(theme);
-        let whole = (
-            0,
-            0,
-            layout.width,
-            layout.bare.saturating_add(self.tall(&layout)),
-        );
-        let (_, _, width, height) = whole;
+        let (width, height) = self.size(theme);
+        let whole = (0, 0, width, height);
         let mut canvas = Canvas::scaled(width, height, scale);
         canvas.draw_box(whole, &theme.style(Part::Launcher, States::NONE));
 
@@ -731,7 +849,7 @@ impl Picker {
         let copies = words.say("enter-copies", &[]);
         let described = self.show.descriptions;
         let sight = self.first()..self.first() + self.room;
-        let mut drawing = (&mut canvas, &mut *text, icons, motion);
+        let mut drawing = (&mut canvas, &mut *text, &mut *icons, motion);
         for (row, (_, item)) in self.found.iter().enumerate() {
             let (line, column) = self.line_of(row);
             if !sight.contains(&line) {
@@ -791,7 +909,71 @@ impl Picker {
             let nothing = words.say("nothing-matches", &typed);
             text.draw(&mut canvas, &nothing, area, said.color, font);
         }
+        self.paint_modes(&mut canvas, (text, words, icons, scale), theme);
         canvas
+    }
+
+    /// Draws the row of modes, if it is shown: a hairline over it, and
+    /// each mode's sign, name and digit, the one shown lit and the one
+    /// under the pointer marked.
+    fn paint_modes(
+        &self,
+        canvas: &mut Canvas,
+        (text, words, icons, scale): (&mut Text, &Words, &mut Icons, Scale),
+        theme: &Theme,
+    ) {
+        let buttons = self.mode_areas(theme, text);
+        let modes = theme.style(Part::LauncherModes, States::NONE);
+        let ((left, top, width, _), side) = self.modes_row(theme);
+        if !buttons.is_empty() {
+            let (left, top) = (
+                left.saturating_sub_unsigned(modes.inset().left),
+                top.saturating_sub_unsigned(modes.inset().top),
+            );
+            let row = (
+                left,
+                top,
+                width.saturating_add(modes.inset().across()),
+                self.layout(theme).modes,
+            );
+            canvas.draw_box(inset(row, modes.margin), &modes);
+        }
+        let dim = theme.style(Part::LauncherDescription, States::NONE).color;
+        for (number, (view, area)) in buttons.into_iter().enumerate() {
+            let shown = view == self.view;
+            let states = States::NONE
+                .when(State::Active, shown)
+                .when(State::Hovered, self.pointed == Some(view));
+            let style = theme.style(Part::LauncherMode, states);
+            let font = theme.font(Part::LauncherMode, states);
+            canvas.draw_box(area, &style);
+            let (x, y, wide, tall) = inset(area, style.inset());
+            let down = y.saturating_add_unsigned(tall.saturating_sub(side) / 2);
+            let pixels = scale.pixels(side.cast_signed()).unsigned_abs();
+            let drawn = icons.sign(sign_of(view), pixels, style.color).into_iter();
+            drawn.for_each(|image| canvas.draw_image((x, down, side, side), image));
+            let after = side.saturating_add(BESIDE);
+            let name = words.say(says_of(view), &[]);
+            let at = (
+                x.saturating_add_unsigned(after),
+                y,
+                wide.saturating_sub(after),
+                tall,
+            );
+            text.draw(canvas, &name, at, style.color, font);
+            if number > 0 {
+                let beyond = after.saturating_add(text.measure(&name, font));
+                let beyond = beyond.saturating_add(BESIDE);
+                let at = (
+                    x.saturating_add_unsigned(beyond),
+                    y,
+                    wide.saturating_sub(beyond),
+                    tall,
+                );
+                let color = if shown { style.color } else { dim };
+                text.draw(canvas, &number.to_string(), at, color, font);
+            }
+        }
     }
 
     /// Draws a row of the list at `place`: `name`, what it `says` under
@@ -888,9 +1070,10 @@ impl Picker {
         let side = inside.3 / 2;
         let down = inside.1.saturating_add_unsigned((inside.3 - side) / 2);
         let square = (inside.0, down, side, side);
-        let (sign, says) = match self.view {
-            View::Mode(Mode::Programs) => (Sign::Programs, "launcher-search-programs"),
-            View::Generic | View::Mode(_) => (Sign::Search, "launcher-search"),
+        let sign = sign_of(self.view);
+        let says = match self.view {
+            View::Mode(Mode::Programs) => "launcher-search-programs",
+            View::Generic | View::Mode(_) => "launcher-search",
         };
         let pixels = scale.pixels(side.cast_signed()).unsigned_abs();
         let drawn = icons.sign(sign, pixels, input.color).into_iter();
@@ -2564,41 +2747,6 @@ mod tests {
     }
 
     #[test]
-    fn the_empty_launcher_has_as_much_room_under_the_field_as_over_it() {
-        let theme = Theme::default();
-        let launcher = theme.style(Part::Launcher, States::NONE);
-        let input = theme.style(Part::LauncherInput, States::NONE);
-        let edge = launcher.inset().top;
-        assert_eq!(edge, launcher.inset().bottom);
-        let empty = several();
-        assert_eq!(empty.size(&theme).1, 2 * edge + input.height);
-        let (_, top, _, tall) = Layout::new(&theme).input;
-        assert_eq!(top.unsigned_abs(), edge);
-        assert_eq!(empty.size(&theme).1 - (top.unsigned_abs() + tall), edge);
-        // With something under it, the field's margin parts the two.
-        let mut found = several();
-        typed(&mut found, "zzz");
-        let under = input.margin.bottom + Layout::new(&theme).pitch;
-        assert_eq!(found.size(&theme).1, 2 * edge + input.height + under);
-    }
-
-    #[test]
-    fn every_mode_puts_the_field_at_the_same_height_on_the_screen() {
-        let theme = Theme::default();
-        for screen in [1080, 720, 480, 100] {
-            let mut picker = several();
-            picker.fit(&theme, screen);
-            let generic = picker.top(&theme, screen);
-            picker.set_view(View::Mode(Mode::Programs));
-            picker.fit(&theme, screen);
-            assert_eq!(picker.top(&theme, screen), generic, "on {screen}");
-            // And the grid, as tall as it can be, still on the screen.
-            let (_, _, _, tallest) = picker.layout(&theme).whole(picker.room);
-            assert!(generic + tallest <= screen.max(tallest), "on {screen}");
-        }
-    }
-
-    #[test]
     fn the_field_has_the_modes_sign_before_it_and_its_words_while_empty() {
         let theme = Theme::default();
         let layout = Layout::new(&theme);
@@ -2643,5 +2791,142 @@ mod tests {
             picture(&tiles, tile_sign, middle),
             "another sign"
         );
+    }
+
+    #[test]
+    fn the_empty_launcher_has_as_much_room_under_the_field_as_over_it() {
+        let theme = Theme::default();
+        let launcher = theme.style(Part::Launcher, States::NONE);
+        let input = theme.style(Part::LauncherInput, States::NONE);
+        let edge = launcher.inset().top;
+        assert_eq!(edge, launcher.inset().bottom);
+        let empty = several();
+        assert_eq!(empty.size(&theme).1, 2 * edge + input.height);
+        let (_, top, _, tall) = Layout::new(&theme).input;
+        assert_eq!(top.unsigned_abs(), edge);
+        assert_eq!(empty.size(&theme).1 - (top.unsigned_abs() + tall), edge);
+        // With something under it, the field's margin parts the two.
+        let mut found = several();
+        typed(&mut found, "zzz");
+        let under = input.margin.bottom + Layout::new(&theme).pitch;
+        assert_eq!(found.size(&theme).1, 2 * edge + input.height + under);
+    }
+
+    #[test]
+    fn every_mode_puts_the_field_at_the_same_height_on_the_screen() {
+        let theme = Theme::default();
+        for screen in [1080, 720, 480, 100] {
+            let mut picker = several();
+            picker.fit(&theme, screen);
+            let generic = picker.top(&theme, screen);
+            picker.set_view(View::Mode(Mode::Programs));
+            picker.fit(&theme, screen);
+            assert_eq!(picker.top(&theme, screen), generic, "on {screen}");
+            // And the grid, as tall as it can be, still on the screen.
+            let (_, _, _, tallest) = picker.layout(&theme).whole(picker.room);
+            assert!(generic + tallest <= screen.max(tallest), "on {screen}");
+        }
+    }
+
+    /// The middle of the button for `view` in the row of modes, while it
+    /// is shown.
+    fn mode_middle(picker: &Picker, view: View) -> Option<(i32, i32)> {
+        let theme = Theme::default();
+        let area = picker.mode_area(view, &theme, &mut Text::new());
+        area.map(|(left, top, wide, tall)| {
+            let middle = |at: i32, across: u32| at.saturating_add_unsigned(across / 2);
+            (middle(left, wide), middle(top, tall))
+        })
+    }
+
+    #[test]
+    fn the_modes_are_offered_at_the_bottom_while_the_pointer_is_over_an_empty_launcher() {
+        let theme = Theme::default();
+        let modes = theme.style(Part::LauncherModes, States::NONE);
+        let row = modes.height + modes.margin.down();
+        let text = &mut Text::new();
+        let mut picker = several();
+        let (_, alone) = picker.size(&theme);
+        assert_eq!(
+            mode_middle(&picker, View::Generic),
+            None,
+            "not until hovered"
+        );
+        // The pointer over the field: the row under it, at the bottom.
+        let (x, y) = field_at(&theme);
+        assert!(picker.hover(Some((x, y)), &theme, text));
+        assert_eq!(picker.size(&theme).1, alone + row);
+        let (_, down) = mode_middle(&picker, View::Generic).unwrap_or_default();
+        assert!(down.unsigned_abs() > alone - modes.inset().bottom, "{down}");
+        assert!(!picker.hover(Some((x + 1, y)), &theme, text), "nothing new");
+        // Gone while anything is typed, and back once it is taken back.
+        typed(&mut picker, "f");
+        assert_eq!(mode_middle(&picker, View::Generic), None);
+        let found = picker.size(&theme).1;
+        picker.key(BACKSPACE);
+        assert_eq!(picker.size(&theme).1, alone + row);
+        // Under what is found, in a mode that lists it with nothing typed.
+        picker.set_view(View::Mode(Mode::Programs));
+        let (_, grid) = mode_middle(&picker, View::Generic).unwrap_or_default();
+        let (_, tall) = picker.size(&theme);
+        assert!(
+            grid.unsigned_abs() > tall - row,
+            "{grid} under the grid of {tall}"
+        );
+        // And gone as the pointer leaves.
+        assert!(picker.hover(None, &theme, text));
+        assert_eq!(mode_middle(&picker, View::Generic), None);
+        picker.set_view(View::Generic);
+        assert_eq!(picker.size(&theme).1, alone);
+        assert!(found > alone);
+    }
+
+    #[test]
+    fn a_click_on_a_mode_goes_to_it_and_the_one_shown_is_lit() {
+        let theme = Theme::default();
+        let text = &mut Text::new();
+        let mut picker = several();
+        let (x, y) = field_at(&theme);
+        picker.hover(Some((x, y)), &theme, text);
+        let lit = argb(
+            theme
+                .style(Part::LauncherMode, States::NONE.with(State::Active))
+                .background,
+        );
+        // Near the button's left, half-way down, clear of its sign and its
+        // words.
+        let at = |picker: &Picker, view| {
+            let (_, y) = mode_middle(picker, view).unwrap_or_default();
+            let area = picker.mode_area(view, &theme, &mut Text::new());
+            let (left, ..) = area.unwrap_or_default();
+            painted(picker).at(left.unsigned_abs() + 3, y.unsigned_abs())
+        };
+        assert_eq!(at(&picker, View::Generic), lit, "everything, shown");
+        let programs = View::Mode(Mode::Programs);
+        let unmarked = at(&picker, programs);
+        assert_ne!(unmarked, lit);
+        // The pointer over a mode marks it, in the theme's see-through
+        // tint over the launcher's glass.
+        let (x, y) = mode_middle(&picker, programs).unwrap_or_default();
+        assert!(picker.hover(Some((x, y)), &theme, text));
+        let marked = at(&picker, programs);
+        assert!(![unmarked, lit].contains(&marked), "{marked:#x}");
+        // A click goes to it.
+        assert_eq!(picker.click(x, y, &theme, text), Outcome::Stay);
+        assert_eq!(picker.view(), programs);
+        assert_eq!(at(&picker, programs), lit);
+        assert_ne!(at(&picker, View::Generic), lit);
+        let (x, y) = mode_middle(&picker, View::Generic).unwrap_or_default();
+        assert_eq!(picker.click(x, y, &theme, text), Outcome::Stay);
+        assert_eq!(picker.view(), View::Generic);
+        // Each mode has its name, and its digit after it but everything.
+        let words = Words::in_languages(&omorfos_i18n::LAUNCHER, &[]);
+        assert_eq!(words.say("launcher-mode-all", &[]), "All");
+        assert_eq!(words.say("launcher-mode-programs", &[]), "Programs");
+        let all = picker
+            .mode_area(View::Generic, &theme, text)
+            .unwrap_or_default();
+        let grid = picker.mode_area(programs, &theme, text).unwrap_or_default();
+        assert!(grid.0 > all.0 + all.2.cast_signed(), "side by side");
     }
 }

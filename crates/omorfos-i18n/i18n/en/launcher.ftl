@@ -23,3 +23,10 @@ launcher-search = Search
 # In the launcher's field while nothing is typed, in the mode of every
 # program.
 launcher-search-programs = Search programs
+
+# A mode's name in the row of modes, shown while the pointer is over the
+# empty launcher: the mode that finds everything.
+launcher-mode-all = All
+
+# The mode of every program, in the row of modes.
+launcher-mode-programs = Programs

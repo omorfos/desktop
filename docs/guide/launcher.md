@@ -9,7 +9,10 @@ nothing is shown under the field; with nothing found, one dim line says
 so. Before the field is the mode's sign, a magnifying glass where the
 launcher finds everything and four squares in the grid of every program,
 and in the field while it is empty, the mode's words, Search or Search
-programs. A sum's answer, where what is typed is one, is the best
+programs. While the pointer is over the launcher and nothing is typed, a
+row of the modes is shown at its bottom, under a hairline: All, then each
+mode with the digit that goes to it with Super, the one shown lit. A click
+on one goes to it. A sum's answer, where what is typed is one, is the best
 of all, and the programs follow it. Up
 and Down choose among them, the list following the one chosen. While you
 type, no program is lit, and Enter starts the first that matches. Down,
