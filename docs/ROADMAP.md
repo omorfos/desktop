@@ -47,6 +47,16 @@ a known gap.
   shares. Press on Share, drag off it and let go: nothing. Shut Down
   from the root menu: Enter cancels, Tab and Enter after a moment goes
   on.
+- **The theme's elements in a tree (ADR 110, step 1).** Everything
+  looks as it did. Then in `~/.config/omorfos/theme.css`: an old name,
+  as `launcher-mode-key { display: none; }`, is refused, the notice
+  saying `launcher > modes > button > kbd`, and the theme kept as it
+  was; `button { border-radius: 2px; }` squares every button, the
+  titlebar's, the launcher's modes, a question's and the overview's
+  close buttons among them; `launcher > modes > button > kbd { display:
+  none; }` takes the keys out of the row of modes; and `launcher {
+  modes { button:hover { background: red; } } }`, nested, reddens a
+  mode under the pointer.
 - **The program's windows alone (#141).** With two windows of one
   program and one of another on a workspace, the first focused,
   Super+Ctrl+Down opens the overview with the two alone, the one in
@@ -1439,10 +1449,10 @@ the first than on the last.
       promised renamed at once.
       In three steps, the built-in theme the same, pixel for pixel,
       through them all (ADR 110, addendum):
-      - [ ] The syntax: the tree, selectors, nesting, specificity, the
+      - [x] The syntax: the tree, selectors, nesting, specificity, the
             web's states, matched once as the theme is loaded, a
             selector that reaches nothing an error naming what is near,
-            and every theme renamed.
+            and every theme renamed (#192).
       - [ ] States at any depth, as `window:focus-within titlebar
             controls button`, an element's looks capped at 4,096.
       - [ ] `color` and the font inherited, `:root` an element above
