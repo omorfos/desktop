@@ -138,7 +138,7 @@ uncovered() {
 # again.
 commits() {
     local base=${1:-main} tip=${2:-HEAD} tree commit list
-    list=$(git rev-list --reverse "$base".."$tip")
+    list=$(tools/unpushed.sh "$base" "$tip")
     [ -n "$list" ] || {
         echo "nothing after $base"
         return
@@ -200,10 +200,10 @@ commits() {
 
 # The commit a push's change is counted from: the last before `commit`,
 # back to what is pushed, on which everything has passed, as it had on
-# what is pushed before it went.
+# what is pushed before it went. Newest first.
 passed_before() {
     local each
-    for each in $(git rev-list "$1..$2~1" 2>/dev/null); do
+    for each in $(tools/unpushed.sh "$1" "$2~1" 2>/dev/null | tac); do
         each=$(git rev-parse "$each^{tree}")
         if has_passed push "$each" || has_passed all "$each"; then
             echo "$each"
@@ -434,6 +434,7 @@ scripts() {
     fi
     # A commit made before the script was written has none to be held to.
     [ ! -e tools/scale-survey.sh ] || step tools/scale-survey.sh check
+    [ ! -e tools/unpushed.test.sh ] || step tools/unpushed.test.sh
 }
 
 # The workflows, as CI checks them but for what needs the network: each

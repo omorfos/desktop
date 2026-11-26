@@ -66,6 +66,8 @@ jobs:
       # likely to have, where the gates try the one that is there.
       - run: AWK=mawk tools/scale-survey.sh check
       - run: AWK=gawk tools/scale-survey.sh check
+      # What a push checks commit by commit: not what main has already.
+      - run: tools/unpushed.test.sh
       - name: No line left in from debugging
         run: |
           if git grep -nE '\bD[B]G\b' -- '*.rs'; then
