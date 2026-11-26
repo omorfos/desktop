@@ -67,7 +67,8 @@ one before fading as it comes, and the others fainter, the row rising
 into view, and the queue with it to make room, as it first does. A row
 longer than the screen slides along to keep the ring in sight, those
 towards its ends fainter still. Letting go of Super goes to the one it is
-at, and `Super+Shift+grave` goes back.
+at, and `Super+Shift+grave` goes back. Picking another program and coming
+back finds the program at the window you went to.
 The switcher of every window takes `Super+grave` and does nothing.
 
 While Super, or Alt, is held, Tab goes on to the next window and
