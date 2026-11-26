@@ -43,6 +43,10 @@ a known gap.
   was tried; this needs Super, which WSL keeps. With the launcher open,
   `Super+1` goes to the grid, `Super+2` does not change the workspace,
   and `Super+Shift+3` still takes a picture of the screen.
+- **Room round the titlebar buttons' signs.** With the pointer on a
+  titlebar's buttons, the cross, bar and plus are smaller than the
+  buttons' half, with room all round them, the cross's ends clear of
+  the edge; at `output: { scale: 1.25 }` too.
 
 - **The launcher's look and motion (ADR 109, part 2).** `Super+Space`:
   a large field with a magnifying glass and "Search" in it, nothing

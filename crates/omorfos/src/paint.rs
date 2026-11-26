@@ -215,15 +215,18 @@ pub(crate) fn titlebar(
 
 /// Draws on a titlebar button what it does, for those who cannot tell
 /// the buttons apart by colour: a cross to close, a plus to make larger,
-/// a bar to put away. Each is half as large as the button, in the middle
-/// of it, drawn as Lucide draws its `x`, `plus` and `minus`: lines a sixth
-/// as thick as the sign is wide, with round ends, smooth at any scale.
+/// a bar to put away. Each is three eighths as large as the button, in
+/// the middle of it, so that even the cross's ends keep clear of a round
+/// button's edge, drawn as Lucide draws its `x`, `plus` and `minus`: lines
+/// a twelfth as thick as the button is wide, with round ends, smooth at
+/// any scale.
 fn sign(canvas: &mut Canvas, button: Button, (left, top, width, height): Area, ink: Color) {
-    let size = f64::from(width.min(height)) / 2.0;
+    let whole = f64::from(width.min(height));
+    let size = whole * 3.0 / 8.0;
     let x = f64::from(left) + (f64::from(width) - size) / 2.0;
     let y = f64::from(top) + (f64::from(height) - size) / 2.0;
     let (middle, end) = (size / 2.0, size);
-    let thick = size / 6.0;
+    let thick = whole / 12.0;
     let across = [(x, y + middle), (x + end, y + middle)];
     let mut line = |points: [(f64, f64); 2]| canvas.draw_stroke(&points, thick, ink, 1.0);
     match button {
@@ -1212,12 +1215,17 @@ mod tests {
                     partly >= 2,
                     "{button:?} at {scale:?}: {partly} partly covered"
                 );
-                // And it keeps to the middle half of the button.
-                let edge = wide / 5;
-                let outside = (0..wide).filter(|x| *x < edge || *x >= wide - edge);
-                let outside = outside.flat_map(|x| (0..tall).map(move |y| (x, y)));
-                let stray = outside.filter(|(x, y)| canvas.at(*x, *y) >> 24 > 0).count();
-                assert_eq!(stray, 0, "{button:?} at {scale:?}");
+                // And it keeps well inside a round button, with room all
+                // round it: no ink further from the middle than a little
+                // over a third of the button's width.
+                let half = f64::from(wide) / 2.0;
+                let far = |x: u32, y: u32| {
+                    let (x, y) = (f64::from(x) + 0.5 - half, f64::from(y) + 0.5 - half);
+                    x.hypot(y) > f64::from(wide) * 0.35
+                };
+                let outside = (0..wide).flat_map(|x| (0..tall).map(move |y| (x, y)));
+                let stray = outside.filter(|(x, y)| far(*x, *y) && canvas.at(*x, *y) >> 24 > 0);
+                assert_eq!(stray.count(), 0, "{button:?} at {scale:?}");
             }
         }
     }
