@@ -223,13 +223,32 @@ and description are the user's words, not translated.
 ### The look
 
 As Spotlight's, enhanced: one pane of glass, the field across its top in
-large text with the mode's icon before it, the results under it in
-sections with their headings, the row of modes appearing over it under
-the pointer; in the generic mode it is as tall as what it shows, up to
-the half of the screen it has today. The theme has parts for each that is
-new (the headings, the modes' row and a mode in it, the top hit), each
-with its rule in the built-in theme (the handover's list for a part).
-Mockups are to be agreed with the maintainer before the look is built.
+large text with the mode's icon before it, and the results right under
+it, in sections with their headings, the top hit first, outlined while
+the field has the keyboard as what Enter takes. With nothing typed in the
+generic mode, nothing is shown under the field. The row of modes is at
+the bottom, under a hairline, and only while the pointer is over the
+launcher and nothing is typed. The launcher is as tall as what it shows,
+up to the half of the screen it has today. The theme has parts for each
+that is new (the headings, the modes' row and a mode in it, the top hit),
+each with its rule in the built-in theme (the handover's list for a
+part). Agreed with the maintainer on 25 and 26 November 2026 from the
+mockups and a prototype of the motion.
+
+It moves, as the maintainer asked, with times the theme can change:
+
+- it grows a little and fades in as it opens, and the reverse as it
+  closes, by Escape or a click beside it (the compositor's, as now: 220
+  ms in, 140 ms out);
+- its height follows what it shows, as results come and go, and as the
+  modes' row comes and goes (200 ms);
+- the lit row, or tile, slides from one to the next rather than jumping
+  (150 ms);
+- the mode's icon turns and fades into the next mode's as the mode
+  changes (220 ms), but is simply there as the launcher opens.
+
+With `appearance.reduce_motion` all of it only fades, or is at once, as
+everything else in omorfos does.
 
 ### Standards
 
