@@ -211,6 +211,10 @@ pub enum Part {
     /// its border, and the plus in its middle in its colour. It is
     /// [`State::Hovered`] under the pointer.
     OverviewAdd,
+    /// The button on a window, or a workspace, in the overview that closes
+    /// it: its border the ring round it, its background the disc inside,
+    /// and its colour the cross on it, as large as the button is.
+    OverviewClose,
     /// The screen behind the overview while it is open: its background dims
     /// it, and its `backdrop-filter` blurs what is behind.
     OverviewBackdrop,
@@ -238,7 +242,7 @@ pub enum Part {
 
 impl Part {
     /// Every part there is.
-    pub const ALL: [Self; 63] = [
+    pub const ALL: [Self; 64] = [
         Self::Desktop,
         Self::Window,
         Self::TileLine,
@@ -295,6 +299,7 @@ impl Part {
         Self::OverviewTitle,
         Self::OverviewWorkspace,
         Self::OverviewAdd,
+        Self::OverviewClose,
         Self::OverviewBackdrop,
         Self::Picker,
         Self::Sealed,
@@ -365,6 +370,7 @@ impl Part {
             Self::OverviewTitle => "overview-title",
             Self::OverviewWorkspace => "overview-workspace",
             Self::OverviewAdd => "overview-add",
+            Self::OverviewClose => "overview-close",
             Self::OverviewBackdrop => "overview-backdrop",
             Self::Picker => "picker",
             Self::Sealed => "sealed",
@@ -583,6 +589,9 @@ impl Part {
             Self::OverviewTitle => &const { [OVERVIEW, node("title")] },
             Self::OverviewWorkspace => &const { [OVERVIEW, node("workspace")] },
             Self::OverviewAdd => &const { [OVERVIEW, classed("button", &["add"])] },
+            Self::OverviewClose => {
+                &const { [OVERVIEW, node("thumbnail"), classed("button", &["close"])] }
+            }
             Self::OverviewBackdrop => &const { [backdrop("overview")] },
             Self::Picker => &const { [node("picker")] },
             Self::Sealed => &const { [node("sealed")] },
@@ -726,6 +735,7 @@ impl Part {
             | Self::SwitcherBackdrop
             | Self::OverviewTitle
             | Self::OverviewBackdrop
+            | Self::OverviewClose
             | Self::Picker
             | Self::Sealed
             | Self::AboutHeading
@@ -1358,6 +1368,7 @@ mod tests {
                 "overview-title",
                 "overview-workspace",
                 "overview-add",
+                "overview-close",
                 "overview-backdrop",
                 "picker",
                 "sealed",
@@ -1377,7 +1388,7 @@ mod tests {
 
     /// Where each part is in the tree of elements, as ADR 110's addendum
     /// gives it.
-    const PATHS: [(Part, &str); 63] = [
+    const PATHS: [(Part, &str); 64] = [
         (Part::Desktop, "desktop"),
         (Part::Window, "window"),
         (Part::TileLine, "desktop > separator"),
@@ -1446,6 +1457,7 @@ mod tests {
         (Part::OverviewTitle, "overview > title"),
         (Part::OverviewWorkspace, "overview > workspace"),
         (Part::OverviewAdd, "overview > button.add"),
+        (Part::OverviewClose, "overview > thumbnail > button.close"),
         (Part::OverviewBackdrop, "overview::backdrop"),
         (Part::Picker, "picker"),
         (Part::Sealed, "sealed"),

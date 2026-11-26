@@ -54,6 +54,7 @@ Dark-Cyan OverviewWindow d4a6846cc64ec200
 Dark-Cyan OverviewTitle efc36be38b712640
 Dark-Cyan OverviewWorkspace b4d2e620b366f190
 Dark-Cyan OverviewAdd ba5750afd9b43240
+Dark-Cyan OverviewClose 7f9571cd630123a0
 Dark-Cyan OverviewBackdrop 525250b5c85418c0
 Dark-Cyan Picker 8f8360dd997ac960
 Dark-Cyan Sealed 841b0225138bd160
@@ -117,6 +118,7 @@ Dark-Blue OverviewWindow 1ae99bda498b78e0
 Dark-Blue OverviewTitle efc36be38b712640
 Dark-Blue OverviewWorkspace f03bc451dd71a090
 Dark-Blue OverviewAdd ba5750afd9b43240
+Dark-Blue OverviewClose 7f9571cd630123a0
 Dark-Blue OverviewBackdrop 525250b5c85418c0
 Dark-Blue Picker 1bd8a4ec3a4c4720
 Dark-Blue Sealed 841b0225138bd160
@@ -180,6 +182,7 @@ Dark-Teal OverviewWindow 729042c8692556a0
 Dark-Teal OverviewTitle efc36be38b712640
 Dark-Teal OverviewWorkspace 45420fa8e783d070
 Dark-Teal OverviewAdd ba5750afd9b43240
+Dark-Teal OverviewClose 7f9571cd630123a0
 Dark-Teal OverviewBackdrop 525250b5c85418c0
 Dark-Teal Picker 2cd2fcbf0e0b1a20
 Dark-Teal Sealed 841b0225138bd160
@@ -243,6 +246,7 @@ Dark-Purple OverviewWindow 0da056127d7772a0
 Dark-Purple OverviewTitle efc36be38b712640
 Dark-Purple OverviewWorkspace 0766426318751eb0
 Dark-Purple OverviewAdd ba5750afd9b43240
+Dark-Purple OverviewClose 7f9571cd630123a0
 Dark-Purple OverviewBackdrop 525250b5c85418c0
 Dark-Purple Picker 9b6ac32a5e4160a0
 Dark-Purple Sealed 841b0225138bd160
@@ -306,6 +310,7 @@ Dark-Pink OverviewWindow 6599b44c0af4c8e0
 Dark-Pink OverviewTitle efc36be38b712640
 Dark-Pink OverviewWorkspace 3f2d929c548775f0
 Dark-Pink OverviewAdd ba5750afd9b43240
+Dark-Pink OverviewClose 7f9571cd630123a0
 Dark-Pink OverviewBackdrop 525250b5c85418c0
 Dark-Pink Picker 1616bbcd236d5120
 Dark-Pink Sealed 841b0225138bd160
@@ -369,6 +374,7 @@ Dark-Orange OverviewWindow a075a7d34ff57980
 Dark-Orange OverviewTitle efc36be38b712640
 Dark-Orange OverviewWorkspace 01171c5a9106e230
 Dark-Orange OverviewAdd ba5750afd9b43240
+Dark-Orange OverviewClose 7f9571cd630123a0
 Dark-Orange OverviewBackdrop 525250b5c85418c0
 Dark-Orange Picker 583a58c8c446d660
 Dark-Orange Sealed 841b0225138bd160
@@ -432,6 +438,7 @@ Dark-Own(Color { red: 18, green: 52, blue: 86, alpha: 255 }) OverviewWindow 4e4a
 Dark-Own(Color { red: 18, green: 52, blue: 86, alpha: 255 }) OverviewTitle efc36be38b712640
 Dark-Own(Color { red: 18, green: 52, blue: 86, alpha: 255 }) OverviewWorkspace 38a916ab9e58bb90
 Dark-Own(Color { red: 18, green: 52, blue: 86, alpha: 255 }) OverviewAdd ba5750afd9b43240
+Dark-Own(Color { red: 18, green: 52, blue: 86, alpha: 255 }) OverviewClose 7f9571cd630123a0
 Dark-Own(Color { red: 18, green: 52, blue: 86, alpha: 255 }) OverviewBackdrop 525250b5c85418c0
 Dark-Own(Color { red: 18, green: 52, blue: 86, alpha: 255 }) Picker 8894610a84a48660
 Dark-Own(Color { red: 18, green: 52, blue: 86, alpha: 255 }) Sealed 841b0225138bd160
@@ -495,6 +502,7 @@ Light-Cyan OverviewWindow 94a47ee92cfe9080
 Light-Cyan OverviewTitle c96d32d44e5b0260
 Light-Cyan OverviewWorkspace 68c68d1a30195ee0
 Light-Cyan OverviewAdd 13b94d016fe08640
+Light-Cyan OverviewClose 8fc4828409b44f20
 Light-Cyan OverviewBackdrop 525250b5c85418c0
 Light-Cyan Picker 06d625d09b535560
 Light-Cyan Sealed 841b0225138bd160
@@ -558,6 +566,7 @@ Light-Blue OverviewWindow a39fcb6b4e68f7a0
 Light-Blue OverviewTitle c96d32d44e5b0260
 Light-Blue OverviewWorkspace 3414f39b361c8fa0
 Light-Blue OverviewAdd 13b94d016fe08640
+Light-Blue OverviewClose 8fc4828409b44f20
 Light-Blue OverviewBackdrop 525250b5c85418c0
 Light-Blue Picker 1f4860e66bbbf520
 Light-Blue Sealed 841b0225138bd160
@@ -621,6 +630,7 @@ Light-Teal OverviewWindow 62d551e23c318a00
 Light-Teal OverviewTitle c96d32d44e5b0260
 Light-Teal OverviewWorkspace 15742fe43efbe900
 Light-Teal OverviewAdd 13b94d016fe08640
+Light-Teal OverviewClose 8fc4828409b44f20
 Light-Teal OverviewBackdrop 525250b5c85418c0
 Light-Teal Picker 7cb85759e1d4b860
 Light-Teal Sealed 841b0225138bd160
@@ -684,6 +694,7 @@ Light-Purple OverviewWindow 5a28ee004cc87f80
 Light-Purple OverviewTitle c96d32d44e5b0260
 Light-Purple OverviewWorkspace 9e96c7e94b69d500
 Light-Purple OverviewAdd 13b94d016fe08640
+Light-Purple OverviewClose 8fc4828409b44f20
 Light-Purple OverviewBackdrop 525250b5c85418c0
 Light-Purple Picker 425a901f2b6ad660
 Light-Purple Sealed 841b0225138bd160
@@ -747,6 +758,7 @@ Light-Pink OverviewWindow ad3f406846036f00
 Light-Pink OverviewTitle c96d32d44e5b0260
 Light-Pink OverviewWorkspace 582663f0cad63140
 Light-Pink OverviewAdd 13b94d016fe08640
+Light-Pink OverviewClose 8fc4828409b44f20
 Light-Pink OverviewBackdrop 525250b5c85418c0
 Light-Pink Picker 7637e3eff8411260
 Light-Pink Sealed 841b0225138bd160
@@ -810,6 +822,7 @@ Light-Orange OverviewWindow 22f92302bae77a00
 Light-Orange OverviewTitle c96d32d44e5b0260
 Light-Orange OverviewWorkspace 3eb8cc6732218300
 Light-Orange OverviewAdd 13b94d016fe08640
+Light-Orange OverviewClose 8fc4828409b44f20
 Light-Orange OverviewBackdrop 525250b5c85418c0
 Light-Orange Picker d77c38d356063360
 Light-Orange Sealed 841b0225138bd160
@@ -873,6 +886,7 @@ Light-Own(Color { red: 18, green: 52, blue: 86, alpha: 255 }) OverviewWindow 4e4
 Light-Own(Color { red: 18, green: 52, blue: 86, alpha: 255 }) OverviewTitle c96d32d44e5b0260
 Light-Own(Color { red: 18, green: 52, blue: 86, alpha: 255 }) OverviewWorkspace 49c26009ade4f2c0
 Light-Own(Color { red: 18, green: 52, blue: 86, alpha: 255 }) OverviewAdd 13b94d016fe08640
+Light-Own(Color { red: 18, green: 52, blue: 86, alpha: 255 }) OverviewClose 8fc4828409b44f20
 Light-Own(Color { red: 18, green: 52, blue: 86, alpha: 255 }) OverviewBackdrop 525250b5c85418c0
 Light-Own(Color { red: 18, green: 52, blue: 86, alpha: 255 }) Picker 8894610a84a48660
 Light-Own(Color { red: 18, green: 52, blue: 86, alpha: 255 }) Sealed 841b0225138bd160

@@ -1048,30 +1048,15 @@ pub(crate) fn overview_add(
 /// is, across and down.
 pub(crate) const OVERVIEW_CLOSE: u32 = 26;
 
-/// Paints the button that closes a window or a workspace in the overview:
-/// on the glass's own tint, as a menu has it, a ring and a small cross in
-/// it, in the colour the titlebar's close button has with the pointer on
-/// it, the cross with room round it.
+/// Paints the button that closes a window or a workspace in the overview,
+/// as the theme has `overview > thumbnail > button.close`: a box filled
+/// with its background, ringed by its border, and a small cross in its
+/// colour, with room round it.
 pub(crate) fn overview_close(theme: &Theme, scale: Scale) -> Canvas {
-    let hovered = States::NONE.with(State::Hovered);
-    let ink = theme
-        .style_in(
-            Part::ButtonClose,
-            States::NONE.with(State::Focused),
-            hovered,
-        )
-        .background;
-    let disc = Style {
-        background: theme.style(Part::Menu, States::NONE).background,
-        border: Edges::all(Line {
-            width: 2,
-            color: ink,
-        }),
-        radius: OVERVIEW_CLOSE / 2,
-        ..Style::NONE
-    };
+    let disc = theme.style(Part::OverviewClose, States::NONE);
     let mut canvas = Canvas::scaled(OVERVIEW_CLOSE, OVERVIEW_CLOSE, scale);
     canvas.draw_box((0, 0, OVERVIEW_CLOSE, OVERVIEW_CLOSE), &disc);
+    let ink = disc.color;
     // The cross a third as wide as the button, in the middle of it.
     let room = OVERVIEW_CLOSE / 6;
     let within = OVERVIEW_CLOSE - 2 * room;
@@ -2017,5 +2002,21 @@ mod tests {
             "marked without the accent"
         );
         assert_eq!(unfocused.at(350, 27), argb(colors.unfocused.titlebar));
+    }
+
+    #[test]
+    fn the_overview_s_close_button_takes_its_look_from_its_element() {
+        let theme = Theme::parse(
+            "overview > thumbnail > button.close { border: 2px solid #ff0000; \
+             background: #0000ff; color: #00ff00; }",
+        )
+        .unwrap();
+        let canvas = overview_close(&theme, Scale::ONE);
+        let middle = OVERVIEW_CLOSE / 2;
+        // Its ring at its edge, its ground inside it, its cross across the
+        // middle.
+        assert_eq!(canvas.at(middle, 0), 0xffff_0000, "the ring");
+        assert_eq!(canvas.at(middle, 3), 0xff00_00ff, "the ground");
+        assert_eq!(canvas.at(middle, middle), 0xff00_ff00, "the cross");
     }
 }

@@ -1427,6 +1427,14 @@ mod tests {
     }
 
     #[test]
+    fn the_overview_s_close_button_is_a_button_close_as_the_titlebar_s_is() {
+        let theme = Theme::parse("button.close { border-radius: 3px; }").unwrap();
+        for part in [Part::ButtonClose, Part::OverviewClose] {
+            assert_eq!(theme.style(part, States::NONE).radius, 3, "{part:?}");
+        }
+    }
+
+    #[test]
     fn a_rule_of_the_user_beats_a_built_in_one_however_specific() {
         // The built-in theme colours the close button with the pointer on
         // the controls, naming three types, a class and a state.

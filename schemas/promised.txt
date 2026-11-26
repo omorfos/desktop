@@ -470,6 +470,7 @@ theme.css overview > button.add
 theme.css overview > button.add :hover
 theme.css overview > thumbnail
 theme.css overview > thumbnail :checked
+theme.css overview > thumbnail > button.close
 theme.css overview > title
 theme.css overview > workspace
 theme.css overview > workspace :checked

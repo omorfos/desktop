@@ -646,6 +646,14 @@ overview > button.add {
   color: var(--text);
 }
 overview > button.add:hover { border-color: var(--text); }
+/* The button on a window, or a workspace, in the overview that closes it:
+ * a disc of a menu's glass, ringed and crossed in the colour of closing. */
+overview > thumbnail > button.close {
+  background: var(--glass-thick);
+  color: var(--close);
+  border: 2px solid var(--close);
+  border-radius: 13px;
+}
 overview::backdrop {
   background: rgba(0, 0, 0, 0.5);
   backdrop-filter: blur(16px);
@@ -881,6 +889,7 @@ before what is in them.
 | `overview > title` | — |
 | `overview > workspace` | `:checked`, `:hover` |
 | `overview > button.add` | `:hover` |
+| `overview > thumbnail > button.close` | — |
 | `overview::backdrop` | — |
 | `picker` | — |
 | `sealed` | — |

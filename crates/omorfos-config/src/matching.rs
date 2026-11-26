@@ -413,6 +413,7 @@ mod tests {
                 Part::LauncherMode,
                 Part::QuestionButton,
                 Part::OverviewAdd,
+                Part::OverviewClose,
                 Part::AboutButton,
             ]
         );
@@ -456,8 +457,11 @@ mod tests {
 
     #[test]
     fn a_class_narrows_a_type() {
-        assert_eq!(parts("button.close"), [Part::ButtonClose]);
-        assert_eq!(parts(".close"), [Part::ButtonClose]);
+        assert_eq!(
+            parts("button.close"),
+            [Part::ButtonClose, Part::OverviewClose]
+        );
+        assert_eq!(parts(".close"), [Part::ButtonClose, Part::OverviewClose]);
         assert_eq!(parts("day.outside"), [Part::PopoverDayOutside]);
         assert_eq!(parts("day"), [Part::PopoverDay, Part::PopoverDayOutside]);
         assert!(why_not("button.shut").contains("no `button` is of the classes `.shut`"));

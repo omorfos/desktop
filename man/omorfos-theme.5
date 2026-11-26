@@ -126,6 +126,8 @@ Each element, at its place in the tree, and the states it can be in, each writte
 .PP
 \fBoverview > button.add\fR: \fB:hover\fR
 .PP
+\fBoverview > thumbnail > button.close\fR
+.PP
 \fBoverview::backdrop\fR
 .PP
 \fBpicker\fR
@@ -773,6 +775,14 @@ overview > button.add {
   color: var(\-\-text);
 }
 overview > button.add:hover { border\-color: var(\-\-text); }
+/* The button on a window, or a workspace, in the overview that closes it:
+ * a disc of a menu's glass, ringed and crossed in the colour of closing. */
+overview > thumbnail > button.close {
+  background: var(\-\-glass\-thick);
+  color: var(\-\-close);
+  border: 2px solid var(\-\-close);
+  border\-radius: 13px;
+}
 overview::backdrop {
   background: rgba(0, 0, 0, 0.5);
   backdrop\-filter: blur(16px);
