@@ -1754,8 +1754,11 @@ fn cursor(session: &mut Session) -> bool {
 #[test]
 fn the_cursor_blinks_from_the_last_key_unless_nothing_is_to_move() {
     // The tests' sessions keep still unless a part says otherwise, as the
-    // box does here. Its clock is the wall's, so the cursor is watched for
-    // as long as it takes to blink both ways and more.
+    // box does here. Its clock is the wall's, and it draws in a process of
+    // its own, which a loaded machine may keep waiting: a cursor that
+    // blinks is watched until it has been seen both ways, for as long as
+    // it blinks at most, and one that does not for long enough to have
+    // blinked both ways and more.
     let moving = ("theme.css", "question { transition: 120ms; }\n");
     for (files, blinks) in [(&[moving][..], true), (&[], false)] {
         let mut session = Session::with_config(files);
@@ -1771,8 +1774,9 @@ fn the_cursor_blinks_from_the_last_key_unless_nothing_is_to_move() {
         wait_up(&mut session);
         tap(&mut session, key::SHIFT);
         let (mut on, mut off) = (false, false);
-        let watched = std::time::Instant::now() + std::time::Duration::from_millis(1500);
-        while std::time::Instant::now() < watched {
+        let long = if blinks { 9000 } else { 1500 };
+        let watched = std::time::Instant::now() + std::time::Duration::from_millis(long);
+        while std::time::Instant::now() < watched && !(on && off) {
             session.step();
             let shown = cursor(&mut session);
             (on, off) = (on || shown, off || !shown);
