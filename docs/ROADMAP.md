@@ -1429,6 +1429,14 @@ the first than on the last.
 - [x] The blur shader, its check at startup, and the file left out of
       coverage, tried on real hardware: behind the bar, the dock, menus
       and notifications, for the compositor's parts and the components'.
+- [ ] The theme's elements in a tree, as CSS names them (ADR 110,
+      #183), before 0.1.0: every part an element at one path, `button`,
+      `input` and the rest the same element wherever they are; types,
+      classes, states on any element, `::backdrop`, `a b` and `a > b`,
+      and CSS Nesting; matched once as the theme is loaded, a selector
+      that reaches nothing an error; `color` and the font inherited;
+      the built-in theme, the guide, the manual page and what is
+      promised renamed at once.
 - [ ] The check's allowance, 4 in 255, measured on cards other than
       Intel's, where the shader is within 2: AMD's and NVIDIA's.
 - [x] Glass at the edges of the screen: beyond them is what is inside,
