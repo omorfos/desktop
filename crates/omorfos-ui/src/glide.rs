@@ -18,10 +18,13 @@ pub struct Glide {
     to: i32,
     /// When it set out.
     began: Duration,
+    /// How long it takes to get where it is going.
+    takes: Duration,
 }
 
 impl Glide {
-    /// How long it takes to get where it is going.
+    /// How long it takes to get where it is going, unless it is given a
+    /// time of its own.
     pub const TAKES: Duration = Duration::from_millis(240);
 
     /// Something at `place`, going nowhere.
@@ -31,7 +34,14 @@ impl Glide {
             from: f64::from(place),
             to: place,
             began: Duration::ZERO,
+            takes: Self::TAKES,
         }
+    }
+
+    /// The same, taking `takes` to get wherever it is sent.
+    #[must_use]
+    pub const fn taking(self, takes: Duration) -> Self {
+        Self { takes, ..self }
     }
 
     /// Where it is going.
@@ -45,7 +55,7 @@ impl Glide {
     #[must_use]
     pub fn now(&self, now: Duration) -> i32 {
         let gone = now.saturating_sub(self.began).as_secs_f32();
-        let share = (gone / Self::TAKES.as_secs_f32()).min(1.0);
+        let share = (gone / self.takes.as_secs_f32()).min(1.0);
         let along = f64::from(Easing::EaseInOut.at(share));
         let place = (f64::from(self.to) - self.from).mul_add(along, self.from);
         whole(place)
@@ -69,6 +79,7 @@ impl Glide {
             from: f64::from(here),
             to: place,
             began: now,
+            takes: self.takes,
         };
     }
 }
@@ -137,5 +148,17 @@ mod tests {
         glide.go(0, ms(1000), false);
         assert_eq!(glide.now(ms(1000)), 0);
         assert!(!glide.moving(ms(1000)));
+    }
+
+    #[test]
+    fn something_given_its_own_time_takes_that_long() {
+        let mut glide = Glide::at(100).taking(ms(200));
+        glide.go(0, ms(1000), true);
+        assert_eq!(glide.now(ms(1100)), 50, "half way in half its time");
+        assert!(glide.moving(ms(1150)), "not yet there");
+        assert_eq!(glide.now(ms(1200)), 0, "there");
+        // Sent again, it keeps its time.
+        glide.go(100, ms(2000), true);
+        assert_eq!(glide.now(ms(2200)), 100);
     }
 }
