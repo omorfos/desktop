@@ -401,6 +401,431 @@ impl Part {
     pub const HOLDER_STATES: [State; 2] = [State::Focused, State::Hovered];
 }
 
+/// One element of a part's path in the tree of elements (ADR 110): its
+/// type, its classes, and, for what is behind it over the whole screen,
+/// the pseudo-element it is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Node {
+    /// Its type, as a selector names it: `button`.
+    pub kind: &'static str,
+    /// Its classes: `close` of `button.close`.
+    pub classes: &'static [&'static str],
+    /// The pseudo-element it is of its type, as `backdrop` of
+    /// `launcher::backdrop`.
+    pub pseudo: Option<&'static str>,
+}
+
+/// Where a state of a part is kept: in its own states, or in those of the
+/// part it is in, as [`Part::holder`] says.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Slot {
+    /// One of the part's own states.
+    Own(State),
+    /// One of the states of the part it is in.
+    Holder(State),
+}
+
+/// How a state of a part is written in a stylesheet, and on which element
+/// of its path.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Spelling {
+    /// The state it is.
+    pub slot: Slot,
+    /// Which element of the part's path it is written on, from the first.
+    pub node: usize,
+    /// As it is written after that element: `:hover`, `:state(urgent)`,
+    /// `::selection`.
+    pub name: &'static str,
+}
+
+/// An element of a type alone.
+const fn node(kind: &'static str) -> Node {
+    Node {
+        kind,
+        classes: &[],
+        pseudo: None,
+    }
+}
+
+/// An element of a type, of some classes.
+const fn classed(kind: &'static str, classes: &'static [&'static str]) -> Node {
+    Node {
+        kind,
+        classes,
+        pseudo: None,
+    }
+}
+
+/// What is behind an element of a type over the whole screen.
+const fn backdrop(kind: &'static str) -> Node {
+    Node {
+        kind,
+        classes: &[],
+        pseudo: Some("backdrop"),
+    }
+}
+
+/// A state of the part itself, written on element `node` of its path.
+const fn own(state: State, node: usize, name: &'static str) -> Spelling {
+    Spelling {
+        slot: Slot::Own(state),
+        node,
+        name,
+    }
+}
+
+const DESKTOP: Node = node("desktop");
+const WINDOW: Node = node("window");
+const TITLEBAR: Node = node("titlebar");
+const CONTROLS: Node = node("controls");
+const MENU: Node = node("menu");
+const ITEM: Node = node("item");
+const PANEL: Node = node("panel");
+const POPOVER: Node = node("popover");
+const CALENDAR: Node = node("calendar");
+const LAUNCHER: Node = node("launcher");
+const LIST: Node = node("list");
+const MODES: Node = node("modes");
+const BUTTON: Node = node("button");
+const NOTIFICATION: Node = node("notification");
+const QUESTION: Node = classed("dialog", &["question"]);
+const SWITCHER: Node = node("switcher");
+const OVERVIEW: Node = node("overview");
+const ABOUT: Node = classed("dialog", &["about"]);
+
+/// A window's focus, said of what is in it.
+const WINDOW_FOCUS: Spelling = own(State::Focused, 0, ":focus-within");
+/// Coming and going, said of the first element of a path.
+const CLOSING: Spelling = own(State::Closing, 0, ":state(closing)");
+/// The three buttons of a titlebar's states.
+const TITLEBAR_BUTTON: [Spelling; 3] = [
+    WINDOW_FOCUS,
+    own(State::Hovered, 3, ":hover"),
+    Spelling {
+        slot: Slot::Holder(State::Hovered),
+        node: 2,
+        name: ":hover",
+    },
+];
+/// A day's states in the calendar.
+const DAY: [Spelling; 3] = [
+    own(State::Hovered, 2, ":hover"),
+    own(State::Active, 2, ":state(today)"),
+    own(State::Focused, 2, ":state(in-line)"),
+];
+
+impl Part {
+    /// Where the part is in the tree of elements (ADR 110), from the
+    /// element it is in at the root to itself.
+    #[must_use]
+    pub const fn path(self) -> &'static [Node] {
+        match self {
+            Self::Desktop => &const { [DESKTOP] },
+            Self::Window => &const { [WINDOW] },
+            Self::TileLine => &const { [DESKTOP, node("separator")] },
+            Self::Offer => &const { [DESKTOP, classed("button", &["offer"])] },
+            Self::Titlebar => &const { [WINDOW, TITLEBAR] },
+            Self::Tab => &const { [WINDOW, TITLEBAR, node("tab")] },
+            Self::WindowControls => &const { [WINDOW, TITLEBAR, CONTROLS] },
+            Self::ButtonClose => {
+                &const { [WINDOW, TITLEBAR, CONTROLS, classed("button", &["close"])] }
+            }
+            Self::ButtonMaximize => {
+                &const { [WINDOW, TITLEBAR, CONTROLS, classed("button", &["maximize"])] }
+            }
+            Self::ButtonMinimize => {
+                &const { [WINDOW, TITLEBAR, CONTROLS, classed("button", &["minimize"])] }
+            }
+            Self::Menu => &const { [MENU] },
+            Self::MenuItem => &const { [MENU, ITEM] },
+            Self::MenuSeparator => &const { [MENU, node("separator")] },
+            Self::MenuSign => &const { [MENU, ITEM, node("icon")] },
+            Self::MenuKeys => &const { [MENU, ITEM, node("kbd")] },
+            Self::Notice => &const { [node("notice")] },
+            Self::NoticeHeading => &const { [node("notice"), node("heading")] },
+            Self::Capture => &const { [node("capture")] },
+            Self::CaptureBorder => &const { [classed("frame", &["capture"])] },
+            Self::Tooltip => &const { [node("tooltip")] },
+            Self::Panel => &const { [PANEL] },
+            Self::Workspace => &const { [PANEL, node("workspace")] },
+            Self::Task => &const { [PANEL, node("task")] },
+            Self::Clock => &const { [PANEL, node("clock")] },
+            Self::Popover => &const { [POPOVER] },
+            Self::PopoverItem => &const { [POPOVER, ITEM] },
+            Self::PopoverDay => &const { [POPOVER, CALENDAR, node("day")] },
+            Self::PopoverDayOutside => &const { [POPOVER, CALENDAR, classed("day", &["outside"])] },
+            Self::Launcher => &const { [LAUNCHER] },
+            Self::LauncherInput => &const { [LAUNCHER, node("input")] },
+            Self::LauncherItem => &const { [LAUNCHER, LIST, ITEM] },
+            Self::LauncherDescription => &const { [LAUNCHER, LIST, ITEM, node("description")] },
+            Self::LauncherTile => &const { [LAUNCHER, node("grid"), ITEM] },
+            Self::LauncherTop => &const { [LAUNCHER, LIST, classed("item", &["top"])] },
+            Self::LauncherHeading => &const { [LAUNCHER, LIST, node("heading")] },
+            Self::LauncherModes => &const { [LAUNCHER, MODES] },
+            Self::LauncherMode => &const { [LAUNCHER, MODES, BUTTON] },
+            Self::LauncherModeKey => &const { [LAUNCHER, MODES, BUTTON, node("kbd")] },
+            Self::LauncherBackdrop => &const { [backdrop("launcher")] },
+            Self::Notification => &const { [NOTIFICATION] },
+            Self::NotificationTitle => &const { [NOTIFICATION, node("title")] },
+            Self::NotificationBody => &const { [NOTIFICATION, node("body")] },
+            Self::NotificationLevel => &const { [NOTIFICATION, node("meter")] },
+            Self::Question => &const { [QUESTION] },
+            Self::QuestionDetail => &const { [QUESTION, node("detail")] },
+            Self::QuestionButton => &const { [QUESTION, BUTTON] },
+            Self::QuestionInput => &const { [QUESTION, node("input")] },
+            Self::Switcher => &const { [SWITCHER] },
+            Self::SwitcherItem => &const { [SWITCHER, ITEM] },
+            Self::SwitcherTitle => &const { [SWITCHER, ITEM, node("title")] },
+            Self::SwitcherWindow => &const { [SWITCHER, node("thumbnail")] },
+            Self::SwitcherBackdrop => &const { [backdrop("switcher")] },
+            Self::OverviewWindow => &const { [OVERVIEW, node("thumbnail")] },
+            Self::OverviewTitle => &const { [OVERVIEW, node("title")] },
+            Self::OverviewWorkspace => &const { [OVERVIEW, node("workspace")] },
+            Self::OverviewAdd => &const { [OVERVIEW, classed("button", &["add"])] },
+            Self::OverviewBackdrop => &const { [backdrop("overview")] },
+            Self::Picker => &const { [node("picker")] },
+            Self::Sealed => &const { [node("sealed")] },
+            Self::About => &const { [ABOUT] },
+            Self::AboutHeading => &const { [ABOUT, node("heading")] },
+            Self::AboutDetail => &const { [ABOUT, node("detail")] },
+            Self::AboutButton => &const { [ABOUT, BUTTON] },
+        }
+    }
+
+    /// How each state the part can be in is written, and on which element
+    /// of its path (ADR 110, addendum). A state not here is one a
+    /// stylesheet cannot name of it.
+    #[must_use]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "a table, an arm for each part that can be in a state"
+    )]
+    pub const fn spellings(self) -> &'static [Spelling] {
+        match self {
+            Self::Window => &const { [WINDOW_FOCUS, CLOSING] },
+            Self::Titlebar => &const { [WINDOW_FOCUS] },
+            Self::Tab => &const { [own(State::Active, 2, ":checked"), WINDOW_FOCUS] },
+            Self::WindowControls => &const { [WINDOW_FOCUS, own(State::Hovered, 2, ":hover")] },
+            Self::ButtonClose | Self::ButtonMaximize | Self::ButtonMinimize => &TITLEBAR_BUTTON,
+            Self::Menu
+            | Self::Notice
+            | Self::Tooltip
+            | Self::Panel
+            | Self::Popover
+            | Self::Launcher
+            | Self::LauncherBackdrop
+            | Self::Question
+            | Self::Switcher
+            | Self::About => &const { [CLOSING] },
+            Self::MenuItem | Self::MenuKeys => {
+                &const {
+                    [
+                        own(State::Hovered, 1, ":hover"),
+                        own(State::Focused, 1, ":focus"),
+                    ]
+                }
+            }
+            Self::MenuSign => {
+                &const {
+                    [
+                        own(State::Hovered, 1, ":hover"),
+                        own(State::Focused, 1, ":focus"),
+                        own(State::Active, 1, ":checked"),
+                    ]
+                }
+            }
+            Self::Workspace => &const { [own(State::Active, 1, ":checked")] },
+            Self::Task => {
+                &const {
+                    [
+                        own(State::Active, 1, ":checked"),
+                        own(State::Closing, 1, ":state(closing)"),
+                    ]
+                }
+            }
+            Self::Clock => &const { [own(State::Closing, 1, ":state(closing)")] },
+            Self::Offer | Self::PopoverItem | Self::OverviewAdd => {
+                &const { [own(State::Hovered, 1, ":hover")] }
+            }
+            Self::PopoverDay | Self::PopoverDayOutside => &DAY,
+            Self::LauncherInput => &const { [own(State::Active, 1, "::selection")] },
+            Self::LauncherItem
+            | Self::LauncherDescription
+            | Self::LauncherTile
+            | Self::LauncherTop
+            | Self::LauncherModeKey => &const { [own(State::Active, 2, ":checked")] },
+            Self::LauncherMode => {
+                &const {
+                    [
+                        own(State::Active, 2, ":checked"),
+                        own(State::Hovered, 2, ":hover"),
+                        own(State::Focused, 2, ":focus"),
+                    ]
+                }
+            }
+            Self::Notification => {
+                &const {
+                    [
+                        own(State::Urgent, 0, ":state(urgent)"),
+                        own(State::Hovered, 0, ":hover"),
+                        own(State::Focused, 0, ":focus"),
+                        CLOSING,
+                    ]
+                }
+            }
+            Self::QuestionButton => {
+                &const {
+                    [
+                        own(State::Active, 1, ":default"),
+                        own(State::Hovered, 1, ":hover"),
+                        own(State::Focused, 1, ":focus"),
+                    ]
+                }
+            }
+            Self::QuestionInput => {
+                &const {
+                    [
+                        own(State::Focused, 1, ":focus"),
+                        own(State::Active, 1, "::selection"),
+                    ]
+                }
+            }
+            Self::SwitcherItem | Self::SwitcherWindow | Self::OverviewWindow => {
+                &const { [own(State::Active, 1, ":checked")] }
+            }
+            Self::OverviewWorkspace => {
+                &const {
+                    [
+                        own(State::Active, 1, ":checked"),
+                        own(State::Hovered, 1, ":hover"),
+                    ]
+                }
+            }
+            Self::AboutButton => {
+                &const {
+                    [
+                        own(State::Hovered, 1, ":hover"),
+                        own(State::Active, 1, ":state(copied)"),
+                    ]
+                }
+            }
+            Self::Desktop
+            | Self::TileLine
+            | Self::MenuSeparator
+            | Self::NoticeHeading
+            | Self::Capture
+            | Self::CaptureBorder
+            | Self::LauncherHeading
+            | Self::LauncherModes
+            | Self::NotificationTitle
+            | Self::NotificationBody
+            | Self::NotificationLevel
+            | Self::QuestionDetail
+            | Self::SwitcherTitle
+            | Self::SwitcherBackdrop
+            | Self::OverviewTitle
+            | Self::OverviewBackdrop
+            | Self::Picker
+            | Self::Sealed
+            | Self::AboutHeading
+            | Self::AboutDetail => &const { [] },
+        }
+    }
+
+    /// The part's path written as a selector that names it alone:
+    /// `launcher > modes > button`.
+    #[must_use]
+    pub fn selector(self) -> String {
+        let written: Vec<String> = self
+            .path()
+            .iter()
+            .map(|node| {
+                let mut one = node.kind.to_owned();
+                for class in node.classes {
+                    one.push('.');
+                    one.push_str(class);
+                }
+                if let Some(pseudo) = node.pseudo {
+                    one.push_str("::");
+                    one.push_str(pseudo);
+                }
+                one
+            })
+            .collect();
+        written.join(" > ")
+    }
+
+    /// The namespace of the layer surface a program puts the part on the
+    /// screen as, for those that are one: what the compositor finds a
+    /// part by. These are said between programs, and stay as they are
+    /// whatever the theme calls the part.
+    #[must_use]
+    pub const fn namespace(self) -> Option<&'static str> {
+        match self {
+            Self::Launcher => Some("launcher"),
+            Self::LauncherBackdrop => Some("launcher-backdrop"),
+            Self::Panel => Some("panel"),
+            Self::Notification => Some("notification"),
+            Self::Question => Some("question"),
+            _ => None,
+        }
+    }
+
+    /// The name a stylesheet called the part by before ADR 110, kept only
+    /// to say what it is called now.
+    #[must_use]
+    pub const fn former(self) -> &'static str {
+        self.name()
+    }
+}
+
+/// Whether two names are the same, as the tables are checked while the
+/// program is built.
+const fn same(one: &str, other: &str) -> bool {
+    let (one, other) = (one.as_bytes(), other.as_bytes());
+    if one.len() != other.len() {
+        return false;
+    }
+    let mut at = 0;
+    while at < one.len() {
+        if one[at] != other[at] {
+            return false;
+        }
+        at += 1;
+    }
+    true
+}
+
+/// Whether `path` has a type twice.
+const fn repeats(path: &[Node]) -> bool {
+    let mut one = 0;
+    while one < path.len() {
+        let mut other = one + 1;
+        while other < path.len() {
+            if same(path[one].kind, path[other].kind) {
+                return true;
+            }
+            other += 1;
+        }
+        one += 1;
+    }
+    false
+}
+
+/// Whether some path has a type twice, which matching a selector against
+/// the tree takes there never to be.
+const fn a_kind_twice() -> bool {
+    let mut any = false;
+    let mut part = 0;
+    while part < Part::ALL.len() {
+        any |= repeats(Part::ALL[part].path());
+        part += 1;
+    }
+    any
+}
+
+const _: () = assert!(!a_kind_twice(), "a path in the tree has a type twice");
+
 /// A state a part can be in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum State {
@@ -957,6 +1382,187 @@ mod tests {
         // The table of looks is laid out by a part's place in the list.
         for (index, part) in Part::ALL.into_iter().enumerate() {
             assert_eq!(part as usize, index);
+        }
+    }
+
+    /// Where each part is in the tree of elements, as ADR 110's addendum
+    /// gives it.
+    const PATHS: [(Part, &str); 63] = [
+        (Part::Desktop, "desktop"),
+        (Part::Window, "window"),
+        (Part::TileLine, "desktop > separator"),
+        (Part::Offer, "desktop > button.offer"),
+        (Part::Titlebar, "window > titlebar"),
+        (Part::Tab, "window > titlebar > tab"),
+        (Part::WindowControls, "window > titlebar > controls"),
+        (
+            Part::ButtonClose,
+            "window > titlebar > controls > button.close",
+        ),
+        (
+            Part::ButtonMaximize,
+            "window > titlebar > controls > button.maximize",
+        ),
+        (
+            Part::ButtonMinimize,
+            "window > titlebar > controls > button.minimize",
+        ),
+        (Part::Menu, "menu"),
+        (Part::MenuItem, "menu > item"),
+        (Part::MenuSeparator, "menu > separator"),
+        (Part::MenuSign, "menu > item > icon"),
+        (Part::MenuKeys, "menu > item > kbd"),
+        (Part::Notice, "notice"),
+        (Part::NoticeHeading, "notice > heading"),
+        (Part::Capture, "capture"),
+        (Part::CaptureBorder, "frame.capture"),
+        (Part::Tooltip, "tooltip"),
+        (Part::Panel, "panel"),
+        (Part::Workspace, "panel > workspace"),
+        (Part::Task, "panel > task"),
+        (Part::Clock, "panel > clock"),
+        (Part::Popover, "popover"),
+        (Part::PopoverItem, "popover > item"),
+        (Part::PopoverDay, "popover > calendar > day"),
+        (Part::PopoverDayOutside, "popover > calendar > day.outside"),
+        (Part::Launcher, "launcher"),
+        (Part::LauncherInput, "launcher > input"),
+        (Part::LauncherItem, "launcher > list > item"),
+        (
+            Part::LauncherDescription,
+            "launcher > list > item > description",
+        ),
+        (Part::LauncherTile, "launcher > grid > item"),
+        (Part::LauncherTop, "launcher > list > item.top"),
+        (Part::LauncherHeading, "launcher > list > heading"),
+        (Part::LauncherModes, "launcher > modes"),
+        (Part::LauncherMode, "launcher > modes > button"),
+        (Part::LauncherModeKey, "launcher > modes > button > kbd"),
+        (Part::LauncherBackdrop, "launcher::backdrop"),
+        (Part::Notification, "notification"),
+        (Part::NotificationTitle, "notification > title"),
+        (Part::NotificationBody, "notification > body"),
+        (Part::NotificationLevel, "notification > meter"),
+        (Part::Question, "dialog.question"),
+        (Part::QuestionDetail, "dialog.question > detail"),
+        (Part::QuestionButton, "dialog.question > button"),
+        (Part::QuestionInput, "dialog.question > input"),
+        (Part::Switcher, "switcher"),
+        (Part::SwitcherItem, "switcher > item"),
+        (Part::SwitcherTitle, "switcher > item > title"),
+        (Part::SwitcherWindow, "switcher > thumbnail"),
+        (Part::SwitcherBackdrop, "switcher::backdrop"),
+        (Part::OverviewWindow, "overview > thumbnail"),
+        (Part::OverviewTitle, "overview > title"),
+        (Part::OverviewWorkspace, "overview > workspace"),
+        (Part::OverviewAdd, "overview > button.add"),
+        (Part::OverviewBackdrop, "overview::backdrop"),
+        (Part::Picker, "picker"),
+        (Part::Sealed, "sealed"),
+        (Part::About, "dialog.about"),
+        (Part::AboutHeading, "dialog.about > heading"),
+        (Part::AboutDetail, "dialog.about > detail"),
+        (Part::AboutButton, "dialog.about > button"),
+    ];
+
+    #[test]
+    fn every_part_is_at_the_path_the_adr_gives() {
+        for (part, path) in PATHS {
+            assert_eq!(part.selector(), path, "{part:?}");
+        }
+        let named: Vec<Part> = PATHS.iter().map(|(part, _)| *part).collect();
+        assert_eq!(named, Part::ALL, "every part, in order");
+    }
+
+    #[test]
+    fn no_two_parts_are_at_one_path() {
+        let mut paths: Vec<String> = Part::ALL.iter().map(|part| part.selector()).collect();
+        paths.sort();
+        let before = paths.len();
+        paths.dedup();
+        assert_eq!(paths.len(), before);
+    }
+
+    #[test]
+    fn a_path_with_a_type_twice_is_told_from_one_without() {
+        assert!(same("kbd", "kbd"));
+        assert!(!same("kbd", "kbds"));
+        assert!(!same("kbd", "kbe"));
+        assert!(repeats(&[node("a"), node("b"), node("a")]));
+        assert!(!repeats(&[node("a"), node("b")]));
+        assert!(!a_kind_twice());
+    }
+
+    #[test]
+    fn no_path_has_a_kind_twice() {
+        for part in Part::ALL {
+            let kinds: Vec<&str> = part.path().iter().map(|node| node.kind).collect();
+            for (at, kind) in kinds.iter().enumerate() {
+                assert!(!kinds[at + 1..].contains(kind), "{part:?}: {kind}");
+            }
+        }
+    }
+
+    #[test]
+    fn every_spelling_is_on_a_node_of_its_path_and_a_state_its_part_is_in() {
+        for part in Part::ALL {
+            for spelling in part.spellings() {
+                assert!(spelling.node < part.path().len(), "{part:?}");
+                let held = matches!(spelling.slot, Slot::Holder(_));
+                assert!(!held || part.holder().is_some(), "{part:?}");
+                assert!(
+                    spelling.name.starts_with(':'),
+                    "{part:?}: {}",
+                    spelling.name
+                );
+            }
+        }
+        // As the addendum has them, for a few.
+        let spelled = |part: Part| -> Vec<(Slot, usize, &str)> {
+            let spellings = part.spellings().iter();
+            spellings
+                .map(|one| (one.slot, one.node, one.name))
+                .collect()
+        };
+        assert_eq!(
+            spelled(Part::Tab),
+            [
+                (Slot::Own(State::Active), 2, ":checked"),
+                (Slot::Own(State::Focused), 0, ":focus-within"),
+            ]
+        );
+        assert_eq!(
+            spelled(Part::LauncherInput),
+            [(Slot::Own(State::Active), 1, "::selection")]
+        );
+        assert!(spelled(Part::ButtonClose).contains(&(Slot::Holder(State::Hovered), 2, ":hover")));
+        assert_eq!(
+            spelled(Part::LauncherBackdrop),
+            [(Slot::Own(State::Closing), 0, ":state(closing)")]
+        );
+        assert_eq!(spelled(Part::Desktop), []);
+    }
+
+    #[test]
+    fn the_parts_surfaces_send_as_namespaces_are_found_by_them() {
+        let found = |namespace: &str| {
+            Part::ALL
+                .into_iter()
+                .find(|part| part.namespace() == Some(namespace))
+        };
+        assert_eq!(found("launcher"), Some(Part::Launcher));
+        assert_eq!(found("launcher-backdrop"), Some(Part::LauncherBackdrop));
+        assert_eq!(found("panel"), Some(Part::Panel));
+        assert_eq!(found("notification"), Some(Part::Notification));
+        assert_eq!(found("question"), Some(Part::Question));
+        assert_eq!(found("wallpaper"), None);
+        assert_eq!(found("menu"), None, "drawn by the compositor, sent by none");
+    }
+
+    #[test]
+    fn an_old_name_is_kept_only_to_point_to_the_new() {
+        for part in Part::ALL {
+            assert_eq!(part.former(), part.name(), "{part:?}");
         }
     }
 }
