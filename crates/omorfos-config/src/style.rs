@@ -144,6 +144,11 @@ pub enum Part {
     /// [`State::Active`] for the one shown, [`State::Hovered`] under the
     /// pointer.
     LauncherMode,
+    /// The key that goes to a mode, after its name in that row: the sign of
+    /// the key held and the digit, in its colour, and its font for the
+    /// digit; [`State::Active`] on the mode shown. `display: none` leaves
+    /// it out, and the mode's button is narrower by it.
+    LauncherModeKey,
     /// The whole of the screen behind the launcher while it is open. Only
     /// its background is used.
     LauncherBackdrop,
@@ -232,7 +237,7 @@ pub enum Part {
 
 impl Part {
     /// Every part there is.
-    pub const ALL: [Self; 62] = [
+    pub const ALL: [Self; 63] = [
         Self::Desktop,
         Self::Window,
         Self::TileLine,
@@ -270,6 +275,7 @@ impl Part {
         Self::LauncherHeading,
         Self::LauncherModes,
         Self::LauncherMode,
+        Self::LauncherModeKey,
         Self::LauncherBackdrop,
         Self::Notification,
         Self::NotificationTitle,
@@ -338,6 +344,7 @@ impl Part {
             Self::LauncherHeading => "launcher-heading",
             Self::LauncherModes => "launcher-modes",
             Self::LauncherMode => "launcher-mode",
+            Self::LauncherModeKey => "launcher-mode-key",
             Self::LauncherBackdrop => "launcher-backdrop",
             Self::Notification => "notification",
             Self::NotificationTitle => "notification-title",
@@ -647,6 +654,10 @@ pub struct Style {
     /// How see-through and how large it is drawn as a whole: what it goes
     /// to as it leaves, while it is `:closing`.
     pub presence: Presence,
+    /// Whether it is drawn at all, and given room: false where the theme
+    /// says `display: none`. Only the parts whose description says so read
+    /// it.
+    pub displayed: bool,
 }
 
 /// How see-through and how large a part is drawn as a whole: once it is
@@ -689,6 +700,7 @@ impl Style {
         inset: Shadow::NONE,
         blur: 0,
         presence: Presence::WHOLE,
+        displayed: true,
     };
 
     /// Whether what is behind it can be seen through its background: its
@@ -911,6 +923,7 @@ mod tests {
                 "launcher-heading",
                 "launcher-modes",
                 "launcher-mode",
+                "launcher-mode-key",
                 "launcher-backdrop",
                 "notification",
                 "notification-title",

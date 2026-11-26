@@ -12,7 +12,7 @@ omorfos\-theme \- theme.css, how the omorfos desktop looks
 The theme is a stylesheet, in a small part of CSS. A rule names parts of the desktop, perhaps in some state, and gives them properties. Yours is laid over the built\-in theme, so you only write what you want changed. A rule of yours always wins over a built\-in one; among your own, the one that names more states wins, and then the later one. It is read again as soon as it is saved, and kept as it was before if it has a mistake.
 .SH PARTS
 .PP
-\fBdesktop\fR, \fBwindow\fR, \fBtile\-line\fR, \fBoffer\fR, \fBtitlebar\fR, \fBtab\fR, \fBwindowcontrols\fR, \fBbutton\-close\fR, \fBbutton\-maximize\fR, \fBbutton\-minimize\fR, \fBmenu\fR, \fBmenu\-item\fR, \fBmenu\-separator\fR, \fBmenu\-sign\fR, \fBmenu\-keys\fR, \fBnotice\fR, \fBnotice\-heading\fR, \fBcapture\fR, \fBcapture\-border\fR, \fBtooltip\fR, \fBpanel\fR, \fBworkspace\fR, \fBtask\fR, \fBclock\fR, \fBpopover\fR, \fBpopover\-item\fR, \fBpopover\-day\fR, \fBpopover\-day\-outside\fR, \fBlauncher\fR, \fBlauncher\-input\fR, \fBlauncher\-item\fR, \fBlauncher\-description\fR, \fBlauncher\-tile\fR, \fBlauncher\-top\fR, \fBlauncher\-heading\fR, \fBlauncher\-modes\fR, \fBlauncher\-mode\fR, \fBlauncher\-backdrop\fR, \fBnotification\fR, \fBnotification\-title\fR, \fBnotification\-body\fR, \fBnotification\-level\fR, \fBquestion\fR, \fBquestion\-detail\fR, \fBquestion\-button\fR, \fBquestion\-input\fR, \fBswitcher\fR, \fBswitcher\-item\fR, \fBswitcher\-title\fR, \fBswitcher\-window\fR, \fBswitcher\-backdrop\fR, \fBoverview\-window\fR, \fBoverview\-title\fR, \fBoverview\-workspace\fR, \fBoverview\-add\fR, \fBoverview\-backdrop\fR, \fBpicker\fR, \fBsealed\fR, \fBabout\fR, \fBabout\-heading\fR, \fBabout\-detail\fR, \fBabout\-button\fR
+\fBdesktop\fR, \fBwindow\fR, \fBtile\-line\fR, \fBoffer\fR, \fBtitlebar\fR, \fBtab\fR, \fBwindowcontrols\fR, \fBbutton\-close\fR, \fBbutton\-maximize\fR, \fBbutton\-minimize\fR, \fBmenu\fR, \fBmenu\-item\fR, \fBmenu\-separator\fR, \fBmenu\-sign\fR, \fBmenu\-keys\fR, \fBnotice\fR, \fBnotice\-heading\fR, \fBcapture\fR, \fBcapture\-border\fR, \fBtooltip\fR, \fBpanel\fR, \fBworkspace\fR, \fBtask\fR, \fBclock\fR, \fBpopover\fR, \fBpopover\-item\fR, \fBpopover\-day\fR, \fBpopover\-day\-outside\fR, \fBlauncher\fR, \fBlauncher\-input\fR, \fBlauncher\-item\fR, \fBlauncher\-description\fR, \fBlauncher\-tile\fR, \fBlauncher\-top\fR, \fBlauncher\-heading\fR, \fBlauncher\-modes\fR, \fBlauncher\-mode\fR, \fBlauncher\-mode\-key\fR, \fBlauncher\-backdrop\fR, \fBnotification\fR, \fBnotification\-title\fR, \fBnotification\-body\fR, \fBnotification\-level\fR, \fBquestion\fR, \fBquestion\-detail\fR, \fBquestion\-button\fR, \fBquestion\-input\fR, \fBswitcher\fR, \fBswitcher\-item\fR, \fBswitcher\-title\fR, \fBswitcher\-window\fR, \fBswitcher\-backdrop\fR, \fBoverview\-window\fR, \fBoverview\-title\fR, \fBoverview\-workspace\fR, \fBoverview\-add\fR, \fBoverview\-backdrop\fR, \fBpicker\fR, \fBsealed\fR, \fBabout\fR, \fBabout\-heading\fR, \fBabout\-detail\fR, \fBabout\-button\fR
 .SH STATES
 .PP
 \fB:focus\fR, \fB:active\fR, \fB:hover\fR, \fB:urgent\fR, \fB:closing\fR
@@ -445,6 +445,10 @@ launcher\-mode:active {
   background: var(\-\-accent);
   color: var(\-\-on\-accent);
 }
+/* The key that goes to a mode, after its name: dim, as a menu's keys are.
+ * `display: none` leaves it out. */
+launcher\-mode\-key { color: var(\-\-text\-dim); }
+launcher\-mode\-key:active { color: var(\-\-on\-accent); }
 /* The rest of the screen while the launcher is open. A click on it closes
  * the launcher. Give it a see\-through colour to dim what is behind. */
 launcher\-backdrop { background: transparent; }

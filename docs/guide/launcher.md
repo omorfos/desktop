@@ -153,8 +153,10 @@ digit is its own, not the workspaces'.
 How it looks is in `theme.css`, under `launcher`, `launcher-input`,
 `launcher-item`, `launcher-description`, `launcher-tile`, a program in
 the grid, as wide as its `min-width`, `launcher-top`, the best of all,
-`launcher-heading`, a section's heading, and `launcher-modes` and
-`launcher-mode`, the row of modes and one in it; `launcher-input:active` is
+`launcher-heading`, a section's heading, `launcher-modes` and
+`launcher-mode`, the row of modes and one in it, and `launcher-mode-key`,
+the key after a mode's name, which `launcher-mode-key { display: none; }`
+leaves out; `launcher-input:active` is
 what is typed when all of it is chosen. `launcher-backdrop` is the rest
 of the screen while it is open: give it a see-through background, such as
 `rgba(0, 0, 0, 0.4)`, to dim what is behind. To open the launcher with

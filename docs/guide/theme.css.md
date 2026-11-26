@@ -436,6 +436,10 @@ launcher-mode:active {
   background: var(--accent);
   color: var(--on-accent);
 }
+/* The key that goes to a mode, after its name: dim, as a menu's keys are.
+ * `display: none` leaves it out. */
+launcher-mode-key { color: var(--text-dim); }
+launcher-mode-key:active { color: var(--on-accent); }
 /* The rest of the screen while the launcher is open. A click on it closes
  * the launcher. Give it a see-through colour to dim what is behind. */
 launcher-backdrop { background: transparent; }
@@ -757,7 +761,7 @@ workspace:active, task:active { border-bottom: none; }
 `menu-separator`, `menu-sign`, `menu-keys`, `notice`, `notice-heading`, `capture`, `capture-border`, `tooltip`, `panel`,
 `workspace`, `task`,
 `clock`, `popover`, `popover-item`, `popover-day`, `popover-day-outside`, `launcher`, `launcher-input`, `launcher-item`,
-`launcher-description`, `launcher-tile`, `launcher-top`, `launcher-heading`, `launcher-modes`, `launcher-mode`, `launcher-backdrop`, `notification`,
+`launcher-description`, `launcher-tile`, `launcher-top`, `launcher-heading`, `launcher-modes`, `launcher-mode`, `launcher-mode-key`, `launcher-backdrop`, `notification`,
 `notification-title`, `notification-body`, `notification-level`, `question`, `question-detail`,
 `question-button`, `question-input`, `switcher`, `switcher-item`, `switcher-title`,
 `switcher-window`, `switcher-backdrop`, `overview-window`, `overview-title`,
@@ -834,6 +838,7 @@ is measured to the outside of its border.
 | `background` | a colour, a gradient, or a colour and a gradient over it | what the part is filled with; what it leaves out is none, as in CSS, so a gradient alone has no colour under it. `background-color` gives the colour alone and `background-image` the gradient alone, or `none` |
 | `color` | a color | text; for `menu-separator` and `tile-line`, the line |
 | `opacity` | `0` to `1`, or a percentage | of everything the part draws |
+| `display` | `none`, `block` or `inline` | `none` leaves the part out, and the room it took; `block` and `inline` put it back. Read by `launcher-mode-key` only |
 | `scale` | `0` to `2`, or `0%` to `200%` | how large the part is drawn as it comes and goes, as a share of its size: in `@starting-style`, and while it is `:closing`, and nowhere else |
 | `border` | a width, `solid` or `none`, a color | any of them, in any order |
 | `border-color`, `border-width` | a color; `0` to `16px` | |
@@ -947,7 +952,8 @@ Not every part uses every property yet:
   all four. The sizes of a window's frame and titlebar are taken from the
   rules without a state, since a window does not change size when it gains
   focus.
-- Layout (`display`, `position`, `flex`), `radial-gradient()`, more than
+- Layout (`position`, `flex`, and `display` but for `none`),
+  `radial-gradient()`, more than
   one background, more than one shadow cast or inside, and a shadow
   inside with a soft edge or a spread are not there, and nor are
   `steps()` or `@keyframes`.

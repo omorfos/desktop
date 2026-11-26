@@ -412,6 +412,7 @@ enum Setting {
     Inset(Shadow),
     Blur(u32),
     Scale(u16),
+    Displayed(bool),
 }
 
 /// The properties a stylesheet can give, as it is told when it gives
@@ -421,7 +422,7 @@ const PROPERTIES: &str = "background, background-color, background-image, color,
                           outline-offset, padding, margin, height, min-width, max-width, \
                           font-family, font-size, font-weight, font-style, transition, \
                           transition-duration, transition-delay, transition-timing-function, \
-                          box-shadow, backdrop-filter and scale; \
+                          box-shadow, backdrop-filter, scale and display; \
                           border, padding and margin may name a side, as in \
                           border-bottom-color";
 
@@ -654,6 +655,7 @@ impl Look {
             Setting::Inset(shadow) => style.inset = *shadow,
             Setting::Blur(blur) => style.blur = *blur,
             Setting::Scale(scale) => style.presence.scale = *scale,
+            Setting::Displayed(displayed) => style.displayed = *displayed,
         }
     }
 
@@ -698,6 +700,7 @@ fn settings(
         ("background-image", None) => one(image(value).map(Setting::Gradient)),
         ("color", None) => one(color(value).map(Setting::Color)),
         ("opacity", None) => one(opacity(value)),
+        ("display", None) => one(display(value)),
         ("border", side) => line(
             value,
             |width| Setting::BorderWidth(side, width),
@@ -796,6 +799,16 @@ fn resolve(
 fn scale(value: &str) -> Result<Setting, String> {
     let scale = thousandths(value).map(Setting::Scale);
     scale.ok_or_else(|| format!("`{value}` is not a scale from 0 to 2, or from 0% to 200%"))
+}
+
+/// Whether a part is drawn at all: `none` for not, `block` or `inline` for
+/// as it would be, which is all a part is laid out as.
+fn display(value: &str) -> Result<Setting, String> {
+    match value {
+        "none" => Ok(Setting::Displayed(false)),
+        "block" | "inline" => Ok(Setting::Displayed(true)),
+        _ => Err(format!("`{value}` is not a display: none, block or inline")),
+    }
 }
 
 /// How see-through a part is: from `0` to `1`, or a percentage.
@@ -2506,6 +2519,7 @@ mod tests {
             },
             blur: 24,
             presence: Presence::WHOLE,
+            displayed: true,
         };
         assert_eq!(style, expected);
     }
@@ -2656,6 +2670,24 @@ mod tests {
             let message = problem(stylesheet);
             assert!(message.contains(expected), "{stylesheet}: {message}");
         }
+    }
+
+    #[test]
+    fn display_none_leaves_a_part_out_and_block_or_inline_put_it_back() {
+        let key = |theme: &Theme| theme.style(Part::LauncherModeKey, States::NONE).displayed;
+        assert!(key(&Theme::default()), "shown unless a theme says");
+        let hidden = Theme::parse("launcher-mode-key { display: none; }").unwrap();
+        assert!(!key(&hidden));
+        for shown in ["block", "inline"] {
+            let theme = format!(
+                "launcher-mode-key {{ display: none }}\nlauncher-mode-key {{ display: {shown} }}"
+            );
+            assert!(key(&Theme::parse(&theme).unwrap()), "{shown}");
+        }
+        // Only on the part it is said of.
+        assert!(hidden.style(Part::LauncherMode, States::NONE).displayed);
+        let message = problem("launcher-mode-key { display: flex; }");
+        assert!(message.contains("`flex` is not a display"), "{message}");
     }
 
     #[test]
