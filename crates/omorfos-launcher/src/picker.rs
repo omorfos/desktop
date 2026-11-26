@@ -129,6 +129,8 @@ struct Layout {
     /// How tall it is with no rows: its text field, and its border and
     /// padding.
     bare: u32,
+    /// The room between the field and what is under it, if anything is.
+    under: u32,
     input: Area,
     /// The room the list has: its left, its top and its width.
     list: (i32, i32, u32),
@@ -136,6 +138,9 @@ struct Layout {
     pitch: u32,
     /// How many programs a line has: one in the list, more in the grid.
     columns: usize,
+    /// How far apart a heading's line is from the next, and the top hit's.
+    heading: u32,
+    top: u32,
 }
 
 impl Layout {
@@ -153,6 +158,8 @@ impl Layout {
         let input = theme.style(Part::LauncherInput, States::NONE);
         let item = theme.style(Part::LauncherItem, States::NONE);
         let tile = theme.style(Part::LauncherTile, States::NONE);
+        let heading = theme.style(Part::LauncherHeading, States::NONE);
+        let best = theme.style(Part::LauncherTop, States::NONE);
         let (columns, pitch, needed) = if grid {
             let wide = tile.min_width.saturating_add(tile.margin.across());
             let tall = tile_height(theme).saturating_add(tile.margin.down());
@@ -166,7 +173,11 @@ impl Layout {
             (1, item.height.saturating_add(item.margin.down()), 0)
         };
         let field = input.height.saturating_add(input.margin.down());
-        let bare = field.saturating_add(launcher.inset().down());
+        // The field's margin under it only where something is under it.
+        let under = input.margin.bottom;
+        let bare = field
+            .saturating_sub(under)
+            .saturating_add(launcher.inset().down());
         let width = launcher.min_width.max(NARROWEST).max(needed);
         let whole = (0, 0, width, bare);
         let (left, top, width, _) = inset(whole, launcher.inset());
@@ -174,10 +185,13 @@ impl Layout {
         Self {
             width: whole.2,
             bare,
+            under,
             input: (x, y, wide, input.height),
             list: (left, top.saturating_add_unsigned(field), width),
             pitch,
             columns,
+            heading: heading.height.saturating_add(heading.margin.down()),
+            top: best.height.saturating_add(best.margin.down()),
         }
     }
 
@@ -201,10 +215,12 @@ impl Layout {
         )
     }
 
-    /// The whole launcher, with `rows` rows.
+    /// The whole launcher, with `rows` rows, which is one at least, under
+    /// the field's margin.
     fn whole(&self, rows: usize) -> Area {
         let rows = u32::try_from(rows).unwrap_or(u32::MAX);
-        let height = self.bare.saturating_add(rows.saturating_mul(self.pitch));
+        let list = rows.saturating_mul(self.pitch);
+        let height = self.bare.saturating_add(self.under).saturating_add(list);
         (0, 0, self.width, height)
     }
 
@@ -304,7 +320,8 @@ impl Picker {
     /// under `theme`, and one at least.
     pub fn fit(&mut self, theme: &Theme, height: u32) {
         let layout = self.layout(theme);
-        let room = (height / 2).saturating_sub(layout.bare) / layout.pitch.max(1);
+        let above = layout.bare.saturating_add(layout.under);
+        let room = (height / 2).saturating_sub(above) / layout.pitch.max(1);
         self.room = usize::try_from(room).unwrap_or(usize::MAX).max(1);
         self.top = self.top.min(self.last_top());
     }
@@ -313,17 +330,57 @@ impl Picker {
     /// tall as the rows it lists, up to as many as it has room for.
     #[must_use]
     pub fn size(&self, theme: &Theme) -> (u32, u32) {
-        let (_, _, width, height) = self.layout(theme).whole(self.shown());
-        (width, height)
+        let layout = self.layout(theme);
+        (layout.width, layout.bare.saturating_add(self.tall(&layout)))
+    }
+
+    /// How tall what is shown under the field is: each line in sight, as
+    /// tall as it is, or one to say that nothing matches.
+    fn tall(&self, layout: &Layout) -> u32 {
+        let shown = self.first()..self.first() + self.shown();
+        let lines = shown.map(|line| self.line_height(layout, line));
+        let tall = lines.fold(0, u32::saturating_add);
+        let tall = if self.nothing() { layout.pitch } else { tall };
+        // Parted from the field by its margin, if there is anything.
+        if tall == 0 {
+            0
+        } else {
+            tall.saturating_add(layout.under)
+        }
+    }
+
+    /// How tall line `line` is: a heading's, the top hit's, or a row's.
+    fn line_height(&self, layout: &Layout, line: usize) -> u32 {
+        let (lead, top, _) = self.head();
+        if self.is_heading(line) {
+            layout.heading
+        } else if top > 0 && line == lead {
+            layout.top
+        } else {
+            layout.pitch
+        }
+    }
+
+    /// The room for line `line`, of those in sight.
+    fn line_area(&self, layout: &Layout, line: usize) -> Area {
+        let (left, top, width) = layout.list;
+        let above = (self.first()..line).map(|line| self.line_height(layout, line));
+        let down = above.fold(0, u32::saturating_add);
+        let tall = self.line_height(layout, line);
+        (left, top.saturating_add_unsigned(down), width, tall)
     }
 
     /// How far from the top of a screen `height` units tall the launcher
-    /// is put: where it would be in the middle with every row it has room
-    /// for, so that the text field stays where it is however many rows
-    /// are listed.
+    /// is put: where the list would be in the middle with every row it
+    /// has room for, so that the text field stays where it is however
+    /// many rows are listed, and in whichever mode.
     #[must_use]
     pub fn top(&self, theme: &Theme, height: u32) -> u32 {
-        let (_, _, _, tallest) = self.layout(theme).whole(self.room);
+        let list = Layout::of(theme, false);
+        let above = list.bare.saturating_add(list.under);
+        let rows = (height / 2).saturating_sub(above) / list.pitch.max(1);
+        let rows = usize::try_from(rows).unwrap_or(usize::MAX).max(1);
+        let (_, _, _, tallest) = list.whole(rows);
         height.saturating_sub(tallest) / 2
     }
 
@@ -358,10 +415,10 @@ impl Picker {
             let (line, column) = self.line_of(self.chosen);
             let line = line.max(self.top).min(last);
             // Kept to a heading, it is the program beside it in sight.
-            let line = match self.heading() {
-                Some(heading) if heading == line && line == self.top => line + 1,
-                Some(heading) if heading == line => line.saturating_sub(1),
-                _ => line,
+            let line = match self.is_heading(line) {
+                true if line == self.top => line + 1,
+                true => line.saturating_sub(1),
+                false => line,
             };
             self.chosen = self.nearest(line, column);
         }
@@ -373,38 +430,38 @@ impl Picker {
         if self.grid() { COLUMNS } else { 1 }
     }
 
-    /// How many lines there are: in the generic mode the top hit's alone,
-    /// and a heading over the rest if there are more; then the rest, as
-    /// many to a line as there are columns.
+    /// How many lines there are: in the generic mode the heading over
+    /// the top hit, the top hit's alone, and a heading over the rest if
+    /// there are more; then the rest, as many to a line as there are
+    /// columns.
     fn lines(&self) -> usize {
-        let (top, heading) = self.head();
-        top + heading + (self.found.len() - top).div_ceil(self.columns())
+        let (lead, top, heading) = self.head();
+        lead + top + heading + (self.found.len() - top).div_ceil(self.columns())
     }
 
     /// Which line the row `row` is on, and how far across it.
     fn line_of(&self, row: usize) -> (usize, usize) {
-        let (top, heading) = self.head();
-        row.checked_sub(top).map_or((row, 0), |rest| {
+        let (lead, top, heading) = self.head();
+        row.checked_sub(top).map_or((lead + row, 0), |rest| {
             let columns = self.columns();
-            (top + heading + rest / columns, rest % columns)
+            (lead + top + heading + rest / columns, rest % columns)
         })
     }
 
     /// The row `column` places across line `line`, if one is there: none
     /// on a heading. The top hit has a line to itself, all the way across.
     fn row_on(&self, line: usize, column: usize) -> Option<usize> {
-        let (top, heading) = self.head();
-        let rest = line.checked_sub(top + heading);
-        let row = rest.map(|line| top + line * self.columns() + column);
-        let row = if line < top { Some(line) } else { row };
-        row.filter(|row| *row < self.count())
+        let (lead, top, heading) = self.head();
+        let rest = line.checked_sub(lead + top + heading);
+        let row = rest.map_or(0, |line| top + line * self.columns() + column);
+        Some(row).filter(|row| !self.is_heading(line) && *row < self.count())
     }
 
-    /// The line of the heading over what follows the top hit, if there is
-    /// one.
-    fn heading(&self) -> Option<usize> {
-        let (top, heading) = self.head();
-        (heading > 0).then_some(top)
+    /// Whether line `line` is a heading's: over the top hit, or over what
+    /// follows it.
+    fn is_heading(&self, line: usize) -> bool {
+        let (lead, top, heading) = self.head();
+        (lead > 0 && line == 0) || (heading > 0 && line == lead + top)
     }
 
     /// The row on line `line` nearest `column` places across it: the
@@ -423,7 +480,7 @@ impl Picker {
         let (line, column) = self.line_of(self.chosen);
         let mut line = line.saturating_add_signed(by);
         // A heading is gone past, to what is beyond it.
-        if self.heading() == Some(line) {
+        if self.is_heading(line) {
             line = line.saturating_add_signed(by);
         }
         self.chosen = self.nearest(line, column);
@@ -453,13 +510,14 @@ impl Picker {
         programs.map(|(_, found)| found.name.as_str())
     }
 
-    /// How many lines come before the rest: in the generic mode, the top
-    /// hit's, the first found, a sum's answer if there is one; and the
-    /// heading's over what is found after it, if anything is.
-    fn head(&self) -> (usize, usize) {
+    /// How many lines come before the rest: in the generic mode, the
+    /// heading's over the top hit and the top hit's, the first found, a
+    /// sum's answer if there is one; and the heading's over what is found
+    /// after it, if anything is.
+    fn head(&self) -> (usize, usize, usize) {
         let generic = matches!(self.view, View::Generic);
         let top = usize::from(generic && !self.found.is_empty());
-        (top, usize::from(generic && self.found.len() > 1))
+        (top, top, usize::from(generic && self.found.len() > 1))
     }
 
     /// How many rows the list has.
@@ -507,7 +565,9 @@ impl Picker {
             Key::Cut => return self.copy(true),
             // Up from the first line gives what is typed the keyboard
             // back.
-            Key::Up if self.line_of(self.chosen).0 == 0 => self.give_field_the_keyboard(),
+            Key::Up if self.line_of(self.chosen).0 <= self.head().0 => {
+                self.give_field_the_keyboard();
+            }
             Key::Up => self.move_lines(-1),
             // Down from the field lights the first program, and goes on
             // from there.
@@ -649,7 +709,12 @@ impl Picker {
         motion: &mut Motion,
     ) -> Canvas {
         let layout = self.layout(theme);
-        let whole = layout.whole(self.shown());
+        let whole = (
+            0,
+            0,
+            layout.width,
+            layout.bare.saturating_add(self.tall(&layout)),
+        );
         let (_, _, width, height) = whole;
         let mut canvas = Canvas::scaled(width, height, scale);
         canvas.draw_box(whole, &theme.style(Part::Launcher, States::NONE));
@@ -673,37 +738,42 @@ impl Picker {
             let states = States::NONE.when(State::Active, lit);
             // A row is the same row whichever program is in it.
             let key = u64::try_from(row).unwrap_or(u64::MAX);
-            let (theme, key) = ((theme, scale), (key, states));
+            // The top hit is outlined as what Enter takes.
+            let part = if line == self.head().0 && self.head().1 > 0 {
+                Part::LauncherTop
+            } else {
+                Part::LauncherItem
+            };
+            let area = self.line_area(&layout, line);
+            let theme = (theme, scale);
             let icon = item.icon.as_deref();
             match &item.does {
                 Does::Copy(_) => {
                     let said = (item.name.as_str(), Some(copies.as_str()), None);
-                    self.paint_row(&mut drawing, theme, key, layout.row(place), said);
+                    self.paint_row(&mut drawing, theme, (part, key, states), area, said);
                 }
                 Does::Spawn(_) if self.grid() => {
                     let area = layout.tile(place, column);
-                    self.paint_tile(&mut drawing, theme, key, area, item);
+                    self.paint_tile(&mut drawing, theme, (key, states), area, item);
                 }
                 Does::Spawn(_) => {
                     let says = described.then_some(item.says.as_str());
                     let said = (item.name.as_str(), says, icon);
-                    self.paint_row(&mut drawing, theme, key, layout.row(place), said);
+                    self.paint_row(&mut drawing, theme, (part, key, states), area, said);
                 }
             }
         }
-        // The heading over what follows the top hit, as what a program
-        // says of itself is written, where it is in sight.
-        let heading = self.heading().filter(|line| sight.contains(line));
-        if let Some(line) = heading {
-            let style = theme.style(Part::LauncherItem, States::NONE);
-            let area = inset(
-                inset(layout.row(line - self.first()), style.margin),
-                style.inset(),
-            );
-            let said = theme.style(Part::LauncherDescription, States::NONE);
-            let font = theme.font(Part::LauncherDescription, States::NONE);
-            let programs = words.say("launcher-programs", &[]);
-            text.draw(&mut canvas, &programs, area, said.color, font);
+        // The headings in sight: over the top hit, and over what follows.
+        let style = theme.style(Part::LauncherHeading, States::NONE);
+        let font = theme.font(Part::LauncherHeading, States::NONE);
+        for line in sight.filter(|line| self.is_heading(*line)) {
+            let area = inset(self.line_area(&layout, line), style.inset());
+            let says = if line == 0 {
+                "launcher-top-hit"
+            } else {
+                "launcher-programs"
+            };
+            text.draw(&mut canvas, &words.say(says, &[]), area, style.color, font);
         }
         if self.nothing() {
             // Where the first program would be, as what a program says of
@@ -726,11 +796,11 @@ impl Picker {
         &self,
         (canvas, text, icons, motion): &mut Drawing<'_>,
         (theme, scale): (&Theme, Scale),
-        (key, states): (u64, States),
+        (part, key, states): (Part, u64, States),
         place: Area,
         (name, says, icon): (&str, Option<&str>, Option<&str>),
     ) {
-        let style = motion.style(theme, Part::LauncherItem, key, states);
+        let style = motion.style(theme, part, key, states);
         let area = inset(place, style.margin);
         canvas.draw_box(area, &style);
         let mut room = inset(area, style.inset());
@@ -741,7 +811,7 @@ impl Picker {
             draw_icon(canvas, icons, (icon, square, scale), style.color);
             room = inset(room, on_the_left(side.saturating_add(GAP)));
         }
-        let font = theme.font(Part::LauncherItem, states);
+        let font = theme.font(part, states);
         if let Some(says) = says {
             // The name in the top half, what it says under it.
             let (left, top, width, height) = room;
@@ -867,7 +937,9 @@ impl Picker {
     fn follow(&mut self) {
         let (line, _) = self.line_of(self.chosen);
         let lowest = (line + 1).saturating_sub(self.room);
-        self.top = self.top.min(line).max(lowest);
+        // The top hit with its heading over it.
+        let highest = if line == self.head().0 { 0 } else { line };
+        self.top = self.top.min(highest).max(lowest);
     }
 
     /// Which of the programs that match is shown at a point, if any is.
@@ -877,16 +949,22 @@ impl Picker {
         let across = u32::try_from(x.saturating_sub(left)).ok();
         let down = u32::try_from(y.saturating_sub(top)).ok();
         let inside = across.zip(down).filter(|(across, _)| *across < width);
-        let place = inside.and_then(|(across, down)| {
-            let line = down / layout.pitch.max(1);
-            let column = across / layout.cell().max(1);
-            usize::try_from(line).ok().zip(usize::try_from(column).ok())
+        // The line whose room reaches down past the point, of those in
+        // sight, each as tall as it is.
+        let sight = self.first()..self.first() + self.room;
+        let line = inside.and_then(|(_, down)| {
+            let mut reach = 0;
+            sight.clone().find(|line| {
+                reach += self.line_height(&layout, *line);
+                down < reach
+            })
         });
         // What is left over past the last column is the last column's.
         let last = self.columns() - 1;
-        let place = place.map(|(line, column)| (line, column.min(last)));
-        let place = place.filter(|(line, _)| *line < self.room);
-        place.and_then(|(line, column)| self.row_on(self.first() + line, column))
+        let column =
+            inside.and_then(|(across, _)| usize::try_from(across / layout.cell().max(1)).ok());
+        let place = line.zip(column.map(|column| column.min(last)));
+        place.and_then(|(line, column)| self.row_on(line, column))
     }
 
     /// Finds what matches what has been typed in each source shown, a
@@ -894,6 +972,8 @@ impl Picker {
     /// first of all is the one Enter takes.
     fn search(&mut self) {
         let query = self.field.text();
+        // With nothing typed, the mode that finds everything shows nothing.
+        let empty = matches!(self.view, View::Generic) && query.is_empty();
         let found = self.sources().into_iter().flat_map(|source| {
             let section = source.section();
             source
@@ -901,7 +981,7 @@ impl Picker {
                 .into_iter()
                 .map(move |found| (section, found))
         });
-        self.found = found.collect();
+        self.found = if empty { Vec::new() } else { found.collect() };
         self.chosen = 0;
         self.top = 0;
     }
@@ -1009,6 +1089,24 @@ mod tests {
         picker(&["Calculator", "Files", "Firefox", "Terminal", "Text Editor"])
     }
 
+    /// The five of [`several`], every one found: what each says of itself,
+    /// that it is one of sorts, looked through for what is typed. The
+    /// first is the top hit, the rest under their heading.
+    fn every() -> Picker {
+        let names = ["Calculator", "Files", "Firefox", "Terminal", "Text Editor"];
+        let show = Show {
+            descriptions: true,
+            ..NAMES
+        };
+        let mut picker = Picker::new(
+            names.iter().map(|name| app(name)).collect(),
+            show,
+            Numbers::Point,
+        );
+        typed(&mut picker, "sorts");
+        picker
+    }
+
     fn typed(picker: &mut Picker, text: &str) {
         assert_eq!(picker.key(Key::Text(text.to_owned())), Outcome::Stay);
     }
@@ -1042,20 +1140,30 @@ mod tests {
 
     /// The middle of the row `place` rows down the list, under the
     /// built-in theme.
+    /// The middle of the line `place` lines down what is found in the
+    /// mode that finds everything, with several found: the heading over
+    /// the top hit, the top hit, the heading over the rest, and the rest.
     fn row(place: i32) -> (i32, i32) {
         let layout = Layout::new(&Theme::default());
         let (left, top, width) = layout.list;
-        let pitch = layout.pitch.cast_signed();
-        (
-            left + (width / 2).cast_signed(),
-            top + pitch * place + pitch / 2,
-        )
+        let height = |line: i32| match line {
+            0 | 2 => layout.heading,
+            1 => layout.top,
+            _ => layout.pitch,
+        };
+        let above: u32 = (0..place).map(height).sum();
+        let middle = above + height(place) / 2;
+        (left + (width / 2).cast_signed(), top + middle.cast_signed())
     }
 
     #[test]
-    fn every_program_is_offered_until_something_is_typed() {
+    fn nothing_is_offered_until_something_is_typed_but_in_the_grid_everything() {
         let picker = several();
         assert_eq!(picker.query(), "");
+        assert_eq!(names_of(&picker).len(), 0);
+        assert_eq!(picker.chosen(), None);
+        let mut picker = several();
+        picker.set_view(View::Mode(Mode::Programs));
         assert_eq!(names_of(&picker).len(), 5);
         assert_eq!(picker.chosen(), Some("Calculator"));
     }
@@ -1093,7 +1201,7 @@ mod tests {
             picker.key(BACKSPACE);
         }
         assert_eq!(picker.query(), "");
-        assert_eq!(names_of(&picker).len(), 5);
+        assert_eq!(names_of(&picker).len(), 0, "nothing typed, nothing");
     }
 
     #[test]
@@ -1124,7 +1232,7 @@ mod tests {
         assert_eq!(picker.query(), "firefox");
         assert_eq!(picker.key(Key::Cut), copy);
         assert_eq!(picker.query(), "");
-        assert_eq!(names_of(&picker).len(), 5, "everything again");
+        assert_eq!(names_of(&picker).len(), 0, "nothing again");
         picker.key(Key::Edit(Edit::Undo));
         assert_eq!(names_of(&picker), ["Firefox"]);
         // Moving the cursor alone lists nothing anew: the first is chosen
@@ -1157,7 +1265,7 @@ mod tests {
         picker.key(Key::All);
         picker.key(BACKSPACE);
         assert_eq!(picker.query(), "", "all of it taken out");
-        assert_eq!(names_of(&picker).len(), 5);
+        assert_eq!(names_of(&picker).len(), 0);
         // With nothing typed there is nothing to choose.
         picker.key(Key::All);
         typed(&mut picker, "f");
@@ -1286,7 +1394,7 @@ mod tests {
 
     #[test]
     fn the_arrows_choose_among_the_programs_that_match() {
-        let mut picker = several();
+        let mut picker = every();
         assert_eq!(picker.key(Key::Up), Outcome::Stay);
         assert_eq!(picker.chosen(), Some("Calculator"), "there is none above");
         // The first Down lights the first, and the next go on from it.
@@ -1302,6 +1410,7 @@ mod tests {
         }
         assert_eq!(picker.chosen(), Some("Text Editor"), "nor any below");
         // Typing starts again from the best match.
+        picker.key(Key::All);
         typed(&mut picker, "f");
         assert_eq!(picker.chosen(), Some("Files"));
         // With nothing matching there is nothing to move among.
@@ -1313,7 +1422,9 @@ mod tests {
     #[test]
     fn the_wheel_scrolls_the_list_and_the_pointer_chooses_in_it_without_moving_it() {
         let theme = Theme::default();
-        let mut picker = several();
+        // The heading, Calculator the top hit, the heading, Files, Firefox,
+        // Terminal and Text Editor: seven lines, two in sight.
+        let mut picker = every();
         picker.room = 2;
         // With the field's keyboard, what Enter starts is still the first.
         assert!(picker.scroll(1));
@@ -1322,27 +1433,29 @@ mod tests {
         picker.key(Key::Down);
         assert!(picker.scroll(1));
         assert_eq!(picker.first(), 1);
+        assert_eq!(picker.chosen(), Some("Calculator"), "still in sight");
         // Out of sight, the chosen row is the nearest in sight, past the
         // heading over all but the first.
+        assert!(picker.scroll(1));
         assert_eq!(picker.chosen(), Some("Files"));
-        assert!(picker.scroll(1));
-        assert!(picker.scroll(1));
-        assert!(picker.scroll(1));
+        for _ in 0..3 {
+            assert!(picker.scroll(1));
+        }
         assert!(!picker.scroll(1), "no further than the last");
-        assert_eq!(picker.first(), 4);
+        assert_eq!(picker.first(), 5);
         assert_eq!(picker.chosen(), Some("Terminal"));
         // The pointer on the second row in sight chooses it, and the list
         // stays where it was scrolled to.
         let (x, y, _, tall) = Layout::new(&theme).row(1);
         assert!(picker.point(x + 1, y + tall.cast_signed() / 2, &theme));
         assert_eq!(picker.chosen(), Some("Text Editor"));
-        assert_eq!(picker.first(), 4);
+        assert_eq!(picker.first(), 5);
         // While it is in sight, the chosen row stays as the list scrolls.
         assert!(picker.scroll(-1));
         assert_eq!(picker.chosen(), Some("Terminal"), "the nearest in sight");
         picker.key(Key::Up);
         assert!(picker.scroll(-1));
-        assert_eq!((picker.first(), picker.chosen()), (2, Some("Firefox")));
+        assert_eq!((picker.first(), picker.chosen()), (3, Some("Firefox")));
         // Scrolled to the top, the nearest in sight is the top hit, past
         // the heading.
         assert!(picker.scroll(-10));
@@ -1352,7 +1465,12 @@ mod tests {
         for _ in 0..2 {
             picker.key(Key::Down);
         }
-        assert_eq!((picker.first(), picker.chosen()), (2, Some("Firefox")));
+        assert_eq!((picker.first(), picker.chosen()), (3, Some("Firefox")));
+        // With three in sight, scrolled back to the top, the last in sight
+        // is the heading: the nearest program is the one over it.
+        picker.room = 3;
+        assert!(picker.scroll(-10));
+        assert_eq!((picker.first(), picker.chosen()), (0, Some("Calculator")));
         // Typing lists from the top again.
         typed(&mut picker, "t");
         assert_eq!(picker.first(), 0);
@@ -1365,7 +1483,8 @@ mod tests {
         let mut launcher = several();
         typed(&mut launcher, "zzz");
         let (_, tall) = launcher.size(&theme);
-        assert_eq!(tall, layout.bare + layout.pitch, "a row to say so");
+        let under = layout.bare + layout.under;
+        assert_eq!(tall, under + layout.pitch, "a row to say so");
         let canvas = painted(&launcher);
         let (left, top, width, height) = layout.row(0);
         let (left, top) = (left.unsigned_abs(), top.unsigned_abs());
@@ -1394,7 +1513,7 @@ mod tests {
         let mut picker = several();
         typed(&mut picker, "fire");
         assert_eq!(picker.key(Key::Enter), spawn(&["firefox", "--go"]));
-        let mut picker = several();
+        let mut picker = every();
         picker.key(Key::Down);
         picker.key(Key::Down);
         assert_eq!(picker.key(Key::Enter), spawn(&["files", "--go"]));
@@ -1410,6 +1529,7 @@ mod tests {
             ..app("top")
         };
         let mut picker = Picker::new(vec![top], NAMES, Numbers::Point);
+        typed(&mut picker, "top");
         let terminal = Command::terminal();
         assert_eq!(
             picker.key(Key::Enter),
@@ -1427,14 +1547,14 @@ mod tests {
     #[test]
     fn the_pointer_chooses_the_program_it_is_over() {
         let theme = Theme::default();
-        let mut picker = several();
-        // Under the heading over all but the first.
-        let (x, y) = row(3);
+        let mut picker = every();
+        // Under the heading over all but the first, Files, then Firefox.
+        let (x, y) = row(4);
         assert!(picker.point(x, y, &theme));
         assert_eq!(picker.chosen(), Some("Firefox"));
         assert!(!picker.point(x, y + 1, &theme), "it was already");
         // Not where there is no program, nor off the list.
-        let (x, below) = row(6);
+        let (x, below) = row(7);
         assert!(!picker.point(x, below, &theme));
         assert!(!picker.point(x, 2, &theme), "on the text field");
         assert!(!picker.point(-5, y, &theme));
@@ -1446,9 +1566,9 @@ mod tests {
     #[test]
     fn a_click_on_a_program_starts_it() {
         let theme = Theme::default();
-        let mut picker = several();
+        let mut picker = every();
         // Under the heading over all but the first.
-        let (x, y) = row(4);
+        let (x, y) = row(5);
         assert_eq!(
             picker.click(x, y, &theme, &mut Text::new()),
             spawn(&["terminal", "--go"])
@@ -1458,7 +1578,7 @@ mod tests {
             Outcome::Stay,
             "on the text field"
         );
-        let (x, below) = row(7);
+        let (x, below) = row(8);
         assert_eq!(
             picker.click(x, below, &theme, &mut Text::new()),
             Outcome::Stay
@@ -1468,24 +1588,38 @@ mod tests {
     #[test]
     fn the_launcher_is_as_tall_as_what_it_lists_up_to_half_the_screen() {
         let theme = Theme::default();
-        // A border and padding each side, and the text field with the
-        // room under it.
-        let bare = 2 * 13 + 56 + 8;
+        // A border and padding each side, and the text field; and under
+        // it, if anything is, the field's margin.
+        let (bare, under, wide) = (2 * 13 + 56, 8, 480);
+        // Nothing typed, the field alone.
         let mut picker = several();
-        // Five rows, each of two lines, and the heading over all but the
-        // first, with room for nine.
         picker.fit(&theme, 1080);
-        assert_eq!(picker.size(&theme), (480, bare + 6 * 48));
-        typed(&mut picker, "fi");
-        assert_eq!(picker.size(&theme), (480, bare + 3 * 48));
-        typed(&mut picker, "zzz");
-        assert_eq!(picker.size(&theme), (480, bare + 48), "a row to say so");
-        // A smaller screen has room for fewer.
+        assert_eq!(picker.size(&theme), (wide, bare));
+        // Five rows, each of two lines, and a heading of 24 over the top
+        // hit and another over the rest, with room for nine.
+        let mut picker = every();
+        picker.fit(&theme, 1080);
+        assert_eq!(picker.size(&theme), (wide, bare + under + 2 * 24 + 5 * 48));
         let mut picker = several();
+        typed(&mut picker, "fi");
+        assert_eq!(picker.size(&theme), (wide, bare + under + 2 * 24 + 2 * 48));
+        typed(&mut picker, "zzz");
+        assert_eq!(
+            picker.size(&theme),
+            (wide, bare + under + 48),
+            "a row to say so"
+        );
+        // A smaller screen has room for fewer: three lines, two of them
+        // headings.
+        let mut picker = every();
         picker.fit(&theme, 480);
-        assert_eq!(picker.size(&theme), (480, bare + 3 * 48));
+        assert_eq!(picker.size(&theme), (wide, bare + under + 2 * 24 + 48));
         picker.fit(&theme, 100);
-        assert_eq!(picker.size(&theme), (480, bare + 48), "one at least");
+        assert_eq!(
+            picker.size(&theme),
+            (wide, bare + under + 24),
+            "one at least"
+        );
         // Shorter rows, more of them.
         let wide = Theme::parse(
             "launcher { min-width: 600px; padding: 0; border: none; }\n\
@@ -1495,12 +1629,14 @@ mod tests {
         .unwrap();
         let many: Vec<String> = (0..20).map(|n| format!("Program {n:02}")).collect();
         let mut long = self::picker(&many.iter().map(String::as_str).collect::<Vec<_>>());
+        typed(&mut long, "program");
         long.fit(&wide, 480);
-        assert_eq!(long.size(&wide), (600, 40 + 9 * 22));
+        // Its two headings and its top hit as the built-in theme has them.
+        assert_eq!(long.size(&wide), (600, 40 + 2 * 24 + 48 + 6 * 22));
         let narrow = Theme::parse("launcher { min-width: 10px; }").unwrap();
         assert_eq!(long.size(&narrow).0, NARROWEST);
 
-        let mut picker = several();
+        let mut picker = every();
         let canvas = painted(&picker);
         assert_eq!((canvas.width(), canvas.height()), picker.size(&theme));
         typed(&mut picker, "zzz");
@@ -1526,10 +1662,10 @@ mod tests {
     fn the_chosen_program_is_lit_and_no_other() {
         let theme = Theme::default();
         let surface = argb(theme.style(Part::Launcher, States::NONE).background);
-        let mut picker = several();
+        let mut picker = every();
         // While what is typed has the keyboard, no program is lit.
         let canvas = painted(&picker);
-        let (x, y) = row(0);
+        let (x, y) = row(3);
         assert_eq!(canvas.at(x.unsigned_abs() + 200, y.unsigned_abs()), surface);
         picker.key(Key::Down);
         picker.key(Key::Down);
@@ -1540,13 +1676,13 @@ mod tests {
             canvas.at(x.unsigned_abs() + 200, y.unsigned_abs())
         };
         // The second, under the heading over all but the first.
-        assert_eq!(at(2), lit(&theme));
-        assert_eq!(at(0), surface);
-        assert_eq!(at(3), surface);
+        assert_eq!(at(3), lit(&theme));
+        assert_eq!(at(1), surface);
+        assert_eq!(at(4), surface);
         // Nor is there anything where there is no program: the launcher
         // ends under the last.
-        let (_, last) = row(5);
-        let (_, after) = row(6);
+        let (_, last) = row(6);
+        let (_, after) = row(7);
         assert!(canvas.height() > last.unsigned_abs());
         assert!(canvas.height() < after.unsigned_abs());
     }
@@ -1586,7 +1722,9 @@ mod tests {
     #[test]
     fn what_programs_say_of_themselves_is_shown_and_searched_only_if_asked_for() {
         let names = ["Calculator", "Files", "Sorter"];
-        let plain = picker(&names);
+        // Calculator and Files found, Files under the heading.
+        let mut plain = picker(&names);
+        typed(&mut plain, "l");
         let show = Show {
             descriptions: true,
             ..NAMES
@@ -1596,11 +1734,12 @@ mod tests {
             show,
             Numbers::Point,
         );
+        typed(&mut described, "l");
 
         // Under each name there is something written, and nothing
         // without; the name is in the top half of its row with it, and in
         // the middle without: the second, under the heading.
-        let (_, middle) = row(2);
+        let (_, middle) = row(3);
         let layout = Layout::new(&Theme::default());
         let (left, _, width) = layout.list;
         let half = layout.pitch.cast_signed() / 2;
@@ -1620,9 +1759,10 @@ mod tests {
 
         // "sort" is in what every one of them says, and in one's name,
         // which comes first.
+        described.key(Key::All);
         typed(&mut described, "sort");
         assert_eq!(names_of(&described), ["Sorter", "Calculator", "Files"]);
-        let mut plain = plain;
+        plain.key(Key::All);
         typed(&mut plain, "sort");
         assert_eq!(names_of(&plain), ["Sorter"]);
     }
@@ -1645,7 +1785,9 @@ mod tests {
             show,
             Numbers::Point,
         );
-        // The first lit, to see where the icon's room is against it.
+        // Both found, the first lit, to see where the icon's room is
+        // against it.
+        typed(&mut with, "l");
         with.key(Key::Down);
         let canvas = still(&with, &theme, Scale::ONE, &mut icons);
         let green = |canvas: &Canvas, place: i32| {
@@ -1655,21 +1797,25 @@ mod tests {
         };
         // Files, under the heading, has an icon as tall as the row's two
         // lines; Calculator has none, and room is left where it would be.
-        assert_eq!(green(&canvas, 2), 36);
-        assert_eq!(green(&canvas, 0), 0);
+        assert_eq!(green(&canvas, 3), 36);
+        assert_eq!(green(&canvas, 1), 0);
+        // Calculator is the top hit, outlined: its room for an icon is
+        // inside its border too.
         let layout = Layout::new(&theme);
-        let item = theme.style(Part::LauncherItem, States::NONE);
-        let start = layout.list.0.unsigned_abs() + item.padding.left;
-        let y = row(0).1.unsigned_abs();
+        let best = theme.style(Part::LauncherTop, States::NONE);
+        let start = layout.list.0.unsigned_abs() + best.inset().left;
+        let side = best.height - best.inset().down();
+        let y = row(1).1.unsigned_abs();
         let chosen = lit(&theme);
-        let beside = start..start + 36 + GAP;
+        let beside = start..start + side + GAP;
         assert!(beside.clone().all(|x| canvas.at(x, y) == chosen));
 
         // Without icons asked for, none is drawn and the name starts there.
         let mut without = picker(&names);
+        typed(&mut without, "l");
         without.key(Key::Down);
         let canvas = still(&without, &theme, Scale::ONE, &mut icons);
-        assert_eq!(green(&canvas, 2), 0);
+        assert_eq!(green(&canvas, 3), 0);
         assert!(beside.into_iter().any(|x| canvas.at(x, y) != chosen));
     }
 
@@ -1813,12 +1959,12 @@ mod tests {
         // The pointer and clicks find the answer's row as a program's; the
         // program is under the heading.
         let theme = Theme::default();
-        let (x, y) = row(2);
+        let (x, y) = row(3);
         assert!(picker.point(x, y, &theme));
         assert_eq!(picker.chosen(), Some("Counter 1+1"));
-        let (x, y) = row(0);
+        let (x, y) = row(1);
         assert_eq!(picker.click(x, y, &theme, &mut Text::new()), copy("2"));
-        let (x, below) = row(3);
+        let (x, below) = row(4);
         assert_eq!(
             picker.click(x, below, &theme, &mut Text::new()),
             Outcome::Stay
@@ -1830,7 +1976,7 @@ mod tests {
         let theme = Theme::default();
         let layout = Layout::new(&theme);
         let (left, _, width) = layout.list;
-        let (_, middle) = row(0);
+        let (_, middle) = row(1);
         let half = layout.pitch.cast_signed() / 2;
         let inked = |picker: &Picker, lines: std::ops::Range<i32>| {
             let canvas = painted(picker);
@@ -1863,11 +2009,11 @@ mod tests {
             ..NAMES
         });
         let canvas = painted(&iconed);
-        let item = theme.style(Part::LauncherItem, States::NONE);
-        let start = left.unsigned_abs() + item.padding.left;
+        let best = theme.style(Part::LauncherTop, States::NONE);
+        let start = left.unsigned_abs() + best.inset().left;
         let lines = (middle - half + 4..middle + half - 4).map(i32::unsigned_abs);
         let lit_at = |x: u32| lines.clone().all(|y| canvas.at(x, y) == lit(&theme));
-        let beside = start..start + 36 + GAP;
+        let beside = start..start + best.height - best.inset().down() + GAP;
         assert!(beside.clone().all(lit_at));
         let past = beside.end..beside.end + 40;
         assert!(!past.into_iter().all(lit_at));
@@ -1879,13 +2025,20 @@ mod tests {
         let many: Vec<String> = (0..20).map(|n| format!("Program {n:02}")).collect();
         let many: Vec<&str> = many.iter().map(String::as_str).collect();
         let mut picker = picker(&many);
-        // The first Down lights the first.
+        typed(&mut picker, "program");
+        // The first Down lights the first, the top hit, and the next goes
+        // past the heading.
         for _ in 0..12 {
             picker.key(Key::Down);
         }
         assert_eq!(picker.chosen(), Some("Program 11"));
         // It is the last of the eight in sight.
+        // Scrolled past the headings, every line in sight is a row's.
         let canvas = painted(&picker);
+        let row = |place: usize| {
+            let (x, y, _, tall) = Layout::new(&theme).row(place);
+            (x + 200, y + tall.cast_signed() / 2)
+        };
         let (x, y) = row(7);
         assert_eq!(
             canvas.at(x.unsigned_abs() + 200, y.unsigned_abs()),
@@ -1956,11 +2109,13 @@ mod tests {
             NAMES,
             Numbers::Point,
         );
+        // All but Archive, Calendar and Clock have an s, Books first.
+        typed(&mut list, "s");
         list.key(across(Way::On));
-        assert_eq!(list.chosen(), Some("Archive"));
-        list.key(Key::Down);
-        list.key(Key::Down);
         assert_eq!(list.chosen(), Some("Books"));
+        list.key(Key::Down);
+        list.key(Key::Down);
+        assert_eq!(list.chosen(), Some("Files"));
         // Without icons, a tile keeps their room, and nothing is in it.
         let canvas = painted(&grid(&EIGHT));
         let layout = Layout::of(&Theme::default(), true);
@@ -2004,8 +2159,9 @@ mod tests {
         assert_eq!(picker.size(&theme).0, wide);
         assert!(wide > Layout::new(&theme).width);
         // Room for two lines of the four.
-        picker.fit(&theme, 2 * (layout.bare + 2 * layout.pitch));
-        assert_eq!(picker.size(&theme).1, layout.bare + 2 * layout.pitch);
+        let two = layout.bare + layout.under + 2 * layout.pitch;
+        picker.fit(&theme, 2 * two);
+        assert_eq!(picker.size(&theme).1, two);
         picker.key(Key::Down);
         assert!(picker.scroll(1));
         assert_eq!(picker.chosen(), Some("Program 06"), "kept in sight");
@@ -2189,7 +2345,9 @@ mod tests {
             let middle = top.unsigned_abs() + height / 2;
             columns.filter(|x| canvas.at(*x, middle) != field).count()
         };
+        // In the grid, where every program is found with nothing typed.
         let mut picker = several();
+        picker.set_view(View::Mode(Mode::Programs));
         assert_eq!(inked(&picker), 1, "the cursor alone");
         picker.key(Key::Down);
         assert_eq!(inked(&picker), 0);
@@ -2205,14 +2363,15 @@ mod tests {
         assert!(columns.into_iter().all(|x| off.at(x, middle) == field));
         // The pointer over a program, even the first, lights it and takes
         // the keyboard to the programs as Down does.
-        let (x, y) = row(0);
+        let (x, y) = tile(0, 0);
         assert!(picker.point(x, y, &theme));
         assert_eq!(inked(&picker), 0);
         assert!(!picker.point(x, y, &theme), "nothing new");
         let canvas = painted(&picker);
+        let tiled = theme.style(Part::LauncherTile, States::NONE.with(State::Active));
         assert_eq!(
-            canvas.at(x.unsigned_abs() + 200, y.unsigned_abs()),
-            lit(&theme)
+            canvas.at(x.unsigned_abs(), (y - 30).unsigned_abs()),
+            argb(tiled.background)
         );
     }
 
@@ -2277,20 +2436,20 @@ mod tests {
         let mut picker = several();
         typed(&mut picker, "fi");
         assert_eq!(names_of(&picker), ["Files", "Firefox"]);
-        // The top hit alone on the first line, the heading on the second,
-        // the rest under it.
-        assert_eq!(picker.heading(), Some(1));
-        assert_eq!(picker.line_of(0), (0, 0));
-        assert_eq!(picker.line_of(1), (2, 0));
-        assert_eq!(picker.lines(), 3);
+        // The top hit under its heading, the other heading, and the rest
+        // under it.
+        assert!(picker.is_heading(0) && picker.is_heading(2));
+        assert_eq!(picker.line_of(0), (1, 0));
+        assert_eq!(picker.line_of(1), (3, 0));
+        assert_eq!(picker.lines(), 4);
         assert_eq!(picker.key(Key::Enter), spawn(&["files", "--go"]));
         // One found, a top hit and no heading over nothing.
         typed(&mut picker, "r");
-        assert_eq!(picker.heading(), None);
-        assert_eq!(picker.lines(), 1);
+        assert!(picker.is_heading(0) && !picker.is_heading(2));
+        assert_eq!(picker.lines(), 2);
         // A mode has no top hit and no heading.
         let tiles = grid(&["Files", "Firefox"]);
-        assert_eq!(tiles.heading(), None);
+        assert!(!tiles.is_heading(0));
         assert_eq!(tiles.line_of(1), (0, 1));
     }
 
@@ -2299,8 +2458,8 @@ mod tests {
         let mut picker = picker(&["Calculator", "Counter 1+1"]);
         typed(&mut picker, "1+1");
         assert_eq!(picker.chosen(), Some("2"));
-        assert_eq!(picker.heading(), Some(1));
-        assert_eq!(picker.line_of(1), (2, 0));
+        assert!(picker.is_heading(2));
+        assert_eq!(picker.line_of(1), (3, 0));
         assert_eq!(picker.key(Key::Enter), copy("2"));
     }
 
@@ -2316,10 +2475,10 @@ mod tests {
         picker.key(Key::Up);
         assert_eq!(picker.chosen(), Some("Files"));
         // The pointer over the heading lights nothing.
-        let (x, y) = row(1);
+        let (x, y) = row(2);
         assert!(!picker.point(x, y, &theme));
         assert_eq!(picker.chosen(), Some("Files"));
-        let (x, y) = row(2);
+        let (x, y) = row(3);
         assert!(picker.point(x, y, &theme));
         assert_eq!(picker.chosen(), Some("Firefox"));
     }
@@ -2332,7 +2491,7 @@ mod tests {
         picker.key(Key::Down);
         let canvas = painted(&picker);
         let (left, _, width) = Layout::new(&theme).list;
-        let (_, y) = row(1);
+        let (_, y) = row(2);
         let ground = argb(theme.style(Part::Launcher, States::NONE).background);
         let across = left.unsigned_abs()..left.unsigned_abs() + width;
         let inked = across
@@ -2344,5 +2503,85 @@ mod tests {
                 .into_iter()
                 .all(|x| canvas.at(x, y.unsigned_abs()) != lit(&theme))
         );
+    }
+
+    #[test]
+    fn nothing_typed_shows_nothing_and_nothing_found_one_line_with_no_gap() {
+        let theme = Theme::default();
+        let layout = Layout::new(&theme);
+        let mut picker = several();
+        assert_eq!(picker.lines(), 0);
+        assert_eq!(picker.size(&theme).1, layout.bare, "the field alone");
+        assert_eq!(picker.key(Key::Enter), Outcome::Stay);
+        typed(&mut picker, "zzz");
+        let under = layout.bare + layout.under;
+        assert_eq!(picker.size(&theme).1, under + layout.pitch);
+        // Headings are as tall as theirs, not a row's.
+        let mut picker = several();
+        typed(&mut picker, "fi");
+        let tall = 2 * layout.heading + layout.top + layout.pitch;
+        assert_eq!(picker.size(&theme).1, under + tall);
+    }
+
+    #[test]
+    fn the_top_hit_is_outlined_and_the_headings_written_dim() {
+        let theme = Theme::default();
+        let mut picker = several();
+        typed(&mut picker, "fi");
+        let canvas = painted(&picker);
+        let layout = Layout::new(&theme);
+        // The top hit's outline, along its top, in its border's colour.
+        let (left, top, width, _) = picker.line_area(&layout, 1);
+        let style = theme.style(Part::LauncherTop, States::NONE);
+        let (left, top) = (left.unsigned_abs(), top.unsigned_abs());
+        let glass = canvas.at(left + 1, top.saturating_sub(4));
+        let edge = (left + 20..left + width - 20).map(|x| canvas.at(x, top));
+        assert!(
+            edge.into_iter().all(|pixel| pixel != glass),
+            "{:?}",
+            style.border.top
+        );
+        // A heading's words have ink, in its colour, not lit.
+        let (left, top, width, tall) = picker.line_area(&layout, 0);
+        let (left, top) = (left.unsigned_abs(), top.unsigned_abs());
+        let points = (left..left + width).flat_map(|x| (top..top + tall).map(move |y| (x, y)));
+        let ground = canvas.at(left + width - 2, top + 1);
+        let inked = points.filter(|(x, y)| canvas.at(*x, *y) != ground).count();
+        assert!(inked > 10, "the heading's words");
+    }
+
+    #[test]
+    fn the_empty_launcher_has_as_much_room_under_the_field_as_over_it() {
+        let theme = Theme::default();
+        let launcher = theme.style(Part::Launcher, States::NONE);
+        let input = theme.style(Part::LauncherInput, States::NONE);
+        let edge = launcher.inset().top;
+        assert_eq!(edge, launcher.inset().bottom);
+        let empty = several();
+        assert_eq!(empty.size(&theme).1, 2 * edge + input.height);
+        let (_, top, _, tall) = Layout::new(&theme).input;
+        assert_eq!(top.unsigned_abs(), edge);
+        assert_eq!(empty.size(&theme).1 - (top.unsigned_abs() + tall), edge);
+        // With something under it, the field's margin parts the two.
+        let mut found = several();
+        typed(&mut found, "zzz");
+        let under = input.margin.bottom + Layout::new(&theme).pitch;
+        assert_eq!(found.size(&theme).1, 2 * edge + input.height + under);
+    }
+
+    #[test]
+    fn every_mode_puts_the_field_at_the_same_height_on_the_screen() {
+        let theme = Theme::default();
+        for screen in [1080, 720, 480, 100] {
+            let mut picker = several();
+            picker.fit(&theme, screen);
+            let generic = picker.top(&theme, screen);
+            picker.set_view(View::Mode(Mode::Programs));
+            picker.fit(&theme, screen);
+            assert_eq!(picker.top(&theme, screen), generic, "on {screen}");
+            // And the grid, as tall as it can be, still on the screen.
+            let (_, _, _, tallest) = picker.layout(&theme).whole(picker.room);
+            assert!(generic + tallest <= screen.max(tallest), "on {screen}");
+        }
     }
 }

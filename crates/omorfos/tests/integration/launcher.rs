@@ -29,6 +29,7 @@ const LEFT: u32 = 0x110;
 const F: Keycode = Keycode::new(41);
 const I: Keycode = Keycode::new(31);
 const L: Keycode = Keycode::new(46);
+const E: Keycode = Keycode::new(26);
 const BACKSPACE: Keycode = Keycode::new(22);
 const DOWN: Keycode = Keycode::new(116);
 const UP: Keycode = Keycode::new(111);
@@ -149,13 +150,32 @@ fn corner() -> (i32, i32) {
     ((WIDTH - width.cast_signed()) / 2, top.cast_signed())
 }
 
-/// A point on the screen towards the right-hand end of a row of the list,
-/// clear of the program's name.
+/// A point on the screen towards the right-hand end of a line of what is
+/// found, clear of the program's name, with several found in the mode
+/// that finds everything: the heading over the top hit, the top hit, the
+/// heading over the rest, and the rest.
 fn row(place: i32) -> (i32, i32) {
+    line_in_sight(0, place)
+}
+
+/// The same for line `line` with the list scrolled to line `first`.
+fn line_in_sight(first: i32, line: i32) -> (i32, i32) {
     let (left, top) = corner();
     // A border and padding, the text field and the room under it.
     let list = top + 9 + 56 + 8;
-    (left + 400, list + place * 48 + 24)
+    let height = |line: i32| match line {
+        0 | 2 => 24,
+        _ => 48,
+    };
+    let above: i32 = (first..line).map(height).sum();
+    (left + 400, list + above + height(line) / 2)
+}
+
+/// The middle of the launcher's field, across the screen's middle: on the
+/// launcher whenever it is up, as short as it is with nothing typed.
+fn field_middle() -> (i32, i32) {
+    let (_, top) = corner();
+    (WIDTH / 2, top + 13 + 28)
 }
 
 #[test]
@@ -174,11 +194,10 @@ fn the_launcher_opens_in_the_middle_of_the_screen_over_everything() {
         shaded(beside, RED),
         "the window is still there: {beside:#x}"
     );
-    assert_eq!(picture.at(left + 4, top + 150), surface());
-    // While what is typed has the keyboard, no program is lit.
-    let (x, first) = row(0);
-    assert_eq!(picture.at(x, first), surface());
-    assert_eq!(picture.at(x, row(1).1), surface());
+    // Nothing typed, the field alone, and the window under the rest.
+    assert_eq!(picture.at(left + 4, top + 20), surface());
+    let under = picture.at(left + 4, top + 150);
+    assert!(shaded(under, RED), "nothing under the field: {under:#x}");
 }
 
 #[test]
@@ -197,9 +216,9 @@ fn what_is_typed_reaches_the_launcher_and_enter_starts_the_program() {
     let picture = session.draw();
     let x = row(0).0;
     // Under the heading over all but the first.
-    assert_eq!(picture.at(x, row(2).1), lit());
+    assert_eq!(picture.at(x, row(3).1), lit());
     // Lens does not match, and the launcher ends above where it would be.
-    let below = picture.at(x, row(3).1);
+    let below = picture.at(x, row(4).1);
     assert!(![surface(), lit()].contains(&below), "{below:#x}");
 
     press(&mut session, key::RETURN);
@@ -209,7 +228,8 @@ fn what_is_typed_reaches_the_launcher_and_enter_starts_the_program() {
 
     // Gone, it leaves the screen.
     drop(launcher);
-    session.eventually(|session| session.draw().at(WIDTH / 2, HEIGHT / 2) == BACKGROUND);
+    session
+        .eventually(|session| session.draw().at(field_middle().0, field_middle().1) == BACKGROUND);
 }
 
 #[test]
@@ -236,8 +256,9 @@ fn a_sum_typed_is_answered_and_enter_puts_the_answer_on_the_clipboard() {
     // the launcher ends under it. Enter copies it, lit or not.
     let picture = session.draw();
     let x = row(0).0;
-    assert_eq!(picture.at(x, row(0).1), surface());
-    let below = picture.at(x, row(1).1);
+    assert_eq!(picture.at(x, row(1).1), surface());
+    // Past its padding too.
+    let below = picture.at(x, row(3).1);
     assert!(![surface(), lit()].contains(&below), "{below:#x}");
 
     press(&mut session, key::RETURN);
@@ -270,7 +291,8 @@ fn the_arrows_and_backspace_work_as_they_do_in_any_list() {
     press(&mut session, L);
     settle(&mut session, &mut launcher);
     press(&mut session, BACKSPACE);
-    // The first Down lights the first.
+    // All three have an e; the first Down lights the first.
+    press(&mut session, E);
     press(&mut session, DOWN);
     press(&mut session, DOWN);
     press(&mut session, DOWN);
@@ -278,12 +300,14 @@ fn the_arrows_and_backspace_work_as_they_do_in_any_list() {
     settle(&mut session, &mut launcher);
     let picture = session.draw();
     let x = row(0).0;
+    // Three lines in sight, scrolled to the heading over the rest as
+    // Down went to the last.
     assert_eq!(
-        picture.at(x, row(1).1),
+        picture.at(x, line_in_sight(2, 3).1),
         lit(),
         "all three, the second chosen"
     );
-    assert_eq!(picture.at(x, row(2).1), surface());
+    assert_eq!(picture.at(x, line_in_sight(2, 4).1), surface());
 
     press(&mut session, key::RETURN);
     settle(&mut session, &mut launcher);
@@ -308,14 +332,21 @@ fn chosen(session: &mut Session) -> Option<i32> {
     })
 }
 
+/// Whether line `line` is lit, with the list scrolled to line `first`.
+fn lit_at(session: &mut Session, first: i32, line: i32) -> bool {
+    let (x, y) = line_in_sight(first, line);
+    session.draw().at(x, y) == lit()
+}
+
 fn hold(session: &mut Session, code: Keycode, pressed: bool) {
     session
         .compositor_mut()
         .input(Input::Key { code, pressed }, 0);
 }
 
-/// Which row Down lights from what is typed, if any matches: the first;
-/// and the keyboard given back to what is typed, with Up.
+/// Which line Down lights from what is typed, if any matches: the top
+/// hit's, under its heading; and the keyboard given back to what is
+/// typed, with Up.
 fn matched(session: &mut Session, launcher: &mut Launcher) -> Option<i32> {
     press(session, DOWN);
     settle(session, launcher);
@@ -352,27 +383,27 @@ fn what_is_typed_is_edited_as_in_any_text_field() {
     settle(&mut session, &mut launcher);
     assert_eq!(
         matched(&mut session, &mut launcher),
-        Some(0),
-        "nothing typed, all"
+        None,
+        "nothing typed, nothing"
     );
     press(&mut session, F);
     press(&mut session, L);
     press(&mut session, key::LEFT);
     press(&mut session, I);
     settle(&mut session, &mut launcher);
-    assert_eq!(matched(&mut session, &mut launcher), Some(0), "Files");
+    assert_eq!(matched(&mut session, &mut launcher), Some(1), "Files");
     // Undone, and done again.
     chord(&mut session, &[key::SUPER], Z);
     settle(&mut session, &mut launcher);
     assert_eq!(matched(&mut session, &mut launcher), None, "fl");
     chord(&mut session, &[key::SUPER, key::SHIFT], Z);
     settle(&mut session, &mut launcher);
-    assert_eq!(matched(&mut session, &mut launcher), Some(0), "fil");
+    assert_eq!(matched(&mut session, &mut launcher), Some(1), "fil");
     // The first character taken out from in front: "il", in Files still.
     press(&mut session, key::HOME);
     press(&mut session, DELETE);
     settle(&mut session, &mut launcher);
-    assert_eq!(matched(&mut session, &mut launcher), Some(0));
+    assert_eq!(matched(&mut session, &mut launcher), Some(1));
     // All of it chosen and copied, the launcher staying; then cut.
     chord(&mut session, &[key::SUPER], key::A);
     chord(&mut session, &[key::SUPER], key::C);
@@ -514,8 +545,9 @@ fn nothing_is_pasted_where_nothing_is_copied_or_nothing_that_is_text() {
         let mut launcher = launcher(&mut session);
         settle(&mut session, &mut launcher);
         paste_and_enter(&mut session, &mut launcher, Some(&mut editor));
-        // Nothing typed: the first of them all, as ever.
-        session.eventually(|session| mark(session, "files") == "x");
+        // Nothing typed, nothing is found, and Enter starts nothing.
+        session.advance(Duration::from_millis(50));
+        assert_eq!(mark(&session, "files"), "", "{copied:?}");
         assert_eq!(mark(&session, "lens"), "", "{copied:?}");
     }
 }
@@ -583,10 +615,14 @@ fn what_is_dragged_over_the_launcher_is_not_taken_and_goes_back() {
     editor.drag(&window.surface, None, "dragged");
     session.roundtrip(&mut editor);
 
-    // The launcher opens, and what is dragged comes over it.
+    // The launcher opens, and what is dragged comes over its field, all
+    // there is of it with nothing typed.
     let mut launcher = launcher(&mut session);
     settle(&mut session, &mut launcher);
-    session.compositor_mut().input(at(320.0, 240.0), 0);
+    let (x, y) = field_middle();
+    session
+        .compositor_mut()
+        .input(at(f64::from(x), f64::from(y)), 0);
     assert!(!settle(&mut session, &mut launcher));
     session.compositor_mut().input(left(false), 0);
     assert!(!settle(&mut session, &mut launcher), "it stays open");
@@ -607,7 +643,7 @@ fn scroll(session: &mut Session, vertical: f64) {
 #[test]
 fn the_wheel_and_the_touchpad_scroll_the_list_and_the_pointer_chooses_in_it() {
     let mut session = Session::new();
-    // Six programs, where the screen has room for three at once.
+    // Six programs, where the screen has room for three lines at once.
     let six = ["Alpha", "Bravo", "Charlie", "Delta", "Echo", "Foxtrot"];
     let mut launcher = launcher_of(&mut session, &six);
     settle(&mut session, &mut launcher);
@@ -619,49 +655,53 @@ fn the_wheel_and_the_touchpad_scroll_the_list_and_the_pointer_chooses_in_it() {
     // typed has the keyboard: nothing is lit.
     let (left, top) = corner();
     point(&mut session, (left + 40, top + 20));
+    // Four have an a: the heading, Alpha the top hit, the heading, Bravo,
+    // Charlie and Delta.
+    press(&mut session, key::A);
     settle(&mut session, &mut launcher);
     assert_eq!(chosen(&mut session), None);
 
-    // A notch of the wheel scrolls the list a row, and lights nothing; in
-    // sight, the heading over all but Alpha, Bravo and Charlie.
+    // A notch of the wheel scrolls the list a line, and lights nothing; in
+    // sight, Alpha, the heading and Bravo.
     scroll(&mut session, 15.0);
     settle(&mut session, &mut launcher);
     assert_eq!(chosen(&mut session), None);
-    // The pointer chooses Charlie, the third in sight, and the list stays.
-    point(&mut session, row(2));
+    // The pointer chooses Bravo, the third in sight, and the list stays.
+    point(&mut session, line_in_sight(1, 3));
     settle(&mut session, &mut launcher);
-    assert_eq!(chosen(&mut session), Some(2));
+    assert!(lit_at(&mut session, 1, 3));
     // A touchpad goes by less at a time, and gets there as it adds up;
-    // Charlie stays chosen while it is in sight.
+    // Bravo stays chosen while it is in sight.
     for _ in 0..2 {
         scroll(&mut session, 7.0);
         settle(&mut session, &mut launcher);
-        assert_eq!(chosen(&mut session), Some(2));
+        assert!(lit_at(&mut session, 1, 3));
     }
     scroll(&mut session, 7.0);
     settle(&mut session, &mut launcher);
-    assert_eq!(chosen(&mut session), Some(1), "Charlie, a row higher");
-    // Moving the pointer on chooses what is under it, Delta, and does not
-    // scroll the list back.
-    let (x, y) = row(2);
+    assert!(lit_at(&mut session, 2, 3), "Bravo, a line higher");
+    // Moving the pointer on chooses what is under it, Charlie, and does
+    // not scroll the list back.
+    let (x, y) = line_in_sight(2, 4);
     point(&mut session, (x - 10, y));
     settle(&mut session, &mut launcher);
-    assert_eq!(chosen(&mut session), Some(2));
+    assert!(lit_at(&mut session, 2, 4));
     // Back up by as much, and no further than the first, however far; the
-    // chosen program out of sight gives way to the nearest in sight.
+    // chosen program out of sight gives way to the nearest in sight, past
+    // a heading.
     scroll(&mut session, -21.0);
     settle(&mut session, &mut launcher);
-    assert_eq!(chosen(&mut session), Some(2), "Charlie");
+    assert!(lit_at(&mut session, 1, 3), "Bravo");
     scroll(&mut session, -1.0e9);
     settle(&mut session, &mut launcher);
-    assert_eq!(chosen(&mut session), Some(2), "Bravo");
+    assert!(lit_at(&mut session, 0, 1), "Alpha");
     // Nor is what was beyond the first kept, to be scrolled back first.
     scroll(&mut session, 15.0);
     settle(&mut session, &mut launcher);
-    assert_eq!(chosen(&mut session), Some(1), "Bravo, a row higher");
+    assert!(lit_at(&mut session, 1, 1), "Alpha, a line higher");
     press(&mut session, key::RETURN);
     settle(&mut session, &mut launcher);
-    session.eventually(|session| mark(session, "bravo") == "x");
+    session.eventually(|session| mark(session, "alpha") == "x");
 }
 
 #[test]
@@ -671,6 +711,9 @@ fn scrolling_beside_the_launcher_scrolls_what_is_behind_it_and_not_its_list() {
     session.open(&mut client, "app", (WIDTH, HEIGHT), RED);
     let six = ["Alpha", "Bravo", "Charlie", "Delta", "Echo", "Foxtrot"];
     let mut launcher = launcher_of(&mut session, &six);
+    settle(&mut session, &mut launcher);
+    // Four found, Alpha the top hit.
+    press(&mut session, key::A);
     settle(&mut session, &mut launcher);
     // Beside it, where the window underneath shows.
     let beside = Input::Motion { x: 5.0, y: 5.0 };
@@ -703,29 +746,31 @@ fn a_key_held_down_is_taken_again_and_again_until_it_is_let_go() {
     let mut launcher = launcher(&mut session);
     settle(&mut session, &mut launcher);
     let ms = Duration::from_millis;
+    // All three found, Files the top hit, under its heading; three lines
+    // in sight on this screen.
+    press(&mut session, E);
 
     // Down from the field lights the first.
     hold(&mut session, DOWN, true);
     settle_at(&mut session, &mut launcher, ms(0));
-    assert_eq!(chosen(&mut session), Some(0), "once, when it goes down");
+    assert!(lit_at(&mut session, 0, 1), "once, when it goes down");
     assert_eq!(launcher.deadline(), Some(ms(400)), "then after a pause");
     settle_at(&mut session, &mut launcher, ms(399));
-    assert_eq!(chosen(&mut session), Some(0));
+    assert!(lit_at(&mut session, 0, 1));
     settle_at(&mut session, &mut launcher, ms(400));
-    // The second, under the heading over all but the first.
-    assert_eq!(chosen(&mut session), Some(2), "and then steadily");
+    // Firefox, past the heading, the list scrolled a line to show it.
+    assert!(lit_at(&mut session, 1, 3), "and then steadily");
 
     // Down is taken once more as it is let go, before the launcher hears
-    // that it was: the third, and Up back to the second.
+    // that it was: Lens, the list a line further, and Up back to Firefox.
     hold(&mut session, DOWN, false);
     hold(&mut session, UP, true);
-    // The list scrolled a line to show the third, the second is a line
-    // higher on the screen.
     settle_at(&mut session, &mut launcher, ms(500));
-    assert_eq!(chosen(&mut session), Some(1));
-    // Thirty times a second: one more by a little after the pause.
+    assert!(lit_at(&mut session, 2, 3));
+    // Thirty times a second: one more by a little after the pause, back to
+    // the top hit with its heading over it.
     settle_at(&mut session, &mut launcher, ms(500 + 400 + 5));
-    assert_eq!(chosen(&mut session), Some(0));
+    assert!(lit_at(&mut session, 0, 1));
     // Another key coming up does not stop the one that is held.
     hold(&mut session, key::SHIFT, true);
     hold(&mut session, key::SHIFT, false);
@@ -760,50 +805,61 @@ fn keys_do_not_repeat_when_the_keyboard_is_set_not_to() {
     let mut session = Session::with_config(&[("config.yaml", settings)]);
     let mut launcher = launcher(&mut session);
     settle(&mut session, &mut launcher);
+    press(&mut session, E);
     hold(&mut session, DOWN, true);
     settle_at(&mut session, &mut launcher, Duration::ZERO);
-    assert_eq!(chosen(&mut session), Some(0));
+    assert!(lit_at(&mut session, 0, 1));
     assert_eq!(launcher.deadline(), None);
     settle_at(&mut session, &mut launcher, Duration::from_secs(5));
-    assert_eq!(chosen(&mut session), Some(0));
+    assert!(lit_at(&mut session, 0, 1));
 }
 
 #[test]
 fn a_row_gets_to_the_colour_of_being_chosen_over_the_time_the_theme_gives() {
-    let theme = "launcher-item { background: #ff0000; transition: 100ms linear; }\n\
-                 launcher-item:active { background: #0000ff; }\n";
+    let theme = "launcher-item, launcher-top { background: #ff0000; transition: 100ms linear; }\n\
+                 launcher-item:active, launcher-top:active { background: #0000ff; }\n";
     let mut session = Session::with_config(&[("theme.css", theme)]);
     let mut launcher = launcher(&mut session);
     let at = Duration::from_millis;
     let (red, blue) = (0xffff_0000, 0xff00_00ff);
-    let rows = |session: &mut Session| {
+    // Files the top hit and Firefox under the heading, the list scrolled
+    // to `first`.
+    let rows = |session: &mut Session, first: i32| {
         let picture = session.draw();
-        let color = |place| picture.at(row(place).0, row(place).1);
-        // The second under the heading over all but the first.
-        (color(0), color(2))
+        let color = |line| {
+            let (x, y) = line_in_sight(first, line);
+            picture.at(x, y)
+        };
+        (color(1), color(3))
     };
-    // Down lights the first, which the field had kept unlit, and then
-    // the second; each row on its way while the other comes.
+    // All three have an e. Down lights the first, which the field had
+    // kept unlit, and then the second; each on its way while the other
+    // comes.
+    settle_at(&mut session, &mut launcher, at(0));
+    press(&mut session, E);
     settle_at(&mut session, &mut launcher, at(1000));
-    assert_eq!(rows(&mut session), (red, red), "as it opens, none lit");
+    assert_eq!(rows(&mut session, 0).0, red, "as it opens, none lit");
     assert_eq!(launcher.deadline(), None, "and nothing to wait for");
     press(&mut session, DOWN);
     settle_at(&mut session, &mut launcher, at(1000));
     settle_at(&mut session, &mut launcher, at(1100));
-    assert_eq!(rows(&mut session), (blue, red), "the first lit");
+    assert_eq!(rows(&mut session, 0).0, blue, "the first lit");
 
+    // Firefox, a line further, the list scrolled a line to show it: it
+    // comes into sight lit, as it was not drawn before to change from,
+    // and Files goes back over the time the theme gives.
     press(&mut session, DOWN);
     settle_at(&mut session, &mut launcher, at(2000));
-    assert_eq!(rows(&mut session), (blue, red), "setting out");
+    assert_eq!(rows(&mut session, 1), (blue, blue), "setting out");
     assert_eq!(launcher.deadline(), Some(at(2016)));
 
     settle_at(&mut session, &mut launcher, at(2050));
-    let (first, second) = rows(&mut session);
+    let (first, second) = rows(&mut session, 1);
     assert!(half_way(first), "{first:#x}");
-    assert!(half_way(second), "{second:#x}");
+    assert_eq!(second, blue);
 
     settle_at(&mut session, &mut launcher, at(2100));
-    assert_eq!(rows(&mut session), (red, blue), "arrived");
+    assert_eq!(rows(&mut session, 1), (red, blue), "arrived");
     assert_eq!(launcher.deadline(), None, "and at rest");
 }
 
@@ -827,8 +883,10 @@ fn the_pointer_chooses_a_program_and_a_click_starts_it() {
     let mut session = Session::new();
     let mut launcher = launcher(&mut session);
     settle(&mut session, &mut launcher);
-    // Firefox, under the heading over all but Files.
-    let (x, y) = row(2);
+    // All three have an e: Files the top hit, under its heading.
+    press(&mut session, E);
+    settle(&mut session, &mut launcher);
+    let (x, y) = row(1);
     let motion = |session: &mut Session, x: i32, y: i32| {
         let (x, y) = (f64::from(x), f64::from(y));
         session.compositor_mut().input(Input::Motion { x, y }, 0);
@@ -848,7 +906,7 @@ fn the_pointer_chooses_a_program_and_a_click_starts_it() {
         session.compositor_mut().input(button, 0);
     }
     assert!(settle(&mut session, &mut launcher));
-    session.eventually(|session| mark(session, "firefox") == "x");
+    session.eventually(|session| mark(session, "files") == "x");
 }
 
 fn click(session: &mut Session, x: i32, y: i32) {
@@ -927,7 +985,7 @@ fn the_rest_of_the_screen_can_be_dimmed_while_the_launcher_is_open() {
     assert_eq!(picture.at(WIDTH - 5, HEIGHT - 5), 0xff00_00ff);
     let (left, top) = corner();
     assert_eq!(
-        picture.at(left + 4, top + 150),
+        picture.at(left + 4, top + 20),
         surface(),
         "the box is over it"
     );
@@ -999,21 +1057,24 @@ fn the_launcher_shows_icons_and_descriptions_when_the_configuration_asks() {
     .unwrap();
 
     settle(&mut session, &mut launcher);
+    // Found, the top hit: outlined, its icon inside its border.
+    press(&mut session, L);
+    settle(&mut session, &mut launcher);
 
     let picture = session.draw();
-    let y = row(0).1;
+    let y = row(1).1;
     let (left, _) = corner();
     let across = left..left + 480;
     let green = across.clone().filter(|x| picture.at(*x, y) == 0xff00_ff00);
     assert_eq!(
         green.count(),
-        36,
+        34,
         "the icon, as tall as the row's two lines"
     );
     // Something is written in the bottom half of the row, under the name,
     // as only what the program says of itself is.
     let under = across.flat_map(|x| (y + 4..y + 18).map(move |y| (x, y)));
-    let written = under.filter(|(x, y)| picture.at(*x, *y) != lit());
+    let written = under.filter(|(x, y)| picture.at(*x, *y) != surface());
     assert!(written.count() > 20, "what it says of itself");
 }
 
@@ -1045,9 +1106,17 @@ fn the_launcher_is_done_with_when_its_screen_goes() {
     session.compositor_mut().input(Input::Motion { x, y }, 0);
     let mut launcher = launcher(&mut session);
     assert!(!settle(&mut session, &mut launcher));
-    // The launcher, whichever row the pointer has chosen there.
-    let there = session.draw_on(1).at(400, 300);
-    assert!([surface(), lit()].contains(&there), "{there:#x}");
+    // The launcher's field, where it stands on that screen.
+    let theme = Theme::default();
+    let mut placed = Picker::new(
+        Vec::new(),
+        omorfos_config::Launcher::default(),
+        Numbers::Point,
+    );
+    placed.fit(&theme, 600);
+    let field = placed.top(&theme, 600).cast_signed() + 13 + 28;
+    let drawn = session.draw_on(1).at(400, field);
+    assert!([surface(), lit()].contains(&drawn), "{drawn:#x}");
 
     session.compositor_mut().remove_output(&other);
 
@@ -1185,7 +1254,8 @@ fn a_launcher_running_by_itself_gives_up_when_the_session_ends() {
         };
         omorfos_launcher::start(&variable, false).map_err(|failure| failure.to_string())
     });
-    session.eventually(|session| session.draw().at(WIDTH / 2, HEIGHT / 2) == surface());
+    session
+        .eventually(|session| session.draw().at(field_middle().0, field_middle().1) == surface());
 
     drop(session);
 
@@ -1223,7 +1293,7 @@ fn a_launcher_started_after_the_theme_went_wrong_is_drawn_as_the_session_kept_it
         };
         omorfos_launcher::start(&variable, false).map_err(|failure| failure.to_string())
     });
-    session.eventually(|session| session.draw().at(WIDTH / 2, HEIGHT / 2) == RED);
+    session.eventually(|session| session.draw().at(field_middle().0, field_middle().1) == RED);
 
     drop(session);
 
@@ -1269,11 +1339,13 @@ fn the_launcher_runs_by_itself_offering_what_is_installed() {
         omorfos_launcher::start(&variable, false).map_err(|failure| failure.to_string())
     });
 
-    let (x, y) = row(0);
+    let (x, y) = field_middle();
     session.eventually(|session| {
         assert!(!launcher.is_finished(), "the launcher stopped early");
         session.draw().at(x, y) == surface()
     });
+    // Its name in Polish, as the session asks.
+    press(&mut session, Z);
     // A key held for a while is taken again by the launcher's own clock,
     // with nothing prodding it. There is one program, lit at the first
     // Down, so it stays chosen.

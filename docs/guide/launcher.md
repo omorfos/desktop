@@ -2,9 +2,11 @@
 
 `Super+Space`, or **Run…** in the root menu, opens the launcher: a box on
 the screen the pointer is on. Type part of a program's name and the list
-narrows to the programs that have it, those that begin with it first: the
-best of all alone at the top, the one Enter starts, and the rest under a
-heading, Programs. A sum's answer, where what is typed is one, is the best
+finds the programs that have it, those that begin with it first: the
+best of all alone at the top under Top hit, outlined as the one Enter
+starts, and the rest under a heading, Programs. With nothing typed,
+nothing is shown under the field; with nothing found, one dim line says
+so. A sum's answer, where what is typed is one, is the best
 of all, and the programs follow it. Up
 and Down choose among them, the list following the one chosen. While you
 type, no program is lit, and Enter starts the first that matches. Down,
