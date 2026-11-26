@@ -436,9 +436,17 @@ launcher-mode:active {
   background: var(--accent);
   color: var(--on-accent);
 }
-/* The key that goes to a mode, after its name: dim, as a menu's keys are.
- * `display: none` leaves it out. */
-launcher-mode-key { color: var(--text-dim); }
+/* The key that goes to a mode, after its name, in a faint chip of its
+ * own: dim, and a size smaller, as a menu's keys are. `display: none`
+ * leaves it out. */
+launcher-mode-key {
+  padding: 2px 5px;
+  color: var(--text-dim);
+  font-size: 9pt;
+  background: var(--glass-rim);
+  border: var(--edge);
+  border-radius: 6px;
+}
 launcher-mode-key:active { color: var(--on-accent); }
 /* The rest of the screen while the launcher is open. A click on it closes
  * the launcher. Give it a see-through colour to dim what is behind. */

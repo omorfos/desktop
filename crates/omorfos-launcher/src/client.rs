@@ -460,13 +460,17 @@ struct Face {
 
 impl Shell {
     /// The same, its field reading copying, pasting and the rest from Ctrl
-    /// if the keys are the `ordinary` way's, or else from Super (ADR 101).
+    /// if the keys are the `ordinary` way's, or else from Super (ADR 101),
+    /// and the row of modes showing that key for each.
     fn reading_as(mut self, ordinary: bool) -> Self {
         self.typing.read_as(ordinary);
+        self.picker.hold_for_modes(ordinary);
         self
     }
 
-    fn new(theme: Theme, commands: Ipc, picker: Picker, icons: Icons) -> Self {
+    fn new(theme: Theme, commands: Ipc, mut picker: Picker, icons: Icons) -> Self {
+        let words = Words::of(&LAUNCHER);
+        picker.speak(&words);
         Self {
             compositor: None,
             shm: None,
@@ -485,7 +489,7 @@ impl Shell {
             icons,
             theme,
             text: Text::new(),
-            words: Words::of(&LAUNCHER),
+            words,
             typing: Typing::default(),
             now: Duration::ZERO,
             repeating: None,

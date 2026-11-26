@@ -29,6 +29,15 @@ const GAP: u32 = 10;
 const BESIDE: u32 = 7;
 const APART: u32 = 6;
 
+/// How large the sign of the key held for a mode is drawn after its name,
+/// and the room between it and the digit, which stands for the `+`: as a
+/// menu of the compositor's shows its keys.
+const KEYCAP: u32 = 12;
+const KEYS_BETWEEN: u32 = 4;
+
+/// The room between a mode's name and the chip its key is shown in.
+const CHIP_APART: u32 = 8;
+
 /// The narrowest the launcher is made, whatever the theme says.
 const NARROWEST: u32 = 160;
 
@@ -142,6 +151,13 @@ pub struct Picker {
     /// How far what the mode shows has faded in, in thousandths, while it
     /// comes as the mode changes.
     faded: Option<u16>,
+    /// The modes' names in the row of modes: everything's and the
+    /// programs', in the user's language once it is told it.
+    names: [String; 2],
+    /// The key held with a digit to go to a mode, shown by its sign after
+    /// each mode's name: Super, or Ctrl where the keys are the ordinary
+    /// way's.
+    held: Sign,
 }
 
 /// Where the launcher's boxes are, under a theme.
@@ -357,7 +373,10 @@ impl Picker {
             slid: None,
             turned: None,
             faded: None,
+            names: [String::new(), String::new()],
+            held: Sign::Super,
         };
+        picker.speak(&Words::in_languages(&omorfos_i18n::LAUNCHER, &[]));
         picker.search();
         picker
     }
@@ -418,6 +437,27 @@ impl Picker {
     /// none.
     pub const fn slide_lit(&mut self, place: Option<(i32, i32)>) {
         self.slid = place;
+    }
+
+    /// Names the modes in the row of modes in the language of `words`.
+    pub fn speak(&mut self, words: &Words) {
+        let name = |view| words.say(says_of(view), &[]);
+        self.names = [name(View::Generic), name(View::Mode(Mode::Programs))];
+    }
+
+    /// Shows the key held with a digit for a mode as Ctrl's sign if the
+    /// keys are the `ordinary` way's, and Super's otherwise.
+    pub const fn hold_for_modes(&mut self, ordinary: bool) {
+        self.held = if ordinary { Sign::Ctrl } else { Sign::Super };
+    }
+
+    /// The name of `view` in the row of modes.
+    fn name_of(&self, view: View) -> &str {
+        let [all, programs] = &self.names;
+        match view {
+            View::Mode(Mode::Programs) => programs,
+            View::Generic | View::Mode(_) => all,
+        }
     }
 
     /// Draws the field's sign turning from the sign of `from`'s view into
@@ -540,12 +580,16 @@ impl Picker {
         let mut across = left;
         let mut areas = Vec::new();
         for (number, view) in self.views().enumerate() {
-            let name = text.measure(says_of(view), font);
-            let digit = (number > 0).then(|| text.measure(&number.to_string(), font));
-            let digit = digit.map_or(0, |digit| BESIDE.saturating_add(digit));
+            let name = text.measure(self.name_of(view), font);
             let wide = style.inset().across().saturating_add(side);
             let wide = wide.saturating_add(BESIDE).saturating_add(name);
-            let wide = wide.saturating_add(digit);
+            // And its key, unless the theme leaves it out.
+            let key = theme.style(Part::LauncherModeKey, States::NONE);
+            let key_font = theme.font(Part::LauncherModeKey, States::NONE);
+            let digit = text.measure(&number.to_string(), key_font);
+            let chip = key.inset().across().saturating_add(KEYCAP + KEYS_BETWEEN);
+            let keys = CHIP_APART.saturating_add(chip).saturating_add(digit);
+            let wide = wide.saturating_add(if key.displayed { keys } else { 0 });
             areas.push((view, (across, top, wide, tall)));
             across = across.saturating_add_unsigned(wide.saturating_add(APART));
         }
@@ -1070,7 +1114,7 @@ impl Picker {
             let nothing = words.say("nothing-matches", &typed);
             text.draw(&mut *canvas, &nothing, area, said.color, font);
         }
-        self.paint_modes(&mut *canvas, (text, words, icons, scale), theme);
+        self.paint_modes(&mut *canvas, (text, icons, scale), theme);
     }
 
     /// Draws the row of modes, if it is shown: a hairline over it, and
@@ -1079,7 +1123,7 @@ impl Picker {
     fn paint_modes(
         &self,
         canvas: &mut Canvas,
-        (text, words, icons, scale): (&mut Text, &Words, &mut Icons, Scale),
+        (text, icons, scale): (&mut Text, &mut Icons, Scale),
         theme: &Theme,
     ) {
         let buttons = self.mode_areas(theme, text);
@@ -1098,7 +1142,6 @@ impl Picker {
             );
             canvas.draw_box(inset(row, modes.margin), &modes);
         }
-        let dim = theme.style(Part::LauncherDescription, States::NONE).color;
         for (number, (view, area)) in buttons.into_iter().enumerate() {
             let shown = view == self.view;
             let states = States::NONE
@@ -1113,26 +1156,42 @@ impl Picker {
             let drawn = icons.sign(sign_of(view), pixels, style.color).into_iter();
             drawn.for_each(|image| canvas.draw_image((x, down, side, side), image));
             let after = side.saturating_add(BESIDE);
-            let name = words.say(says_of(view), &[]);
+            let name = self.name_of(view);
             let at = (
                 x.saturating_add_unsigned(after),
                 y,
                 wide.saturating_sub(after),
                 tall,
             );
-            text.draw(canvas, &name, at, style.color, font);
-            if number > 0 {
-                let beyond = after.saturating_add(text.measure(&name, font));
-                let beyond = beyond.saturating_add(BESIDE);
-                let at = (
-                    x.saturating_add_unsigned(beyond),
-                    y,
-                    wide.saturating_sub(beyond),
-                    tall,
-                );
-                let color = if shown { style.color } else { dim };
-                text.draw(canvas, &number.to_string(), at, color, font);
+            text.draw(canvas, name, at, style.color, font);
+            // The key that goes to it in a chip, dim but on the mode shown:
+            // the sign of the key held, and the digit; unless the theme
+            // leaves it out.
+            let key_states = States::NONE.when(State::Active, shown);
+            let key = theme.style(Part::LauncherModeKey, key_states);
+            if !key.displayed {
+                continue;
             }
+            let key_font = theme.font(Part::LauncherModeKey, key_states);
+            let digit = number.to_string();
+            let beyond = after.saturating_add(text.measure(name, font));
+            let inner = KEYCAP + KEYS_BETWEEN + text.measure(&digit, key_font);
+            let chip_wide = inner.saturating_add(key.inset().across());
+            let chip_tall = KEYCAP.saturating_add(key.inset().down());
+            let chip = (
+                x.saturating_add_unsigned(beyond.saturating_add(CHIP_APART)),
+                y.saturating_add_unsigned(tall.saturating_sub(chip_tall) / 2),
+                chip_wide,
+                chip_tall,
+            );
+            canvas.draw_box(chip, &key);
+            let (left, top, _, _) = inset(chip, key.inset());
+            let pixels = scale.pixels(KEYCAP.cast_signed()).unsigned_abs();
+            let drawn = icons.sign(self.held, pixels, key.color).into_iter();
+            drawn.for_each(|image| canvas.draw_image((left, top, KEYCAP, KEYCAP), image));
+            let after_sign = left.saturating_add_unsigned(KEYCAP + KEYS_BETWEEN);
+            let at = (after_sign, top, inner, KEYCAP);
+            text.draw(canvas, &digit, at, key.color, key_font);
         }
     }
 
@@ -3285,5 +3344,134 @@ mod tests {
                 still
             })
         );
+    }
+
+    #[test]
+    fn each_mode_s_button_is_as_wide_as_its_name_and_its_keys() {
+        let theme = Theme::default();
+        let text = &mut Text::new();
+        let mut picker = several();
+        let (x, y) = field_at(&theme);
+        picker.hover(Some((x, y)), &theme, text);
+        let style = theme.style(Part::LauncherMode, States::NONE);
+        let font = theme.font(Part::LauncherMode, States::NONE);
+        let side = picker.modes_row(&theme).1;
+        let around = style.inset().across() + side + BESIDE;
+        // Its name, and after it the key that goes to it in a chip: the
+        // sign of the key held, and the digit, as a menu shows its keys.
+        let chip = theme.style(Part::LauncherModeKey, States::NONE);
+        let chip_font = theme.font(Part::LauncherModeKey, States::NONE);
+        let keys = |digit: &str, text: &mut Text| {
+            CHIP_APART
+                + chip.inset().across()
+                + KEYCAP
+                + KEYS_BETWEEN
+                + text.measure(digit, chip_font)
+        };
+        let all = picker
+            .mode_area(View::Generic, &theme, text)
+            .unwrap_or_default();
+        assert_eq!(all.2, around + text.measure("All", font) + keys("0", text));
+        let programs = View::Mode(Mode::Programs);
+        let grid = picker.mode_area(programs, &theme, text).unwrap_or_default();
+        assert_eq!(
+            grid.2,
+            around + text.measure("Programs", font) + keys("1", text)
+        );
+        // In Polish, as wide as the Polish.
+        let polish = Words::in_languages(&omorfos_i18n::LAUNCHER, &["pl".to_owned()]);
+        picker.speak(&polish);
+        let said = polish.say("launcher-mode-all", &[]);
+        let all = picker
+            .mode_area(View::Generic, &theme, text)
+            .unwrap_or_default();
+        assert_eq!(all.2, around + text.measure(&said, font) + keys("0", text));
+    }
+
+    #[test]
+    fn a_mode_s_key_is_shown_by_the_sign_of_the_key_held_for_it() {
+        let theme = Theme::default();
+        let text = &mut Text::new();
+        let font = theme.font(Part::LauncherMode, States::NONE);
+        let style = theme.style(Part::LauncherMode, States::NONE);
+        // Where the key's sign is, after the name of every program's mode.
+        let sign = |picker: &Picker| {
+            let text = &mut Text::new();
+            let (left, top, _, tall) = picker
+                .mode_area(View::Mode(Mode::Programs), &theme, text)
+                .unwrap_or_default();
+            let side = picker.modes_row(&theme).1;
+            let name = text.measure("Programs", font);
+            let chip = theme.style(Part::LauncherModeKey, States::NONE);
+            let at = left.unsigned_abs() + style.inset().left + side + BESIDE + name;
+            let at = at + CHIP_APART + chip.inset().left;
+            let down = top.unsigned_abs() + (tall - KEYCAP) / 2;
+            let canvas = painted(picker);
+            (at..at + KEYCAP)
+                .flat_map(|x| (down..down + KEYCAP).map(move |y| (x, y)))
+                .map(|(x, y)| canvas.at(x, y))
+                .collect::<Vec<u32>>()
+        };
+        let mut picker = several();
+        let (x, y) = field_at(&theme);
+        picker.hover(Some((x, y)), &theme, text);
+        let glass = argb(theme.style(Part::Launcher, States::NONE).background);
+        let held = sign(&picker);
+        assert!(held.iter().any(|pixel| *pixel != glass), "a sign there");
+        // Ctrl's, where the keys are the ordinary way's.
+        picker.hold_for_modes(true);
+        assert_ne!(sign(&picker), held);
+        picker.hold_for_modes(false);
+        assert_eq!(sign(&picker), held);
+        // In a chip of its own: its edge, just past the name, half-way
+        // down, is drawn, where a theme with no chip has the glass.
+        let (left, top, _, tall) = picker
+            .mode_area(View::Mode(Mode::Programs), &theme, text)
+            .unwrap_or_default();
+        let side = picker.modes_row(&theme).1;
+        let name = text.measure("Programs", font);
+        let edge = left.unsigned_abs() + style.inset().left + side + BESIDE + name + CHIP_APART;
+        let middle = top.unsigned_abs() + tall / 2;
+        let bare =
+            Theme::parse("launcher-mode-key { border: none; background: transparent; }").unwrap();
+        let chipped = painted(&picker).at(edge, middle);
+        let plain = still(&picker, &bare, Scale::ONE, &mut Icons::default()).at(edge, middle);
+        assert_ne!(chipped, plain, "its edge");
+    }
+
+    #[test]
+    fn a_theme_can_leave_the_modes_keys_out() {
+        let shown = Theme::default();
+        let hidden = Theme::parse("launcher-mode-key { display: none; }").unwrap();
+        let text = &mut Text::new();
+        let mut picker = several();
+        let (x, y) = field_at(&shown);
+        picker.hover(Some((x, y)), &shown, text);
+        let programs = View::Mode(Mode::Programs);
+        let style = shown.style(Part::LauncherMode, States::NONE);
+        let font = shown.font(Part::LauncherMode, States::NONE);
+        let side = picker.modes_row(&shown).1;
+        let name = style.inset().across() + side + BESIDE + text.measure("Programs", font);
+        // The button as wide as its sign and its name alone.
+        let without = picker
+            .mode_area(programs, &hidden, text)
+            .unwrap_or_default();
+        assert_eq!(without.2, name);
+        let with = picker.mode_area(programs, &shown, text).unwrap_or_default();
+        assert!(with.2 > name);
+        // And nothing drawn where the key was.
+        let (left, top, _, tall) = with;
+        let words = text.measure("Programs", font);
+        let key = left.unsigned_abs() + style.inset().left + side + BESIDE + words + CHIP_APART;
+        let glass = argb(shown.style(Part::Launcher, States::NONE).background);
+        let canvas = still(&picker, &hidden, Scale::ONE, &mut Icons::default());
+        let ys = top.unsigned_abs()..top.unsigned_abs() + tall;
+        let xs = key..key + KEYCAP;
+        let inked = xs.flat_map(|x| ys.clone().map(move |y| (x, y)));
+        let inked = inked
+            .into_iter()
+            .filter(|(x, y)| canvas.at(*x, *y) != glass)
+            .count();
+        assert_eq!(inked, 0, "no key");
     }
 }

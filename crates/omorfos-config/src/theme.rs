@@ -2259,11 +2259,11 @@ mod tests {
             // Inter where it is installed, and otherwise what the system has.
             assert_eq!(font.family, "Inter, sans-serif", "{part:?}");
             // But for what is typed in the launcher, large, as Spotlight's
-            // is (ADR 109).
-            let size = if part == Part::LauncherInput {
-                20
-            } else {
-                Font::default().size.get()
+            // is (ADR 109), and a mode's key a size smaller, as a key is.
+            let size = match part {
+                Part::LauncherInput => 20,
+                Part::LauncherModeKey => 9,
+                _ => Font::default().size.get(),
             };
             assert_eq!(font.size.get(), size, "{part:?}");
         }

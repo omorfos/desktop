@@ -896,6 +896,8 @@ fn the_pointer_over_the_empty_launcher_offers_the_modes_and_a_click_goes_to_one(
         omorfos_config::Launcher::default(),
         Numbers::Point,
     );
+    // In the language the launcher speaks, as wide as its words.
+    picker.speak(&omorfos_i18n::Words::of(&omorfos_i18n::LAUNCHER));
     let (x, y) = field_middle();
     let (left, top) = corner();
     let text = &mut Text::new();
@@ -934,11 +936,14 @@ fn the_pointer_over_the_empty_launcher_offers_the_modes_and_a_click_goes_to_one(
         session.compositor_mut().input(click, 0);
     }
     settle(&mut session, &mut launcher);
-    // Every program, with nothing typed: Down lights the first.
+    // Every program, with nothing typed, one of them lit, by the arrows or
+    // by the pointer now over its tile: Enter starts it, where the mode
+    // that finds everything has nothing to start with nothing typed.
     press(&mut session, DOWN);
     press(&mut session, key::RETURN);
     assert!(settle(&mut session, &mut launcher));
-    session.eventually(|session| mark(session, "files") == "x");
+    let names = ["files", "firefox", "lens"];
+    session.eventually(|session| names.iter().any(|name| mark(session, name) == "x"));
 }
 
 #[test]
