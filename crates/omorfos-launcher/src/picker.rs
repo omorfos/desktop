@@ -139,6 +139,10 @@ pub struct Picker {
     /// modes while nothing is typed, and the mode in that row it is over.
     hovered: bool,
     pointed: Option<View>,
+    /// The mode in the row of modes the keyboard is on, if Down has taken
+    /// it there: past the last row, or from a field with nothing listed.
+    /// The row shows while it is, whatever is typed.
+    on_modes: Option<View>,
     /// How large it is drawn while it is on its way to its size: laid out
     /// as wide as that, and cut off as short.
     drawn: Option<(u32, u32)>,
@@ -368,6 +372,7 @@ impl Picker {
             view: View::Generic,
             listing: false,
             hovered: false,
+            on_modes: None,
             pointed: None,
             drawn: None,
             slid: None,
@@ -388,6 +393,7 @@ impl Picker {
     pub fn set_view(&mut self, view: View) {
         self.view = view;
         self.listing = false;
+        self.on_modes = None;
         self.search();
     }
 
@@ -530,9 +536,9 @@ impl Picker {
     }
 
     /// Whether the row of modes is shown: while the pointer is over the
-    /// launcher and nothing is typed.
+    /// launcher and nothing is typed, and while the keyboard is on it.
     fn modes_shown(&self) -> bool {
-        self.hovered && self.field.text().is_empty()
+        self.on_modes.is_some() || (self.hovered && self.field.text().is_empty())
     }
 
     /// Takes in where the pointer is over the launcher, or that it has
@@ -837,6 +843,11 @@ impl Picker {
 
     /// Takes a key.
     pub fn key(&mut self, key: Key) -> Outcome {
+        if let Some(on) = self.on_modes
+            && let Some(outcome) = self.key_on_modes(on, &key)
+        {
+            return outcome;
+        }
         match key {
             Key::Edit(Edit::Move {
                 way,
@@ -869,8 +880,14 @@ impl Picker {
             Key::Up => self.move_lines(-1),
             // Down from the field lights the first program, and goes on
             // from there.
+            // Past the last line, and from a field with nothing listed,
+            // it takes the keyboard to the row of modes.
+            Key::Down if self.leads_to_modes() => {
+                self.listing = false;
+                self.on_modes = Some(self.view);
+            }
             Key::Down if self.listing => self.move_lines(1),
-            Key::Down => self.listing = self.count() > 0,
+            Key::Down => self.listing = true,
             Key::Enter => return self.start(),
             // In a mode Escape goes back to everything, and only there
             // closes the launcher.
@@ -879,6 +896,61 @@ impl Picker {
             Key::Mode(number) => self.go_to(number),
         }
         Outcome::Stay
+    }
+
+    /// Takes a key while the keyboard is on the mode `on` in the row of
+    /// modes: Left and Right walk the modes, Enter goes to the one it is
+    /// on, and Up and Escape leave the row, back to the last row lit or
+    /// to the field. Anything else, as typing, is for the field, which
+    /// takes the keyboard back: None for those.
+    fn key_on_modes(&mut self, on: View, key: &Key) -> Option<Outcome> {
+        match key {
+            Key::Edit(Edit::Move {
+                way,
+                reach: Reach::Character,
+                choosing: false,
+            }) => {
+                let views: Vec<View> = self.views().collect();
+                let at = views.iter().position(|view| *view == on).unwrap_or(0);
+                let next = match way {
+                    Way::Back => at.saturating_sub(1),
+                    Way::On => at.saturating_add(1),
+                };
+                self.on_modes = views.get(next).copied().or(Some(on));
+            }
+            Key::Enter => self.set_view(on),
+            Key::Up => {
+                self.on_modes = None;
+                self.listing = self.count() > 0;
+            }
+            Key::Escape => self.give_field_the_keyboard(),
+            Key::Down => {}
+            _ => return None,
+        }
+        Some(Outcome::Stay)
+    }
+
+    /// Takes a key that is held, again: as [`Picker::key`], but Down
+    /// does not go on to the row of modes, which only a key pressed anew
+    /// reaches, so that Down held stops at the last row, and Enter after
+    /// it starts what is lit there.
+    pub fn key_again(&mut self, key: Key) -> Outcome {
+        if matches!(key, Key::Down) && self.leads_to_modes() {
+            return Outcome::Stay;
+        }
+        self.key(key)
+    }
+
+    /// Whether Down goes on to the row of modes: from the last line of
+    /// what is found, and from the field while nothing is.
+    fn leads_to_modes(&self) -> bool {
+        let last = self.line_of(self.chosen).0.saturating_add(1) >= self.lines();
+        self.on_modes.is_none()
+            && if self.listing {
+                last
+            } else {
+                self.count() == 0
+            }
     }
 
     /// Chooses the program whose row a point of the launcher is on, if it
@@ -897,6 +969,7 @@ impl Picker {
     /// first that matches is the one Enter starts.
     const fn give_field_the_keyboard(&mut self) {
         self.listing = false;
+        self.on_modes = None;
         self.chosen = 0;
     }
 
@@ -1146,7 +1219,8 @@ impl Picker {
             let shown = view == self.view;
             let states = States::NONE
                 .when(State::Active, shown)
-                .when(State::Hovered, self.pointed == Some(view));
+                .when(State::Hovered, self.pointed == Some(view))
+                .when(State::Focused, self.on_modes == Some(view));
             let style = theme.style(Part::LauncherMode, states);
             let font = theme.font(Part::LauncherMode, states);
             canvas.draw_box(area, &style);
@@ -1349,7 +1423,7 @@ impl Picker {
             // every letter stands where it stood.
             let shown = &typed_in[first..];
             text.draw_cut(canvas, shown, typed, start..end, marked.color, font);
-        } else if cursor && !self.listing {
+        } else if cursor && !self.listing && self.on_modes.is_none() {
             // A line where the next character will go, which stays in the
             // box however much has been typed; none while the programs
             // have the keyboard, nor while it blinks off.
@@ -2397,8 +2471,6 @@ mod tests {
         assert_eq!(picker.chosen(), Some("2"), "lit");
         picker.key(Key::Down);
         assert_eq!(picker.chosen(), Some("Counter 1+1"));
-        picker.key(Key::Down);
-        assert_eq!(picker.chosen(), Some("Counter 1+1"), "the last");
         assert_eq!(picker.key(Key::Enter), spawn(&["counter 1+1", "--go"]));
         picker.key(Key::Up);
         assert_eq!(picker.key(Key::Enter), copy("2"));
@@ -2749,9 +2821,11 @@ mod tests {
         picker.key(across(Way::Back));
         typed(&mut picker, "x");
         assert_eq!(picker.query(), "fxi");
-        // With nothing to walk, Down leaves the keyboard where it is.
+        // With nothing to walk, Down takes the keyboard on to the row of
+        // modes, and typing there types at the cursor.
         let mut none = several();
         typed(&mut none, "zz");
+        none.key(across(Way::Back));
         none.key(Key::Down);
         none.key(across(Way::Back));
         typed(&mut none, "y");
@@ -3479,5 +3553,140 @@ mod tests {
             .filter(|(x, y)| canvas.at(*x, *y) != glass)
             .count();
         assert_eq!(inked, 0, "no key");
+    }
+
+    #[test]
+    fn down_from_an_empty_field_takes_the_keyboard_to_the_modes_and_enter_goes_to_one() {
+        let theme = Theme::default();
+        let mut picker = several();
+        let (_, alone) = picker.size(&theme);
+        let programs = View::Mode(Mode::Programs);
+        // Nothing listed: Down goes straight to the row of modes, which
+        // shows, and the field has no cursor while it has the keyboard.
+        assert_eq!(picker.key(Key::Down), Outcome::Stay);
+        assert!(mode_middle(&picker, View::Generic).is_some(), "shown");
+        assert!(picker.size(&theme).1 > alone);
+        assert!(cursor(&picker).is_empty(), "no cursor");
+        // Left and Right walk the modes, and stop at either end.
+        picker.key(across(Way::Back));
+        picker.key(across(Way::On));
+        picker.key(across(Way::On));
+        assert_eq!(picker.view(), View::Generic, "not gone to yet");
+        // Enter goes to the one the keyboard is on, and gives what is
+        // typed the keyboard back, the row gone.
+        assert_eq!(picker.key(Key::Enter), Outcome::Stay);
+        assert_eq!(picker.view(), programs);
+        assert_eq!(mode_middle(&picker, programs), None);
+        assert_ne!(cursor(&picker), Vec::<u32>::new(), "the cursor back");
+        // Escape there goes back to the field, and does not close.
+        picker.set_view(View::Generic);
+        picker.key(Key::Down);
+        picker.key(across(Way::On));
+        assert_eq!(picker.key(Key::Escape), Outcome::Stay);
+        assert_eq!(picker.view(), View::Generic);
+        assert_eq!(mode_middle(&picker, View::Generic), None);
+        assert_eq!(picker.size(&theme).1, alone);
+        // And so does Up, with nothing listed to go back to.
+        picker.key(Key::Down);
+        picker.key(Key::Up);
+        assert_eq!(mode_middle(&picker, View::Generic), None);
+        picker.key(Key::Down);
+        assert_eq!(picker.key(Key::Escape), Outcome::Stay, "not closed");
+        assert_eq!(picker.key(Key::Escape), Outcome::Close);
+    }
+
+    #[test]
+    fn down_past_the_last_row_takes_the_keyboard_to_the_modes_with_what_is_typed() {
+        let theme = Theme::default();
+        let mut picker = several();
+        typed(&mut picker, "fi");
+        let found = names_of(&picker).len();
+        assert!(found > 1, "{found}");
+        // Down lights each row; past the last, the row of modes.
+        for _ in 0..found {
+            picker.key(Key::Down);
+            assert_eq!(mode_middle(&picker, View::Generic), None);
+        }
+        let last = picker.chosen().map(str::to_owned);
+        let lit = picker.lit_place(&theme);
+        assert!(lit.is_some());
+        picker.key(Key::Down);
+        assert!(mode_middle(&picker, View::Generic).is_some(), "shown");
+        assert_eq!(picker.lit_place(&theme), None, "no row lit meanwhile");
+        // Down there goes nowhere further; Up goes back to the last row.
+        picker.key(Key::Down);
+        picker.key(Key::Up);
+        assert_eq!(mode_middle(&picker, View::Generic), None);
+        assert_eq!(picker.lit_place(&theme), lit);
+        assert_eq!(picker.chosen().map(str::to_owned), last);
+        // A mode gone to keeps what is typed, and finds it there.
+        picker.key(Key::Down);
+        picker.key(across(Way::On));
+        picker.key(Key::Enter);
+        assert_eq!(picker.view(), View::Mode(Mode::Programs));
+        assert_eq!(picker.query(), "fi");
+        // Typing on the row of modes types, and gives the field the
+        // keyboard back.
+        picker.set_view(View::Generic);
+        for _ in 0..=found {
+            picker.key(Key::Down);
+        }
+        assert!(mode_middle(&picker, View::Generic).is_some());
+        typed(&mut picker, "r");
+        assert_eq!(picker.query(), "fir");
+        assert_eq!(mode_middle(&picker, View::Generic), None);
+        assert_ne!(cursor(&picker), Vec::<u32>::new(), "the cursor back");
+    }
+
+    #[test]
+    fn the_mode_the_keyboard_is_on_has_a_ring_round_it() {
+        let theme = Theme::default();
+        let mut picker = several();
+        let programs = View::Mode(Mode::Programs);
+        picker.key(Key::Down);
+        // Just outside each button, half-way down its outer side: the
+        // first's left, the last's right, clear of the other's ring.
+        let beside = |picker: &Picker, view| {
+            let area = picker.mode_area(view, &theme, &mut Text::new());
+            let (left, top, wide, tall) = area.unwrap_or_default();
+            let x = match view {
+                View::Generic => left - 3,
+                View::Mode(_) => left.saturating_add_unsigned(wide) + 2,
+            };
+            let y = top.saturating_add_unsigned(tall / 2);
+            painted(picker).at(x.unsigned_abs(), y.unsigned_abs())
+        };
+        let focused = States::NONE.with(State::Focused);
+        let ring = argb(theme.style(Part::LauncherMode, focused).outline.color);
+        assert_eq!(beside(&picker, View::Generic), ring, "on the one shown");
+        assert_ne!(beside(&picker, programs), ring);
+        picker.key(across(Way::On));
+        assert_ne!(beside(&picker, View::Generic), ring);
+        assert_eq!(beside(&picker, programs), ring);
+    }
+
+    #[test]
+    fn a_down_held_and_taken_again_stops_at_the_last_row_short_of_the_modes() {
+        let mut picker = several();
+        typed(&mut picker, "fi");
+        let found = names_of(&picker).len();
+        // Down held walks the rows, as pressed, and stays on the last.
+        for _ in 0..found + 3 {
+            assert_eq!(picker.key_again(Key::Down), Outcome::Stay);
+        }
+        assert_eq!(mode_middle(&picker, View::Generic), None);
+        let last = picker.chosen().map(str::to_owned);
+        assert_eq!(names_of(&picker).last().copied(), last.as_deref());
+        // Pressed anew, it goes on to the modes; held there, nowhere.
+        picker.key(Key::Down);
+        assert!(mode_middle(&picker, View::Generic).is_some());
+        picker.key_again(Key::Down);
+        assert!(mode_middle(&picker, View::Generic).is_some());
+        // Nor from a field with nothing listed; other keys are as pressed.
+        let mut empty = several();
+        empty.key_again(Key::Down);
+        assert_eq!(mode_middle(&empty, View::Generic), None);
+        empty.key_again(Key::Text("f".to_owned()));
+        assert_eq!(empty.query(), "f");
     }
 }

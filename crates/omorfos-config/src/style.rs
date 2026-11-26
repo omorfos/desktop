@@ -138,11 +138,12 @@ pub enum Part {
     /// colour, font and padding.
     LauncherHeading,
     /// The row of the launcher's modes at its bottom, shown while the
-    /// pointer is over an empty launcher: its border, padding and height.
+    /// pointer is over an empty launcher, and while the keyboard is on
+    /// it: its border, padding and height.
     LauncherModes,
     /// A mode in that row, its sign beside its name and its digit:
     /// [`State::Active`] for the one shown, [`State::Hovered`] under the
-    /// pointer.
+    /// pointer, and [`State::Focused`] for the one the keyboard is on.
     LauncherMode,
     /// The key that goes to a mode, after its name in that row: the sign of
     /// the key held and the digit, in its colour, and its font for the

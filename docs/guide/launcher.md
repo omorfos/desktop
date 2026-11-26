@@ -12,7 +12,11 @@ and in the field while it is empty, the mode's words, Search or Search
 programs. While the pointer is over the launcher and nothing is typed, a
 row of the modes is shown at its bottom, under a hairline: All, then each
 mode with the digit that goes to it with Super, the one shown lit. A click
-on one goes to it. It moves as it changes: it grows and shrinks to what it
+on one goes to it. The keyboard reaches it too, whatever is typed: Down
+past the last program, or from a field with nothing listed, shows the row
+with a ring round the mode shown; Left and Right move the ring, Enter goes
+to the mode it is round, keeping what is typed, and Up, Escape or typing
+go back. It moves as it changes: it grows and shrinks to what it
 lists, and widens to the grid, rather than jumping; the ground of the lit
 row slides from one row to the next; and as the mode changes, the sign
 turns into the next mode's and what that mode shows fades in. None of it
@@ -159,7 +163,8 @@ How it looks is in `theme.css`, under `launcher`, `launcher-input`,
 `launcher-item`, `launcher-description`, `launcher-tile`, a program in
 the grid, as wide as its `min-width`, `launcher-top`, the best of all,
 `launcher-heading`, a section's heading, `launcher-modes` and
-`launcher-mode`, the row of modes and one in it, and `launcher-mode-key`,
+`launcher-mode`, the row of modes and one in it, `launcher-mode:focus`
+the one the keyboard is on, and `launcher-mode-key`,
 the key after a mode's name, which `launcher-mode-key { display: none; }`
 leaves out; `launcher-input:active` is
 what is typed when all of it is chosen. `launcher-backdrop` is the rest

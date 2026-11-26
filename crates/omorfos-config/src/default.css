@@ -424,6 +424,12 @@ launcher-mode:active {
   background: var(--accent);
   color: var(--on-accent);
 }
+/* The mode the keyboard is on, after Down past the last row, has a ring
+ * of the accent a little way out, as a button of a question has. */
+launcher-mode:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
 /* The key that goes to a mode, after its name, in a faint chip of its
  * own: dim, and a size smaller, as a menu's keys are. `display: none`
  * leaves it out. */

@@ -227,8 +227,12 @@ large text with the mode's icon before it, and the results right under
 it, in sections with their headings, the top hit first, outlined while
 the field has the keyboard as what Enter takes. With nothing typed in the
 generic mode, nothing is shown under the field. The row of modes is at
-the bottom, under a hairline, and only while the pointer is over the
-launcher and nothing is typed. The launcher is as tall as what it shows,
+the bottom, under a hairline, while the pointer is over the launcher and
+nothing is typed, and while the keyboard is on it: Down past the last
+result, or from a field with nothing listed, takes it there, whatever is
+typed, so that the modes are reached without a pointer; Left and Right
+walk them, Enter goes to one keeping what is typed, and Up, Escape or
+typing go back (agreed on 26 November 2026). The launcher is as tall as what it shows,
 up to the half of the screen it has today. The theme has parts for each
 that is new (the headings, the modes' row and a mode in it, the top hit),
 each with its rule in the built-in theme (the handover's list for a

@@ -58,7 +58,11 @@ a known gap.
   clicking Programs, or `Super+1`, turns the sign into four squares,
   the launcher widens and grows to the grid and the tiles fade in, with
   the field where it was. Escape closes it a little quicker than it
-  came. With `appearance.reduce_motion`, all of it at once.
+  came. With `appearance.reduce_motion`, all of it at once. Then with
+  `fi` typed, Down past the last program: no row lit, the row of modes
+  with a ring round All; Right moves the ring to Programs, Enter goes
+  there with `fi` still typed; Up from the ring goes back to the last
+  program, Escape to the field.
 
 ## Where this is going
 

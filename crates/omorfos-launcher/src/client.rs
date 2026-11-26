@@ -603,9 +603,14 @@ impl Shell {
         }
     }
 
-    /// Does what `key` does to the list.
-    fn take_key(&mut self, key: Key) {
-        let outcome = self.picker.key(key);
+    /// Does what `key` does to the list, as a key held is taken `again`
+    /// if it is one.
+    fn take_key(&mut self, key: Key, again: bool) {
+        let outcome = if again {
+            self.picker.key_again(key)
+        } else {
+            self.picker.key(key)
+        };
         self.take(outcome);
     }
 
@@ -635,7 +640,7 @@ impl Shell {
         let typed = self.pasting.as_mut().and_then(Pasting::take);
         if let Some(typed) = typed {
             self.pasting = None;
-            self.take_key(Key::Text(typed));
+            self.take_key(Key::Text(typed), false);
         }
     }
 
@@ -650,7 +655,7 @@ impl Shell {
     /// Takes in a key going down: it is taken once now, and again and
     /// again while it stays down, if it is a key that repeats.
     fn pressed(&mut self, code: u32) {
-        self.press(code);
+        self.press(code, false);
         let repeats = self.typing.repeats(code);
         let repeating = self.repeating.filter(|_| repeats);
         let held = repeating.map(|(delay, _)| (code, self.now.saturating_add(delay)));
@@ -674,7 +679,7 @@ impl Shell {
             let Some((code, due)) = self.held.filter(|(_, due)| *due <= now && !self.done) else {
                 return;
             };
-            self.press(code);
+            self.press(code, true);
             self.held = Some((code, due.saturating_add(interval)));
         }
         // Too far behind to catch up: carry on from now.
@@ -683,8 +688,9 @@ impl Shell {
             .map(|(code, _)| (code, now.saturating_add(interval)));
     }
 
-    /// Takes a key that was pressed, by its number.
-    fn press(&mut self, code: u32) {
+    /// Takes a key that was pressed, by its number, or held and taken
+    /// `again`.
+    fn press(&mut self, code: u32, again: bool) {
         // Read as every field of the shell reads keys, Ctrl and A, or Super
         // and A, choosing all that is typed.
         let key = match self.typing.pressed(code) {
@@ -724,7 +730,7 @@ impl Shell {
         };
         // A key that types nothing, such as Shift, is no key to the launcher.
         if let Some(key) = key {
-            self.take_key(key);
+            self.take_key(key, again);
         }
     }
 

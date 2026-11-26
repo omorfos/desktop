@@ -939,10 +939,12 @@ fn the_pointer_over_the_empty_launcher_offers_the_modes_and_a_click_goes_to_one(
         session.compositor_mut().input(click, 0);
     }
     settle(&mut session, &mut launcher);
-    // Every program, with nothing typed, one of them lit, by the arrows or
-    // by the pointer now over its tile: Enter starts it, where the mode
-    // that finds everything has nothing to start with nothing typed.
-    press(&mut session, DOWN);
+    // Every program, with nothing typed, one of them lit, by Right or by
+    // the pointer now over its tile: Enter starts it, where the mode that
+    // finds everything has nothing to start with nothing typed. Not by
+    // Down, which from a tile lit on the grid's one line goes on to the
+    // row of modes.
+    press(&mut session, key::RIGHT);
     press(&mut session, key::RETURN);
     assert!(settle(&mut session, &mut launcher));
     let names = ["files", "firefox", "lens"];
