@@ -1,0 +1,116 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="770" viewBox="0 0 1280 770" role="img" aria-labelledby="t d">
+<title id="t">Who is taking pictures of the screen is for everyone to know</title>
+<desc id="d">Finding 6 · by reading · the corner of a screen while a program is shown it; drawn twice as large as the rest A discussion mockup drawn by hand from the built-in theme's colours, not a screenshot.</desc>
+
+<defs>
+<linearGradient id="spectrum" x2="1"><stop offset="0.00" stop-color="#22d3ee"/><stop offset="0.25" stop-color="#a3e635"/><stop offset="0.50" stop-color="#fde047"/><stop offset="0.75" stop-color="#fb923c"/><stop offset="1.00" stop-color="#f472b6"/></linearGradient>
+<filter id="blur1" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="14"/></filter>
+<clipPath id="c2"><rect x="64.00" y="196.00" width="542.00" height="290.00" rx="10.00"/></clipPath>
+<clipPath id="c3"><rect x="64.00" y="196.00" width="542.00" height="290.00" rx="10.00"/></clipPath>
+<filter id="blur4" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="14"/></filter>
+<clipPath id="c5"><rect x="674.00" y="196.00" width="542.00" height="290.00" rx="10.00"/></clipPath>
+<clipPath id="c6"><rect x="674.00" y="196.00" width="542.00" height="290.00" rx="10.00"/></clipPath>
+</defs>
+<rect width="1280" height="770" rx="24" fill="#0c1226"/>
+<text x="40" y="52" fill="#f3f5fb" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="25" font-weight="700">Who is taking pictures of the screen is for everyone to know</text>
+<text x="40" y="80" fill="#9aa4c7" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="14.5">Finding 6 · by reading · the corner of a screen while a program is shown it; drawn twice as large as the rest</text>
+<rect x="40.00" y="104.00" width="590.00" height="610.00" rx="18.00" fill="#10172f" stroke="#2b3a6b" stroke-width="1" />
+<rect x="60.00" y="122.00" width="38.80" height="24.00" rx="12.00" fill="#f8616d" />
+<text x="79.40" y="138.50" fill="#0c1226" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="11.5" font-weight="700" text-anchor="middle" letter-spacing="1">NOW</text>
+<text x="110.80" y="139.50" fill="#f3f5fb" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="17" font-weight="600">Told to a pointer resting on a small box</text>
+<rect x="650.00" y="104.00" width="590.00" height="610.00" rx="18.00" fill="#10172f" stroke="#2b3a6b" stroke-width="1" />
+<rect x="670.00" y="122.00" width="90.40" height="24.00" rx="12.00" fill="#a3e635" />
+<text x="715.20" y="138.50" fill="#0c1226" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="11.5" font-weight="700" text-anchor="middle" letter-spacing="1">DIRECTION</text>
+<text x="772.40" y="139.50" fill="#f3f5fb" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="17" font-weight="600">A press or a key opens a list of them</text>
+<text x="64.00" y="182.00" fill="#f3f5fb" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="14.5" font-weight="600">The top right of a screen being shared</text>
+<g clip-path="url(#c2)">
+<rect x="64.00" y="196.00" width="542.00" height="290.00" fill="#0c1226" />
+<g filter="url(#blur1)" opacity="0.62" transform="rotate(-45 400.0 341.0)">
+<rect x="278.09" y="-94.00" width="45.78" height="870.00" fill="#22d3ee" />
+<rect x="326.87" y="-94.00" width="45.78" height="870.00" fill="#a3e635" />
+<rect x="375.65" y="-94.00" width="45.78" height="870.00" fill="#fde047" />
+<rect x="424.43" y="-94.00" width="45.78" height="870.00" fill="#fb923c" />
+<rect x="473.21" y="-94.00" width="45.78" height="870.00" fill="#f472b6" />
+</g>
+</g>
+<g clip-path="url(#c3)">
+<rect x="64.00" y="196.00" width="542.00" height="56.00" fill="#141c38" fill-opacity="0.8" />
+</g>
+<text x="586.00" y="232.00" fill="#e6eaf5" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="22" text-anchor="end">14:07</text>
+<rect x="510.00" y="268.00" width="80.00" height="32.00" rx="12.00" fill="#0c1226" />
+<circle cx="534.00" cy="284.00" r="8.00" fill="#f8616d"/>
+<rect x="562.00" y="272.00" width="8.00" height="14.67" rx="4.00" fill="none" stroke="#f8616d" stroke-width="2.6"/>
+<path d="M557.33 282.67 a8.67 8.67 0 0 0 17.33 0" fill="none" stroke="#f8616d" stroke-width="2.6" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M566.00 291.33 L566.00 296.00 M561.33 296.00 L570.67 296.00" fill="none" stroke="#f8616d" stroke-width="2.6" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M532.0 284.0 L553.2 302.4 L543.6 304.1 L538.5 313.0 Z" fill="#243364" stroke="#fcf7e3" stroke-width="3.4" stroke-linejoin="round" stroke-linecap="round"/>
+<rect x="214.00" y="308.00" width="376.00" height="44.00" rx="14.29" fill="#141c38" fill-opacity="0.8" />
+<rect x="214.50" y="308.50" width="375.00" height="43.00" rx="14.29" fill="none" stroke="#ffffff" stroke-width="1" stroke-opacity="0.08" />
+<text x="402.00" y="337.00" fill="#e6eaf5" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="21" text-anchor="middle">Meet is shown this screen</text>
+<text x="496.00" y="289.00" fill="#fde047" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="13.5" font-weight="600" text-anchor="end">16 units tall</text>
+<text x="80.00" y="386.00" fill="#b8c0de" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="13">Leave the box to bring the pointer to the words,</text>
+<text x="80.00" y="404.00" fill="#b8c0de" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="13">as someone reading through a magnifier must,</text>
+<text x="80.00" y="422.00" fill="#b8c0de" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="13">and the words are gone.</text>
+<rect x="64.00" y="508.00" width="542.00" height="58.00" rx="10.00" fill="#0c1226" stroke="#2b3a6b" stroke-width="1" />
+<text x="78.00" y="531.00" fill="#b8c0de" font-family="'JetBrains Mono', 'DejaVu Sans Mono', monospace" font-size="13">$ omorfosctl state</text>
+<text x="78.00" y="552.00" fill="#ff8a93" font-family="'JetBrains Mono', 'DejaVu Sans Mono', monospace" font-size="12.5">workspaces, windows, screens, locked, awake, radios</text>
+<circle cx="68.00" cy="587.50" r="4.00" fill="#f8616d"/>
+<text x="80.00" y="592.00" fill="#b8c0de" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="13">Which program: only in a tooltip, only under the pointer</text>
+<circle cx="68.00" cy="608.50" r="4.00" fill="#f8616d"/>
+<text x="80.00" y="613.00" fill="#b8c0de" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="13">No key, no row of a menu, no notice when it begins</text>
+<circle cx="68.00" cy="629.50" r="4.00" fill="#f8616d"/>
+<text x="80.00" y="634.00" fill="#b8c0de" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="13">The tooltip cannot be pointed at, and does not go at Escape</text>
+<circle cx="68.00" cy="650.50" r="4.00" fill="#f8616d"/>
+<text x="80.00" y="655.00" fill="#b8c0de" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="13">The same for the date, a title cut short, what “Awake” does</text>
+<circle cx="68.00" cy="671.50" r="4.00" fill="#f8616d"/>
+<text x="80.00" y="676.00" fill="#b8c0de" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="13">WCAG 1.4.13, 2.1.1; and what is private should be told to all</text>
+<text x="674.00" y="182.00" fill="#f3f5fb" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="14.5" font-weight="600">The top right of a screen being shared</text>
+<g clip-path="url(#c5)">
+<rect x="674.00" y="196.00" width="542.00" height="290.00" fill="#0c1226" />
+<g filter="url(#blur4)" opacity="0.62" transform="rotate(-45 1010.0 341.0)">
+<rect x="888.09" y="-94.00" width="45.78" height="870.00" fill="#22d3ee" />
+<rect x="936.87" y="-94.00" width="45.78" height="870.00" fill="#a3e635" />
+<rect x="985.65" y="-94.00" width="45.78" height="870.00" fill="#fde047" />
+<rect x="1034.43" y="-94.00" width="45.78" height="870.00" fill="#fb923c" />
+<rect x="1083.21" y="-94.00" width="45.78" height="870.00" fill="#f472b6" />
+</g>
+</g>
+<g clip-path="url(#c6)">
+<rect x="674.00" y="196.00" width="542.00" height="56.00" fill="#141c38" fill-opacity="0.8" />
+</g>
+<text x="1196.00" y="232.00" fill="#e6eaf5" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="22" text-anchor="end">14:07</text>
+<rect x="1116.00" y="268.00" width="88.00" height="48.00" rx="12.00" fill="#0c1226" />
+<circle cx="1140.00" cy="292.00" r="8.00" fill="#f8616d"/>
+<rect x="1172.00" y="280.00" width="8.00" height="14.67" rx="4.00" fill="none" stroke="#f8616d" stroke-width="2.6"/>
+<path d="M1167.33 290.67 a8.67 8.67 0 0 0 17.33 0" fill="none" stroke="#f8616d" stroke-width="2.6" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M1176.00 299.33 L1176.00 304.00 M1171.33 304.00 L1180.67 304.00" fill="none" stroke="#f8616d" stroke-width="2.6" stroke-linejoin="round" stroke-linecap="round"/>
+<rect x="1111.00" y="263.00" width="98.00" height="58.00" rx="17.00" fill="none" stroke="#22d3ee" stroke-width="4" />
+<rect x="760.00" y="330.00" width="440.00" height="150.00" rx="16.00" fill="#141c38" fill-opacity="0.9" />
+<rect x="760.50" y="330.50" width="439.00" height="149.00" rx="16.00" fill="none" stroke="#ffffff" stroke-width="1" stroke-opacity="0.08" />
+<text x="778.00" y="360.00" fill="#e6eaf5" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="17" font-weight="600">Shown and heard now</text>
+<circle cx="789.00" cy="397.00" r="4.55" fill="#f8616d"/>
+<text x="814.00" y="396.00" fill="#e6eaf5" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="16">This screen</text>
+<text x="814.00" y="415.00" fill="#b8c0de" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="13.5">Meet · since 14:02</text>
+<rect x="1108.00" y="382.00" width="76.00" height="32.00" rx="8.00" fill="#10172f" stroke="#7482b3" stroke-width="1" />
+<text x="1146.00" y="403.00" fill="#e6eaf5" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="15" text-anchor="middle">Stop</text>
+<rect x="785.75" y="435.25" width="6.50" height="11.92" rx="3.25" fill="none" stroke="#f8616d" stroke-width="2.4"/>
+<path d="M781.96 443.92 a7.04 7.04 0 0 0 14.08 0" fill="none" stroke="#f8616d" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M789.00 450.96 L789.00 454.75 M785.21 454.75 L792.79 454.75" fill="none" stroke="#f8616d" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"/>
+<text x="814.00" y="444.00" fill="#e6eaf5" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="16">The microphone</text>
+<text x="814.00" y="463.00" fill="#b8c0de" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="13.5">Meet · since 14:02</text>
+<rect x="1108.00" y="430.00" width="76.00" height="32.00" rx="8.00" fill="#10172f" stroke="#7482b3" stroke-width="1" />
+<text x="1146.00" y="451.00" fill="#e6eaf5" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="15" text-anchor="middle">Stop</text>
+<rect x="674.00" y="508.00" width="542.00" height="58.00" rx="10.00" fill="#0c1226" stroke="#2b3a6b" stroke-width="1" />
+<text x="688.00" y="531.00" fill="#b8c0de" font-family="'JetBrains Mono', 'DejaVu Sans Mono', monospace" font-size="13">$ omorfosctl state</text>
+<text x="688.00" y="552.00" fill="#a3e635" font-family="'JetBrains Mono', 'DejaVu Sans Mono', monospace" font-size="12.5">captured: [{ what: screen, by: Meet, since: "14:02" }, …]</text>
+<circle cx="678.00" cy="587.50" r="4.00" fill="#a3e635"/>
+<text x="690.00" y="592.00" fill="#b8c0de" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="13">The mark is a button of 24 by 24 at least, and takes the keyboard</text>
+<circle cx="678.00" cy="608.50" r="4.00" fill="#a3e635"/>
+<text x="690.00" y="613.00" fill="#b8c0de" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="13">A press or a key opens the list; each line can be stopped</text>
+<circle cx="678.00" cy="629.50" r="4.00" fill="#a3e635"/>
+<text x="690.00" y="634.00" fill="#b8c0de" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="13">The roadmap has the gap: sharing cannot be stopped from the desktop</text>
+<circle cx="678.00" cy="650.50" r="4.00" fill="#a3e635"/>
+<text x="690.00" y="655.00" fill="#b8c0de" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="13">The state says it, so the bar and a screen reader can</text>
+<circle cx="678.00" cy="671.50" r="4.00" fill="#a3e635"/>
+<text x="690.00" y="676.00" fill="#b8c0de" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="13">A tooltip stays under the pointer, and goes at Escape</text>
+<rect x="40" y="748" width="1200" height="4" rx="2" fill="url(#spectrum)"/>
+</svg>

@@ -1,0 +1,160 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="810" viewBox="0 0 1280 810" role="img" aria-labelledby="t d">
+<title id="t">What only a drag can do needs a way that is not a drag</title>
+<desc id="d">Finding 4 · by reading · a window's menu as it is, and with two rows more A discussion mockup drawn by hand from the built-in theme's colours, not a screenshot.</desc>
+
+<defs>
+<linearGradient id="spectrum" x2="1"><stop offset="0.00" stop-color="#22d3ee"/><stop offset="0.25" stop-color="#a3e635"/><stop offset="0.50" stop-color="#fde047"/><stop offset="0.75" stop-color="#fb923c"/><stop offset="1.00" stop-color="#f472b6"/></linearGradient>
+<filter id="blur1" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="14"/></filter>
+<clipPath id="c2"><rect x="64.00" y="196.00" width="542.00" height="410.00" rx="10.00"/></clipPath>
+<filter id="blur3" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="14"/></filter>
+<clipPath id="c4"><rect x="674.00" y="196.00" width="542.00" height="410.00" rx="10.00"/></clipPath>
+</defs>
+<rect width="1280" height="810" rx="24" fill="#0c1226"/>
+<text x="40" y="52" fill="#f3f5fb" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="25" font-weight="700">What only a drag can do needs a way that is not a drag</text>
+<text x="40" y="80" fill="#9aa4c7" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="14.5">Finding 4 · by reading · a window's menu as it is, and with two rows more</text>
+<rect x="40.00" y="104.00" width="590.00" height="650.00" rx="18.00" fill="#10172f" stroke="#2b3a6b" stroke-width="1" />
+<rect x="60.00" y="122.00" width="38.80" height="24.00" rx="12.00" fill="#f8616d" />
+<text x="79.40" y="138.50" fill="#0c1226" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="11.5" font-weight="700" text-anchor="middle" letter-spacing="1">NOW</text>
+<text x="110.80" y="139.50" fill="#f3f5fb" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="17" font-weight="600">Moved and resized by dragging, and no other way</text>
+<rect x="650.00" y="104.00" width="590.00" height="650.00" rx="18.00" fill="#10172f" stroke="#2b3a6b" stroke-width="1" />
+<rect x="670.00" y="122.00" width="90.40" height="24.00" rx="12.00" fill="#a3e635" />
+<text x="715.20" y="138.50" fill="#0c1226" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="11.5" font-weight="700" text-anchor="middle" letter-spacing="1">DIRECTION</text>
+<text x="772.40" y="139.50" fill="#f3f5fb" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="17" font-weight="600">An action, a row, and a mode the arrows drive</text>
+<text x="64.00" y="182.00" fill="#f3f5fb" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="14.5" font-weight="600">A window's menu, and the edge it is resized by</text>
+<g clip-path="url(#c2)">
+<rect x="64.00" y="196.00" width="542.00" height="410.00" fill="#0c1226" />
+<g filter="url(#blur1)" opacity="0.62" transform="rotate(-45 400.0 401.0)">
+<rect x="278.09" y="-214.00" width="45.78" height="1230.00" fill="#22d3ee" />
+<rect x="326.87" y="-214.00" width="45.78" height="1230.00" fill="#a3e635" />
+<rect x="375.65" y="-214.00" width="45.78" height="1230.00" fill="#fde047" />
+<rect x="424.43" y="-214.00" width="45.78" height="1230.00" fill="#fb923c" />
+<rect x="473.21" y="-214.00" width="45.78" height="1230.00" fill="#f472b6" />
+</g>
+</g>
+<rect x="78.00" y="210.00" width="300.00" height="253.25" rx="12.50" fill="#141c38" fill-opacity="0.8" />
+<rect x="78.50" y="210.50" width="299.00" height="252.25" rx="12.50" fill="none" stroke="#ffffff" stroke-width="1" stroke-opacity="0.08" />
+<path d="M93.00 226.00 L103.00 236.00 M103.00 226.00 L93.00 236.00" fill="none" stroke="#e6eaf5" stroke-width="1.875" stroke-linejoin="round" stroke-linecap="round"/>
+<text x="118.00" y="237.60" fill="#e6eaf5" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="18.333333333333332">Close</text>
+<path d="M99.67 264.33 L104.67 264.33 L104.67 269.33 M96.33 277.67 L91.33 277.67 L91.33 272.67 M104.67 264.33 L99.67 269.33 M91.33 277.67 L96.33 272.67" fill="none" stroke="#e6eaf5" stroke-width="1.875" stroke-linejoin="round" stroke-linecap="round"/>
+<text x="118.00" y="277.60" fill="#e6eaf5" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="18.333333333333332">Maximize</text>
+<path d="M92.17 311.00 L103.83 311.00" fill="none" stroke="#e6eaf5" stroke-width="1.875" stroke-linejoin="round" stroke-linecap="round"/>
+<text x="118.00" y="317.60" fill="#e6eaf5" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="18.333333333333332">Minimize</text>
+<rect x="91.33" y="344.33" width="5.00" height="5.00" rx="1.00" fill="none" stroke="#e6eaf5" stroke-width="1.875"/>
+<rect x="99.67" y="344.33" width="5.00" height="5.00" rx="1.00" fill="none" stroke="#e6eaf5" stroke-width="1.875"/>
+<rect x="91.33" y="352.67" width="5.00" height="5.00" rx="1.00" fill="none" stroke="#e6eaf5" stroke-width="1.875"/>
+<rect x="99.67" y="352.67" width="5.00" height="5.00" rx="1.00" fill="none" stroke="#e6eaf5" stroke-width="1.875"/>
+<text x="118.00" y="357.60" fill="#e6eaf5" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="18.333333333333332">Tile</text>
+<path d="M357.06 346.62 L361.44 351.00 L357.06 355.38" fill="none" stroke="#e6eaf5" stroke-width="1.640625" stroke-linejoin="round" stroke-linecap="round"/>
+<line x1="88.00" y1="376.62" x2="368.00" y2="376.62" stroke="#2b3a6b" stroke-width="1" stroke-linecap="butt"/>
+<rect x="91.33" y="396.42" width="13.33" height="11.67" rx="1.67" fill="none" stroke="#e6eaf5" stroke-width="1.875"/>
+<path d="M91.33 400.58 L104.67 400.58" fill="none" stroke="#e6eaf5" stroke-width="1.875" stroke-linejoin="round" stroke-linecap="round"/>
+<text x="118.00" y="408.85" fill="#e6eaf5" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="18.333333333333332">Shade</text>
+<path d="M98.00 446.42 L98.00 450.58 M94.67 434.75 L101.33 434.75 M95.50 434.75 L95.50 439.75 L93.00 443.08 L93.00 445.58 L103.00 445.58 L103.00 443.08 L100.50 439.75 L100.50 434.75" fill="none" stroke="#e6eaf5" stroke-width="1.875" stroke-linejoin="round" stroke-linecap="round"/>
+<text x="118.00" y="448.85" fill="#e6eaf5" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="18.333333333333332">Keep above</text>
+<rect x="400.00" y="214.00" width="192.00" height="196.00" rx="10.00" fill="#0c1226" fill-opacity="0.86" />
+<text x="412.00" y="234.00" fill="#b8c0de" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="12.5">the edge, 4 times as large</text>
+<rect x="430.00" y="248.00" width="50.00" height="100.00" fill="#f3f5fb" />
+<rect x="480.00" y="248.00" width="24.00" height="100.00" fill="#22d3ee" fill-opacity="0.35" />
+<line x1="480.00" y1="248.00" x2="480.00" y2="348.00" stroke="#22d3ee" stroke-width="4.0" stroke-linecap="butt"/>
+<circle cx="492.00" cy="298.00" r="48.00" fill="none" stroke="#fde047" stroke-width="1.5"/>
+<text x="412.00" y="372.00" fill="#22d3ee" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="12.5" font-weight="600">7 units to catch it by,</text>
+<text x="412.00" y="390.00" fill="#fde047" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="12.5" font-weight="600">where 24 is the least</text>
+<rect x="400.00" y="436.00" width="192.00" height="150.00" rx="10.00" fill="#0c1226" fill-opacity="0.86" />
+<text x="412.00" y="460.00" fill="#b8c0de" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="12.5">No row moves or</text>
+<text x="412.00" y="478.12" fill="#b8c0de" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="12.5">resizes. No action</text>
+<text x="412.00" y="496.25" fill="#b8c0de" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="12.5">does either.</text>
+<text x="412.00" y="514.38" fill="#b8c0de" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="12.5"></text>
+<text x="412.00" y="532.50" fill="#b8c0de" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="12.5">Alt and a drag</text>
+<text x="412.00" y="550.62" fill="#b8c0de" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="12.5">anywhere works,</text>
+<text x="412.00" y="568.75" fill="#b8c0de" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="12.5">and is said nowhere.</text>
+<circle cx="68.00" cy="627.50" r="4.00" fill="#f8616d"/>
+<text x="80.00" y="632.00" fill="#b8c0de" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="13">A window: its titlebar dragged, or an edge 7 units thick</text>
+<circle cx="68.00" cy="648.50" r="4.00" fill="#f8616d"/>
+<text x="80.00" y="653.00" fill="#b8c0de" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="13">The line between tiled windows: a strip 9 units thick, dragged</text>
+<circle cx="68.00" cy="669.50" r="4.00" fill="#f8616d"/>
+<text x="80.00" y="674.00" fill="#b8c0de" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="13">Tabs put together and taken apart: the middle button, dragged</text>
+<circle cx="68.00" cy="690.50" r="4.00" fill="#f8616d"/>
+<text x="80.00" y="695.00" fill="#b8c0de" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="13">A region to take a picture of or to share: dragged</text>
+<circle cx="68.00" cy="711.50" r="4.00" fill="#f8616d"/>
+<text x="80.00" y="716.00" fill="#b8c0de" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="13">This menu opens at a right press on a titlebar, and by no key</text>
+<text x="674.00" y="182.00" fill="#f3f5fb" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="14.5" font-weight="600">The same menu, and a window being resized by keys</text>
+<g clip-path="url(#c4)">
+<rect x="674.00" y="196.00" width="542.00" height="410.00" fill="#0c1226" />
+<g filter="url(#blur3)" opacity="0.62" transform="rotate(-45 1010.0 401.0)">
+<rect x="888.09" y="-214.00" width="45.78" height="1230.00" fill="#22d3ee" />
+<rect x="936.87" y="-214.00" width="45.78" height="1230.00" fill="#a3e635" />
+<rect x="985.65" y="-214.00" width="45.78" height="1230.00" fill="#fde047" />
+<rect x="1034.43" y="-214.00" width="45.78" height="1230.00" fill="#fb923c" />
+<rect x="1083.21" y="-214.00" width="45.78" height="1230.00" fill="#f472b6" />
+</g>
+</g>
+<rect x="688.00" y="210.00" width="300.00" height="333.25" rx="12.50" fill="#141c38" fill-opacity="0.8" />
+<rect x="688.50" y="210.50" width="299.00" height="332.25" rx="12.50" fill="none" stroke="#ffffff" stroke-width="1" stroke-opacity="0.08" />
+<path d="M703.00 226.00 L713.00 236.00 M713.00 226.00 L703.00 236.00" fill="none" stroke="#e6eaf5" stroke-width="1.875" stroke-linejoin="round" stroke-linecap="round"/>
+<text x="728.00" y="237.60" fill="#e6eaf5" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="18.333333333333332">Close</text>
+<path d="M709.67 264.33 L714.67 264.33 L714.67 269.33 M706.33 277.67 L701.33 277.67 L701.33 272.67 M714.67 264.33 L709.67 269.33 M701.33 277.67 L706.33 272.67" fill="none" stroke="#e6eaf5" stroke-width="1.875" stroke-linejoin="round" stroke-linecap="round"/>
+<text x="728.00" y="277.60" fill="#e6eaf5" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="18.333333333333332">Maximize</text>
+<path d="M702.17 311.00 L713.83 311.00" fill="none" stroke="#e6eaf5" stroke-width="1.875" stroke-linejoin="round" stroke-linecap="round"/>
+<text x="728.00" y="317.60" fill="#e6eaf5" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="18.333333333333332">Minimize</text>
+<path d="M708.00 343.50 L708.00 358.50 M700.50 351.00 L715.50 351.00 M705.50 346.00 L708.00 343.50 L710.50 346.00 M705.50 356.00 L708.00 358.50 L710.50 356.00 M703.00 348.50 L700.50 351.00 L703.00 353.50 M713.00 348.50 L715.50 351.00 L713.00 353.50" fill="none" stroke="#e6eaf5" stroke-width="1.875" stroke-linejoin="round" stroke-linecap="round"/>
+<text x="728.00" y="357.60" fill="#e6eaf5" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="18.333333333333332">Move</text>
+<text x="973.00" y="357.00" fill="#9aa4c7" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="16.666666666666668" text-anchor="end">Alt F7</text>
+<rect x="689.00" y="371.00" width="298.00" height="40.00" rx="7.50" fill="#22d3ee" />
+<path d="M701.33 397.67 L714.67 384.33 M708.83 384.33 L714.67 384.33 L714.67 390.17 M701.33 391.83 L701.33 397.67 L707.17 397.67" fill="none" stroke="#0c1226" stroke-width="1.875" stroke-linejoin="round" stroke-linecap="round"/>
+<text x="728.00" y="397.60" fill="#0c1226" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="18.333333333333332">Resize</text>
+<text x="973.00" y="397.00" fill="#0c1226" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="16.666666666666668" text-anchor="end">Alt F8</text>
+<rect x="701.33" y="424.33" width="5.00" height="5.00" rx="1.00" fill="none" stroke="#e6eaf5" stroke-width="1.875"/>
+<rect x="709.67" y="424.33" width="5.00" height="5.00" rx="1.00" fill="none" stroke="#e6eaf5" stroke-width="1.875"/>
+<rect x="701.33" y="432.67" width="5.00" height="5.00" rx="1.00" fill="none" stroke="#e6eaf5" stroke-width="1.875"/>
+<rect x="709.67" y="432.67" width="5.00" height="5.00" rx="1.00" fill="none" stroke="#e6eaf5" stroke-width="1.875"/>
+<text x="728.00" y="437.60" fill="#e6eaf5" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="18.333333333333332">Tile</text>
+<path d="M967.06 426.62 L971.44 431.00 L967.06 435.38" fill="none" stroke="#e6eaf5" stroke-width="1.640625" stroke-linejoin="round" stroke-linecap="round"/>
+<line x1="698.00" y1="456.62" x2="978.00" y2="456.62" stroke="#2b3a6b" stroke-width="1" stroke-linecap="butt"/>
+<rect x="701.33" y="476.42" width="13.33" height="11.67" rx="1.67" fill="none" stroke="#e6eaf5" stroke-width="1.875"/>
+<path d="M701.33 480.58 L714.67 480.58" fill="none" stroke="#e6eaf5" stroke-width="1.875" stroke-linejoin="round" stroke-linecap="round"/>
+<text x="728.00" y="488.85" fill="#e6eaf5" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="18.333333333333332">Shade</text>
+<path d="M708.00 526.42 L708.00 530.58 M704.67 514.75 L711.33 514.75 M705.50 514.75 L705.50 519.75 L703.00 523.08 L703.00 525.58 L713.00 525.58 L713.00 523.08 L710.50 519.75 L710.50 514.75" fill="none" stroke="#e6eaf5" stroke-width="1.875" stroke-linejoin="round" stroke-linecap="round"/>
+<text x="728.00" y="528.85" fill="#e6eaf5" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="18.333333333333332">Keep above</text>
+<rect x="1014.00" y="224.00" width="184.00" height="196.00" rx="10.00" fill="#f3f5fb" />
+<rect x="1014.00" y="224.00" width="184.00" height="42.50" rx="10.00" fill="#141c38" />
+<rect x="1014.00" y="254.00" width="184.00" height="12.50" fill="#141c38" />
+<circle cx="1030.00" cy="245.25" r="6.00" fill="#f8616d"/>
+<circle cx="1050.00" cy="245.25" r="6.00" fill="#fde047"/>
+<circle cx="1070.00" cy="245.25" r="6.00" fill="#a3e635"/>
+<rect x="1012.00" y="222.00" width="188.00" height="200.00" rx="12.00" fill="none" stroke="#22d3ee" stroke-width="2.5" stroke-dasharray="7 5" />
+<rect x="1192.00" y="316.00" width="12.00" height="12.00" rx="3.00" fill="#22d3ee" stroke="#0c1226" stroke-width="1.5" />
+<rect x="1100.00" y="414.00" width="12.00" height="12.00" rx="3.00" fill="#22d3ee" stroke="#0c1226" stroke-width="1.5" />
+<rect x="1192.00" y="414.00" width="12.00" height="12.00" rx="3.00" fill="#22d3ee" stroke="#0c1226" stroke-width="1.5" />
+<rect x="1054.00" y="318.00" width="104.00" height="28.00" rx="8.00" fill="#0c1226" fill-opacity="0.9" />
+<text x="1106.00" y="337.00" fill="#f3f5fb" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="14" font-weight="600" text-anchor="middle">960 × 600</text>
+<rect x="1010.00" y="446.00" width="192.00" height="140.00" rx="10.00" fill="#0c1226" fill-opacity="0.86" />
+<rect x="1022.00" y="456.50" width="19.75" height="21.50" rx="5.00" fill="#243364" stroke="#7482b3" stroke-width="1" stroke-opacity="0.6" />
+<text x="1031.88" y="472.00" fill="#f3f5fb" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="12.5" font-weight="600" text-anchor="middle">←</text>
+<rect x="1046.75" y="456.50" width="19.75" height="21.50" rx="5.00" fill="#243364" stroke="#7482b3" stroke-width="1" stroke-opacity="0.6" />
+<text x="1056.62" y="472.00" fill="#f3f5fb" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="12.5" font-weight="600" text-anchor="middle">→</text>
+<rect x="1071.50" y="456.50" width="19.75" height="21.50" rx="5.00" fill="#243364" stroke="#7482b3" stroke-width="1" stroke-opacity="0.6" />
+<text x="1081.38" y="472.00" fill="#f3f5fb" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="12.5" font-weight="600" text-anchor="middle">↑</text>
+<rect x="1096.25" y="456.50" width="19.75" height="21.50" rx="5.00" fill="#243364" stroke="#7482b3" stroke-width="1" stroke-opacity="0.6" />
+<text x="1106.12" y="472.00" fill="#f3f5fb" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="12.5" font-weight="600" text-anchor="middle">↓</text>
+<text x="1123.00" y="472.00" fill="#b8c0de" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="12.5">a step</text>
+<rect x="1022.00" y="486.50" width="50.75" height="21.50" rx="5.00" fill="#243364" stroke="#7482b3" stroke-width="1" stroke-opacity="0.6" />
+<text x="1047.38" y="502.00" fill="#f3f5fb" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="12.5" font-weight="600" text-anchor="middle">Shift</text>
+<text x="1079.75" y="502.00" fill="#b8c0de" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="12.5">larger steps</text>
+<rect x="1022.00" y="516.50" width="50.75" height="21.50" rx="5.00" fill="#243364" stroke="#7482b3" stroke-width="1" stroke-opacity="0.6" />
+<text x="1047.38" y="532.00" fill="#f3f5fb" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="12.5" font-weight="600" text-anchor="middle">Enter</text>
+<text x="1079.75" y="532.00" fill="#b8c0de" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="12.5">keeps</text>
+<rect x="1022.00" y="546.50" width="35.25" height="21.50" rx="5.00" fill="#243364" stroke="#7482b3" stroke-width="1" stroke-opacity="0.6" />
+<text x="1039.62" y="562.00" fill="#f3f5fb" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="12.5" font-weight="600" text-anchor="middle">Esc</text>
+<text x="1064.25" y="562.00" fill="#b8c0de" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="12.5">puts back</text>
+<circle cx="678.00" cy="627.50" r="4.00" fill="#a3e635"/>
+<text x="690.00" y="632.00" fill="#b8c0de" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="13">move and resize: actions, rows here, and one mode for both</text>
+<circle cx="678.00" cy="648.50" r="4.00" fill="#a3e635"/>
+<text x="690.00" y="653.00" fill="#b8c0de" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="13">The same mode for a tile's line, and a region in the picker</text>
+<circle cx="678.00" cy="669.50" r="4.00" fill="#a3e635"/>
+<text x="690.00" y="674.00" fill="#b8c0de" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="13">attach and detach for tabs, as rows and as actions</text>
+<circle cx="678.00" cy="690.50" r="4.00" fill="#a3e635"/>
+<text x="690.00" y="695.00" fill="#b8c0de" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="13">window_menu as an action, so that a key opens this menu</text>
+<circle cx="678.00" cy="711.50" r="4.00" fill="#a3e635"/>
+<text x="690.00" y="716.00" fill="#b8c0de" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="13">The keys shown are GNOME's, for the ordinary way; to be chosen</text>
+<rect x="40" y="788" width="1200" height="4" rx="2" fill="url(#spectrum)"/>
+</svg>

@@ -1,0 +1,174 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="1290" viewBox="0 0 1280 1290" role="img" aria-labelledby="t d">
+<title id="t">A count that can be held, and says what it will do</title>
+<desc id="d">Finding 7 · by reading · the two times that answer for the user, and one that takes words away A discussion mockup drawn by hand from the built-in theme's colours, not a screenshot.</desc>
+
+<defs>
+<linearGradient id="spectrum" x2="1"><stop offset="0.00" stop-color="#22d3ee"/><stop offset="0.25" stop-color="#a3e635"/><stop offset="0.50" stop-color="#fde047"/><stop offset="0.75" stop-color="#fb923c"/><stop offset="1.00" stop-color="#f472b6"/></linearGradient>
+<filter id="blur1" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="14"/></filter>
+<clipPath id="c2"><rect x="64.00" y="196.00" width="542.00" height="252.00" rx="10.00"/></clipPath>
+<filter id="blur3" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="14"/></filter>
+<clipPath id="c4"><rect x="64.00" y="577.00" width="542.00" height="194.00" rx="10.00"/></clipPath>
+<filter id="blur5" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="14"/></filter>
+<clipPath id="c6"><rect x="674.00" y="196.00" width="542.00" height="252.00" rx="10.00"/></clipPath>
+<filter id="blur7" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="14"/></filter>
+<clipPath id="c8"><rect x="674.00" y="577.00" width="542.00" height="194.00" rx="10.00"/></clipPath>
+</defs>
+<rect width="1280" height="1290" rx="24" fill="#0c1226"/>
+<text x="40" y="52" fill="#f3f5fb" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="25" font-weight="700">A count that can be held, and says what it will do</text>
+<text x="40" y="80" fill="#9aa4c7" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="14.5">Finding 7 · by reading · the two times that answer for the user, and one that takes words away</text>
+<rect x="40.00" y="104.00" width="590.00" height="1130.00" rx="18.00" fill="#10172f" stroke="#2b3a6b" stroke-width="1" />
+<rect x="60.00" y="122.00" width="38.80" height="24.00" rx="12.00" fill="#f8616d" />
+<text x="79.40" y="138.50" fill="#0c1226" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="11.5" font-weight="700" text-anchor="middle" letter-spacing="1">NOW</text>
+<text x="110.80" y="139.50" fill="#f3f5fb" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="17" font-weight="600">Fixed, and not held by being there</text>
+<rect x="650.00" y="104.00" width="590.00" height="1130.00" rx="18.00" fill="#10172f" stroke="#2b3a6b" stroke-width="1" />
+<rect x="670.00" y="122.00" width="90.40" height="24.00" rx="12.00" fill="#a3e635" />
+<text x="715.20" y="138.50" fill="#0c1226" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="11.5" font-weight="700" text-anchor="middle" letter-spacing="1">DIRECTION</text>
+<text x="772.40" y="139.50" fill="#f3f5fb" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="17" font-weight="600">Set, held, and started again by a hand</text>
+<text x="64.00" y="182.00" fill="#f3f5fb" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="14.5" font-weight="600">1  Restart, asked: left alone for a minute</text>
+<g clip-path="url(#c2)">
+<rect x="64.00" y="196.00" width="542.00" height="252.00" fill="#0c1226" />
+<g filter="url(#blur1)" opacity="0.62" transform="rotate(-45 400.0 322.0)">
+<rect x="278.09" y="-56.00" width="45.78" height="756.00" fill="#22d3ee" />
+<rect x="326.87" y="-56.00" width="45.78" height="756.00" fill="#a3e635" />
+<rect x="375.65" y="-56.00" width="45.78" height="756.00" fill="#fde047" />
+<rect x="424.43" y="-56.00" width="45.78" height="756.00" fill="#fb923c" />
+<rect x="473.21" y="-56.00" width="45.78" height="756.00" fill="#f472b6" />
+</g>
+</g>
+<rect x="64.00" y="196.00" width="542.00" height="252.00" rx="10.00" fill="#000000" fill-opacity="0.35" />
+<rect x="97.50" y="208.00" width="475.00" height="220.00" rx="15.00" fill="#141c38" stroke="#7482b3" stroke-width="1" />
+<text x="122.50" y="256.45" fill="#e6eaf5" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="20.0" font-weight="600">Restart now?</text>
+<text x="122.50" y="284.60" fill="#e6eaf5" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="18.333333333333332">Restarting in 60 seconds</text>
+<text x="122.50" y="309.60" fill="#9aa4c7" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="18.333333333333332">Whatever is not saved in open</text>
+<text x="122.50" y="334.60" fill="#9aa4c7" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="18.333333333333332">programs will be lost.</text>
+<rect x="425.63" y="358.00" width="121.87" height="45.00" rx="7.50" fill="#22d3ee" />
+<rect x="421.88" y="354.25" width="129.37" height="52.50" rx="11.25" fill="none" stroke="#22d3ee" stroke-width="2.5" />
+<text x="486.57" y="387.10" fill="#0c1226" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="18.333333333333332" text-anchor="middle">Restart</text>
+<rect x="300.37" y="358.00" width="115.27" height="45.00" rx="7.50" fill="#10172f" />
+<text x="358.00" y="387.10" fill="#e6eaf5" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="18.333333333333332" text-anchor="middle">Cancel</text>
+<circle cx="68.00" cy="465.50" r="4.00" fill="#f8616d"/>
+<text x="80.00" y="470.00" fill="#b8c0de" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="13">At nought it restarts. Enter restarts. The minute is fixed (ADR 88)</text>
+<circle cx="68.00" cy="486.50" r="4.00" fill="#f8616d"/>
+<text x="80.00" y="491.00" fill="#b8c0de" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="13">Nothing holds it: not a key, not the pointer on the box</text>
+<circle cx="68.00" cy="507.50" r="4.00" fill="#f8616d"/>
+<text x="80.00" y="512.00" fill="#b8c0de" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="13">Raised by a press that slipped, it ends the session by itself</text>
+<text x="64.00" y="563.00" fill="#f3f5fb" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="14.5" font-weight="600">2  The screens stood another way: fifteen seconds to say so</text>
+<g clip-path="url(#c4)">
+<rect x="64.00" y="577.00" width="542.00" height="194.00" fill="#0c1226" />
+<g filter="url(#blur3)" opacity="0.62" transform="rotate(-45 400.0 674.0)">
+<rect x="278.09" y="383.00" width="45.78" height="582.00" fill="#22d3ee" />
+<rect x="326.87" y="383.00" width="45.78" height="582.00" fill="#a3e635" />
+<rect x="375.65" y="383.00" width="45.78" height="582.00" fill="#fde047" />
+<rect x="424.43" y="383.00" width="45.78" height="582.00" fill="#fb923c" />
+<rect x="473.21" y="383.00" width="45.78" height="582.00" fill="#f472b6" />
+</g>
+</g>
+<rect x="64.00" y="577.00" width="542.00" height="194.00" rx="10.00" fill="#000000" fill-opacity="0.35" />
+<rect x="97.50" y="609.00" width="475.00" height="132.50" rx="15.00" fill="#141c38" stroke="#7482b3" stroke-width="1" />
+<text x="122.50" y="657.45" fill="#e6eaf5" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="20.0" font-weight="600">Keep the screens like this?</text>
+<text x="122.50" y="685.60" fill="#9aa4c7" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="18.333333333333332">Enter keeps them. Escape, or 12 seconds,</text>
+<text x="122.50" y="710.60" fill="#9aa4c7" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="18.333333333333332">puts them back.</text>
+<circle cx="68.00" cy="788.50" r="4.00" fill="#f8616d"/>
+<text x="80.00" y="793.00" fill="#b8c0de" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="13">Fifteen seconds to find the box, read it and reach Enter</text>
+<circle cx="68.00" cy="809.50" r="4.00" fill="#f8616d"/>
+<text x="80.00" y="814.00" fill="#b8c0de" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="13">No buttons: a pointer cannot answer it at all</text>
+<circle cx="68.00" cy="830.50" r="4.00" fill="#f8616d"/>
+<text x="80.00" y="835.00" fill="#b8c0de" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="13">Fixed, and right to be short: a screen may have gone dark</text>
+<text x="64.00" y="886.00" fill="#f3f5fb" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="14.5" font-weight="600">3  A notification, with the pointer resting on it</text>
+<rect x="64.00" y="900.00" width="542.00" height="108.00" rx="10.00" fill="#ffffff" />
+<rect x="122.50" y="914.00" width="425.00" height="80.00" rx="12.50" fill="#141c38" fill-opacity="0.8" />
+<rect x="123.00" y="914.50" width="424.00" height="79.00" rx="12.50" fill="none" stroke="#ffffff" stroke-width="1" stroke-opacity="0.08" />
+<path d="M152.50 962.33 V952.33 a10.00 10.00 0 0 1 20.00 0 V962.33 Z" fill="none" stroke="#e6eaf5" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M149.17 962.33 L175.83 962.33 M160.00 968.17 L165.00 968.17" fill="none" stroke="#e6eaf5" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"/>
+<text x="202.50" y="945.50" fill="#e6eaf5" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="18.333333333333332" font-weight="600">Anna</text>
+<text x="202.50" y="968.42" fill="#9aa4c7" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="18.333333333333332">Are you there?</text>
+<path d="M451.5 951.5 L465.2 963.4 L459.0 964.5 L455.7 970.3 Z" fill="#243364" stroke="#fcf7e3" stroke-width="2.1999999999999997" stroke-linejoin="round" stroke-linecap="round"/>
+<circle cx="68.00" cy="1025.50" r="4.00" fill="#f8616d"/>
+<text x="80.00" y="1030.00" fill="#b8c0de" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="13">Gone at five seconds all the same, and kept nowhere to read again</text>
+<circle cx="68.00" cy="1046.50" r="4.00" fill="#f8616d"/>
+<text x="80.00" y="1051.00" fill="#b8c0de" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="13">A sender's own time beats notifications.timeout: 0 (“until clicked”)</text>
+<circle cx="68.00" cy="1067.50" r="4.00" fill="#f8616d"/>
+<text x="80.00" y="1072.00" fill="#b8c0de" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="13">Volume and brightness: a second and a half, whatever is set</text>
+<text x="64.00" y="1123.00" fill="#f3f5fb" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="14.5" font-weight="600">Four more, fixed today</text>
+<text x="64.00" y="1147.00" fill="#b8c0de" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="13">Two presses as one: 400 ms, within 4 units</text>
+<text x="64.00" y="1168.00" fill="#b8c0de" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="13">The lock screen left alone: 30 s, and the field is emptied</text>
+<text x="64.00" y="1189.00" fill="#b8c0de" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="13">A fullscreen window's bar: rest 600 ms, gone after 1 s</text>
+<text x="64.00" y="1210.00" fill="#b8c0de" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="13">A tooltip: 500 ms (known)</text>
+<text x="674.00" y="182.00" fill="#f3f5fb" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="14.5" font-weight="600">1  Restart, asked: left alone for a minute</text>
+<g clip-path="url(#c6)">
+<rect x="674.00" y="196.00" width="542.00" height="252.00" fill="#0c1226" />
+<g filter="url(#blur5)" opacity="0.62" transform="rotate(-45 1010.0 322.0)">
+<rect x="888.09" y="-56.00" width="45.78" height="756.00" fill="#22d3ee" />
+<rect x="936.87" y="-56.00" width="45.78" height="756.00" fill="#a3e635" />
+<rect x="985.65" y="-56.00" width="45.78" height="756.00" fill="#fde047" />
+<rect x="1034.43" y="-56.00" width="45.78" height="756.00" fill="#fb923c" />
+<rect x="1083.21" y="-56.00" width="45.78" height="756.00" fill="#f472b6" />
+</g>
+</g>
+<rect x="674.00" y="196.00" width="542.00" height="252.00" rx="10.00" fill="#000000" fill-opacity="0.35" />
+<rect x="707.50" y="208.00" width="475.00" height="220.00" rx="15.00" fill="#141c38" stroke="#7482b3" stroke-width="1" />
+<text x="732.50" y="256.45" fill="#e6eaf5" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="20.0" font-weight="600">Restart now?</text>
+<text x="732.50" y="284.60" fill="#e6eaf5" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="18.333333333333332">Restarting in 60 seconds</text>
+<text x="732.50" y="309.60" fill="#9aa4c7" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="18.333333333333332">Whatever is not saved in open</text>
+<text x="732.50" y="334.60" fill="#9aa4c7" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="18.333333333333332">programs will be lost.</text>
+<rect x="1035.63" y="358.00" width="121.87" height="45.00" rx="7.50" fill="#10172f" stroke="#7482b3" stroke-width="1" />
+<text x="1096.57" y="387.10" fill="#e6eaf5" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="18.333333333333332" text-anchor="middle">Restart</text>
+<rect x="910.37" y="358.00" width="115.27" height="45.00" rx="7.50" fill="#10172f" stroke="#7482b3" stroke-width="1" />
+<rect x="906.62" y="354.25" width="122.77" height="52.50" rx="11.25" fill="none" stroke="#22d3ee" stroke-width="2.5" />
+<text x="968.00" y="387.10" fill="#e6eaf5" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="18.333333333333332" text-anchor="middle">Cancel</text>
+<circle cx="678.00" cy="465.50" r="4.00" fill="#a3e635"/>
+<text x="690.00" y="470.00" fill="#b8c0de" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="13">The keyboard is on Cancel, as on the lock screen's own question</text>
+<circle cx="678.00" cy="486.50" r="4.00" fill="#a3e635"/>
+<text x="690.00" y="491.00" fill="#b8c0de" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="13">Any key, or the pointer moving, starts the count again</text>
+<circle cx="678.00" cy="507.50" r="4.00" fill="#a3e635"/>
+<text x="690.00" y="512.00" fill="#b8c0de" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="13">power.wait: 60 in config.yaml; 0 waits for an answer</text>
+<text x="674.00" y="563.00" fill="#f3f5fb" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="14.5" font-weight="600">2  The screens stood another way: fifteen seconds to say so</text>
+<g clip-path="url(#c8)">
+<rect x="674.00" y="577.00" width="542.00" height="194.00" fill="#0c1226" />
+<g filter="url(#blur7)" opacity="0.62" transform="rotate(-45 1010.0 674.0)">
+<rect x="888.09" y="383.00" width="45.78" height="582.00" fill="#22d3ee" />
+<rect x="936.87" y="383.00" width="45.78" height="582.00" fill="#a3e635" />
+<rect x="985.65" y="383.00" width="45.78" height="582.00" fill="#fde047" />
+<rect x="1034.43" y="383.00" width="45.78" height="582.00" fill="#fb923c" />
+<rect x="1083.21" y="383.00" width="45.78" height="582.00" fill="#f472b6" />
+</g>
+</g>
+<rect x="674.00" y="577.00" width="542.00" height="194.00" rx="10.00" fill="#000000" fill-opacity="0.35" />
+<rect x="707.50" y="589.00" width="475.00" height="170.00" rx="15.00" fill="#141c38" stroke="#7482b3" stroke-width="1" />
+<text x="732.50" y="637.45" fill="#e6eaf5" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="20.0" font-weight="600">Keep the screens like this?</text>
+<text x="732.50" y="665.60" fill="#e6eaf5" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="18.333333333333332">They go back in 12 seconds</text>
+<rect x="1060.20" y="689.00" width="97.30" height="45.00" rx="7.50" fill="#10172f" stroke="#7482b3" stroke-width="1" />
+<text x="1108.85" y="718.10" fill="#e6eaf5" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="18.333333333333332" text-anchor="middle">Keep</text>
+<rect x="916.97" y="689.00" width="133.23" height="45.00" rx="7.50" fill="#10172f" stroke="#7482b3" stroke-width="1" />
+<rect x="913.22" y="685.25" width="140.73" height="52.50" rx="11.25" fill="none" stroke="#22d3ee" stroke-width="2.5" />
+<text x="983.58" y="718.10" fill="#e6eaf5" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="18.333333333333332" text-anchor="middle">Put back</text>
+<circle cx="678.00" cy="788.50" r="4.00" fill="#a3e635"/>
+<text x="690.00" y="793.00" fill="#b8c0de" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="13">Buttons, so that a pointer can answer; the keyboard on Put back</text>
+<circle cx="678.00" cy="809.50" r="4.00" fill="#a3e635"/>
+<text x="690.00" y="814.00" fill="#b8c0de" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="13">A key or the pointer starts the count again, so it cannot run out</text>
+<circle cx="678.00" cy="830.50" r="4.00" fill="#a3e635"/>
+<text x="690.00" y="835.00" fill="#b8c0de" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="13">under a hand that is at work; left alone, it still goes back</text>
+<text x="674.00" y="886.00" fill="#f3f5fb" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="14.5" font-weight="600">3  A notification, with the pointer resting on it</text>
+<rect x="674.00" y="900.00" width="542.00" height="108.00" rx="10.00" fill="#ffffff" />
+<rect x="732.50" y="914.00" width="425.00" height="80.00" rx="12.50" fill="#141c38" fill-opacity="0.8" />
+<rect x="733.00" y="914.50" width="424.00" height="79.00" rx="12.50" fill="none" stroke="#ffffff" stroke-width="1" stroke-opacity="0.08" />
+<path d="M762.50 962.33 V952.33 a10.00 10.00 0 0 1 20.00 0 V962.33 Z" fill="none" stroke="#e6eaf5" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M759.17 962.33 L785.83 962.33 M770.00 968.17 L775.00 968.17" fill="none" stroke="#e6eaf5" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"/>
+<text x="812.50" y="945.50" fill="#e6eaf5" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="18.333333333333332" font-weight="600">Anna</text>
+<text x="812.50" y="968.42" fill="#b8c0de" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="18.333333333333332">Are you there?</text>
+<path d="M1061.5 951.5 L1075.2 963.4 L1069.0 964.5 L1065.7 970.3 Z" fill="#243364" stroke="#fcf7e3" stroke-width="2.1999999999999997" stroke-linejoin="round" stroke-linecap="round"/>
+<rect x="1123.50" y="931.50" width="5.00" height="16.00" rx="1.50" fill="#e6eaf5" />
+<rect x="1133.50" y="931.50" width="5.00" height="16.00" rx="1.50" fill="#e6eaf5" />
+<circle cx="678.00" cy="1025.50" r="4.00" fill="#a3e635"/>
+<text x="690.00" y="1030.00" fill="#b8c0de" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="13">Held while the pointer or the keyboard is on it, and shown to be</text>
+<circle cx="678.00" cy="1046.50" r="4.00" fill="#a3e635"/>
+<text x="690.00" y="1051.00" fill="#b8c0de" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="13">“Until clicked” means it, whatever the sender asked for</text>
+<circle cx="678.00" cy="1067.50" r="4.00" fill="#a3e635"/>
+<text x="690.00" y="1072.00" fill="#b8c0de" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="13">The level stays as long as other notices do, when that is longer</text>
+<text x="674.00" y="1123.00" fill="#f3f5fb" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="14.5" font-weight="600">And those four</text>
+<text x="674.00" y="1147.00" fill="#b8c0de" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="13">mouse.double_click, as every desktop has it</text>
+<text x="674.00" y="1168.00" fill="#b8c0de" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="13">What was typed kept while the screen rests, or the rest a setting</text>
+<text x="674.00" y="1189.00" fill="#b8c0de" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="13">A key that brings the bar back, as well as the edge</text>
+<text x="674.00" y="1210.00" fill="#b8c0de" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="13">A tooltip that shows with the keyboard on its thing</text>
+<rect x="40" y="1268" width="1200" height="4" rx="2" fill="url(#spectrum)"/>
+</svg>

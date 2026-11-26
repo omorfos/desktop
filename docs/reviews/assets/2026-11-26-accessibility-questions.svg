@@ -1,0 +1,155 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="920" viewBox="0 0 1280 920" role="img" aria-labelledby="t d">
+<title id="t">A box that asks starts on the answer that changes nothing</title>
+<desc id="d">Findings 3 and 14 · shown by tests that are there · the portal's question, put up while a message is typed A discussion mockup drawn by hand from the built-in theme's colours, not a screenshot.</desc>
+
+<defs>
+<linearGradient id="spectrum" x2="1"><stop offset="0.00" stop-color="#22d3ee"/><stop offset="0.25" stop-color="#a3e635"/><stop offset="0.50" stop-color="#fde047"/><stop offset="0.75" stop-color="#fb923c"/><stop offset="1.00" stop-color="#f472b6"/></linearGradient>
+<filter id="blur1" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="14"/></filter>
+<clipPath id="c2"><rect x="64.00" y="196.00" width="542.00" height="300.00" rx="10.00"/></clipPath>
+<clipPath id="c3"><rect x="80.00" y="210.00" width="510.00" height="272.00" rx="15.00"/></clipPath>
+<clipPath id="c4"><rect x="80.00" y="210.00" width="510.00" height="75.00" rx="15.00"/></clipPath>
+<clipPath id="c5"><rect x="80.00" y="210.00" width="510.00" height="60.00" rx="0.00"/></clipPath>
+<filter id="blur6" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="14"/></filter>
+<clipPath id="c7"><rect x="674.00" y="196.00" width="542.00" height="300.00" rx="10.00"/></clipPath>
+<clipPath id="c8"><rect x="690.00" y="210.00" width="510.00" height="272.00" rx="15.00"/></clipPath>
+<clipPath id="c9"><rect x="690.00" y="210.00" width="510.00" height="75.00" rx="15.00"/></clipPath>
+<clipPath id="c10"><rect x="690.00" y="210.00" width="510.00" height="60.00" rx="0.00"/></clipPath>
+</defs>
+<rect width="1280" height="920" rx="24" fill="#0c1226"/>
+<text x="40" y="52" fill="#f3f5fb" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="25" font-weight="700">A box that asks starts on the answer that changes nothing</text>
+<text x="40" y="80" fill="#9aa4c7" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="14.5">Findings 3 and 14 · shown by tests that are there · the portal's question, put up while a message is typed</text>
+<rect x="40.00" y="104.00" width="590.00" height="760.00" rx="18.00" fill="#10172f" stroke="#2b3a6b" stroke-width="1" />
+<rect x="60.00" y="122.00" width="38.80" height="24.00" rx="12.00" fill="#f8616d" />
+<text x="79.40" y="138.50" fill="#0c1226" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="11.5" font-weight="700" text-anchor="middle" letter-spacing="1">NOW</text>
+<text x="110.80" y="139.50" fill="#f3f5fb" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="17" font-weight="600">Enter says yes, to a box nobody looked at</text>
+<rect x="650.00" y="104.00" width="590.00" height="760.00" rx="18.00" fill="#10172f" stroke="#2b3a6b" stroke-width="1" />
+<rect x="670.00" y="122.00" width="90.40" height="24.00" rx="12.00" fill="#a3e635" />
+<text x="715.20" y="138.50" fill="#0c1226" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="11.5" font-weight="700" text-anchor="middle" letter-spacing="1">DIRECTION</text>
+<text x="772.40" y="139.50" fill="#f3f5fb" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="17" font-weight="600">Enter presses what the keyboard is on</text>
+<text x="64.00" y="182.00" fill="#f3f5fb" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="14.5" font-weight="600">A program asks to share the screen as its user types</text>
+<g clip-path="url(#c2)">
+<rect x="64.00" y="196.00" width="542.00" height="300.00" fill="#0c1226" />
+</g>
+<rect x="80.00" y="214.00" width="510.00" height="272.00" rx="15.00" fill="#000000" fill-opacity="0.25" />
+<g clip-path="url(#c3)">
+<rect x="80.00" y="270.00" width="510.00" height="212.00" fill="#ffffff" />
+</g>
+<g clip-path="url(#c5)">
+<g clip-path="url(#c4)">
+<rect x="80.00" y="210.00" width="510.00" height="75.00" fill="#141c38" fill-opacity="0.8" />
+</g>
+</g>
+<circle cx="105.00" cy="240.00" r="10.00" fill="#f8616d"/>
+<circle cx="135.00" cy="240.00" r="10.00" fill="#fde047"/>
+<circle cx="165.00" cy="240.00" r="10.00" fill="#a3e635"/>
+<text x="335.00" y="246.60" fill="#e6eaf5" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="18.333333333333332" text-anchor="middle">Meet</text>
+<rect x="80.50" y="210.50" width="509.00" height="271.00" rx="15.00" fill="none" stroke="#ffffff" stroke-width="1" stroke-opacity="0.2" />
+<rect x="98.00" y="286.00" width="234.60" height="26.00" rx="13.00" fill="#e8ebf3" />
+<rect x="378.20" y="322.00" width="193.80" height="26.00" rx="13.00" fill="#d5f3f9" />
+<rect x="96.00" y="436.00" width="478.00" height="32.00" rx="8.00" fill="#ffffff" stroke="#b9c0d4" stroke-width="1" />
+<text x="108.00" y="457.00" fill="#0c1226" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="14">see you at five</text>
+<rect x="222.00" y="443.00" width="1.50" height="18.00" fill="#0c1226" />
+<rect x="64.00" y="196.00" width="542.00" height="300.00" rx="10.00" fill="#000000" fill-opacity="0.35" />
+<rect x="85.00" y="258.00" width="500.00" height="170.00" rx="15.00" fill="#141c38" stroke="#7482b3" stroke-width="1" />
+<text x="110.00" y="306.45" fill="#e6eaf5" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="20.0" font-weight="600">Meet wants to share your screen</text>
+<text x="110.00" y="334.60" fill="#9aa4c7" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="18.333333333333332">It would see everything on it until you stop.</text>
+<rect x="451.33" y="358.00" width="108.67" height="45.00" rx="7.50" fill="#22d3ee" />
+<text x="505.67" y="387.10" fill="#0c1226" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="18.333333333333332" text-anchor="middle">Share</text>
+<rect x="326.07" y="358.00" width="115.27" height="45.00" rx="7.50" fill="#10172f" />
+<text x="383.70" y="387.10" fill="#e6eaf5" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="18.333333333333332" text-anchor="middle">Cancel</text>
+<text x="64.00" y="522.00" fill="#b8c0de" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="13">typed next:</text>
+<rect x="142.00" y="506.50" width="19.75" height="21.50" rx="5.00" fill="#243364" stroke="#7482b3" stroke-width="1" stroke-opacity="0.6" />
+<text x="151.88" y="522.00" fill="#f3f5fb" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="12.5" font-weight="600" text-anchor="middle">s</text>
+<rect x="166.75" y="506.50" width="19.75" height="21.50" rx="5.00" fill="#243364" stroke="#7482b3" stroke-width="1" stroke-opacity="0.6" />
+<text x="176.62" y="522.00" fill="#f3f5fb" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="12.5" font-weight="600" text-anchor="middle">o</text>
+<rect x="191.50" y="506.50" width="19.75" height="21.50" rx="5.00" fill="#243364" stroke="#7482b3" stroke-width="1" stroke-opacity="0.6" />
+<text x="201.38" y="522.00" fill="#f3f5fb" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="12.5" font-weight="600" text-anchor="middle">o</text>
+<rect x="216.25" y="506.50" width="19.75" height="21.50" rx="5.00" fill="#243364" stroke="#7482b3" stroke-width="1" stroke-opacity="0.6" />
+<text x="226.12" y="522.00" fill="#f3f5fb" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="12.5" font-weight="600" text-anchor="middle">n</text>
+<rect x="241.00" y="506.50" width="50.75" height="21.50" rx="5.00" fill="#243364" stroke="#7482b3" stroke-width="1" stroke-opacity="0.6" />
+<text x="266.38" y="522.00" fill="#f3f5fb" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="12.5" font-weight="600" text-anchor="middle">Enter</text>
+<text x="302.75" y="522.00" fill="#ff8a93" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="13.5" font-weight="600">→  the share begins</text>
+<circle cx="68.00" cy="551.50" r="4.00" fill="#f8616d"/>
+<text x="80.00" y="556.00" fill="#b8c0de" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="13">It has the keyboard from the moment it is up, and to itself</text>
+<circle cx="68.00" cy="572.50" r="4.00" fill="#f8616d"/>
+<text x="80.00" y="577.00" fill="#b8c0de" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="13">Enter is “Share”, Escape “Cancel”; every other key is dropped</text>
+<circle cx="68.00" cy="593.50" r="4.00" fill="#f8616d"/>
+<text x="80.00" y="598.00" fill="#b8c0de" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="13">No Tab, and no ring: nothing shows a keyboard is on anything</text>
+<circle cx="68.00" cy="614.50" r="4.00" fill="#f8616d"/>
+<text x="80.00" y="619.00" fill="#b8c0de" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="13">One screen, and a program that takes a screen: it begins at once</text>
+<text x="64.00" y="670.00" fill="#f3f5fb" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="14.5" font-weight="600">The five boxes that ask, and what Enter does</text>
+<text x="64.00" y="696.00" fill="#b8c0de" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="13">Restart, shut down, log out</text>
+<text x="322.00" y="696.00" fill="#ff8a93" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="13">does it; and by itself after 60 s</text>
+<text x="64.00" y="720.00" fill="#b8c0de" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="13">The same, on the lock screen</text>
+<text x="322.00" y="720.00" fill="#a3e635" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="13">cancels: the keyboard is on Cancel</text>
+<text x="64.00" y="744.00" fill="#b8c0de" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="13">Share, or take a picture (portal)</text>
+<text x="322.00" y="744.00" fill="#ff8a93" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="13">gives; no Tab, no ring</text>
+<text x="64.00" y="768.00" fill="#b8c0de" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="13">Keep the screens like this?</text>
+<text x="322.00" y="768.00" fill="#ff8a93" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="13">keeps; there are no buttons to press</text>
+<text x="64.00" y="792.00" fill="#b8c0de" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="13">A password</text>
+<text x="322.00" y="792.00" fill="#a3e635" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="13">hands it in; Tab and a ring</text>
+<text x="674.00" y="182.00" fill="#f3f5fb" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="14.5" font-weight="600">A program asks to share the screen as its user types</text>
+<g clip-path="url(#c7)">
+<rect x="674.00" y="196.00" width="542.00" height="300.00" fill="#0c1226" />
+</g>
+<rect x="690.00" y="214.00" width="510.00" height="272.00" rx="15.00" fill="#000000" fill-opacity="0.25" />
+<g clip-path="url(#c8)">
+<rect x="690.00" y="270.00" width="510.00" height="212.00" fill="#ffffff" />
+</g>
+<g clip-path="url(#c10)">
+<g clip-path="url(#c9)">
+<rect x="690.00" y="210.00" width="510.00" height="75.00" fill="#141c38" fill-opacity="0.8" />
+</g>
+</g>
+<circle cx="715.00" cy="240.00" r="10.00" fill="#f8616d"/>
+<circle cx="745.00" cy="240.00" r="10.00" fill="#fde047"/>
+<circle cx="775.00" cy="240.00" r="10.00" fill="#a3e635"/>
+<text x="945.00" y="246.60" fill="#e6eaf5" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="18.333333333333332" text-anchor="middle">Meet</text>
+<rect x="690.50" y="210.50" width="509.00" height="271.00" rx="15.00" fill="none" stroke="#ffffff" stroke-width="1" stroke-opacity="0.2" />
+<rect x="708.00" y="286.00" width="234.60" height="26.00" rx="13.00" fill="#e8ebf3" />
+<rect x="988.20" y="322.00" width="193.80" height="26.00" rx="13.00" fill="#d5f3f9" />
+<rect x="706.00" y="436.00" width="478.00" height="32.00" rx="8.00" fill="#ffffff" stroke="#b9c0d4" stroke-width="1" />
+<text x="718.00" y="457.00" fill="#0c1226" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="14">see you at five</text>
+<rect x="832.00" y="443.00" width="1.50" height="18.00" fill="#0c1226" />
+<rect x="674.00" y="196.00" width="542.00" height="300.00" rx="10.00" fill="#000000" fill-opacity="0.35" />
+<rect x="695.00" y="258.00" width="500.00" height="170.00" rx="15.00" fill="#141c38" stroke="#7482b3" stroke-width="1" />
+<text x="720.00" y="306.45" fill="#e6eaf5" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="20.0" font-weight="600">Meet wants to share your screen</text>
+<text x="720.00" y="334.60" fill="#9aa4c7" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="18.333333333333332">It would see everything on it until you stop.</text>
+<rect x="1061.33" y="358.00" width="108.67" height="45.00" rx="7.50" fill="#10172f" stroke="#7482b3" stroke-width="1" />
+<text x="1115.67" y="387.10" fill="#e6eaf5" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="18.333333333333332" text-anchor="middle">Share</text>
+<rect x="936.07" y="358.00" width="115.27" height="45.00" rx="7.50" fill="#10172f" stroke="#7482b3" stroke-width="1" />
+<rect x="932.32" y="354.25" width="122.77" height="52.50" rx="11.25" fill="none" stroke="#22d3ee" stroke-width="2.5" />
+<text x="993.70" y="387.10" fill="#e6eaf5" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="18.333333333333332" text-anchor="middle">Cancel</text>
+<text x="674.00" y="522.00" fill="#b8c0de" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="13">typed next:</text>
+<rect x="752.00" y="506.50" width="19.75" height="21.50" rx="5.00" fill="#243364" stroke="#7482b3" stroke-width="1" stroke-opacity="0.6" />
+<text x="761.88" y="522.00" fill="#f3f5fb" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="12.5" font-weight="600" text-anchor="middle">s</text>
+<rect x="776.75" y="506.50" width="19.75" height="21.50" rx="5.00" fill="#243364" stroke="#7482b3" stroke-width="1" stroke-opacity="0.6" />
+<text x="786.62" y="522.00" fill="#f3f5fb" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="12.5" font-weight="600" text-anchor="middle">o</text>
+<rect x="801.50" y="506.50" width="19.75" height="21.50" rx="5.00" fill="#243364" stroke="#7482b3" stroke-width="1" stroke-opacity="0.6" />
+<text x="811.38" y="522.00" fill="#f3f5fb" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="12.5" font-weight="600" text-anchor="middle">o</text>
+<rect x="826.25" y="506.50" width="19.75" height="21.50" rx="5.00" fill="#243364" stroke="#7482b3" stroke-width="1" stroke-opacity="0.6" />
+<text x="836.12" y="522.00" fill="#f3f5fb" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="12.5" font-weight="600" text-anchor="middle">n</text>
+<rect x="851.00" y="506.50" width="50.75" height="21.50" rx="5.00" fill="#243364" stroke="#7482b3" stroke-width="1" stroke-opacity="0.6" />
+<text x="876.38" y="522.00" fill="#f3f5fb" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="12.5" font-weight="600" text-anchor="middle">Enter</text>
+<text x="912.75" y="522.00" fill="#a3e635" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="13.5" font-weight="600">→  Cancel; nothing is shared</text>
+<circle cx="678.00" cy="551.50" r="4.00" fill="#a3e635"/>
+<text x="690.00" y="556.00" fill="#b8c0de" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="13">The keyboard starts on the button that refuses, and is shown there</text>
+<circle cx="678.00" cy="572.50" r="4.00" fill="#a3e635"/>
+<text x="690.00" y="577.00" fill="#b8c0de" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="13">Enter presses that button. Tab or an arrow goes to the other</text>
+<circle cx="678.00" cy="593.50" r="4.00" fill="#a3e635"/>
+<text x="690.00" y="598.00" fill="#b8c0de" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="13">No key counts in the first half second, nor one already down</text>
+<circle cx="678.00" cy="614.50" r="4.00" fill="#a3e635"/>
+<text x="690.00" y="619.00" fill="#b8c0de" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="13">Nothing is filled with the accent: there is no “usual” answer</text>
+<text x="674.00" y="670.00" fill="#f3f5fb" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="14.5" font-weight="600">One rule for all five</text>
+<circle cx="678.00" cy="691.50" r="4.00" fill="#a3e635"/>
+<text x="690.00" y="696.00" fill="#b8c0de" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="13">The keyboard starts on the answer that changes nothing</text>
+<circle cx="678.00" cy="715.50" r="4.00" fill="#a3e635"/>
+<text x="690.00" y="720.00" fill="#b8c0de" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="13">Every box takes Tab and the arrows, and shows the ring</text>
+<circle cx="678.00" cy="739.50" r="4.00" fill="#a3e635"/>
+<text x="690.00" y="744.00" fill="#b8c0de" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="13">A box that will act by itself says what, and when</text>
+<circle cx="678.00" cy="763.50" r="4.00" fill="#a3e635"/>
+<text x="690.00" y="768.00" fill="#b8c0de" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="13">Every box has buttons, for a pointer with no keyboard</text>
+<circle cx="678.00" cy="787.50" r="4.00" fill="#a3e635"/>
+<text x="690.00" y="792.00" fill="#b8c0de" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="13">Drawn and answered in one place: omorfos_ui::question (ADR 92)</text>
+<rect x="40" y="898" width="1200" height="4" rx="2" fill="url(#spectrum)"/>
+</svg>

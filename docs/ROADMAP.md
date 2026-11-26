@@ -1888,6 +1888,36 @@ the first than on the last.
             101 names (#153), every other chord with it reaching the
             program as it is.
 
+The review of 26 November 2026, of the design, the brand and the shell
+for accessibility, is written up in
+[reviews/2026-11-26-accessibility-design-wcag.md](reviews/2026-11-26-accessibility-design-wcag.md),
+and [#180](https://github.com/omorfos/desktop/issues/180) keeps its
+findings as a list to tick. Those that are of the look are here, in the
+order to take them, before the bar and the dock wear it; the decision
+on assistive technology is at the head of stage 5, and the rest are in
+stage 8, under "Accessibility":
+
+- [ ] Medium: the contrast test a list kept by hand, and DESIGN.md's questions
+      of a new part not asking
+      ([finding 15](reviews/2026-11-26-accessibility-design-wcag.md#15-the-contrast-test-is-a-list-kept-by-hand-and-the-checklist-does-not-ask)): each part saying what it is written on, the
+      test walking `Part::ALL`, and six more questions.
+- [ ] Medium: dim text on glass under 4.5 to 1 at its worst
+      ([finding 1](reviews/2026-11-26-accessibility-design-wcag.md#1-dim-text-on-glass-is-under-45-to-1-at-its-worst)): 3.6 to 1 over a
+      white window in the dark scheme, 3.8 over a black one in the light.
+- [ ] Medium: an accent of one's own taking away the focus ring and every
+      lit row
+      ([finding 2](reviews/2026-11-26-accessibility-design-wcag.md#2-an-accent-of-ones-own-can-take-away-the-focus-ring-and-every-lit-row)).
+- [ ] Medium: states said by marks under 3 to 1, and a window that wants
+      attention not marked at all
+      ([finding 11](reviews/2026-11-26-accessibility-design-wcag.md#11-states-said-by-marks-under-3-to-1-and-one-not-said-at-all)).
+- [ ] Low: the faint colour used for the days of other months
+      ([finding 16](reviews/2026-11-26-accessibility-design-wcag.md#16-the-faint-colour-is-used-for-text)).
+- [ ] Low: an offered window's title written straight onto the wallpaper
+      ([finding 17](reviews/2026-11-26-accessibility-design-wcag.md#17-an-offered-windows-title-is-written-straight-onto-the-wallpaper)).
+- [ ] Low: no look for disabled, pressed, chosen as against where the
+      keyboard is, more below, or a chain of keys waiting
+      ([finding 22](reviews/2026-11-26-accessibility-design-wcag.md#22-states-the-design-language-has-no-look-for)).
+
 ## 5. The shell: a bar and a dock
 
 The panel becomes two programs (wish 1). Each is a client of the
@@ -1896,6 +1926,13 @@ way (ADR 28). The panel that is there today goes when both are done.
 
 What both need first:
 
+- [ ] A decision on assistive technology, as an ADR, before how the bar
+      is reached is fixed
+      ([finding 13](reviews/2026-11-26-accessibility-design-wcag.md#13-assistive-technology-has-no-place-in-the-model-of-roles-yet)): a role for the tools that read and drive
+      the session, what it may do while locked and while the prompt is
+      sealed, and its three parts in their order: programs that speak
+      AT-SPI read by Orca, what omorfos draws said aloud, and tools that
+      drive the pointer and the keys.
 - [x] Menus and small windows that hang from a bar: a popover with
       content, placed by the compositor, closed by a click elsewhere
       (`omorfos_shell::popover`, an `xdg_popup` on the bar's layer surface,
@@ -2924,6 +2961,69 @@ Accessibility:
       to it, a key that starts and stops it (`Super+Alt+S`, as GNOME
       has), and the packages recommending it.
 
+The review of 26 November 2026 (stage 4 has where it is written up, and
+its findings of the look) found these besides, in the order to take
+them. The first two are of security, and are written down in the open as
+the maintainer decided that day, omorfos having had no release: they are
+to be put right before a release of any kind, and the first release
+(below, under "Reaching people") waits for them:
+
+- [ ] **High: a key meant for another program says yes to sharing the
+      screen**
+      ([finding 3](reviews/2026-11-26-accessibility-design-wcag.md#3-a-key-meant-for-another-program-says-yes-to-sharing-the-screen)):
+      the portal's question takes the keyboard as it comes up, and Enter
+      is "Share". Shown by tests that are there.
+- [ ] **High: a box for a secret that is withdrawn hands the keyboard
+      straight back**
+      ([finding 26](reviews/2026-11-26-accessibility-design-wcag.md#26-a-box-for-a-secret-that-is-withdrawn-hands-the-keyboard-straight-back)):
+      the rest of a password is typed into the window under it. Shown by
+      a test, which the finding gives.
+- [ ] Medium: the boxes that ask not answering alike
+      ([finding 14](reviews/2026-11-26-accessibility-design-wcag.md#14-the-boxes-that-ask-do-not-answer-alike)).
+- [ ] Medium: nearly everything acting as the button goes down
+      ([finding 5](reviews/2026-11-26-accessibility-design-wcag.md#5-nearly-everything-acts-as-the-button-goes-down)).
+- [ ] Medium: times that cannot be changed, and the question before leaving
+      saying yes by itself after a minute
+      ([finding 7](reviews/2026-11-26-accessibility-design-wcag.md#7-times-that-cannot-be-changed-and-one-that-says-yes-by-itself)).
+- [ ] Medium: which program is taking pictures told only to a pointer at
+      rest
+      ([finding 6](reviews/2026-11-26-accessibility-design-wcag.md#6-which-program-is-taking-pictures-is-told-only-to-a-pointer-at-rest)).
+- [ ] Medium: a window moved and resized only by dragging, and what else
+      only a drag or a pointer does
+      ([finding 4](reviews/2026-11-26-accessibility-design-wcag.md#4-a-window-is-moved-and-resized-only-by-dragging)): its table is "everything in the shell
+      reachable from the keyboard", above, a row at a time.
+- [ ] Low: chords of four and five keys, and things with no key or no place
+      to press
+      ([finding 21](reviews/2026-11-26-accessibility-design-wcag.md#21-chords-of-four-and-five-keys-and-things-with-no-key-or-no-place-to-press)).
+- [ ] Medium: accessibility settings turned on only by editing a file
+      ([finding 12](reviews/2026-11-26-accessibility-design-wcag.md#12-accessibility-settings-are-turned-on-only-by-editing-a-file)).
+- [ ] Medium: a passphrase that cannot be pasted, nor anything looked up
+      while it is asked
+      ([finding 8](reviews/2026-11-26-accessibility-design-wcag.md#8-a-passphrase-cannot-be-pasted-nor-anything-looked-up-while-it-is-asked)).
+- [ ] Medium: the lock screen not saying why a password failed
+      ([finding 9](reviews/2026-11-26-accessibility-design-wcag.md#9-the-lock-screen-does-not-say-why-a-password-failed)).
+- [ ] Medium: larger text cut, and a larger scale running off the screen
+      ([finding 10](reviews/2026-11-26-accessibility-design-wcag.md#10-larger-text-is-cut-and-a-larger-scale-runs-off-the-screen)).
+- [ ] Low: four things smaller than 24 by 24
+      ([finding 18](reviews/2026-11-26-accessibility-design-wcag.md#18-four-things-are-smaller-than-24-by-24)).
+- [ ] Low: reduced motion leaving two things moving
+      ([finding 19](reviews/2026-11-26-accessibility-design-wcag.md#19-reduced-motion-leaves-two-things-moving)).
+- [ ] Low: what Enter starts in the launcher following a pointer that did
+      not move
+      ([finding 20](reviews/2026-11-26-accessibility-design-wcag.md#20-what-enter-starts-follows-a-pointer-that-did-not-move)).
+- [ ] Low: words that are the house's own, and two spellings
+      ([finding 23](reviews/2026-11-26-accessibility-design-wcag.md#23-words)).
+- [ ] Low: fifteen things ACCESSIBILITY.md does not list as not there yet
+      ([finding 24](reviews/2026-11-26-accessibility-design-wcag.md#24-what-is-listed-as-not-there-yet-leaves-out)).
+- [ ] Low: documents that say more than is so
+      ([finding 25](reviews/2026-11-26-accessibility-design-wcag.md#25-documents-that-say-more-than-is-so)).
+- [ ] The session walked through by hand, which the review could not
+      do: the keyboard alone from logging in to logging out; Orca with
+      one program of GTK and one of Qt; a screen of 1366 by 768 at a
+      scale of 2; and the theme at 22pt.
+- [ ] Accessibility as a dimension of its own in the review routine,
+      where it is one word among those of "experience".
+
 Hardware and performance:
 
 - [ ] A window that fills the screen shown without being copied (direct
@@ -3329,6 +3429,9 @@ Reaching people:
       and release-please set to start at 0.1.0, where it would have made
       a first release 1.0.0. What is left is the maintainer's: merging
       release-please's pull request, and watching the workflow build it.
+      Not before the two high findings of the review of 26 November 2026
+      are put right (above, under "Accessibility"): no release of any
+      kind is made while either stands.
 - [ ] After the first release: the gates run in CI, and `main` moved on
       by a merge queue only once they pass, so that a push no longer waits
       for the coverage gate on the maintainer's machine; a failure is then

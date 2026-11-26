@@ -1,0 +1,82 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="760" viewBox="0 0 1280 760" role="img" aria-labelledby="title description">
+  <title id="title">Discussion mockup: current and proposed glass contrast and keyboard focus</title>
+  <desc id="description">Two dark omorfos-style panels compare current dim text and accent-only focus against a proposal with stronger secondary text and a dual-color focus outline. The proposal retains the same navy glass at 80 percent opacity and the brand cyan.</desc>
+  <defs>
+    <linearGradient id="page" x2="1" y2="1">
+      <stop offset="0" stop-color="#141c38"/>
+      <stop offset="1" stop-color="#0c1226"/>
+    </linearGradient>
+    <linearGradient id="spectrum" x2="1">
+      <stop offset="0" stop-color="#22d3ee"/>
+      <stop offset=".24" stop-color="#a3e635"/>
+      <stop offset=".48" stop-color="#fde047"/>
+      <stop offset=".72" stop-color="#fb923c"/>
+      <stop offset="1" stop-color="#f472b6"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1280" height="760" rx="28" fill="#0c1226"/>
+  <text x="48" y="58" fill="#f3f5fb" font-family="sans-serif" font-size="28" font-weight="700">Keep the glass. Make the words and focus dependable.</text>
+  <text x="48" y="88" fill="#9aa4c7" font-family="sans-serif" font-size="16">Discussion mockup · same grounds, brand accent and 80% dark glass · not a final theme proposal</text>
+
+  <g transform="translate(40 120)">
+    <rect width="580" height="570" rx="20" fill="url(#page)" stroke="#2b3a6b"/>
+    <rect x="24" y="22" width="100" height="28" rx="14" fill="#f8616d"/>
+    <text x="74" y="41" text-anchor="middle" fill="#0c1226" font-family="sans-serif" font-size="12" font-weight="700" letter-spacing="1">CURRENT</text>
+    <text x="24" y="78" fill="#f3f5fb" font-family="sans-serif" font-size="20" font-weight="600">Beautiful, but worst-case text fades</text>
+    <text x="24" y="103" fill="#9aa4c7" font-family="sans-serif" font-size="14">Glass over a bright window; dim text is 3.6:1</text>
+
+    <rect x="24" y="128" width="532" height="240" rx="14" fill="#ffffff"/>
+    <text x="48" y="158" fill="#30364a" font-family="sans-serif" font-size="14" font-weight="600">A bright window behind the surface</text>
+    <rect x="48" y="176" width="482" height="150" rx="12" fill="#141c38" fill-opacity=".8"/>
+    <text x="70" y="208" fill="#e6eaf5" font-family="sans-serif" font-size="17" font-weight="600">Network</text>
+    <text x="70" y="239" fill="#9aa4c7" font-family="sans-serif" font-size="16">Connected to office Wi-Fi</text>
+    <text x="70" y="267" fill="#727b9c" font-family="sans-serif" font-size="14">Last connected yesterday</text>
+    <rect x="70" y="285" width="126" height="27" rx="8" fill="#243364"/>
+    <text x="133" y="303" text-anchor="middle" fill="#e6eaf5" font-family="sans-serif" font-size="12">Open settings</text>
+    <rect x="58" y="273" width="150" height="51" rx="12" fill="none" stroke="#141c38" stroke-width="3"/>
+    <text x="224" y="301" fill="#f8616d" font-family="sans-serif" font-size="12" font-weight="700">focus ring is hard to see</text>
+    <text x="224" y="319" fill="#9aa4c7" font-family="sans-serif" font-size="11">when custom accent ≈ surface</text>
+
+    <rect x="24" y="390" width="532" height="146" rx="14" fill="#10172f" stroke="#2b3a6b"/>
+    <text x="48" y="420" fill="#f3f5fb" font-family="sans-serif" font-size="15" font-weight="600">What the current choice costs</text>
+    <circle cx="54" cy="451" r="5" fill="#f8616d"/>
+    <text x="70" y="456" fill="#9aa4c7" font-family="sans-serif" font-size="14">Dim text: 3.6:1 over white (dark scheme)</text>
+    <circle cx="54" cy="480" r="5" fill="#f8616d"/>
+    <text x="70" y="485" fill="#9aa4c7" font-family="sans-serif" font-size="14">Dim text: 3.8:1 over black (light scheme)</text>
+    <text x="48" y="516" fill="#727b9c" font-family="sans-serif" font-size="12">Text contrast varies with whatever the glass covers.</text>
+  </g>
+
+  <g transform="translate(660 120)">
+    <rect width="580" height="570" rx="20" fill="url(#page)" stroke="#2b3a6b"/>
+    <rect x="24" y="22" width="112" height="28" rx="14" fill="#a3e635"/>
+    <text x="80" y="41" text-anchor="middle" fill="#0c1226" font-family="sans-serif" font-size="12" font-weight="700" letter-spacing="1">DIRECTION</text>
+    <text x="24" y="78" fill="#f3f5fb" font-family="sans-serif" font-size="20" font-weight="600">Same glass, stronger information</text>
+    <text x="24" y="103" fill="#9aa4c7" font-family="sans-serif" font-size="14">Keep the surface; tune text and focus independently</text>
+
+    <rect x="24" y="128" width="532" height="240" rx="14" fill="#ffffff"/>
+    <text x="48" y="158" fill="#30364a" font-family="sans-serif" font-size="14" font-weight="600">The same bright window behind the surface</text>
+    <rect x="48" y="176" width="482" height="150" rx="12" fill="#141c38" fill-opacity=".8"/>
+    <text x="70" y="208" fill="#e6eaf5" font-family="sans-serif" font-size="17" font-weight="600">Network</text>
+    <text x="70" y="239" fill="#b8c0de" font-family="sans-serif" font-size="16">Connected to office Wi-Fi</text>
+    <text x="70" y="267" fill="#b8c0de" font-family="sans-serif" font-size="14">Last connected yesterday</text>
+    <rect x="70" y="285" width="126" height="27" rx="8" fill="#243364"/>
+    <text x="133" y="303" text-anchor="middle" fill="#e6eaf5" font-family="sans-serif" font-size="12">Open settings</text>
+    <rect x="58" y="273" width="150" height="51" rx="12" fill="none" stroke="#f3f5fb" stroke-width="6"/>
+    <rect x="61" y="276" width="144" height="45" rx="10" fill="none" stroke="#0c1226" stroke-width="2"/>
+    <rect x="64" y="279" width="138" height="39" rx="8" fill="none" stroke="#22d3ee" stroke-width="2"/>
+    <text x="224" y="301" fill="#b8c0de" font-family="sans-serif" font-size="12" font-weight="600">focus stays visible</text>
+    <text x="224" y="319" fill="#9aa4c7" font-family="sans-serif" font-size="11">even if the accent is low-contrast</text>
+
+    <rect x="24" y="390" width="532" height="146" rx="14" fill="#10172f" stroke="#2b3a6b"/>
+    <text x="48" y="420" fill="#f3f5fb" font-family="sans-serif" font-size="15" font-weight="600">Candidate contrast-safe secondary text</text>
+    <circle cx="54" cy="451" r="5" fill="#22d3ee"/>
+    <text x="70" y="456" fill="#b8c0de" font-family="sans-serif" font-size="14">Dark: #b8c0de · 4.9:1 over white-window glass</text>
+    <circle cx="54" cy="480" r="5" fill="#22d3ee"/>
+    <text x="70" y="485" fill="#b8c0de" font-family="sans-serif" font-size="14">Light: #49556e · 5.2:1 over black-window glass</text>
+    <text x="48" y="516" fill="#9aa4c7" font-family="sans-serif" font-size="12">Values are illustrative; verify all surfaces and states.</text>
+  </g>
+
+  <text x="48" y="728" fill="#9aa4c7" font-family="sans-serif" font-size="13">Brand cyan and spectrum remain accents, not a substitute for readable text or a dependable focus cue.</text>
+  <rect x="48" y="739" width="1184" height="4" rx="2" fill="url(#spectrum)"/>
+</svg>

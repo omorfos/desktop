@@ -1,0 +1,187 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="1270" viewBox="0 0 1280 1270" role="img" aria-labelledby="t d">
+<title id="t">Made larger, it should still all be there</title>
+<desc id="d">Finding 10 · computed from the constants; the menu laid out by omorfos_core::Menu itself · not run A discussion mockup drawn by hand from the built-in theme's colours, not a screenshot.</desc>
+
+<defs>
+<linearGradient id="spectrum" x2="1"><stop offset="0.00" stop-color="#22d3ee"/><stop offset="0.25" stop-color="#a3e635"/><stop offset="0.50" stop-color="#fde047"/><stop offset="0.75" stop-color="#fb923c"/><stop offset="1.00" stop-color="#f472b6"/></linearGradient>
+<filter id="blur1" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="14"/></filter>
+<clipPath id="c2"><rect x="75.46" y="196.00" width="519.08" height="291.84" rx="6.00"/></clipPath>
+<filter id="blur3" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="14"/></filter>
+<clipPath id="c4"><rect x="64.00" y="706.36" width="542.00" height="336.00" rx="10.00"/></clipPath>
+<clipPath id="c5"><rect x="110.00" y="747.36" width="450.00" height="32.50" rx="0.00"/></clipPath>
+<clipPath id="c6"><rect x="110.00" y="779.86" width="450.00" height="25.00" rx="0.00"/></clipPath>
+<clipPath id="c7"><rect x="414.00" y="822.36" width="146.00" height="45.00" rx="0.00"/></clipPath>
+<clipPath id="c8"><rect x="247.20" y="822.36" width="156.80" height="45.00" rx="0.00"/></clipPath>
+<filter id="blur9" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="14"/></filter>
+<clipPath id="c10"><rect x="685.46" y="196.00" width="519.08" height="291.84" rx="6.00"/></clipPath>
+<clipPath id="c11"><rect x="799.46" y="196.00" width="182.40" height="291.84" rx="7.60"/></clipPath>
+<filter id="blur12" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="14"/></filter>
+<clipPath id="c13"><rect x="674.00" y="706.36" width="542.00" height="336.00" rx="10.00"/></clipPath>
+</defs>
+<rect width="1280" height="1270" rx="24" fill="#0c1226"/>
+<text x="40" y="52" fill="#f3f5fb" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="25" font-weight="700">Made larger, it should still all be there</text>
+<text x="40" y="80" fill="#9aa4c7" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="14.5">Finding 10 · computed from the constants; the menu laid out by omorfos_core::Menu itself · not run</text>
+<rect x="40.00" y="104.00" width="590.00" height="1110.00" rx="18.00" fill="#10172f" stroke="#2b3a6b" stroke-width="1" />
+<rect x="60.00" y="122.00" width="38.80" height="24.00" rx="12.00" fill="#f8616d" />
+<text x="79.40" y="138.50" fill="#0c1226" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="11.5" font-weight="700" text-anchor="middle" letter-spacing="1">NOW</text>
+<text x="110.80" y="139.50" fill="#f3f5fb" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="17" font-weight="600">A larger scale runs off the screen; larger text is cut</text>
+<rect x="650.00" y="104.00" width="590.00" height="1110.00" rx="18.00" fill="#10172f" stroke="#2b3a6b" stroke-width="1" />
+<rect x="670.00" y="122.00" width="90.40" height="24.00" rx="12.00" fill="#a3e635" />
+<text x="715.20" y="138.50" fill="#0c1226" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="11.5" font-weight="700" text-anchor="middle" letter-spacing="1">DIRECTION</text>
+<text x="772.40" y="139.50" fill="#f3f5fb" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="17" font-weight="600">What does not fit scrolls, wraps or grows</text>
+<text x="64.00" y="182.00" fill="#f3f5fb" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="14.5" font-weight="600">1  The root menu at twice the size, on a screen of 1366 by 768</text>
+<g clip-path="url(#c2)">
+<rect x="75.46" y="196.00" width="519.08" height="291.84" fill="#0c1226" />
+<g filter="url(#blur1)" opacity="0.62" transform="rotate(-45 397.3 341.9)">
+<rect x="280.50" y="-95.84" width="43.72" height="875.52" fill="#22d3ee" />
+<rect x="327.21" y="-95.84" width="43.72" height="875.52" fill="#a3e635" />
+<rect x="373.93" y="-95.84" width="43.72" height="875.52" fill="#fde047" />
+<rect x="420.65" y="-95.84" width="43.72" height="875.52" fill="#fb923c" />
+<rect x="467.37" y="-95.84" width="43.72" height="875.52" fill="#f472b6" />
+</g>
+</g>
+<rect x="75.46" y="196.00" width="519.08" height="21.28" fill="#141c38" fill-opacity="0.8" />
+<rect x="189.46" y="196.00" width="182.40" height="331.36" rx="7.60" fill="#141c38" fill-opacity="0.93" />
+<text x="213.78" y="212.93" fill="#e6eaf5" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="11.146666666666667">Run…</text>
+<text x="213.78" y="237.25" fill="#e6eaf5" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="11.146666666666667">Browser</text>
+<text x="213.78" y="261.57" fill="#e6eaf5" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="11.146666666666667">Files</text>
+<text x="213.78" y="285.89" fill="#e6eaf5" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="11.146666666666667">Editor</text>
+<text x="213.78" y="310.21" fill="#e6eaf5" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="11.146666666666667">Terminal</text>
+<text x="213.78" y="334.53" fill="#e6eaf5" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="11.146666666666667">Settings</text>
+<line x1="195.54" y1="346.10" x2="365.78" y2="346.10" stroke="#2b3a6b" stroke-width="1" stroke-linecap="butt"/>
+<text x="213.78" y="365.69" fill="#e6eaf5" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="11.146666666666667">Stay awake</text>
+<text x="213.78" y="390.01" fill="#e6eaf5" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="11.146666666666667">About omorfos</text>
+<line x1="195.54" y1="401.58" x2="365.78" y2="401.58" stroke="#2b3a6b" stroke-width="1" stroke-linecap="butt"/>
+<text x="213.78" y="421.17" fill="#e6eaf5" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="11.146666666666667">Lock screen</text>
+<text x="213.78" y="445.49" fill="#e6eaf5" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="11.146666666666667">Sleep</text>
+<text x="213.78" y="469.81" fill="#e6eaf5" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="11.146666666666667">Log out…</text>
+<text x="213.78" y="494.13" fill="#ff8a93" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="11.146666666666667">Restart…</text>
+<text x="213.78" y="518.45" fill="#ff8a93" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="11.146666666666667">Shut down…</text>
+<rect x="69.46" y="487.84" width="531.08" height="53.52" fill="#0c1226" fill-opacity="0.5" />
+<line x1="69.46" y1="487.84" x2="600.54" y2="487.84" stroke="#f8616d" stroke-width="2" stroke-linecap="butt" stroke-dasharray="6 4"/>
+<text x="596.54" y="505.84" fill="#ff8a93" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="12.5" font-weight="600" text-anchor="end">the screen ends here</text>
+<circle cx="68.00" cy="552.86" r="4.00" fill="#f8616d"/>
+<text x="80.00" y="557.36" fill="#b8c0de" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="13">The menu is 436 units tall and does not scroll</text>
+<circle cx="68.00" cy="573.86" r="4.00" fill="#f8616d"/>
+<text x="80.00" y="578.36" fill="#b8c0de" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="13">“Restart…” is 19 of its 32 units below; “Shut down…” wholly so</text>
+<circle cx="68.00" cy="594.86" r="4.00" fill="#f8616d"/>
+<text x="80.00" y="599.36" fill="#b8c0de" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="13">The arrows still go to them: the keyboard is on a row unseen</text>
+<circle cx="68.00" cy="615.86" r="4.00" fill="#f8616d"/>
+<text x="80.00" y="620.36" fill="#b8c0de" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="13">At 3 on 1920 by 1080, three rows go; and the welcome card's</text>
+<circle cx="68.00" cy="636.86" r="4.00" fill="#f8616d"/>
+<text x="80.00" y="641.36" fill="#b8c0de" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="13">buttons, and the lock screen's words run under its buttons</text>
+<text x="64.00" y="692.36" fill="#f3f5fb" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="14.5" font-weight="600">2  A question with its text at 18pt, where it is built for 11</text>
+<g clip-path="url(#c4)">
+<rect x="64.00" y="706.36" width="542.00" height="336.00" fill="#0c1226" />
+<g filter="url(#blur3)" opacity="0.62" transform="rotate(-45 400.0 874.4)">
+<rect x="278.09" y="370.36" width="45.78" height="1008.00" fill="#22d3ee" />
+<rect x="326.87" y="370.36" width="45.78" height="1008.00" fill="#a3e635" />
+<rect x="375.65" y="370.36" width="45.78" height="1008.00" fill="#fde047" />
+<rect x="424.43" y="370.36" width="45.78" height="1008.00" fill="#fb923c" />
+<rect x="473.21" y="370.36" width="45.78" height="1008.00" fill="#f472b6" />
+</g>
+</g>
+<rect x="64.00" y="706.36" width="542.00" height="336.00" rx="10.00" fill="#000000" fill-opacity="0.5" />
+<rect x="85.00" y="722.36" width="500.00" height="170.00" rx="15.00" fill="#141c38" stroke="#7482b3" stroke-width="1" />
+<g clip-path="url(#c5)">
+<text x="110.00" y="775.01" fill="#e6eaf5" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="31.666666666666664" font-weight="600">Meet wants to share …</text>
+</g>
+<g clip-path="url(#c6)">
+<text x="110.00" y="803.16" fill="#9aa4c7" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="30.0">It would see everything…</text>
+</g>
+<rect x="414.00" y="822.36" width="146.00" height="45.00" rx="7.50" fill="#22d3ee" />
+<g clip-path="url(#c7)">
+<text x="487.00" y="855.66" fill="#0c1226" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="30.0" text-anchor="middle">Share</text>
+</g>
+<rect x="247.20" y="822.36" width="156.80" height="45.00" rx="7.50" fill="#10172f" />
+<g clip-path="url(#c8)">
+<text x="325.60" y="855.66" fill="#e6eaf5" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="30.0" text-anchor="middle">Cancel</text>
+</g>
+<circle cx="68.00" cy="1059.86" r="4.00" fill="#f8616d"/>
+<text x="80.00" y="1064.36" fill="#b8c0de" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="13">A row is 20 units, whatever the text: 12pt is the most that fits</text>
+<circle cx="68.00" cy="1080.86" r="4.00" fill="#f8616d"/>
+<text x="80.00" y="1085.36" fill="#b8c0de" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="13">The tops and tails of letters are cut, and no error is said</text>
+<circle cx="68.00" cy="1101.86" r="4.00" fill="#f8616d"/>
+<text x="80.00" y="1106.36" fill="#b8c0de" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="13">What a program would see is one line, cut short: not wrapped</text>
+<circle cx="68.00" cy="1122.86" r="4.00" fill="#f8616d"/>
+<text x="80.00" y="1127.36" fill="#b8c0de" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="13">Tooltips, the notice, “About”, the password box: fixed in code</text>
+<circle cx="68.00" cy="1143.86" r="4.00" fill="#f8616d"/>
+<text x="80.00" y="1148.36" fill="#b8c0de" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="13">ACCESSIBILITY.md: text “can be set larger, from 6pt to 72pt”</text>
+<text x="674.00" y="182.00" fill="#f3f5fb" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="14.5" font-weight="600">1  The root menu at twice the size, on a screen of 1366 by 768</text>
+<g clip-path="url(#c10)">
+<rect x="685.46" y="196.00" width="519.08" height="291.84" fill="#0c1226" />
+<g filter="url(#blur9)" opacity="0.62" transform="rotate(-45 1007.3 341.9)">
+<rect x="890.50" y="-95.84" width="43.72" height="875.52" fill="#22d3ee" />
+<rect x="937.21" y="-95.84" width="43.72" height="875.52" fill="#a3e635" />
+<rect x="983.93" y="-95.84" width="43.72" height="875.52" fill="#fde047" />
+<rect x="1030.65" y="-95.84" width="43.72" height="875.52" fill="#fb923c" />
+<rect x="1077.37" y="-95.84" width="43.72" height="875.52" fill="#f472b6" />
+</g>
+</g>
+<rect x="685.46" y="196.00" width="519.08" height="21.28" fill="#141c38" fill-opacity="0.8" />
+<g clip-path="url(#c11)">
+<rect x="799.46" y="196.00" width="182.40" height="291.84" fill="#141c38" fill-opacity="0.93" />
+<text x="823.78" y="173.41" fill="#e6eaf5" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="11.146666666666667">Run…</text>
+<text x="823.78" y="197.73" fill="#e6eaf5" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="11.146666666666667">Browser</text>
+<text x="823.78" y="222.05" fill="#e6eaf5" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="11.146666666666667">Files</text>
+<text x="823.78" y="246.37" fill="#e6eaf5" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="11.146666666666667">Editor</text>
+<text x="823.78" y="270.69" fill="#e6eaf5" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="11.146666666666667">Terminal</text>
+<text x="823.78" y="295.01" fill="#e6eaf5" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="11.146666666666667">Settings</text>
+<line x1="805.54" y1="306.58" x2="975.78" y2="306.58" stroke="#2b3a6b" stroke-width="1" stroke-linecap="butt"/>
+<text x="823.78" y="326.17" fill="#e6eaf5" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="11.146666666666667">Stay awake</text>
+<text x="823.78" y="350.49" fill="#e6eaf5" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="11.146666666666667">About omorfos</text>
+<line x1="805.54" y1="362.06" x2="975.78" y2="362.06" stroke="#2b3a6b" stroke-width="1" stroke-linecap="butt"/>
+<text x="823.78" y="381.65" fill="#e6eaf5" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="11.146666666666667">Lock screen</text>
+<text x="823.78" y="405.97" fill="#e6eaf5" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="11.146666666666667">Sleep</text>
+<text x="823.78" y="430.29" fill="#e6eaf5" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="11.146666666666667">Log out…</text>
+<text x="823.78" y="454.61" fill="#e6eaf5" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="11.146666666666667">Restart…</text>
+<rect x="800.46" y="462.76" width="180.40" height="24.32" rx="4.56" fill="#22d3ee" />
+<text x="823.78" y="478.93" fill="#0c1226" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="11.146666666666667">Shut down…</text>
+<rect x="799.46" y="196.00" width="182.40" height="19.76" fill="#141c38" />
+</g>
+<path d="M890.66 213.25 L890.66 202.75 M886.16 207.25 L890.66 202.75 L895.16 207.25" fill="none" stroke="#e6eaf5" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/>
+<text x="993.86" y="216.00" fill="#b8c0de" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="12.5">more above</text>
+<circle cx="678.00" cy="552.86" r="4.00" fill="#a3e635"/>
+<text x="690.00" y="557.36" fill="#b8c0de" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="13">No taller than its screen, scrolled to the row the keyboard is on</text>
+<circle cx="678.00" cy="573.86" r="4.00" fill="#a3e635"/>
+<text x="690.00" y="578.36" fill="#b8c0de" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="13">A sign at the end that has more, which is also a place to press</text>
+<circle cx="678.00" cy="594.86" r="4.00" fill="#a3e635"/>
+<text x="690.00" y="599.36" fill="#b8c0de" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="13">The welcome card and the lock screen laid out in the height given</text>
+<circle cx="678.00" cy="615.86" r="4.00" fill="#a3e635"/>
+<text x="690.00" y="620.36" fill="#b8c0de" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="13">The grid of programs as many across as fit, not always six</text>
+<circle cx="678.00" cy="636.86" r="4.00" fill="#a3e635"/>
+<text x="690.00" y="641.36" fill="#b8c0de" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="13">A test for each on a screen 384 units tall</text>
+<text x="674.00" y="692.36" fill="#f3f5fb" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="14.5" font-weight="600">2  A question with its text at 18pt, where it is built for 11</text>
+<g clip-path="url(#c13)">
+<rect x="674.00" y="706.36" width="542.00" height="336.00" fill="#0c1226" />
+<g filter="url(#blur12)" opacity="0.62" transform="rotate(-45 1010.0 874.4)">
+<rect x="888.09" y="370.36" width="45.78" height="1008.00" fill="#22d3ee" />
+<rect x="936.87" y="370.36" width="45.78" height="1008.00" fill="#a3e635" />
+<rect x="985.65" y="370.36" width="45.78" height="1008.00" fill="#fde047" />
+<rect x="1034.43" y="370.36" width="45.78" height="1008.00" fill="#fb923c" />
+<rect x="1083.21" y="370.36" width="45.78" height="1008.00" fill="#f472b6" />
+</g>
+</g>
+<rect x="674.00" y="706.36" width="542.00" height="336.00" rx="10.00" fill="#000000" fill-opacity="0.5" />
+<rect x="695.00" y="722.36" width="500.00" height="293.83" rx="15.00" fill="#141c38" stroke="#7482b3" stroke-width="1" />
+<text x="720.00" y="779.03" fill="#e6eaf5" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="31.666666666666664" font-weight="600">Meet wants to share your</text>
+<text x="720.00" y="820.19" fill="#e6eaf5" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="31.666666666666664" font-weight="600">screen</text>
+<text x="720.00" y="865.69" fill="#b8c0de" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="30.0">It would see everything on it</text>
+<text x="720.00" y="904.69" fill="#b8c0de" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="30.0">until you stop.</text>
+<rect x="1024.00" y="936.19" width="146.00" height="55.00" rx="7.50" fill="#10172f" stroke="#7482b3" stroke-width="1" />
+<text x="1097.00" y="974.49" fill="#e6eaf5" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="30.0" text-anchor="middle">Share</text>
+<rect x="853.20" y="936.19" width="156.80" height="55.00" rx="7.50" fill="#10172f" stroke="#7482b3" stroke-width="1" />
+<rect x="849.45" y="932.44" width="164.30" height="62.50" rx="11.25" fill="none" stroke="#22d3ee" stroke-width="2.5" />
+<text x="931.60" y="974.49" fill="#e6eaf5" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="30.0" text-anchor="middle">Cancel</text>
+<circle cx="678.00" cy="1059.86" r="4.00" fill="#a3e635"/>
+<text x="690.00" y="1064.36" fill="#b8c0de" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="13">A row as tall as its text needs: one function, used by all</text>
+<circle cx="678.00" cy="1080.86" r="4.00" fill="#a3e635"/>
+<text x="690.00" y="1085.36" fill="#b8c0de" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="13">Words wrap; what is asked is never cut short</text>
+<circle cx="678.00" cy="1101.86" r="4.00" fill="#a3e635"/>
+<text x="690.00" y="1106.36" fill="#b8c0de" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="13">One setting for the size of all text, told to programs too</text>
+<circle cx="678.00" cy="1122.86" r="4.00" fill="#a3e635"/>
+<text x="690.00" y="1127.36" fill="#b8c0de" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="13">A test for each part at 22pt</text>
+<circle cx="678.00" cy="1143.86" r="4.00" fill="#a3e635"/>
+<text x="690.00" y="1148.36" fill="#b8c0de" font-family="Inter, 'DejaVu Sans', 'Liberation Sans', sans-serif" font-size="13">(The keyboard on Cancel is finding 14's, drawn here as well)</text>
+<rect x="40" y="1248" width="1200" height="4" rx="2" fill="url(#spectrum)"/>
+</svg>
