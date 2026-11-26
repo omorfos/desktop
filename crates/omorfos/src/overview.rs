@@ -71,8 +71,9 @@ pub struct Overviewed {
     /// The workspace under the pointer, by its place in the strip, or, one
     /// past the last, the button that makes a new one.
     pub hovered: Option<usize>,
-    /// The button after the strip that makes a new workspace.
-    pub add: Rect,
+    /// The button after the strip that makes a new workspace, while one can
+    /// be made: not while the last is empty.
+    pub add: Option<Rect>,
 }
 
 /// The overview, open or not.
@@ -522,18 +523,32 @@ impl Compositor {
     /// is shown.
     fn strip(&self, looking: &Looking) -> Vec<(Rect, usize, usize, bool)> {
         let desktops = self.overview_desktops(looking.output);
-        let tiles = desktops.len() + 1;
+        let tiles = self.strip_tiles(looking);
         let layout = overview(looking.screen, &[], tiles, metrics(looking.screen));
         let strip = layout.workspaces.into_iter().zip(desktops);
         let strip = strip.map(|(rect, (index, desktop, shown))| (rect, index, desktop, shown));
         strip.collect()
     }
 
-    /// Where the button after the strip that makes a new workspace is.
-    fn adder(&self, looking: &Looking) -> Rect {
-        let tiles = self.overview_desktops(looking.output).len() + 1;
-        let layout = overview(looking.screen, &[], tiles, metrics(looking.screen));
-        layout.workspaces.last().copied().unwrap_or_default()
+    /// How many places the strip has: one for each desktop, and one after
+    /// them for the button that makes a new one, while one can be made.
+    fn strip_tiles(&self, looking: &Looking) -> usize {
+        let desktops = self.overview_desktops(looking.output).len();
+        desktops + usize::from(self.desktop.makes_another(looking.output))
+    }
+
+    /// Where the button after the strip that makes a new workspace is, while
+    /// one can be made: not while the last is empty, which a new one would
+    /// be beside.
+    fn adder(&self, looking: &Looking) -> Option<Rect> {
+        let adding = self.desktop.makes_another(looking.output);
+        let layout = overview(
+            looking.screen,
+            &[],
+            self.strip_tiles(looking),
+            metrics(looking.screen),
+        );
+        layout.workspaces.last().copied().filter(|_| adding)
     }
 
     /// Each window in the overview, as it is drawn at `clock`, in the order
@@ -542,7 +557,7 @@ impl Compositor {
         let windows = self.overview_windows(looking.output, looking.program.as_deref());
         let places: Vec<(WindowId, Rect)> =
             windows.iter().map(|(id, rect, _)| (*id, *rect)).collect();
-        let tiles = self.overview_desktops(looking.output).len() + 1;
+        let tiles = self.strip_tiles(looking);
         let layout = overview(looking.screen, &places, tiles, metrics(looking.screen));
         let still = self.config().general.appearance.reduce_motion;
         let cards = layout.windows.into_iter().map(|(window, place)| {
@@ -657,7 +672,9 @@ impl Compositor {
     fn overview_adder_under(&self, at: DomainPoint) -> Option<usize> {
         let looking = self.cards.overview.open.as_ref()?;
         let place = self.overview_desktops(looking.output).len();
-        self.adder(looking).contains(at).then_some(place)
+        self.adder(looking)
+            .filter(|add| add.contains(at))
+            .map(|_| place)
     }
 
     /// Takes the pointer moving to `at`: while the overview is open, the
@@ -1011,8 +1028,11 @@ impl Compositor {
                 (elements, panes),
             );
         }
-        // After them, the button that makes a new workspace.
-        let add = self.adder(looking);
+        // After them, the button that makes a new workspace, while one can
+        // be made.
+        let Some(add) = self.adder(looking) else {
+            return;
+        };
         let hovered = looking.hovered == Some(self.overview_desktops(looking.output).len());
         let add_at =
             Point::<f64, Logical>::from((f64::from(add.origin.x), f64::from(add.origin.y)));

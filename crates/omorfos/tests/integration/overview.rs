@@ -676,11 +676,16 @@ fn a_window_private_by_blank_is_blank_on_a_workspace_not_shown() {
 
 #[test]
 fn the_button_after_the_strip_makes_a_new_workspace_and_goes_to_it() {
-    let (mut session, _client) = two_workspaces();
+    // The last desktop with a window on it, for another to be made beside.
+    let mut session = Session::with_config(&[UNBLURRED]);
+    let mut first = session.connect();
+    session.open(&mut first, "one", (300, 200), RED);
+    session.step();
+    open(&mut session);
     let overviewed = session.compositor().overview_layout().unwrap();
     let before = overviewed.workspaces.len();
     let (last, _) = *overviewed.workspaces.last().unwrap();
-    let add = overviewed.add;
+    let add = overviewed.add.unwrap();
     assert!(i64::from(add.origin.x) > last.right(), "after the last");
     assert_eq!(add.origin.y, last.origin.y);
     // Under the pointer it is lit, and its plus is in the middle.
@@ -713,6 +718,29 @@ fn the_button_after_the_strip_makes_a_new_workspace_and_goes_to_it() {
         .collect();
     assert_eq!(shown.last(), Some(&true));
     assert_eq!(overviewed.windows, []);
+    // It empty, none to make another beside it, and no place kept for one:
+    // the strip in the middle of the screen without it.
+    assert_eq!(overviewed.add, None);
+    let (last, _) = *overviewed.workspaces.last().unwrap();
+    let (first, _) = overviewed.workspaces[0];
+    let across = i64::from(first.origin.x) + last.right();
+    assert!((across - i64::from(WIDTH)).abs() <= 2, "{across}");
+    click(
+        &mut session,
+        (last.origin.x + last.size.width.cast_signed() + 20, y),
+    );
+    let after = session.compositor().overview_layout();
+    let after = after.map_or(0, |overviewed| overviewed.workspaces.len());
+    assert!(after <= before + 1, "nothing more made");
+    // A window on it, and the button is back.
+    session.compositor_mut().perform(&Action::Overview);
+    session.step();
+    session.advance(GLIDE);
+    let mut client = session.connect();
+    session.open(&mut client, "third", (180, 120), GREEN);
+    open(&mut session);
+    let overviewed = session.compositor().overview_layout().unwrap();
+    assert!(overviewed.add.is_some());
 }
 
 /// Puts three fingers on the touchpad, moves them down by each of `steps`
