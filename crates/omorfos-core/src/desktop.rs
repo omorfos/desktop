@@ -3001,6 +3001,49 @@ impl Desktop {
         desktops[wanted.min(desktops.len() - 1)]
     }
 
+    /// Takes away the current output's desktop `desktop`, counted among its
+    /// desktops, as a Mac's ✕ on a Space does: its windows go to the
+    /// desktop before it, or after it if it is the first, as they are,
+    /// over those there; a window in full screen or tiled that came from
+    /// it goes back to that one when it leaves; and shown, that one is
+    /// shown. With one desktop, or none of that number, nothing.
+    pub fn close_workspace(&mut self, desktop: usize) {
+        let set = &mut self.sets[self.current];
+        let desktops = set.desktops();
+        let Some(&closing) = desktops.get(desktop).filter(|_| desktops.len() > 1) else {
+            return;
+        };
+        let onto = if desktop == 0 {
+            desktops[1]
+        } else {
+            desktops[desktop - 1]
+        };
+        let (from, to) = (set.workspaces[closing].id, set.workspaces[onto].id);
+        let groups = std::mem::take(&mut set.workspaces[closing].groups);
+        let focused = set.workspaces[closing].focused.take();
+        let shown = set.active == closing;
+        let receiving = &mut set.workspaces[onto];
+        receiving.groups.extend(groups);
+        // Shown, the window that had the keyboard keeps it.
+        if shown {
+            receiving.focused = focused.or(receiving.focused);
+        }
+        receiving.repair();
+        for workspace in &mut set.workspaces {
+            if let Some(solo) = workspace.solo.as_mut().filter(|solo| solo.origin == from) {
+                solo.origin = to;
+            }
+        }
+        set.workspaces[closing].kept = false;
+        if set.desk == from {
+            set.desk = to;
+        }
+        if shown {
+            set.active = onto;
+        }
+        set.settle();
+    }
+
     /// Makes a workspace at the end of the current output's and shows it.
     /// It goes again once it is empty and another is shown.
     pub fn new_workspace(&mut self) {
@@ -6139,6 +6182,68 @@ mod tests {
         desktop.let_go_aside(true);
         assert_ne!(desktop.sent(), sent);
         assert_eq!(at(&desktop), Point::new(48 - 800, 126));
+    }
+
+    #[test]
+    fn a_workspace_closed_gives_its_windows_to_the_one_before_and_goes() {
+        let mut desktop = desktop();
+        assert_eq!(desktop.workspace_count(), 3);
+        let first = open(&mut desktop, "first");
+        desktop.switch_workspace(1);
+        let (term, web) = (open(&mut desktop, "term"), open(&mut desktop, "web"));
+        desktop.set_maximized(web, true);
+        let place = places(&desktop);
+        let sent = desktop.sent();
+        // The one shown: its windows to the first, as they were, and that
+        // shown, the one that had the keyboard keeping it.
+        desktop.close_workspace(1);
+        assert_eq!(desktop.workspace_count(), 2);
+        assert_eq!(desktop.active_workspace(), 0);
+        let now = places(&desktop);
+        assert!(place.iter().all(|place| now.contains(place)), "{now:?}");
+        assert_eq!(desktop.focused(), Some(web));
+        assert!(frame(&desktop, web).maximized);
+        assert!(desktop.windows().any(|listed| listed.window.id == first));
+        assert_eq!(desktop.sent(), sent, "put there, not sent");
+        // The first, to the one after it; and the last left, nothing.
+        desktop.close_workspace(0);
+        assert_eq!(desktop.workspace_count(), 1);
+        let on = |id| {
+            desktop
+                .windows()
+                .find(|listed| listed.window.id == id)
+                .unwrap()
+                .workspace
+        };
+        assert_eq!((on(first), on(term), on(web)), (0, 0, 0));
+        desktop.close_workspace(0);
+        desktop.close_workspace(5);
+        assert_eq!(desktop.workspace_count(), 1);
+    }
+
+    #[test]
+    fn a_window_in_full_screen_from_a_workspace_closed_goes_back_to_the_one_its_windows_went_to() {
+        let mut desktop = desktop();
+        desktop.switch_workspace(1);
+        let movie = open(&mut desktop, "movie");
+        desktop.set_fullscreen(movie, true);
+        desktop.switch_workspace(0);
+        let others = open(&mut desktop, "others");
+        // The second closed from the first: the window in full screen stays
+        // so, on its own workspace, and leaving it, goes to the first.
+        let count = desktop.workspace_count();
+        desktop.close_workspace(1);
+        assert_eq!(desktop.workspace_count(), count - 1);
+        assert!(desktop.frame_of(movie).unwrap().fullscreen);
+        desktop.set_fullscreen(movie, false);
+        let on = |id| {
+            desktop
+                .windows()
+                .find(|listed| listed.window.id == id)
+                .unwrap()
+                .workspace
+        };
+        assert_eq!(on(movie), on(others));
     }
 
     #[test]

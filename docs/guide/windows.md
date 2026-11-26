@@ -138,13 +138,24 @@ fades in where it goes. The window under the pointer, or reached with the
 arrows, is picked: a border round it and its title under it. Enter or a
 click goes to it, once the overview has closed; Escape, or a click where
 nothing is, closes it where you were. Any other key is a binding as
-ever, so `Super+Tab` opens the switcher in its stead.
+ever, so `Super+Tab` opens the switcher in its stead. The window picked
+has a close button on its top left corner, where a titlebar's buttons
+stand: on glass, as a menu is, a ring and a small cross in the colour the
+titlebar's close button has with the pointer on it. Clicked, it asks the program to close that
+window, as the titlebar's button would, so a program with work unsaved
+still asks, and the overview stays open on what is left.
 
 The strip has each desktop of the screen as a small picture of itself,
 its wallpaper and its windows where they stand, the one shown in the
 accent. Point at one and it is lit; click it and the overview shows its
 windows, which glide in from where they are. The plus after the last
 makes a new workspace and goes to it, empty, for windows to come. A
+desktop under the pointer has the same close button, while there are others:
+as a Mac's on a Space, it takes the desktop away and gives its windows to
+the one before it, or after it if it is the first, as they are, nothing
+closed; one in full screen or tiled that came from it goes back to that
+one when it leaves. The buttons show once the overview is open the whole
+way, not while fingers carry it. A
 private window is shown to you as any other is; in a picture of the
 screen it is blank or blurred, as its rule says, without its title.
 

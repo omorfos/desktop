@@ -29,7 +29,7 @@ use smithay::backend::renderer::{ImportAll, ImportMem, Renderer, Texture};
 use smithay::desktop::layer_map_for_output;
 use smithay::input::keyboard::Keysym;
 use smithay::output::Output;
-use smithay::utils::{Logical, Point, Rectangle};
+use smithay::utils::{Logical, Point, Rectangle, Size};
 use smithay::wayland::shell::wlr_layer::Layer;
 
 use crate::Scale;
@@ -120,7 +120,8 @@ struct Looking {
     entered: Vec<(WindowId, Duration)>,
     /// The workspace in the strip under the pointer, by its place there.
     hovered: Option<usize>,
-    /// The window picked, by the pointer or the arrows.
+    /// The window picked, by the pointer or the arrows, which has a button
+    /// to close it.
     picked: Option<WindowId>,
     /// Whether it is closing.
     closing: bool,
@@ -145,8 +146,58 @@ struct Drawn {
     /// The button that makes a new workspace: as it is, and under the
     /// pointer.
     adds: [Painted; 2],
+    /// The button that closes a window or a workspace.
+    close: Painted,
     /// The border and title of the window picked, if there is one.
     picked: Option<Picked>,
+}
+
+/// What a button in the overview closes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Closing {
+    /// A window, as its titlebar's button would.
+    Window(WindowId),
+    /// A workspace, by which desktop it is, its windows given to the one
+    /// beside it.
+    Workspace(usize),
+}
+
+/// Where the button that closes what is at `place` in the overview is: in
+/// the middle of its top left corner, on the side a titlebar's buttons
+/// stand.
+fn close_of(place: Rect) -> Rect {
+    let side = paint::OVERVIEW_CLOSE;
+    let half = (side / 2).cast_signed();
+    Rect::new(
+        DomainPoint::new(place.origin.x - half, place.origin.y - half),
+        omorfos_core::geometry::Size::new(side, side),
+    )
+}
+
+/// The glass under the button that closes what is at `place`, round, as
+/// the theme makes a menu glass, `key` telling it from others, put in at
+/// `at` among what is drawn, what is behind it beginning there.
+fn close_glass(
+    theme: &omorfos_config::Theme,
+    place: Rect,
+    view: View,
+    (key, at): (u64, usize),
+) -> Option<Pane> {
+    let mut style = theme.style(Part::Menu, States::NONE);
+    style.radius = paint::OVERVIEW_CLOSE / 2;
+    let area = crate::compositor::logical(close_of(place));
+    Pane::of(&style, (area, view), (key, at, at), 1.0)
+}
+
+/// Where the button that closes what is at `place` is drawn, and how
+/// large.
+fn button(place: Rect) -> (Point<f64, Logical>, Size<i32, Logical>) {
+    let at = close_of(place);
+    let corner = Point::from((f64::from(at.origin.x), f64::from(at.origin.y)));
+    (
+        corner,
+        Size::from((at.size.width.cast_signed(), at.size.height.cast_signed())),
+    )
 }
 
 /// The border and title of the window picked, and what they were painted
@@ -298,6 +349,12 @@ impl Looking {
             self.chosen = chosen;
             self.held = None;
         }
+    }
+
+    /// Whether it is open the whole way at `clock`, and nothing carries it:
+    /// as its buttons that close things are shown.
+    fn still(&self, clock: Duration) -> bool {
+        !self.closing && self.held.is_none() && self.open(clock) >= 1.0
     }
 
     /// Whether it has closed by `clock`.
@@ -607,16 +664,46 @@ impl Compositor {
     /// window under it is picked, and the workspace under it is lit.
     /// Returns whether the overview is open, and so has the pointer.
     pub(crate) fn overview_motion(&mut self, at: DomainPoint) -> bool {
+        // On a button that closes something, what it closes is still the
+        // one under the pointer, though the button reaches past it.
+        let closing = self.overview_close_under(at);
         let under = self.overview_under(at);
         let strip = self.overview_strip_under(at).map(|(place, _)| place);
         let adding = self.overview_adder_under(at);
         let Some(looking) = self.cards.overview.open.as_mut() else {
             return false;
         };
-        let strip = strip.or(adding);
+        let (under, strip) = match closing {
+            Some(Closing::Window(window)) => (Some(window), strip.or(adding)),
+            Some(Closing::Workspace(_)) => (under, looking.hovered),
+            None => (under, strip.or(adding)),
+        };
         looking.picked = under.or(looking.picked);
         looking.hovered = strip;
         true
+    }
+
+    /// The button that closes something under `at`, if one is there: on
+    /// the window picked, or on the workspace in the strip under the
+    /// pointer while there are others, and while the overview is open the
+    /// whole way and nothing carries it.
+    fn overview_close_under(&self, at: DomainPoint) -> Option<Closing> {
+        let looking = self.cards.overview.open.as_ref()?;
+        let clock = self.clock();
+        let still = looking.still(clock);
+        let cards = self.cards(looking, clock);
+        let pointed = cards.iter().filter(|_| still);
+        let window = pointed.filter(|card| Some(card.window) == looking.picked);
+        let window = window.filter(|card| close_of(card.place).contains(at));
+        let window = window.map(|card| Closing::Window(card.window)).next();
+        let others = self.overview_desktops(looking.output).len() > 1;
+        let strip = self.strip(looking).into_iter().enumerate();
+        let strip = strip.filter(|(place, _)| still && others && looking.hovered == Some(*place));
+        let workspace = strip.filter(|(_, (rect, _, _, _))| close_of(*rect).contains(at));
+        let workspace = workspace
+            .map(|(_, (_, _, desktop, _))| Closing::Workspace(desktop))
+            .next();
+        window.or(workspace)
     }
 
     /// Takes a press of the pointer while the overview is open: on the
@@ -624,6 +711,29 @@ impl Compositor {
     /// workspace in the strip it goes to it, and shows its windows; on a
     /// window it goes to it; anywhere else it closes the overview.
     pub(crate) fn overview_press(&mut self, at: DomainPoint) {
+        // A window closed as its titlebar's button would, so that its
+        // program may ask first; a workspace's windows given to the one
+        // beside it. The overview stays open on what is left.
+        match self.overview_close_under(at) {
+            Some(Closing::Window(window)) => {
+                self.mapped(window)
+                    .into_iter()
+                    .for_each(|mapped| mapped.role.close());
+                return;
+            }
+            Some(Closing::Workspace(desktop)) => {
+                let screen = self
+                    .cards
+                    .overview
+                    .open
+                    .as_ref()
+                    .map(|looking| looking.screen.origin);
+                self.desktop.turn_to(screen.unwrap_or_default());
+                self.desktop.close_workspace(desktop);
+                return;
+            }
+            None => {}
+        }
         let adding = self.overview_adder_under(at);
         let screen = self.cards.overview.open.as_ref();
         if let Some((_, looking)) = adding.zip(screen) {
@@ -721,6 +831,7 @@ impl Compositor {
             ];
             let add = |hovered| Painted::new(&paint::overview_add(theme, strip, hovered, scale));
             let adds = [add(false), add(true)];
+            let close = Painted::new(&paint::overview_close(theme, scale));
             let text = &mut self.text;
             let picked = wanted.map(|(window, title, size)| {
                 let ring = Painted::new(&paint::overview_window(theme, size, scale));
@@ -741,6 +852,7 @@ impl Compositor {
                 strip,
                 rings,
                 adds,
+                close,
                 picked,
             });
         }
@@ -788,7 +900,18 @@ impl Compositor {
         };
         let mut stacked: Vec<&Card> = cards.iter().collect();
         stacked.sort_by_key(|card| height(card.window));
+        // A button to close the window under the pointer, and the workspace
+        // in the strip under it while there are others, over them.
+        let still = looking.still(clock);
         for card in stacked {
+            if still && looking.picked == Some(card.window) {
+                let drawn_button = drawn
+                    .close
+                    .stretched(renderer, button(card.place), view, 1.0);
+                elements.extend(drawn_button);
+                let key = glass::key(&("the overview's close button", card.window));
+                panes.extend(close_glass(theme, card.place, view, (key, elements.len())));
+            }
             // The border and title of the one picked just over it, under
             // whatever stands over it.
             let picked = drawn
@@ -831,7 +954,54 @@ impl Compositor {
                 self.picture_elements(renderer, fading, exact(rect), pass, (elements, panes));
             }
         }
+        self.strip_elements(
+            renderer,
+            (output, looking, drawn),
+            (view, open, screen),
+            (elements, panes),
+        );
+        // The screen behind, dimmed, and blurred if the theme says so.
+        let scale = view.scale.factor();
+        let dim = &self.cards.overview.dim;
+        let dim = SolidColorRenderElement::from_buffer(dim, (0, 0), scale, open, Kind::Unspecified);
+        elements.push(Element::Solid(dim));
+        let backdrop = theme.style(Part::OverviewBackdrop, States::NONE);
+        let blurred = backdrop.blur > 0 && backdrop.see_through();
+        let area = here
+            .filter(|_| blurred)
+            .map(|screen| view.pixels(crate::compositor::logical(screen)));
+        let key = glass::key(&("the overview's backdrop", output.name()));
+        let under = elements.len();
+        let blur = area.and_then(|area| {
+            Pane::behind(vec![area], (backdrop.blur, view), (key, under, under), open)
+        });
+        panes.extend(blur);
+    }
+
+    /// Adds the overview's strip of workspaces, `looking` as `drawn` has it,
+    /// on `output`, as open as `open`: each workspace, the one under the
+    /// pointer with a button to close it while there are others, and the
+    /// overview is open the whole way; and after them, the button that
+    /// makes a new one.
+    fn strip_elements<R>(
+        &self,
+        renderer: &mut R,
+        (output, looking, drawn): (&Output, &Looking, &Drawn),
+        (view, open, screen): (View, f32, bool),
+        (elements, panes): (&mut Vec<Element<R>>, &mut Vec<Pane>),
+    ) where
+        R: Renderer + ImportAll + ImportMem,
+        R::TextureId: Clone + Texture + Send + 'static,
+    {
+        let still = looking.still(self.clock());
+        let others = self.overview_desktops(looking.output).len() > 1;
         for (at, (rect, index, _, shown)) in self.strip(looking).into_iter().enumerate() {
+            if still && others && looking.hovered == Some(at) {
+                elements.extend(drawn.close.stretched(renderer, button(rect), view, 1.0));
+                let key = glass::key(&("the overview's close button for a workspace", at));
+                let theme = &drawn.config.theme;
+                panes.extend(close_glass(theme, rect, view, (key, elements.len())));
+            }
             let place = (at, index, shown, looking.hovered == Some(at));
             let miniature = (output, looking.screen, rect);
             self.miniature_elements(
@@ -852,22 +1022,6 @@ impl Compositor {
             .get(usize::from(hovered))
             .unwrap_or(&drawn.adds[0]);
         elements.extend(button.stretched(renderer, (add_at, size.into()), view, open));
-        // The screen behind, dimmed, and blurred if the theme says so.
-        let scale = view.scale.factor();
-        let dim = &self.cards.overview.dim;
-        let dim = SolidColorRenderElement::from_buffer(dim, (0, 0), scale, open, Kind::Unspecified);
-        elements.push(Element::Solid(dim));
-        let backdrop = theme.style(Part::OverviewBackdrop, States::NONE);
-        let blurred = backdrop.blur > 0 && backdrop.see_through();
-        let area = here
-            .filter(|_| blurred)
-            .map(|screen| view.pixels(crate::compositor::logical(screen)));
-        let key = glass::key(&("the overview's backdrop", output.name()));
-        let under = elements.len();
-        let blur = area.and_then(|area| {
-            Pane::behind(vec![area], (backdrop.blur, view), (key, under, under), open)
-        });
-        panes.extend(blur);
     }
 
     /// Adds a workspace in the overview's strip, `rect` on `screen`, its

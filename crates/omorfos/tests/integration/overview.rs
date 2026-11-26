@@ -14,7 +14,7 @@ use wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_surface_v1::{
     Anchor, KeyboardInteractivity,
 };
 
-use crate::common::{Client, HEIGHT, Session, WIDTH, key};
+use crate::common::{Client, Event, FOUR_WORKSPACES, HEIGHT, Session, WIDTH, key};
 use crate::windows::{BLUE, GREEN, RED};
 
 const LEFT_BUTTON: u32 = 0x110;
@@ -1105,4 +1105,132 @@ fn with_no_window_in_front_the_program_windows_show_nothing() {
         .perform(&Action::ShowProgramWindows);
     session.step();
     assert_eq!(session.compositor().overview_layout(), None);
+}
+
+/// The middle of the button that closes what is at `place`, on its top
+/// left corner, where a titlebar's buttons stand.
+fn corner(place: Rect) -> (i32, i32) {
+    (place.origin.x, place.origin.y)
+}
+
+/// Moves the pointer to `at`.
+fn point(session: &mut Session, (x, y): (i32, i32)) {
+    let (x, y) = (f64::from(x), f64::from(y));
+    session.compositor_mut().input(Input::Motion { x, y }, 0);
+    session.step();
+}
+
+#[test]
+fn the_window_picked_has_a_button_to_close_it_which_asks_its_program() {
+    let mut session = Session::with_config(&[UNBLURRED]);
+    let mut client = session.connect();
+    session.open(&mut client, "first", (180, 120), RED);
+    session.open(&mut client, "second", (180, 120), BLUE);
+    session.step();
+    open(&mut session);
+    client.take_events();
+    let (first, second) = (place(&session, "first"), place(&session, "second"));
+    let ink = Theme::default().style_in(
+        Part::ButtonClose,
+        States::NONE.with(State::Focused),
+        States::NONE.with(State::Hovered),
+    );
+    let ink = ink.background;
+    let ink = u32::from_be_bytes([ink.alpha, ink.red, ink.green, ink.blue]);
+    // A ring in the close button's colour, on its left edge.
+    let ringed = |session: &mut Session, place: Rect| {
+        let (x, y) = corner(place);
+        session.draw().at(x - 12, y) == ink
+    };
+    // On the one picked as it opened, the one in front; not on the other.
+    assert!(ringed(&mut session, second));
+    assert!(!ringed(&mut session, first));
+    // Pointed at, picked, and it has the button; still with the pointer
+    // off it where nothing is, and on the button, half past the window.
+    point(&mut session, middle(first));
+    assert!(ringed(&mut session, first));
+    assert!(!ringed(&mut session, second));
+    point(&mut session, (WIDTH - 2, HEIGHT - 2));
+    assert!(ringed(&mut session, first));
+    let (x, y) = corner(first);
+    point(&mut session, (x - 6, y - 6));
+    assert!(ringed(&mut session, first));
+    // Pressed: the program is asked to close the window, and the overview
+    // stays.
+    click(&mut session, (x - 6, y - 6));
+    session.roundtrip(&mut client);
+    assert!(client.take_events().contains(&Event::Close));
+    assert!(session.compositor().overview_layout().is_some());
+}
+
+#[test]
+fn a_workspace_closed_from_the_strip_gives_its_windows_to_the_one_before_but_not_the_last() {
+    let mut session = Session::with_config(&[UNBLURRED, ("config.yaml", FOUR_WORKSPACES)]);
+    let mut client = session.connect();
+    session.open(&mut client, "first", (180, 120), RED);
+    session.compositor_mut().perform(&Action::NextWorkspace);
+    session.open(&mut client, "second", (180, 120), BLUE);
+    session.advance(Duration::from_secs(1));
+    open(&mut session);
+    let count = session.compositor().desktop().workspace_count();
+    let strip = session.compositor().overview_layout().unwrap().workspaces;
+    // The second, which is shown: its button, and pressed, gone, its
+    // window on the first, which is shown, and the overview still open.
+    point(&mut session, middle(strip[1].0));
+    let (x, y) = corner(strip[1].0);
+    click(&mut session, (x - 6, y - 6));
+    let desktop = session.compositor().desktop();
+    assert_eq!(desktop.workspace_count(), count - 1);
+    assert_eq!(desktop.active_workspace(), 0);
+    assert!(desktop.windows().all(|listed| listed.workspace == 0));
+    assert!(session.compositor().overview_layout().is_some());
+    // Down to the last: none to close it with, the press goes to it.
+    for _ in 0..count {
+        let strip = session.compositor().overview_layout().unwrap().workspaces;
+        if strip.len() < 2 {
+            break;
+        }
+        point(&mut session, middle(strip[1].0));
+        let (x, y) = corner(strip[1].0);
+        click(&mut session, (x - 6, y - 6));
+    }
+    let strip = session.compositor().overview_layout().unwrap().workspaces;
+    assert_eq!(strip.len(), 1);
+    point(&mut session, middle(strip[0].0));
+    let (x, y) = corner(strip[0].0);
+    click(&mut session, (x + 2, y + 2));
+    assert_eq!(session.compositor().desktop().workspace_count(), 1);
+}
+
+#[test]
+fn the_close_button_is_glass_with_a_small_cross_in_the_middle_of_it() {
+    let mut session = Session::with_config(&[UNBLURRED]);
+    session.blurring();
+    let mut client = session.connect();
+    session.open(&mut client, "first", (180, 120), RED);
+    session.open(&mut client, "second", (180, 120), BLUE);
+    session.step();
+    open(&mut session);
+    drop(session.draw());
+    // The second picked as it opened; the first pointed at, its button,
+    // and its glass.
+    let first = place(&session, "first");
+    let before = session.compositor().blurs();
+    point(&mut session, middle(first));
+    let frame = session.draw();
+    assert!(
+        session.compositor().blurs() > before,
+        "what is behind it blurred"
+    );
+    let ink = Theme::default().style_in(
+        Part::ButtonClose,
+        States::NONE.with(State::Focused),
+        States::NONE.with(State::Hovered),
+    );
+    let ink = ink.background;
+    let red = |pixel: u32| (pixel >> 16) & 0xff;
+    let (x, y) = corner(first);
+    // Its cross through the middle, and not reaching far from it.
+    assert!(red(frame.at(x, y)).abs_diff(u32::from(ink.red)) < 0x30);
+    assert!(red(frame.at(x - 6, y - 6)).abs_diff(u32::from(ink.red)) > 0x30);
 }

@@ -1071,6 +1071,42 @@ pub(crate) fn overview_add(
     canvas
 }
 
+/// How large the button that closes a window or a workspace in the overview
+/// is, across and down.
+pub(crate) const OVERVIEW_CLOSE: u32 = 26;
+
+/// Paints the button that closes a window or a workspace in the overview:
+/// on the glass's own tint, as a menu has it, a ring and a small cross in
+/// it, in the colour the titlebar's close button has with the pointer on
+/// it, the cross with room round it.
+pub(crate) fn overview_close(theme: &Theme, scale: Scale) -> Canvas {
+    let hovered = States::NONE.with(State::Hovered);
+    let ink = theme
+        .style_in(
+            Part::ButtonClose,
+            States::NONE.with(State::Focused),
+            hovered,
+        )
+        .background;
+    let disc = Style {
+        background: theme.style(Part::Menu, States::NONE).background,
+        border: Edges::all(Line {
+            width: 2,
+            color: ink,
+        }),
+        radius: OVERVIEW_CLOSE / 2,
+        ..Style::NONE
+    };
+    let mut canvas = Canvas::scaled(OVERVIEW_CLOSE, OVERVIEW_CLOSE, scale);
+    canvas.draw_box((0, 0, OVERVIEW_CLOSE, OVERVIEW_CLOSE), &disc);
+    // The cross a third as wide as the button, in the middle of it.
+    let room = OVERVIEW_CLOSE / 6;
+    let within = OVERVIEW_CLOSE - 2 * room;
+    let middle = (room.cast_signed(), room.cast_signed(), within, within);
+    sign(&mut canvas, Button::Close, middle, ink);
+    canvas
+}
+
 /// How tall the title of the window picked in the overview is.
 pub(crate) fn overview_title_height(theme: &Theme) -> u32 {
     let style = theme.style(Part::OverviewTitle, States::NONE);
