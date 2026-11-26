@@ -15,3 +15,11 @@ launcher-top-hit = Top hit
 # Over the programs found after the best match of all, in the launcher's
 # mode that finds everything.
 launcher-programs = Programs
+
+# In the launcher's field while nothing is typed, in the mode that finds
+# everything.
+launcher-search = Search
+
+# In the launcher's field while nothing is typed, in the mode of every
+# program.
+launcher-search-programs = Search programs

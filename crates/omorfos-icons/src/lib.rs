@@ -16,7 +16,7 @@ use std::io::Read;
 use std::path::{Component, Path, PathBuf};
 
 use omorfos_config::Color;
-use omorfos_core::Sign;
+pub use omorfos_core::Sign;
 use omorfos_ui::Image;
 use resvg::{tiny_skia, usvg};
 use rustix::fs::{Mode, OFlags};
@@ -214,7 +214,8 @@ const fn drawing(sign: Sign) -> &'static str {
         Sign::Sleep => include_str!("../signs/moon.svg"),
         Sign::Restart => include_str!("../signs/rotate-ccw.svg"),
         Sign::ShutDown => include_str!("../signs/power.svg"),
-        Sign::Super => include_str!("../signs/layout-grid.svg"),
+        // Four squares: the Super key, and every program.
+        Sign::Super | Sign::Programs => include_str!("../signs/layout-grid.svg"),
         Sign::Ctrl => include_str!("../signs/chevron-up.svg"),
         Sign::Alt => include_str!("../signs/option.svg"),
         Sign::Shift => include_str!("../signs/arrow-big-up.svg"),
@@ -851,7 +852,7 @@ mod tests {
     }
 
     /// Every sign there is.
-    const SIGNS: [Sign; 40] = [
+    const SIGNS: [Sign; 41] = [
         Sign::Close,
         Sign::Minimize,
         Sign::Fullscreen,
@@ -892,6 +893,7 @@ mod tests {
         Sign::Editor,
         Sign::Terminal,
         Sign::Settings,
+        Sign::Programs,
     ];
 
     /// How much ink there is down the column `x` of `image` drawn on white,

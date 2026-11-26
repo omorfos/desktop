@@ -6,7 +6,10 @@ finds the programs that have it, those that begin with it first: the
 best of all alone at the top under Top hit, outlined as the one Enter
 starts, and the rest under a heading, Programs. With nothing typed,
 nothing is shown under the field; with nothing found, one dim line says
-so. A sum's answer, where what is typed is one, is the best
+so. Before the field is the mode's sign, a magnifying glass where the
+launcher finds everything and four squares in the grid of every program,
+and in the field while it is empty, the mode's words, Search or Search
+programs. A sum's answer, where what is typed is one, is the best
 of all, and the programs follow it. Up
 and Down choose among them, the list following the one chosen. While you
 type, no program is lit, and Enter starts the first that matches. Down,

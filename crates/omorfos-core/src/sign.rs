@@ -86,4 +86,6 @@ pub enum Sign {
     Terminal,
     /// A cog: the settings.
     Settings,
+    /// Four squares: every program, the launcher's grid of them.
+    Programs,
 }

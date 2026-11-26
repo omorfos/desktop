@@ -1432,13 +1432,16 @@ fn the_cursor_blinks_from_the_last_key_unless_nothing_is_to_move() {
     let mut launcher = launcher_of(&mut session, &["Files"]);
     let at = Duration::from_millis;
     let input = Theme::default().style(Part::LauncherInput, States::NONE);
-    // The cursor at the start of the empty field, above the list, in the
-    // field's colour.
+    // The cursor at the start of the empty field, past the mode's sign,
+    // in the field's colour: the border and padding, the field's own, the
+    // sign half as tall as the field, and the room beside it.
     let cursor = |session: &mut Session| {
         let picture = session.draw();
         let ink = argb(input.color);
-        let field = 0..row(0).1 - 24;
-        (0..WIDTH).any(|x| field.clone().any(|y| picture.at(x, y) == ink))
+        let (left, top) = corner();
+        let x = left + 13 + 8 + 28 + 10;
+        let field = top..top + 13 + 56;
+        (x - 1..=x + 1).any(|x| field.clone().any(|y| picture.at(x, y) == ink))
     };
     settle_at(&mut session, &mut launcher, at(0));
     // The compositor brings it in as the theme says, by its own clock.

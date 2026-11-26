@@ -12,6 +12,7 @@ use serde_json::json;
 
 use crate::sources::{Does, Found, Programs, Section, Source, Sums};
 use crate::{App, Icons, Numbers};
+use omorfos_icons::Sign;
 
 /// How many rows are listed at most until the launcher is told how tall
 /// its screen is.
@@ -639,7 +640,10 @@ impl Picker {
     /// border.
     fn typed_area(&self, theme: &Theme) -> Area {
         let input = theme.style(Part::LauncherInput, States::NONE);
-        inset(self.layout(theme).input, input.inset())
+        let inside = inset(self.layout(theme).input, input.inset());
+        // After the mode's sign, half as tall as the field, and the room
+        // beside it.
+        inset(inside, on_the_left(inside.3 / 2 + GAP))
     }
 
     /// The first place in what is typed that is shown: where what comes
@@ -719,7 +723,8 @@ impl Picker {
         let mut canvas = Canvas::scaled(width, height, scale);
         canvas.draw_box(whole, &theme.style(Part::Launcher, States::NONE));
 
-        self.paint_field(&mut canvas, text, theme, (layout.input, cursor));
+        let drawing = (&mut *text, words, &mut *icons, scale);
+        self.paint_field(&mut canvas, drawing, theme, (layout.input, cursor));
 
         // Under an answer, what Enter does with it, whatever is shown of
         // the programs.
@@ -870,14 +875,32 @@ impl Picker {
     fn paint_field(
         &self,
         canvas: &mut Canvas,
-        text: &mut Text,
+        (text, words, icons, scale): (&mut Text, &Words, &mut Icons, Scale),
         theme: &Theme,
         (field, cursor): (Area, bool),
     ) {
         let input = theme.style(Part::LauncherInput, States::NONE);
         let font = theme.font(Part::LauncherInput, States::NONE);
         canvas.draw_box(field, &input);
-        let typed = inset(field, input.inset());
+        // The mode's sign before what is typed, in the middle of the field
+        // down, and its words in the field while it is empty.
+        let inside = inset(field, input.inset());
+        let side = inside.3 / 2;
+        let down = inside.1.saturating_add_unsigned((inside.3 - side) / 2);
+        let square = (inside.0, down, side, side);
+        let (sign, says) = match self.view {
+            View::Mode(Mode::Programs) => (Sign::Programs, "launcher-search-programs"),
+            View::Generic | View::Mode(_) => (Sign::Search, "launcher-search"),
+        };
+        let pixels = scale.pixels(side.cast_signed()).unsigned_abs();
+        let drawn = icons.sign(sign, pixels, input.color).into_iter();
+        drawn.for_each(|image| canvas.draw_image(square, image));
+        let typed = self.typed_area(theme);
+        if self.field.text().is_empty() {
+            let said = theme.style(Part::LauncherDescription, States::NONE);
+            let words = words.say(says, &[]);
+            text.draw(canvas, &words, typed, said.color, font);
+        }
         let (left, top, room, tall) = typed;
         // From where the cursor is in sight, what comes before it cut off.
         let first = self.first_shown(text, theme);
@@ -1083,6 +1106,25 @@ mod tests {
     fn field_at(theme: &Theme) -> (i32, i32) {
         let (left, top, _, tall) = several().typed_area(theme);
         (left, top + tall.cast_signed() / 2)
+    }
+
+    /// Where the line where the next character goes is drawn, across the
+    /// middle of the field: what is drawn with it and not without.
+    fn cursor(picker: &Picker) -> Vec<u32> {
+        let theme = Theme::default();
+        let words = Words::in_languages(&omorfos_i18n::LAUNCHER, &[]);
+        let paint = |on: bool| {
+            let text = (&mut Text::new(), &words);
+            let look = (&theme, Scale::ONE, on);
+            picker.paint(text, look, &mut Icons::default(), &mut Motion::new())
+        };
+        let (on, off) = (paint(true), paint(false));
+        let (left, top, wide, tall) = picker.layout(&theme).input;
+        let middle = top.unsigned_abs() + tall / 2;
+        let columns = left.unsigned_abs()..left.unsigned_abs() + wide;
+        columns
+            .filter(|x| on.at(*x, middle) != off.at(*x, middle))
+            .collect()
     }
 
     fn several() -> Picker {
@@ -1370,10 +1412,11 @@ mod tests {
         let input = theme.style(Part::LauncherInput, States::NONE);
         let marked = theme.style(Part::LauncherInput, States::NONE.with(State::Active));
         assert_ne!(input.background, marked.background);
-        let (left, top, _, height) = layout.input;
-        // Just inside where the text starts, half-way down.
+        let (_, top, _, height) = layout.input;
+        // Just inside where the text starts, past the mode's sign, half-way
+        // down.
         let at = (
-            left.unsigned_abs() + input.padding.left + 1,
+            several().typed_area(&theme).0.unsigned_abs() + 1,
             top.unsigned_abs() + height / 2,
         );
         let mut picker = several();
@@ -1692,29 +1735,17 @@ mod tests {
         let theme = Theme::default();
         let layout = Layout::new(&theme);
         let input = theme.style(Part::LauncherInput, States::NONE);
-        let (left, top, width, height) = layout.input;
-        let field = argb(
-            Theme::default()
-                .style(Part::Launcher, States::NONE)
-                .background,
-        );
-        let inked = |picker: &Picker| {
-            let canvas = painted(picker);
-            let columns = left.unsigned_abs()..left.unsigned_abs() + width;
-            let middle = top.unsigned_abs() + height / 2;
-            let inked = columns.filter(|x| canvas.at(*x, middle) != field);
-            inked.collect::<Vec<u32>>()
-        };
+        let (left, _, width, _) = layout.input;
         let mut picker = several();
-        let empty = inked(&picker);
-        // Only the mark, at the start of the field's padding.
-        assert_eq!(empty, [left.unsigned_abs() + input.padding.left]);
+        // At the start of where the text goes, past the mode's sign.
+        let start = picker.typed_area(&theme).0.unsigned_abs();
+        assert_eq!(cursor(&picker), [start]);
         typed(&mut picker, "fire");
-        let some = inked(&picker);
-        assert!(some.len() > 1 && some.last() > empty.last(), "{some:?}");
+        let some = cursor(&picker);
+        assert!(some.len() == 1 && some[0] > start, "{some:?}");
         // However much is typed, the mark stays in the field.
         typed(&mut picker, &"w".repeat(60));
-        let full = inked(&picker);
+        let full = cursor(&picker);
         let end = left.unsigned_abs() + width - input.padding.right;
         assert!(full.last().unwrap() < &end, "{full:?} within {end}");
     }
@@ -2332,19 +2363,9 @@ mod tests {
     #[test]
     fn the_field_has_no_cursor_while_the_programs_have_the_keyboard() {
         let theme = Theme::default();
-        let layout = Layout::new(&theme);
-        let (left, top, width, height) = layout.input;
-        let field = argb(
-            Theme::default()
-                .style(Part::Launcher, States::NONE)
-                .background,
-        );
-        let inked = |picker: &Picker| {
-            let canvas = painted(picker);
-            let columns = left.unsigned_abs()..left.unsigned_abs() + width;
-            let middle = top.unsigned_abs() + height / 2;
-            columns.filter(|x| canvas.at(*x, middle) != field).count()
-        };
+        // How many columns the cursor takes: drawn while it blinks on, and
+        // never while it blinks off, as `cursor` compares.
+        let inked = |picker: &Picker| cursor(picker).len();
         // In the grid, where every program is found with nothing typed.
         let mut picker = several();
         picker.set_view(View::Mode(Mode::Programs));
@@ -2353,14 +2374,6 @@ mod tests {
         assert_eq!(inked(&picker), 0);
         picker.key(Key::Up);
         assert_eq!(inked(&picker), 1);
-        // Nor while it blinks off.
-        let words = Words::in_languages(&omorfos_i18n::LAUNCHER, &[]);
-        let text = (&mut Text::new(), &words);
-        let look = (&theme, Scale::ONE, false);
-        let off = picker.paint(text, look, &mut Icons::default(), &mut Motion::new());
-        let columns = left.unsigned_abs()..left.unsigned_abs() + width;
-        let middle = top.unsigned_abs() + height / 2;
-        assert!(columns.into_iter().all(|x| off.at(x, middle) == field));
         // The pointer over a program, even the first, lights it and takes
         // the keyboard to the programs as Down does.
         let (x, y) = tile(0, 0);
@@ -2583,5 +2596,52 @@ mod tests {
             let (_, _, _, tallest) = picker.layout(&theme).whole(picker.room);
             assert!(generic + tallest <= screen.max(tallest), "on {screen}");
         }
+    }
+
+    #[test]
+    fn the_field_has_the_modes_sign_before_it_and_its_words_while_empty() {
+        let theme = Theme::default();
+        let layout = Layout::new(&theme);
+        let (left, top, _, tall) = layout.input;
+        let glass = argb(theme.style(Part::Launcher, States::NONE).background);
+        let inked = |canvas: &Canvas, xs: std::ops::Range<u32>| {
+            let ys = top.unsigned_abs()..top.unsigned_abs() + tall;
+            xs.flat_map(|x| ys.clone().map(move |y| (x, y)))
+                .filter(|(x, y)| canvas.at(*x, *y) != glass)
+                .count()
+        };
+        // The sign in the field's start, before where the text begins.
+        let mut picker = several();
+        let text_left = picker.typed_area(&theme).0.unsigned_abs();
+        let sign = left.unsigned_abs()..text_left;
+        let generic = painted(&picker);
+        assert!(
+            inked(&generic, sign.clone()) > 20,
+            "the generic mode's sign"
+        );
+        // The mode's words, while nothing is typed: well along the field.
+        let words = text_left + 60..text_left + 120;
+        assert!(inked(&generic, words.clone()) > 20, "its words");
+        typed(&mut picker, "f");
+        assert_eq!(
+            inked(&painted(&picker), words.clone()),
+            0,
+            "gone as one types"
+        );
+        // Another mode, another sign and other words.
+        let mut grid = several();
+        grid.set_view(View::Mode(Mode::Programs));
+        let tiles = painted(&grid);
+        let (tile_left, _, _, _) = grid.typed_area(&theme);
+        let tile_sign = Layout::of(&theme, true).input.0.unsigned_abs()..tile_left.unsigned_abs();
+        let picture = |canvas: &Canvas, xs: std::ops::Range<u32>, y: u32| {
+            xs.map(|x| canvas.at(x, y)).collect::<Vec<_>>()
+        };
+        let middle = top.unsigned_abs() + tall / 2;
+        assert_ne!(
+            picture(&generic, sign.clone(), middle),
+            picture(&tiles, tile_sign, middle),
+            "another sign"
+        );
     }
 }
