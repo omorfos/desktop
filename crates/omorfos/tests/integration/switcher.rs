@@ -1902,3 +1902,29 @@ fn each_window_s_ring_in_the_row_is_as_large_as_its_own_picture() {
     assert!(near(0) && near(8) && near(16), "{pixel:#x} for {line:#x}");
     press(&mut session, key::SUPER, false);
 }
+
+#[test]
+fn the_window_gone_to_within_a_program_is_kept_while_another_is_picked_and_back() {
+    let (mut session, _client) = a_program_of_two(&[]);
+    let red = session
+        .compositor()
+        .desktop()
+        .windows()
+        .next()
+        .unwrap()
+        .window
+        .id;
+    super_tab(&mut session);
+    // The red one gone to, another program picked, and back: the red one.
+    tap(&mut session, GRAVE);
+    tap(&mut session, key::TAB);
+    press(&mut session, key::SHIFT, true);
+    tap(&mut session, key::TAB);
+    press(&mut session, key::SHIFT, false);
+    session.step();
+    let layout = session.compositor().switcher_layout().unwrap();
+    assert_eq!(layout.items[0].window, red, "in front again");
+    press(&mut session, key::SUPER, false);
+    session.step();
+    assert_eq!(session.compositor().desktop().focused(), Some(red));
+}

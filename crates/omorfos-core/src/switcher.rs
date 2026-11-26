@@ -208,6 +208,9 @@ pub struct Switcher {
     windows: Vec<WindowId>,
     at: usize,
     within: Option<Within>,
+    /// For each program gone through, by the window that stands for it, the
+    /// one of its windows gone to, to be at again when it is picked again.
+    gone: Vec<(WindowId, WindowId)>,
 }
 
 impl Switcher {
@@ -227,23 +230,27 @@ impl Switcher {
             windows,
             at,
             within: None,
+            gone: Vec::new(),
         })
     }
 
     /// Has it show the program picked's `windows`, in the order of use:
     /// the one picked stands for the program, and the others are shown
-    /// with it, to be gone through. A program of one window shows nothing
-    /// more.
+    /// with it, to be gone through, at the one gone to the last time the
+    /// program was picked while it was open, if one was. A program of one
+    /// window shows nothing more.
     pub fn show_program(&mut self, mut windows: Vec<WindowId>) {
         let picked = self.picked();
         let first = windows.iter().position(|window| *window == picked);
         if let Some(first) = first {
             windows.rotate_left(first);
         }
+        let before = self.gone.iter().find(|(stands, _)| *stands == picked);
+        let at = before.and_then(|(_, gone)| windows.iter().position(|window| window == gone));
         self.within = (first.is_some() && windows.len() > 1).then_some(Within {
             windows,
-            at: 0,
-            gone: false,
+            at: at.unwrap_or(0),
+            gone: at.is_some(),
         });
     }
 
@@ -257,6 +264,10 @@ impl Switcher {
         let count = within.windows.len();
         within.at = (within.at + if back { count - 1 } else { 1 }) % count;
         within.gone = true;
+        // Kept, for the program picked again.
+        let (stands, gone) = (within.windows[0], within.windows[within.at]);
+        self.gone.retain(|(other, _)| *other != stands);
+        self.gone.push((stands, gone));
         true
     }
 
@@ -266,6 +277,14 @@ impl Switcher {
     pub fn chosen(&self) -> WindowId {
         let within = self.within.as_ref();
         within.map_or_else(|| self.picked(), |within| within.windows[within.at])
+    }
+
+    /// The window a program's place shows, by the window that stands for
+    /// it: the one gone to within it while the switcher has been open, if
+    /// one has been, or that.
+    fn shown_for(&self, stands: WindowId) -> WindowId {
+        let gone = self.gone.iter().find(|(other, _)| *other == stands);
+        gone.map_or(stands, |(_, gone)| *gone)
     }
 
     /// The program picked's windows, in the order of use, the one that
@@ -396,7 +415,11 @@ impl Switcher {
             let y = top + (inset + row * (item.height + gap)).cast_signed();
             let picked = at == self.at;
             SwitcherItem {
-                window: if picked { self.chosen() } else { *window },
+                window: if picked {
+                    self.chosen()
+                } else {
+                    self.shown_for(*window)
+                },
                 place: Rect::new(Point::new(x, y), item),
                 picked,
                 opacity: 1000,
@@ -527,7 +550,11 @@ impl Switcher {
                 let opacity = (faint * share * 1000.0).round().clamp(0.0, 1000.0) as u16;
                 let picked = at == self.at;
                 let card = SwitcherItem {
-                    window: if picked { self.chosen() } else { *window },
+                    window: if picked {
+                        self.chosen()
+                    } else {
+                        self.shown_for(*window)
+                    },
                     place,
                     picked,
                     opacity,
@@ -976,6 +1003,42 @@ mod tests {
         switcher.show_program(ids(&[8, 9]));
         assert_eq!(switcher.chosen().raw(), 3);
         assert!(!switcher.go_within(false));
+    }
+
+    #[test]
+    fn the_window_gone_to_within_a_program_is_kept_while_another_is_picked() {
+        let mut switcher = Switcher::open(ids(&[1, 2, 3]), false).unwrap();
+        switcher.show_program(ids(&[2, 5, 6]));
+        switcher.go_within(false);
+        assert_eq!(switcher.chosen().raw(), 5);
+        // Another picked, and back: at the one gone to, as before.
+        switcher.next();
+        switcher.show_program(ids(&[3]));
+        assert_eq!(switcher.chosen().raw(), 3);
+        switcher.previous();
+        switcher.show_program(ids(&[2, 5, 6]));
+        assert_eq!(switcher.chosen().raw(), 5);
+        assert!(switcher.gone_within());
+        // Gone on from there, and that kept in its stead.
+        switcher.go_within(false);
+        switcher.next();
+        switcher.previous();
+        switcher.show_program(ids(&[2, 5, 6]));
+        assert_eq!(switcher.chosen().raw(), 6);
+        // Picked another, the place of the one gone through shows the one
+        // gone to within it.
+        switcher.next();
+        let layout = switcher.layout(screen(1600, 1000), METRICS);
+        let shown: Vec<u64> = layout.items.iter().map(|item| item.window.raw()).collect();
+        assert_eq!(shown, [1, 6, 3]);
+        switcher.previous();
+        switcher.show_program(ids(&[2, 5, 6]));
+        // One gone since, the program at the one that stands for it.
+        switcher.next();
+        switcher.previous();
+        switcher.show_program(ids(&[2, 5]));
+        assert_eq!(switcher.chosen().raw(), 2);
+        assert!(!switcher.gone_within());
     }
 
     #[test]
