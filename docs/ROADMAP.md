@@ -39,13 +39,10 @@ a known gap.
   second on and half off, from each key, and stays shown ten seconds
   after the last. With `appearance.reduce_motion`, it does not blink.
 
-- **The launcher's modes and top hit (ADR 109, part 1).** `Super+Space`,
-  type `fi`: Files alone at the top, Firefox under a heading, Programs;
-  Enter starts Files, Down lights it and Down again Firefox, past the
-  heading. `Super+1` goes to the grid of every program, `Super+0` or
-  Escape back, and Escape again closes it. With the launcher open,
-  `Super+2` does not change the workspace, and `Super+Shift+3` still
-  takes a picture of the screen.
+- **Super with a digit in the launcher (ADR 109, part 1).** The rest
+  was tried; this needs Super, which WSL keeps. With the launcher open,
+  `Super+1` goes to the grid, `Super+2` does not change the workspace,
+  and `Super+Shift+3` still takes a picture of the screen.
 
 - **The launcher's look and motion (ADR 109, part 2).** `Super+Space`:
   a large field with a magnifying glass and "Search" in it, nothing
