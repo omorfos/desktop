@@ -31,8 +31,11 @@ windows on that workspace. `switch_windows`, which `Alt+Tab` has in the
 ordinary way, shows every window instead. A window smaller than its
 place is shown as large as it is, not made larger. It opens at the
 program used before the one you are in, so one `Super+Tab` goes back to
-it and another comes back again; `Super+grave`, the key above Tab, goes
-through the windows of the program you are in. It is shown once Super has
+it and another comes back again. `Super+grave`, the key above Tab, does
+the same with the windows of the program you are in: a quick press goes
+back to the one you used before, and held, the switcher shows only that
+program's windows, in the order they were last used, for `Super+grave` to
+go through. It is shown once Super has
 been held for 200 ms, so that a quick `Super+Tab` goes back without the switcher
 showing for a moment; opened by something other than keys, it is shown
 at once. Shown, it fades in over 120 ms, with the dim and blur behind
@@ -51,6 +54,21 @@ stand side by side in rows instead, each small over its title, in a box:
 switcher:
   style: flat
 ```
+
+A program of more than one window shows its windows with it: on the
+diagonal, all of them side by side in a row under its title, in the order
+they were last used, mostly below the bottom of the screen so that a
+little of each is seen, coming up as the program is picked and going down
+again as another is; in rows, its others stacked behind its picture, each
+smaller and a little higher. With the switcher open, `Super+grave` goes
+through them there, not on the desktop behind it: the one it is at comes
+to the front, and in the row it has a ring round it, the ring round the
+one before fading as it comes, and the others fainter, the row rising
+into view, and the queue with it to make room, as it first does. A row
+longer than the screen slides along to keep the ring in sight, those
+towards its ends fainter still. Letting go of Super goes to the one it is
+at, and `Super+Shift+grave` goes back.
+The switcher of every window takes `Super+grave` and does nothing.
 
 While Super, or Alt, is held, Tab goes on to the next window and
 `Shift+Tab` back, as do the arrows; letting go of it goes to the window

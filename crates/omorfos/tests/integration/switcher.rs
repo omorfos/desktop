@@ -1598,3 +1598,307 @@ fn the_next_window_of_the_program_is_focused_going_round_and_back() {
     session.compositor_mut().perform(&Action::NextWindow);
     assert_eq!(session.compositor().desktop().focused(), web);
 }
+
+/// The key above Tab, `` ` ``.
+const GRAVE: Keycode = Keycode::new(49);
+
+/// A program of two windows, red and then green, and another, blue, opened
+/// after with focus; the switcher as `files` has it.
+fn a_program_of_two(files: &[(&str, &str)]) -> (Session, Client) {
+    let mut session = Session::with_config(files);
+    let mut client = session.connect();
+    for (name, colour) in [("files", RED), ("files", GREEN), ("other", BLUE)] {
+        session.open(&mut client, name, (400, 250), colour);
+    }
+    session.step();
+    (session, client)
+}
+
+/// Holds Super and taps Tab, for the switcher of programs, shown.
+fn super_tab(session: &mut Session) {
+    press(session, key::SUPER, true);
+    tap(session, key::TAB);
+    session.step();
+    session.advance(SHOWN_AFTER);
+}
+
+#[test]
+fn with_the_programs_switcher_open_super_grave_goes_through_the_program_s_windows_in_it() {
+    let (mut session, _client) = a_program_of_two(&[]);
+    let red = session
+        .compositor()
+        .desktop()
+        .windows()
+        .next()
+        .unwrap()
+        .window
+        .id;
+    let front = session.compositor().desktop().focused();
+    super_tab(&mut session);
+    let layout = session.compositor().switcher_layout().unwrap();
+    assert_eq!(layout.program.len(), 2, "the program's windows, below");
+    // Super+`: the other window of the program picked, in the switcher,
+    // and nothing on the desktop behind it.
+    tap(&mut session, GRAVE);
+    session.step();
+    let layout = session.compositor().switcher_layout().unwrap();
+    assert_eq!(layout.items[0].window, red, "in front");
+    // The ring round it at once, in its place in the row.
+    assert_eq!(layout.focus, Some(layout.program[1].place));
+    assert_eq!(
+        session.compositor().desktop().focused(),
+        front,
+        "nothing turned behind"
+    );
+    // Its row raised, the green one in it, to be seen.
+    session.advance(std::time::Duration::from_millis(300));
+    let layout = session.compositor().switcher_layout().unwrap();
+    let place = layout.program[0].place;
+    let (x, y) = (
+        place.origin.x + place.size.width.cast_signed() / 2,
+        place.origin.y + place.size.height.cast_signed() / 2,
+    );
+    // Green, fainter than the one gone to, and a little in the shadow of
+    // the one in front on so small a screen.
+    let pixel = session.draw().at(x, y);
+    let channel = |shift: u32| (pixel >> shift) & 0xff;
+    assert!(
+        channel(8) > 0x70 && channel(8) < 0xc0 && channel(16) < 0x40 && channel(0) < 0x40,
+        "{pixel:#x}"
+    );
+    // The ring round the red one in the row, now it is there, just
+    // outside its picture, in the colour of the one picked.
+    assert_eq!(layout.focus, Some(layout.program[1].place));
+    assert_eq!(layout.program[1].window, red);
+    let ring = layout.program[1].place;
+    let style = Theme::default().style(Part::SwitcherWindow, States::NONE.with(State::Active));
+    let line = style.border.left.color;
+    let line = u32::from_be_bytes([line.alpha, line.red, line.green, line.blue]);
+    // Its border outside its padding, as the theme has it round the one
+    // picked in front.
+    let out = style.inset().left.cast_signed();
+    let middle = ring.origin.y + ring.size.height.cast_signed() / 2;
+    let beside = (ring.origin.x - out + 1, middle);
+    let ringed = |session: &mut Session| {
+        let pixel = session.draw().at(beside.0, beside.1);
+        let near = |shift: u32| ((pixel >> shift) & 0xff).abs_diff((line >> shift) & 0xff) < 0x20;
+        near(0) && near(8) && near(16)
+    };
+    assert!(ringed(&mut session), "ringed in {line:#x}");
+    // Again, once the row is up: the ring round the green one, and the
+    // red one's fading, drawn as it goes, and gone once it has.
+    tap(&mut session, GRAVE);
+    session.step();
+    let layout = session.compositor().switcher_layout().unwrap();
+    assert_eq!(layout.focus, Some(layout.program[0].place));
+    assert!(ringed(&mut session), "fading from all of it");
+    assert!(
+        session.compositor().deadline().is_some(),
+        "drawn as it fades"
+    );
+    session.advance(std::time::Duration::from_millis(300));
+    assert!(!ringed(&mut session), "gone");
+    tap(&mut session, GRAVE);
+    session.step();
+    // Let go of Super: the one gone to.
+    press(&mut session, key::SUPER, false);
+    session.step();
+    assert_eq!(session.compositor().desktop().focused(), Some(red));
+}
+
+#[test]
+fn in_rows_the_program_s_other_windows_are_stacked_behind_it() {
+    let (mut session, _client) = a_program_of_two(&[FLAT]);
+    super_tab(&mut session);
+    let layout = session.compositor().switcher_layout().unwrap();
+    let front = layout.items.iter().find(|item| item.picked).unwrap().place;
+    let behind = layout.program[0].place;
+    // Above the front one's top, a little of the red one behind.
+    let x = behind.origin.x + behind.size.width.cast_signed() / 2;
+    let picture = session.draw();
+    let peeks = (behind.origin.y..front.origin.y).any(|y| (picture.at(x, y) >> 16) & 0xff > 0x80);
+    assert!(peeks);
+    // Super+`: the red one in front, and the green behind it.
+    tap(&mut session, GRAVE);
+    session.step();
+    let layout = session.compositor().switcher_layout().unwrap();
+    let front = layout.items.iter().find(|item| item.picked).unwrap();
+    assert_eq!(
+        Some(front.window),
+        session
+            .compositor()
+            .desktop()
+            .windows()
+            .next()
+            .map(|listed| listed.window.id)
+    );
+    assert_ne!(layout.program[0].window, front.window);
+}
+
+#[test]
+fn the_switcher_of_every_window_takes_the_key_to_the_next_of_a_program_and_does_nothing() {
+    let (mut session, _client) = a_program_of_two(&[ALT_TAB]);
+    alt_tab(&mut session, 1, false);
+    let before = (
+        session.compositor().switcher_layout(),
+        session.compositor().desktop().focused(),
+    );
+    session.compositor_mut().perform(&Action::NextWindow);
+    session.compositor_mut().perform(&Action::PreviousWindow);
+    session.step();
+    let after = (
+        session.compositor().switcher_layout(),
+        session.compositor().desktop().focused(),
+    );
+    assert_eq!(after, before);
+}
+
+#[test]
+fn a_window_of_the_program_in_a_frame_of_ours_is_pictured_in_it_behind() {
+    let mut session = Session::with_config(&[FLAT]);
+    let mut client = session.connect();
+    session.open_decorated(&mut client, "files", (400, 250), RED);
+    session.open_decorated(&mut client, "files", (400, 250), GREEN);
+    session.open(&mut client, "other", (400, 250), BLUE);
+    session.step();
+    super_tab(&mut session);
+    let layout = session.compositor().switcher_layout().unwrap();
+    let front = layout.items.iter().find(|item| item.picked).unwrap().place;
+    let behind = layout.program[0].place;
+    let x = behind.origin.x + behind.size.width.cast_signed() / 2;
+    // What peeks above the green one in front is the red one's titlebar,
+    // not what it draws.
+    let picture = session.draw();
+    let red = (behind.origin.y..front.origin.y).filter(|y| (picture.at(x, *y) >> 16) & 0xff > 0x80);
+    assert_eq!(red.count(), 0);
+    press(&mut session, key::SUPER, false);
+}
+
+#[test]
+fn the_program_s_row_comes_up_as_it_is_picked_and_goes_down_as_another_is() {
+    let (mut session, _client) = a_program_of_two(&[]);
+    super_tab(&mut session);
+    session.advance(std::time::Duration::from_millis(300));
+    let layout = session.compositor().switcher_layout().unwrap();
+    let peeking = layout.program[0].place;
+    let x = peeking.origin.x + peeking.size.width.cast_signed() / 2;
+    let green = |session: &mut Session| (session.draw().at(x, 477) >> 8) & 0xff > 0x80;
+    assert!(green(&mut session), "a little of the green one seen");
+    // Another program, of one window: the row goes down, not at once.
+    tap(&mut session, key::TAB);
+    session.step();
+    assert_eq!(session.compositor().switcher_layout().unwrap().program, []);
+    assert!(green(&mut session), "setting out");
+    session.advance(std::time::Duration::from_millis(300));
+    assert!(!green(&mut session), "gone");
+    // Back to it: from below the screen, up to where it is seen.
+    press(&mut session, key::SHIFT, true);
+    tap(&mut session, key::TAB);
+    press(&mut session, key::SHIFT, false);
+    session.step();
+    let coming = session.compositor().switcher_layout().unwrap().program[0].place;
+    assert_eq!(coming.origin.y, 480, "below the bottom edge");
+    session.advance(std::time::Duration::from_millis(300));
+    let up = session.compositor().switcher_layout().unwrap().program[0].place;
+    assert_eq!(up, peeking);
+    press(&mut session, key::SUPER, false);
+}
+
+#[test]
+fn super_grave_goes_back_to_the_program_s_window_used_before_and_held_shows_them() {
+    let mut session = Session::with_config(&[]);
+    let mut client = session.connect();
+    for (name, colour) in [("other", BLUE), ("files", RED), ("files", GREEN)] {
+        session.open(&mut client, name, (400, 250), colour);
+    }
+    session.step();
+    let windows: Vec<_> = session
+        .compositor()
+        .desktop()
+        .windows()
+        .map(|listed| listed.window.id)
+        .collect();
+    let (red, green) = (windows[1], windows[2]);
+    let focused = |session: &Session| session.compositor().desktop().focused();
+    assert_eq!(focused(&session), Some(green));
+    let quick = |session: &mut Session| {
+        press(session, key::SUPER, true);
+        tap(session, GRAVE);
+        press(session, key::SUPER, false);
+        session.step();
+    };
+    // A quick press: the program's window used before, and back again.
+    quick(&mut session);
+    assert_eq!(focused(&session), Some(red));
+    assert_eq!(session.compositor().switcher_layout(), None);
+    quick(&mut session);
+    assert_eq!(focused(&session), Some(green));
+
+    // Held: the switcher, of the program's windows alone, gone through.
+    press(&mut session, key::SUPER, true);
+    tap(&mut session, GRAVE);
+    session.step();
+    session.advance(SHOWN_AFTER);
+    let layout = session.compositor().switcher_layout().unwrap();
+    let shown: Vec<_> = layout.items.iter().map(|item| item.window).collect();
+    assert!(
+        shown.contains(&red) && shown.contains(&green) && shown.len() == 2,
+        "{shown:?}"
+    );
+    assert_eq!(
+        layout
+            .items
+            .iter()
+            .find(|item| item.picked)
+            .map(|item| item.window),
+        Some(red)
+    );
+    tap(&mut session, GRAVE);
+    session.step();
+    let layout = session.compositor().switcher_layout().unwrap();
+    assert_eq!(
+        layout
+            .items
+            .iter()
+            .find(|item| item.picked)
+            .map(|item| item.window),
+        Some(green)
+    );
+    tap(&mut session, GRAVE);
+    press(&mut session, key::SUPER, false);
+    session.step();
+    assert_eq!(focused(&session), Some(red));
+}
+
+#[test]
+fn each_window_s_ring_in_the_row_is_as_large_as_its_own_picture() {
+    let mut session = Session::with_config(&[]);
+    let mut client = session.connect();
+    // A wide one and a narrow one of a program, the narrow one used last,
+    // and another program in front.
+    session.open(&mut client, "files", (400, 250), RED);
+    session.open(&mut client, "files", (200, 250), GREEN);
+    session.open(&mut client, "other", (400, 250), BLUE);
+    session.step();
+    super_tab(&mut session);
+    session.advance(std::time::Duration::from_millis(300));
+    // Super+`, the wide one gone to, the row risen; and again, the narrow
+    // one gone to, the wide one's ring fading, just set out, round its own
+    // picture, which fills its place.
+    tap(&mut session, GRAVE);
+    session.step();
+    session.advance(std::time::Duration::from_millis(300));
+    tap(&mut session, GRAVE);
+    session.step();
+    let layout = session.compositor().switcher_layout().unwrap();
+    let wide = layout.program[1].place;
+    let style = Theme::default().style(Part::SwitcherWindow, States::NONE.with(State::Active));
+    let line = style.border.left.color;
+    let line = u32::from_be_bytes([line.alpha, line.red, line.green, line.blue]);
+    let x = wide.origin.x - style.inset().left.cast_signed() + 1;
+    let y = wide.origin.y + wide.size.height.cast_signed() / 2;
+    let pixel = session.draw().at(x, y);
+    let near = |shift: u32| ((pixel >> shift) & 0xff).abs_diff((line >> shift) & 0xff) < 0x20;
+    assert!(near(0) && near(8) && near(16), "{pixel:#x} for {line:#x}");
+    press(&mut session, key::SUPER, false);
+}

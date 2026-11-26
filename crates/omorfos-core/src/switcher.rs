@@ -110,8 +110,18 @@ pub struct SwitcherLayout {
     pub area: Rect,
     /// Each window shown, the one in front first where they stand one
     /// behind another. Only those that fit are shown, and the one picked
-    /// always is.
+    /// always is: as the window of its program gone to among them, if one
+    /// has been.
     pub items: Vec<SwitcherItem>,
+    /// The windows of the program picked: in rows, its others stacked
+    /// behind its place, the next to be gone to first, each smaller than
+    /// the one before; in the queue, all of them side by side in a row
+    /// under it, in the order of use as it was picked, the one gone to
+    /// picked. None but for a program of more than one window.
+    pub program: Vec<SwitcherItem>,
+    /// In the queue, where the ring round the one gone to among the
+    /// program's windows in its row is.
+    pub focus: Option<Rect>,
 }
 
 /// How much smaller each window in the queue is than the one before it.
@@ -155,11 +165,49 @@ fn standing(depth: f64, width: f64, corner: (f64, f64)) -> (Rect, f64) {
     (place, faint)
 }
 
+/// How far each window stacked behind the program's in rows is above the
+/// one before it, as a share of how tall that is.
+const RISE: f64 = 0.12;
+/// How wide each window in the row under the queue is, as a share of how
+/// wide the one in front is.
+const COLUMN: f64 = 0.34;
+/// How much of each of the program's windows in the row under the queue is
+/// seen but the one gone to, so that that stands out.
+const DIM: f64 = 0.6;
+/// How much of the row under the queue is seen above the screen's bottom
+/// edge before it is raised, as a share of a window in it.
+const PEEK: f64 = 0.25;
+
+/// The windows of the program picked, and which of them is gone to.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Within {
+    /// In the order of use, the program's window that stands for it first.
+    windows: Vec<WindowId>,
+    at: usize,
+    /// Whether one has been gone to among them, by the key that goes on to
+    /// the next window of a program.
+    gone: bool,
+}
+
+/// How much of a window `depth` places behind another is seen, in
+/// thousandths, as it fades further back.
+#[expect(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    reason = "within 0 to 1000 by the clamp"
+)]
+fn faded(depth: f64) -> u16 {
+    (FAINTER.mul_add(-depth, 1.0) * 1000.0)
+        .round()
+        .clamp(0.0, 1000.0) as u16
+}
+
 /// The switcher, while it is open.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Switcher {
     windows: Vec<WindowId>,
     at: usize,
+    within: Option<Within>,
 }
 
 impl Switcher {
@@ -175,7 +223,73 @@ impl Switcher {
         } else {
             usize::from(count > 1)
         };
-        (count > 0).then_some(Self { windows, at })
+        (count > 0).then_some(Self {
+            windows,
+            at,
+            within: None,
+        })
+    }
+
+    /// Has it show the program picked's `windows`, in the order of use:
+    /// the one picked stands for the program, and the others are shown
+    /// with it, to be gone through. A program of one window shows nothing
+    /// more.
+    pub fn show_program(&mut self, mut windows: Vec<WindowId>) {
+        let picked = self.picked();
+        let first = windows.iter().position(|window| *window == picked);
+        if let Some(first) = first {
+            windows.rotate_left(first);
+        }
+        self.within = (first.is_some() && windows.len() > 1).then_some(Within {
+            windows,
+            at: 0,
+            gone: false,
+        });
+    }
+
+    /// Goes on to the next of the program picked's windows, or back to the
+    /// one before if `back`, going round. Says whether there were any to go
+    /// through.
+    pub fn go_within(&mut self, back: bool) -> bool {
+        let Some(within) = self.within.as_mut() else {
+            return false;
+        };
+        let count = within.windows.len();
+        within.at = (within.at + if back { count - 1 } else { 1 }) % count;
+        within.gone = true;
+        true
+    }
+
+    /// The window to go to: the one gone to among the program picked's, or
+    /// the one picked.
+    #[must_use]
+    pub fn chosen(&self) -> WindowId {
+        let within = self.within.as_ref();
+        within.map_or_else(|| self.picked(), |within| within.windows[within.at])
+    }
+
+    /// The program picked's windows, in the order of use, the one that
+    /// stands for it first; none but for a program of more than one.
+    #[must_use]
+    pub fn program(&self) -> &[WindowId] {
+        self.within.as_ref().map_or(&[], |within| &within.windows)
+    }
+
+    /// Whether one has been gone to among the program picked's windows.
+    #[must_use]
+    pub fn gone_within(&self) -> bool {
+        self.within.as_ref().is_some_and(|within| within.gone)
+    }
+
+    /// The program picked's windows but the one gone to, the next first,
+    /// as many as `most`.
+    fn others(&self, most: usize) -> Vec<WindowId> {
+        let within = self.within.iter();
+        let others = within.flat_map(|within| {
+            let count = within.windows.len();
+            (1..count.min(most + 1)).map(move |after| within.windows[(within.at + after) % count])
+        });
+        others.collect()
     }
 
     /// The windows, in the order they stood when it opened.
@@ -194,17 +308,20 @@ impl Switcher {
     /// Picks the next window, going round from the last to the first.
     pub fn next(&mut self) {
         self.at = (self.at + 1) % self.windows.len();
+        self.within = None;
     }
 
     /// Picks the window before, going round from the first to the last.
     pub fn previous(&mut self) {
         self.at = (self.at + self.windows.len() - 1) % self.windows.len();
+        self.within = None;
     }
 
     /// Picks `window`, if it is in the switcher.
     pub fn pick(&mut self, window: WindowId) {
         if let Some(at) = self.windows.iter().position(|other| *other == window) {
             self.at = at;
+            self.within = None;
         }
     }
 
@@ -212,6 +329,22 @@ impl Switcher {
     /// was. With none left the switcher is gone too.
     #[must_use]
     pub fn without(mut self, window: WindowId) -> Option<Self> {
+        // Gone from the program's, which stands for it as the one used next.
+        if let Some(within) = self.within.take() {
+            let windows: Vec<WindowId> = within
+                .windows
+                .iter()
+                .copied()
+                .filter(|other| *other != window)
+                .collect();
+            let at = within.windows[within.at];
+            let at = windows.iter().position(|other| *other == at).unwrap_or(0);
+            self.within = (windows.len() > 1).then_some(Within {
+                windows,
+                at,
+                ..within
+            });
+        }
         if let Some(at) = self.windows.iter().position(|other| *other == window) {
             self.windows.remove(at);
             if at < self.at || self.at == self.windows.len() {
@@ -261,16 +394,43 @@ impl Switcher {
             let (column, row) = (at32 % across, at32 / across - first_row);
             let x = left + (inset + column * (item.width + gap)).cast_signed();
             let y = top + (inset + row * (item.height + gap)).cast_signed();
+            let picked = at == self.at;
             SwitcherItem {
-                window: *window,
+                window: if picked { self.chosen() } else { *window },
                 place: Rect::new(Point::new(x, y), item),
-                picked: at == self.at,
+                picked,
                 opacity: 1000,
             }
         });
+        let items: Vec<SwitcherItem> = items.collect();
+        // Behind the one picked, its program's others, each smaller and a
+        // little higher than the one before, and fainter.
+        let front = items.iter().find(|item| item.picked).map(|item| item.place);
+        let others = self.others(DEEPEST - 1);
+        let program = front.into_iter().flat_map(|front| {
+            others.iter().zip(1_u32..).map(move |(window, depth)| {
+                let depth = f64::from(depth);
+                let scale = SHRINK.powf(depth);
+                let (width, height) = (f64::from(front.size.width), f64::from(front.size.height));
+                let size = (width * scale, height * scale);
+                let left = f64::from(front.origin.x) + (width - size.0) / 2.0;
+                let top = (-RISE * depth).mul_add(height, f64::from(front.origin.y));
+                SwitcherItem {
+                    window: *window,
+                    place: Rect::new(
+                        Point::new(whole(left), whole(top)),
+                        Size::new(whole(size.0).cast_unsigned(), whole(size.1).cast_unsigned()),
+                    ),
+                    picked: false,
+                    opacity: faded(depth),
+                }
+            })
+        });
         SwitcherLayout {
             area,
-            items: items.collect(),
+            items,
+            program: program.collect(),
+            focus: None,
         }
     }
 
@@ -283,9 +443,19 @@ impl Switcher {
     /// stand so, in windows: below none while the one that was in front
     /// goes to the back, above while one comes from the back to the front.
     /// Going round, a window fades out of the front, larger, and into the
-    /// back.
+    /// back. Under the box, the program picked's other windows stand side by
+    /// side in a row, `peeked` of the way up from wholly below the screen's
+    /// bottom edge to where a little of each is seen, and from there
+    /// `raised` of the way to just under the box,
+    /// the queue going up as far as it can to make room for it, or as near
+    /// it as leaves them whole on the screen.
     #[must_use]
-    pub fn queue(&self, screen: Rect, metrics: QueueMetrics, turning: f64) -> SwitcherLayout {
+    pub fn queue(
+        &self,
+        screen: Rect,
+        metrics: QueueMetrics,
+        (turning, peeked, raised, sliding): (f64, f64, f64, f64),
+    ) -> SwitcherLayout {
         let QueueMetrics {
             widest,
             title,
@@ -314,6 +484,17 @@ impl Switcher {
         let left = (f64::from(screen.size.width) - width * across) / 2.0;
         let left = f64::from(screen.origin.x) + left;
         let top = f64::from(screen.origin.y) + (f64::from(screen.size.height) - tall) / 2.0;
+        // The row of the program's others, and as it rises, the queue going
+        // up to make room for it under its box, as far as the margin at the
+        // screen's top.
+        let (narrow, short) = (width * COLUMN, width * COLUMN * SHAPE);
+        let bottom = f64::from(screen.origin.y) + f64::from(screen.size.height);
+        let wanted = top + tall + f64::from(gap) + short - (bottom - f64::from(margin));
+        let free = top - f64::from(screen.origin.y) - f64::from(margin);
+        let row = !self.others(1).is_empty();
+        let rise = if row { wanted.min(free).max(0.0) } else { 0.0 };
+        let raised = raised.clamp(0.0, 1.0);
+        let top = rise.mul_add(-raised, top);
         let corner = (left, width.mul_add(up, top));
         // A single window has nowhere to turn to.
         let turning = if count > 1 { turning } else { 0.0 };
@@ -344,10 +525,11 @@ impl Switcher {
                     reason = "within 0 to 1000 by the clamp"
                 )]
                 let opacity = (faint * share * 1000.0).round().clamp(0.0, 1000.0) as u16;
+                let picked = at == self.at;
                 let card = SwitcherItem {
-                    window: *window,
+                    window: if picked { self.chosen() } else { *window },
                     place,
-                    picked: at == self.at,
+                    picked,
                     opacity,
                 };
                 (opacity > 0).then_some((depth, card))
@@ -358,10 +540,101 @@ impl Switcher {
             Point::new(whole(left), whole(corner.1) + gap.cast_signed()),
             Size::new(whole(width).cast_unsigned(), title),
         );
+        let place = (area, left + width / 2.0, (narrow, short));
+        let screen_sides = (f64::from(screen.origin.x), f64::from(screen.size.width));
+        let edges = (bottom, screen_sides, f64::from(margin));
+        let (program, focus) = self.row(place, (edges, f64::from(gap)), (peeked, raised, sliding));
         SwitcherLayout {
             area,
             items: cards.into_iter().map(|(_, card)| card).collect(),
+            program,
+            focus,
         }
+    }
+
+    /// The row of the program picked's windows under the queue's box,
+    /// `area`, side by side about `middle`, each `size` large, `gap` apart,
+    /// within the screen's sides and above its `bottom`, by its `margin`;
+    /// `raised` of the way up: just under the box, or as near it as leaves
+    /// them whole on the screen, from mostly below the bottom, a little of
+    /// each seen, which they come up to from wholly below it, `peeked` of
+    /// the way there. The one gone to has the ring round it, and the others
+    /// are fainter. As many as fit are shown; with more, the row slides to
+    /// keep the ring in sight, `sliding` windows short of it on its way
+    /// there, those towards its ends fainter still, and those beyond them
+    /// not shown.
+    fn row(
+        &self,
+        (area, middle, (across, down)): (Rect, f64, (f64, f64)),
+        ((bottom, (left, wide), margin), gap): ((f64, (f64, f64), f64), f64),
+        (peeked, raised, sliding): (f64, f64, f64),
+    ) -> (Vec<SwitcherItem>, Option<Rect>) {
+        let Some(within) = self.within.as_ref() else {
+            return (Vec::new(), None);
+        };
+        let count = within.windows.len();
+        let many = f64::from(u32::try_from(count).unwrap_or(u32::MAX));
+        let step = across + gap;
+        let room = 2.0f64.mul_add(-margin, wide);
+        // How many fit, and how long the row is that they make.
+        let fit = ((room + gap) / step).floor().max(1.0).min(many);
+        let long = fit.mul_add(step, -gap);
+        // In the middle under the one in front, but within the screen.
+        let first = (middle - long / 2.0)
+            .min(left + wide - margin - long)
+            .max(left + margin);
+        // The ring, on its way; and the row, slid to keep it in sight.
+        let at = f64::from(u32::try_from(within.at).unwrap_or(0)) - sliding;
+        let half = (fit - 1.0) / 2.0;
+        let shown = if many > fit {
+            at.clamp(half, many - 1.0 - half) - half
+        } else {
+            0.0
+        };
+        let under = f64::from(area.origin.y) + f64::from(area.size.height) + gap;
+        let up = under.min(bottom - margin - down);
+        let low = (-PEEK * peeked.clamp(0.0, 1.0)).mul_add(down, bottom);
+        let top = (up - low).mul_add(raised, low);
+        let place = |at: f64| {
+            Rect::new(
+                Point::new(whole((at - shown).mul_add(step, first)), whole(top)),
+                Size::new(whole(across).cast_unsigned(), whole(down).cast_unsigned()),
+            )
+        };
+        // Fainter the nearer the end of the row they are where more are
+        // beyond it, none past it.
+        let (start, end) = (first, first + long);
+        let seen = |x: f64| {
+            let inside = (x - start).min(end - (x + across));
+            if many > fit {
+                (inside / step + 1.0).clamp(0.0, 1.0)
+            } else {
+                1.0
+            }
+        };
+        let row = within
+            .windows
+            .iter()
+            .zip(0_u32..)
+            .filter_map(|(window, index)| {
+                let place = place(f64::from(index));
+                let picked = index as usize == within.at;
+                let dim = if picked { 1.0 } else { DIM };
+                #[expect(
+                    clippy::cast_possible_truncation,
+                    clippy::cast_sign_loss,
+                    reason = "within 0 to 1000 by the clamp"
+                )]
+                let opacity = (seen(f64::from(place.origin.x)) * dim * 1000.0).round() as u16;
+                (opacity > 0).then_some(SwitcherItem {
+                    window: *window,
+                    place,
+                    picked,
+                    opacity,
+                })
+            });
+        let gone_to = f64::from(u32::try_from(within.at).unwrap_or(0));
+        (row.collect(), Some(place(gone_to)))
     }
 }
 
@@ -548,7 +821,7 @@ mod tests {
     /// Each window the queue shows, front to back: which, where, and how
     /// much of it is seen.
     fn queued(switcher: &Switcher, screen: Rect, turning: f64) -> Vec<(u64, Rect, u16)> {
-        let layout = switcher.queue(screen, QUEUE, turning);
+        let layout = switcher.queue(screen, QUEUE, (turning, 1.0, 0.0, 0.0));
         let items = layout.items.iter();
         items
             .map(|item| (item.window.raw(), item.place, item.opacity))
@@ -558,7 +831,7 @@ mod tests {
     #[test]
     fn the_queue_stands_the_one_picked_in_front_and_the_rest_behind_it_going_round() {
         let switcher = Switcher::open(ids(&[3, 2, 1]), false).unwrap();
-        let layout = switcher.queue(screen(1600, 1000), QUEUE, 0.0);
+        let layout = switcher.queue(screen(1600, 1000), QUEUE, (0.0, 1.0, 0.0, 0.0));
         let order: Vec<_> = layout
             .items
             .iter()
@@ -604,7 +877,7 @@ mod tests {
         assert_eq!(windows, [2, 3, 4, 5, 6, 7]);
         // On a small screen all of it fits inside the margin.
         let small = screen(500, 400);
-        let layout = switcher.queue(small, QUEUE, 0.0);
+        let layout = switcher.queue(small, QUEUE, (0.0, 1.0, 0.0, 0.0));
         let front = layout.items[0].place;
         assert!(front.size.width < 400, "{front:?}");
         for item in &layout.items {
@@ -653,5 +926,206 @@ mod tests {
         assert!(0 < opacity && opacity < 400, "{opacity}");
         let alone = Switcher::open(ids(&[7]), false).unwrap();
         assert_eq!(queued(&alone, screen, -0.5), queued(&alone, screen, 0.0));
+    }
+
+    #[test]
+    fn the_program_picked_s_windows_are_gone_through_and_the_one_gone_to_is_chosen() {
+        // Programs, each by its window used last: 1, then 2 picked.
+        let mut switcher = Switcher::open(ids(&[1, 2, 3]), false).unwrap();
+        assert!(!switcher.go_within(false), "none shown yet");
+        // Its windows, in the order of use, as they come: 2 stands for it.
+        switcher.show_program(ids(&[5, 2, 6]));
+        assert_eq!(switcher.chosen().raw(), 2);
+        assert_eq!(switcher.program(), ids(&[2, 6, 5]));
+        assert!(!switcher.gone_within());
+        assert!(switcher.go_within(false));
+        assert_eq!(switcher.chosen().raw(), 6, "the one after it");
+        assert!(switcher.gone_within());
+        switcher.go_within(false);
+        assert_eq!(switcher.chosen().raw(), 5, "round");
+        switcher.go_within(true);
+        switcher.go_within(true);
+        assert_eq!(switcher.chosen().raw(), 2, "and back");
+        assert_eq!(picked(&switcher), 2, "the program picked is as it was");
+
+        // Gone from among them, they are taken as they stand.
+        switcher.go_within(false);
+        let switcher = switcher.without(WindowId::from_raw(5)).unwrap();
+        assert_eq!(switcher.chosen().raw(), 6);
+        let mut switcher = switcher.without(WindowId::from_raw(6)).unwrap();
+        assert_eq!(
+            switcher.chosen().raw(),
+            2,
+            "one left, nothing to go through"
+        );
+        assert!(!switcher.go_within(false));
+
+        // Another program picked, or one of one window, or one not among
+        // them: nothing to go through.
+        for go in [Switcher::next, Switcher::previous] {
+            switcher.show_program(ids(&[2, 5]));
+            go(&mut switcher);
+            assert!(!switcher.go_within(false));
+        }
+        switcher.show_program(ids(&[2, 5]));
+        switcher.pick(WindowId::from_raw(3));
+        assert!(!switcher.go_within(false));
+        switcher.pick(WindowId::from_raw(9));
+        switcher.show_program(ids(&[3]));
+        assert!(!switcher.go_within(false));
+        switcher.show_program(ids(&[8, 9]));
+        assert_eq!(switcher.chosen().raw(), 3);
+        assert!(!switcher.go_within(false));
+    }
+
+    #[test]
+    fn in_rows_the_program_s_other_windows_are_stacked_behind_it_each_smaller() {
+        let mut switcher = Switcher::open(ids(&[1, 2]), false).unwrap();
+        let before = switcher.layout(screen(1600, 1000), METRICS);
+        assert_eq!(before.program, []);
+        switcher.show_program(ids(&[2, 5, 6]));
+        switcher.go_within(false);
+        let layout = switcher.layout(screen(1600, 1000), METRICS);
+        let front = layout.items[1];
+        assert_eq!((front.window.raw(), front.picked), (5, true));
+        let stacked: Vec<u64> = layout
+            .program
+            .iter()
+            .map(|item| item.window.raw())
+            .collect();
+        assert_eq!(stacked, [6, 2], "the next first");
+        let (first, second) = (layout.program[0], layout.program[1]);
+        assert!(first.place.size.width < front.place.size.width);
+        assert!(second.place.size.width < first.place.size.width);
+        assert!(
+            first.place.origin.y < front.place.origin.y,
+            "a little higher"
+        );
+        assert!(second.place.origin.y < first.place.origin.y);
+        assert!(second.opacity < first.opacity && first.opacity < 1000);
+    }
+
+    #[test]
+    fn in_the_queue_the_program_s_windows_stand_in_a_row_raised_as_gone_through() {
+        let screen = screen(1600, 1000);
+        let mut switcher = Switcher::open(ids(&[1, 2]), false).unwrap();
+        switcher.show_program(ids(&[2, 5, 6]));
+        let row = |raised| {
+            switcher
+                .queue(screen, QUEUE, (0.0, 1.0, raised, 0.0))
+                .program
+        };
+        let low = row(0.0);
+        let windows: Vec<u64> = low.iter().map(|item| item.window.raw()).collect();
+        assert_eq!(windows, [2, 5, 6], "all of them, as they were used");
+        let picked: Vec<bool> = low.iter().map(|item| item.picked).collect();
+        assert_eq!(picked, [true, false, false]);
+        // A quarter of each seen above the bottom edge, side by side under
+        // the middle of the one in front.
+        let first = low[0].place;
+        let bottom = i64::from(screen.size.height);
+        assert_eq!(
+            bottom - i64::from(first.origin.y),
+            i64::from(first.size.height) / 4
+        );
+        let next = low[1].place;
+        assert_eq!(next.origin.y, first.origin.y, "beside it");
+        assert!(i64::from(next.origin.x) > first.right(), "to its right");
+        let front = switcher.queue(screen, QUEUE, (0.0, 1.0, 0.0, 0.0)).items[0].place;
+        let middle = |place: Rect| i64::from(place.origin.x) * 2 + i64::from(place.size.width);
+        assert!(
+            (middle(next) - middle(front)).abs() <= 2,
+            "the middle one under it"
+        );
+        // Raised, just under the box.
+        let layout = switcher.queue(screen, QUEUE, (0.0, 1.0, 1.0, 0.0));
+        let up = layout.program[0].place;
+        let under = layout.area.origin.y + (QUEUE.title + QUEUE.gap).cast_signed();
+        assert_eq!(up.origin.y, under);
+        // On a screen as tall as most, the queue goes up as it rises, and
+        // the row stands clear of the one in front, under the box.
+        let wide = Rect::new(Point::new(0, 0), Size::new(1920, 1080));
+        let large = QueueMetrics {
+            widest: 720,
+            ..QUEUE
+        };
+        // Six programs, as tall as the queue stands.
+        let mut tall = Switcher::open(ids(&[1, 2, 3, 4, 7, 8]), false).unwrap();
+        tall.show_program(ids(&[2, 5, 6]));
+        let lowered = tall.queue(wide, large, (0.0, 1.0, 0.0, 0.0));
+        let raised = tall.queue(wide, large, (0.0, 1.0, 1.0, 0.0));
+        assert!(raised.items[0].place.origin.y < lowered.items[0].place.origin.y);
+        let front = raised.items[0].place;
+        let first = raised.program[0].place;
+        assert!(i64::from(first.origin.y) > front.bottom());
+        assert!(first.bottom() <= 1080 - i64::from(QUEUE.margin));
+        // Or, on a screen with no room under it, whole above the margin.
+        let short = Rect::new(Point::new(0, 0), Size::new(640, 480));
+        let raised = switcher.queue(short, QUEUE, (0.0, 1.0, 1.0, 0.0)).program[0].place;
+        let foot = i64::from(raised.origin.y) + i64::from(raised.size.height);
+        assert_eq!(foot, 480 - i64::from(QUEUE.margin));
+        let front = f64::from(layout.items[0].place.size.width);
+        assert_eq!(
+            f64::from(up.size.width),
+            (front * COLUMN).round(),
+            "a third as wide"
+        );
+        let half = row(0.5)[0].place.origin.y;
+        // Not yet come up, wholly below the bottom edge; half way, an
+        // eighth seen.
+        let hidden = switcher.queue(screen, QUEUE, (0.0, 0.0, 0.0, 0.0)).program[0].place;
+        assert_eq!(i64::from(hidden.origin.y), bottom);
+        let coming = switcher.queue(screen, QUEUE, (0.0, 0.5, 0.0, 0.0)).program[0].place;
+        assert!(hidden.origin.y > coming.origin.y && coming.origin.y > first.origin.y);
+        assert!(up.origin.y < half && half < first.origin.y);
+    }
+
+    #[test]
+    fn the_ring_is_round_the_one_gone_to_the_others_fainter_and_a_row_too_long_slides_to_it() {
+        let screen = screen(1600, 1000);
+        let mut switcher = Switcher::open(ids(&[1, 2]), false).unwrap();
+        switcher.show_program(ids(&[2, 5, 6]));
+        let row =
+            |switcher: &Switcher, sliding| switcher.queue(screen, QUEUE, (0.0, 1.0, 0.0, sliding));
+        // Round the one gone to, in its place in the row.
+        let layout = row(&switcher, 0.0);
+        assert_eq!(layout.focus, Some(layout.program[0].place));
+        switcher.go_within(false);
+        let layout = row(&switcher, 0.0);
+        assert_eq!(layout.focus, Some(layout.program[1].place));
+        assert!(layout.program[1].picked);
+        // While it was on its way there, the row, which fits, standing
+        // still, and the ring round it all the same.
+        let half = row(&switcher, 0.5);
+        assert_eq!(half.program, layout.program);
+        assert_eq!(half.focus, layout.focus);
+        let opacities: Vec<u16> = layout.program.iter().map(|item| item.opacity).collect();
+        assert_eq!(opacities, [600, 1000, 600], "the others fainter");
+
+        // More than fit: as many as fit shown, the row slid to keep the one
+        // gone to in sight, the ends fainter.
+        let narrow = Rect::new(Point::new(0, 0), Size::new(640, 480));
+        let mut long = Switcher::open(ids(&[1, 2]), false).unwrap();
+        long.show_program(ids(&[2, 10, 11, 12, 13, 14, 15]));
+        for _ in 0..4 {
+            long.go_within(false);
+        }
+        let layout = long.queue(narrow, QUEUE, (0.0, 1.0, 0.0, 0.0));
+        let gone = layout.program.iter().find(|item| item.picked).unwrap();
+        assert_eq!(gone.window.raw(), 13);
+        assert_eq!(layout.focus, Some(gone.place));
+        assert!(i64::from(gone.place.origin.x) >= i64::from(QUEUE.margin));
+        assert!(gone.place.right() <= 640 - i64::from(QUEUE.margin));
+        assert!(layout.program.len() < 7, "not all of them");
+        let ends = [
+            layout.program[0].opacity,
+            layout.program[layout.program.len() - 1].opacity,
+        ];
+        assert!(ends.iter().all(|opacity| *opacity < 1000), "{ends:?}");
+        assert_eq!(gone.opacity, 1000);
+        assert!(ends.iter().all(|opacity| *opacity < 600), "fainter still");
+        // Slid there from the one before.
+        let slid = long.queue(narrow, QUEUE, (0.0, 1.0, 0.0, 1.0));
+        assert_ne!(slid.program, layout.program);
     }
 }
