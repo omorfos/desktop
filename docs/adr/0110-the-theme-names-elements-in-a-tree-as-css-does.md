@@ -291,3 +291,97 @@ makes the tree, marked as breaking (ADR 73).
 - `:first-child`, `:nth-child`, siblings and `:not()` can not be had
   while the tree is fixed. A theme that needs them is a reason to weigh
   the live tree again.
+
+## Addendum, 26 November 2026: states, and the tree of step 1
+
+Agreed with the maintainer while planning the first of the three steps
+the work is done in: the syntax, then states at any depth, then
+inheritance and a `dialog` for each program that draws one, with the
+looks unified as a fourth, after them. The built-in theme is to look the
+same, pixel for pixel, through all three.
+
+**States are the web's.** A state is a name CSS has, meaning what CSS
+means by it; one CSS has no word for is written as CSS writes the state
+of an element of one's own, `:state(name)`. Today's five become, element
+by element:
+
+- `:hover`, as it was.
+- `:focus` where the keyboard is on the element itself: a menu's row, a
+  mode, a field, a question's button.
+- `:focus-within` on a `window` whose content has the keyboard; the
+  titlebar, its tabs, its controls and their buttons are named in it, as
+  `window:focus-within > titlebar`.
+- `:checked` for the one of several picked or shown, as a radio button or
+  an `<option>` is, and for what is turned on, as a box ticked: the
+  workspace shown, a tab shown, a row lit, a mode shown, a toggle of a
+  menu on.
+- `:default` for the button of a question that gives, the one Enter
+  takes, as a form's default button is.
+- `::selection` for what is chosen of what is typed.
+- `:state(today)`, today in the calendar: CSS's `:current` is a
+  timeline's, not a calendar's; `:state(in-line)`, a day in the week, or
+  on the weekday, of today; `:state(copied)`, About's button having
+  copied; `:state(urgent)` and `:state(closing)`, as `:urgent` and
+  `:closing` were.
+- `:active` is left for what it is in CSS, pressed, which nothing is
+  drawn as yet.
+
+**The tree of step 1.** Step 1 changes no code that draws but for the
+overview's close buttons, so where one part is drawn in several places
+it keeps one path until step 3 gives each its own: the question of every
+program, the lock screen's, the boxes that ask for a password and the
+welcome card among it, is one `dialog.question`; a notification's buttons
+are its `button`; and `::selection` is a state of the field, so that
+what reaches a field reaches what is chosen in it. A state is written on
+the element of the path it is of, which may be one the element is in:
+
+| Part | Path | States: internal → spelling (node) |
+|---|---|---|
+| Desktop | `desktop` | — |
+| Window | `window` | Focused → `:focus-within`; Closing → `:state(closing)` |
+| TileLine | `desktop > separator` | — |
+| Offer | `desktop > button.offer` | Hovered → `:hover` |
+| Titlebar | `window > titlebar` | Focused → `window:focus-within` |
+| Tab | `window > titlebar > tab` | Active → `:checked`; Focused → `window:focus-within` |
+| WindowControls | `window > titlebar > controls` | Focused → `window:focus-within`; Hovered → `:hover` |
+| ButtonClose, ButtonMaximize, ButtonMinimize | `window > titlebar > controls > button.close` (`.maximize`, `.minimize`) | Focused → `window:focus-within`; Hovered → `:hover`; holder Hovered → `controls:hover` |
+| OverviewClose, the overview's close button (#181) | `overview > thumbnail > button.close` | — |
+| Menu | `menu` | Closing |
+| MenuItem | `menu > item` | Hovered → `:hover`; Focused → `:focus` |
+| MenuSeparator | `menu > separator` | — |
+| MenuSign | `menu > item > icon` | Hovered → `item:hover`; Focused → `item:focus`; Active → `item:checked` |
+| MenuKeys | `menu > item > kbd` | Hovered → `item:hover`; Focused → `item:focus` |
+| Notice, NoticeHeading | `notice`, `notice > heading` | Closing on `notice` |
+| Capture, CaptureBorder | `capture`, `frame.capture` | — |
+| Tooltip | `tooltip` | Closing |
+| Panel, Workspace, Task, Clock | `panel`, `panel > workspace`, `panel > task`, `panel > clock` | Closing on `panel`; Active → `:checked` on workspace and task |
+| Popover, PopoverItem | `popover`, `popover > item` | Closing on `popover`; Hovered → `:hover` on item |
+| PopoverDay, PopoverDayOutside | `popover > calendar > day`, `day.outside` | Hovered → `:hover`; Active → `:state(today)`; Focused → `:state(in-line)` |
+| Launcher, LauncherBackdrop | `launcher`, `launcher::backdrop` | Closing → `:state(closing)` on `launcher`, for both |
+| LauncherInput | `launcher > input` | Active → `::selection` |
+| LauncherItem, LauncherTop | `launcher > list > item`, `item.top` | Active → `:checked` |
+| LauncherDescription | `launcher > list > item > description` | Active → `item:checked` |
+| LauncherTile | `launcher > grid > item` | Active → `:checked` |
+| LauncherHeading | `launcher > list > heading` | — |
+| LauncherModes, LauncherMode | `launcher > modes`, `launcher > modes > button` | Active → `:checked`; Hovered → `:hover`; Focused → `:focus` |
+| LauncherModeKey | `launcher > modes > button > kbd` | Active → `button:checked` |
+| Notification | `notification` | Urgent → `:state(urgent)`; Hovered → `:hover`; Focused → `:focus`; Closing |
+| NotificationTitle, Body, Level | `notification > title`, `> body`, `> meter` | — |
+| Question, QuestionDetail | `dialog.question`, `dialog.question > detail` | Closing on `dialog` |
+| QuestionButton | `dialog.question > button` | Active → `:default`; Hovered → `:hover`; Focused → `:focus` |
+| QuestionInput | `dialog.question > input` | Focused → `:focus`; Active → `::selection` |
+| Switcher, SwitcherItem, SwitcherTitle | `switcher`, `switcher > item`, `switcher > item > title` | Closing on `switcher`; Active → `:checked` on item |
+| SwitcherWindow, SwitcherBackdrop | `switcher > thumbnail`, `switcher::backdrop` | Active → `:checked` on thumbnail |
+| OverviewWindow, OverviewTitle | `overview > thumbnail`, `overview > title` | Active → `:checked` on thumbnail |
+| OverviewWorkspace, OverviewAdd, OverviewBackdrop | `overview > workspace`, `overview > button.add`, `overview::backdrop` | Active → `:checked`, Hovered → `:hover` on workspace; Hovered on add |
+| Picker, Sealed | `picker`, `sealed` | — |
+| About, AboutHeading, AboutDetail, AboutButton | `dialog.about`, `> heading`, `> detail`, `> button` | Closing on `dialog`; Hovered → `:hover`, Active → `:state(copied)` on button |
+
+`:state(closing)` is given to what comes and goes over its transition,
+as the built-in theme and the code that draws have it today.
+
+**What is promised.** The list of parts is not in `schemas/promised.txt`,
+as this record said above it was: step 1 puts each element's selector
+there, as `theme.css <selector>`, so that the check of what is promised
+holds the tree as ADR 73 has it hold the rest.
+

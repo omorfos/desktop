@@ -1437,6 +1437,24 @@ the first than on the last.
       that reaches nothing an error; `color` and the font inherited;
       the built-in theme, the guide, the manual page and what is
       promised renamed at once.
+      In three steps, the built-in theme the same, pixel for pixel,
+      through them all (ADR 110, addendum):
+      - [ ] The syntax: the tree, selectors, nesting, specificity, the
+            web's states, matched once as the theme is loaded, a
+            selector that reaches nothing an error naming what is near,
+            and every theme renamed.
+      - [ ] States at any depth, as `window:focus-within titlebar
+            controls button`, an element's looks capped at 4,096.
+      - [ ] `color` and the font inherited, `:root` an element above
+            every surface, a `dialog` for each program that draws one,
+            a notification's own `button`, and `::selection` an element
+            of its own rather than a state of its field.
+- [ ] The looks of the built-in theme unified, once ADR 110's three
+      steps are in: `button` one look wherever a button is, and the
+      record of every look the steps kept the same let go.
+- [ ] The tree of the theme's elements printed, each with its states,
+      as a browser's inspector shows a page's (`omorfosctl theme tree`),
+      for whoever writes a theme.
 - [ ] The check's allowance, 4 in 255, measured on cards other than
       Intel's, where the shader is within 2: AMD's and NVIDIA's.
 - [x] Glass at the edges of the screen: beyond them is what is inside,
