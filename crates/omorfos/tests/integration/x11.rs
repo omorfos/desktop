@@ -506,12 +506,18 @@ fn a_window_of_a_program_written_for_x11_is_maximized_and_made_fullscreen_like_a
         u16::try_from(HEIGHT).unwrap(),
     );
 
+    // What the X server has of a window's size reaches it from the
+    // compositor's connection, and the question from the program's: the
+    // two are not ordered, and under load the question can come first.
+    let sized = |session: &mut Session, size: (u16, u16)| {
+        session.eventually(|session| size_of(session, &program, window) == size);
+    };
     session.compositor_mut().perform(&Action::Maximize);
     session.step();
     assert!(frame(&session).1);
     // All of the screen, less the frame around it.
     let filling = (wide - 2, tall - 49);
-    assert_eq!(size_of(&mut session, &program, window), filling);
+    sized(&mut session, filling);
     // And the program draws it that large, once it is told that what it
     // drew before has been shown.
     session.eventually(|session| {
@@ -521,12 +527,12 @@ fn a_window_of_a_program_written_for_x11_is_maximized_and_made_fullscreen_like_a
 
     session.compositor_mut().perform(&Action::Fullscreen);
     session.step();
-    assert_eq!(size_of(&mut session, &program, window), (wide, tall));
+    sized(&mut session, (wide, tall));
 
     session.compositor_mut().perform(&Action::Fullscreen);
     session.compositor_mut().perform(&Action::Maximize);
     session.step();
-    assert_eq!(size_of(&mut session, &program, window), (200, 100));
+    sized(&mut session, (200, 100));
 }
 
 #[test]
