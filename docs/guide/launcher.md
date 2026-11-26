@@ -117,8 +117,9 @@ The arrows walk the grid, and the wheel scrolls it a line at a time past
 half the height of the screen. Enter or a click starts the program
 chosen. Typing narrows the grid as it narrows the list, and once
 something is typed, Left and Right move in it as in any field until Down
-gives the grid the keyboard; a sum's answer has a line of its own above
-the programs. If the launcher is open already, it is left as it is.
+gives the grid the keyboard. The grid is the programs' mode, and finds
+programs alone: a sum is answered where the launcher opens, `Super+0`.
+If the launcher is open already, it is left as it is.
 
 ## Modes
 

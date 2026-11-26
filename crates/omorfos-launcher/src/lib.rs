@@ -15,6 +15,7 @@ mod apps;
 mod client;
 mod pasting;
 mod picker;
+mod sources;
 
 use std::ffi::OsString;
 use std::path::Path;
@@ -24,7 +25,7 @@ pub use client::{Failure, Launcher};
 pub use omorfos_icons::Icons;
 use omorfos_ipc::help::About;
 pub use omorfos_sums::Numbers;
-pub use picker::{Key, Outcome, Picker};
+pub use picker::{Key, Outcome, Picker, View};
 
 /// What it says of itself, when asked and in its manual page.
 pub const ABOUT: About = About {

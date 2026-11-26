@@ -1442,3 +1442,25 @@ fn in_the_ordinary_way_super_and_a_digit_bound_is_its_binding_with_the_launcher_
     settle(&mut session, &mut launcher);
     assert_eq!(session.compositor().desktop().active_workspace(), 1);
 }
+
+#[test]
+fn super_and_1_goes_to_the_programs_grid_and_escape_back() {
+    let mut session = Session::new();
+    let mut launcher = launcher(&mut session);
+    settle(&mut session, &mut launcher);
+    hold(&mut session, key::SUPER, true);
+    press(&mut session, key::ONE);
+    hold(&mut session, key::SUPER, false);
+    // Escape goes back to everything and keeps the launcher; Super and 1
+    // goes to the grid again, where the arrows walk across.
+    press(&mut session, key::ESCAPE);
+    assert!(!settle(&mut session, &mut launcher), "still open");
+    hold(&mut session, key::SUPER, true);
+    press(&mut session, key::ONE);
+    hold(&mut session, key::SUPER, false);
+    press(&mut session, key::RIGHT);
+    press(&mut session, key::RIGHT);
+    press(&mut session, key::RETURN);
+    assert!(settle(&mut session, &mut launcher));
+    session.eventually(|session| mark(session, "firefox") == "x");
+}

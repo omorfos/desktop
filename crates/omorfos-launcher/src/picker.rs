@@ -3,13 +3,14 @@
 //!
 //! Nothing here knows of Wayland or of sockets.
 
-use omorfos_config::{Color, Command, Edges, Launcher as Show, Part, State, States, Theme};
+use omorfos_config::{Color, Edges, Launcher as Show, Mode, Part, State, States, Theme};
 use omorfos_i18n::{Value, Words};
 use omorfos_ipc::Request;
 use omorfos_ui::field::{Edit, Field, Reach, Way};
 use omorfos_ui::{Area, Canvas, Motion, Scale, Text, inset};
 use serde_json::json;
 
+use crate::sources::{Does, Found, Programs, Section, Source, Sums};
 use crate::{App, Icons, Numbers};
 
 /// How many rows are listed at most until the launcher is told how tall
@@ -54,7 +55,23 @@ pub enum Key {
     Escape,
     /// Choose all that is typed, for what is typed next to take its place.
     All,
+    /// Go to the mode of this number, as Super and a digit do: the first
+    /// and on in the configuration's order, of those built; 0 the generic
+    /// one (ADR 109).
+    Mode(u8),
 }
+
+/// What the launcher shows: everything it finds, or one mode's own.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum View {
+    /// Whatever matches, from every source.
+    Generic,
+    /// One mode's own, alone.
+    Mode(Mode),
+}
+
+/// The modes built so far; the rest take no number until they are.
+const BUILT: [Mode; 1] = [Mode::Programs];
 
 /// What comes of a key or a click.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -71,25 +88,23 @@ pub enum Outcome {
     Ask(Request),
 }
 
-/// The launcher's state: the programs there are, what has been typed, the
-/// answer to it if it is a sum, and which of the answer and the programs
-/// that match is chosen.
+/// The launcher's state: what it finds things in, what has been typed,
+/// what was found for it, and which of that is chosen.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Picker {
-    apps: Vec<App>,
-    /// What is shown of each program besides its name.
+    /// The programs there are.
+    programs: Programs,
+    /// Sums, worked out.
+    sums: Sums,
+    /// What is shown of each program besides its name, and what else is
+    /// done with what is typed.
     show: Show,
-    /// How numbers are written in a sum.
-    numbers: Numbers,
     /// What has been typed, where the cursor is in it, and what is chosen.
     field: Field,
-    /// The answer to what has been typed, if it is a sum, and how it is
-    /// written on its row.
-    answer: Option<(String, String)>,
-    /// The programs that match, best first, as places in `apps`.
-    found: Vec<usize>,
-    /// Which of the rows would be taken: the answer's first, if there is
-    /// one, then the programs'.
+    /// What was found for what is typed, best first, each with what it is
+    /// shown under: a sum's answer, if there is one, first.
+    found: Vec<(Section, Found)>,
+    /// Which of the rows would be taken.
     chosen: usize,
     /// How many rows are listed at most.
     room: usize,
@@ -99,21 +114,12 @@ pub struct Picker {
     /// Whether the pointer was pressed in the field and is still held,
     /// choosing what it moves over.
     dragging: bool,
-    /// Whether every program is shown as a grid, its icon over its name,
-    /// rather than listed.
-    grid: bool,
+    /// Everything, or one mode's own; the programs' is a grid.
+    view: View,
     /// Whether the keyboard is on the programs, Down having taken it
     /// there, rather than on what is typed: the field has no cursor then,
     /// and every arrow walks the programs.
     listing: bool,
-}
-
-/// A row of the launcher's list.
-enum Row<'a> {
-    /// The answer to a sum, to copy: as it is copied, and as it is shown.
-    Answer(&'a str, &'a str),
-    /// A program to start.
-    App(&'a App),
 }
 
 /// Where the launcher's boxes are, under a theme.
@@ -226,37 +232,72 @@ fn tile_height(theme: &Theme) -> u32 {
 
 impl Picker {
     /// A launcher offering `apps`, in the order they are given, showing
-    /// of each what `show` says, and reading sums as `numbers`.
+    /// of each what `show` says, and reading sums as `numbers`, in the
+    /// generic mode.
     #[must_use]
     pub fn new(apps: Vec<App>, show: Show, numbers: Numbers) -> Self {
-        let found = (0..apps.len()).collect();
-        Self {
-            apps,
+        let mut picker = Self {
+            programs: Programs::new(apps, show.descriptions),
+            sums: Sums::new(numbers),
             show,
-            numbers,
             field: Field::new(LONGEST),
-            answer: None,
-            found,
+            found: Vec::new(),
             chosen: 0,
             room: ROWS,
             top: 0,
             dragging: false,
-            grid: false,
+            view: View::Generic,
             listing: false,
-        }
+        };
+        picker.search();
+        picker
     }
 
-    /// Shows every program as a grid, each program's icon over its name,
-    /// if `grid`, rather than as a list. Typing narrows it as it does the
-    /// list; the arrows walk it, and Left and Right move the cursor in
+    /// Shows `view`: everything, or one mode's own, the programs' as a
+    /// grid, each program's icon over its name. Typing narrows either; in
+    /// the grid the arrows walk it, and Left and Right move the cursor in
     /// what is typed once there is something typed to move in.
-    pub const fn set_grid(&mut self, grid: bool) {
-        self.grid = grid;
+    pub fn set_view(&mut self, view: View) {
+        self.view = view;
+        self.listing = false;
+        self.search();
+    }
+
+    /// What is shown: everything, or one mode's own.
+    #[must_use]
+    pub const fn view(&self) -> View {
+        self.view
+    }
+
+    /// Whether what is found is shown as a grid, as the programs' mode is.
+    const fn grid(&self) -> bool {
+        matches!(self.view, View::Mode(Mode::Programs))
     }
 
     /// How the launcher is laid out under `theme`.
     fn layout(&self, theme: &Theme) -> Layout {
-        Layout::of(theme, self.grid)
+        Layout::of(theme, self.grid())
+    }
+
+    /// The sources of what is shown: every one that is on, or the mode's.
+    fn sources(&self) -> Vec<&dyn Source> {
+        let sums = self.show.sums.then_some(&self.sums as &dyn Source);
+        let programs = Some(&self.programs as &dyn Source);
+        match self.view {
+            View::Generic => sums.into_iter().chain(programs).collect(),
+            View::Mode(_) => programs.into_iter().collect(),
+        }
+    }
+
+    /// Goes to the mode numbered `number`, the first and on of those built
+    /// in the configuration's order, or with 0 to the generic one; a number
+    /// no mode has does nothing.
+    fn go_to(&mut self, number: u8) {
+        let built = self.show.order.modes().filter(|mode| BUILT.contains(mode));
+        let mut views = std::iter::once(View::Generic).chain(built.map(View::Mode));
+        if let Some(view) = views.nth(usize::from(number)) {
+            self.set_view(view);
+        }
     }
 
     /// Lists as many rows as fit in half of a screen `height` units tall,
@@ -322,19 +363,19 @@ impl Picker {
 
     /// How many programs a line has: one in the list, more in the grid.
     const fn columns(&self) -> usize {
-        if self.grid { COLUMNS } else { 1 }
+        if self.grid() { COLUMNS } else { 1 }
     }
 
     /// How many lines there are: the answer's alone, if there is one, then
     /// the programs', as many to a line as there are columns.
     fn lines(&self) -> usize {
-        let head = usize::from(self.answer.is_some());
-        head + self.found.len().div_ceil(self.columns())
+        let head = self.head();
+        head + (self.found.len() - head).div_ceil(self.columns())
     }
 
     /// Which line the row `row` is on, and how far across it.
     fn line_of(&self, row: usize) -> (usize, usize) {
-        let head = usize::from(self.answer.is_some());
+        let head = self.head();
         row.checked_sub(head).map_or((0, 0), |program| {
             let columns = self.columns();
             (head + program / columns, program % columns)
@@ -344,7 +385,7 @@ impl Picker {
     /// The row `column` places across line `line`, if one is there. The
     /// answer has a line to itself, all the way across.
     fn row_on(&self, line: usize, column: usize) -> Option<usize> {
-        let head = usize::from(self.answer.is_some());
+        let head = self.head();
         let programs = line.checked_sub(head);
         let row = programs.map_or(0, |line| head + line * self.columns() + column);
         Some(row).filter(|row| *row < self.count())
@@ -372,7 +413,7 @@ impl Picker {
     /// keyboard, and in the grid while nothing is typed for them to move
     /// the cursor in.
     fn walks(&self) -> bool {
-        self.listing || (self.grid && self.field.text().is_empty())
+        self.listing || (self.grid() && self.field.text().is_empty())
     }
 
     /// What has been typed.
@@ -384,35 +425,35 @@ impl Picker {
     /// The names of the programs that match what has been typed, best
     /// first.
     pub fn matches(&self) -> impl Iterator<Item = &str> {
-        self.listed().map(|app| app.name.as_str())
+        let programs = self
+            .found
+            .iter()
+            .filter(|(section, _)| *section == Section::Programs);
+        programs.map(|(_, found)| found.name.as_str())
     }
 
-    /// The programs that match what has been typed, best first.
-    fn listed(&self) -> impl Iterator<Item = &App> {
-        self.found.iter().filter_map(|place| self.apps.get(*place))
-    }
-
-    /// The rows of the list: the answer, if there is one, then the
-    /// programs that match.
-    fn rows(&self) -> impl Iterator<Item = Row<'_>> {
-        let answer = self.answer.iter();
-        let answer = answer.map(|(copied, shown)| Row::Answer(copied, shown));
-        answer.chain(self.listed().map(Row::App))
+    /// How many rows there are on a line of their own before the rest: a
+    /// sum's answer, if there is one.
+    fn head(&self) -> usize {
+        let first = self.found.first().map(|(section, _)| *section);
+        usize::from(first == Some(Section::Sum))
     }
 
     /// How many rows the list has.
     fn count(&self) -> usize {
-        usize::from(self.answer.is_some()) + self.found.len()
+        self.found.len()
     }
 
     /// The name of the program that would be started, or the answer that
     /// would be copied, if there is either.
     #[must_use]
     pub fn chosen(&self) -> Option<&str> {
-        self.rows().nth(self.chosen).map(|row| match row {
-            Row::Answer(answer, _) => answer,
-            Row::App(app) => app.name.as_str(),
-        })
+        self.found
+            .get(self.chosen)
+            .map(|(_, found)| match &found.does {
+                Does::Copy(answer) => answer.as_str(),
+                Does::Spawn(_) => found.name.as_str(),
+            })
     }
 
     /// Takes a key.
@@ -450,7 +491,11 @@ impl Picker {
             Key::Down if self.listing => self.move_lines(1),
             Key::Down => self.listing = self.count() > 0,
             Key::Enter => return self.start(),
+            // In a mode Escape goes back to everything, and only there
+            // closes the launcher.
+            Key::Escape if self.view != View::Generic => self.set_view(View::Generic),
             Key::Escape => return Outcome::Close,
+            Key::Mode(number) => self.go_to(number),
         }
         Outcome::Stay
     }
@@ -590,11 +635,11 @@ impl Picker {
 
         // Under an answer, what Enter does with it, whatever is shown of
         // the programs.
-        let copies = self.answer.as_ref().map(|_| words.say("enter-copies", &[]));
+        let copies = words.say("enter-copies", &[]);
         let described = self.show.descriptions;
         let sight = self.first()..self.first() + self.room;
         let mut drawing = (&mut canvas, &mut *text, icons, motion);
-        for (row, item) in self.rows().enumerate() {
+        for (row, (_, item)) in self.found.iter().enumerate() {
             let (line, column) = self.line_of(row);
             if !sight.contains(&line) {
                 continue;
@@ -606,18 +651,19 @@ impl Picker {
             // A row is the same row whichever program is in it.
             let key = u64::try_from(row).unwrap_or(u64::MAX);
             let (theme, key) = ((theme, scale), (key, states));
-            match item {
-                Row::Answer(_, shown) => {
-                    let said = (shown, copies.as_deref(), None);
+            let icon = item.icon.as_deref();
+            match &item.does {
+                Does::Copy(_) => {
+                    let said = (item.name.as_str(), Some(copies.as_str()), None);
                     self.paint_row(&mut drawing, theme, key, layout.row(place), said);
                 }
-                Row::App(app) if self.grid => {
+                Does::Spawn(_) if self.grid() => {
                     let area = layout.tile(place, column);
-                    self.paint_tile(&mut drawing, theme, key, area, app);
+                    self.paint_tile(&mut drawing, theme, key, area, item);
                 }
-                Row::App(app) => {
-                    let says = described.then_some(app.description.as_str());
-                    let said = (app.name.as_str(), says, Some(app.icon.as_str()));
+                Does::Spawn(_) => {
+                    let says = described.then_some(item.says.as_str());
+                    let said = (item.name.as_str(), says, icon);
                     self.paint_row(&mut drawing, theme, key, layout.row(place), said);
                 }
             }
@@ -688,7 +734,7 @@ impl Picker {
         (theme, scale): (&Theme, Scale),
         (key, states): (u64, States),
         place: Area,
-        app: &App,
+        found: &Found,
     ) {
         let style = motion.style(theme, Part::LauncherTile, key, states);
         let area = inset(place, style.margin);
@@ -697,7 +743,8 @@ impl Picker {
         let side = width / 2;
         if self.show.icons {
             let square = (left.saturating_add_unsigned(side / 2), top, side, side);
-            draw_icon(canvas, icons, (Some(&app.icon), square, scale), style.color);
+            let icon = found.icon.as_deref();
+            draw_icon(canvas, icons, (icon, square, scale), style.color);
         }
         let below = side.saturating_add(UNDER);
         let line = (
@@ -707,7 +754,7 @@ impl Picker {
             height.saturating_sub(below),
         );
         let font = theme.font(Part::LauncherTile, states);
-        text.draw_centered(canvas, &app.name, line, style.color, font);
+        text.draw_centered(canvas, &found.name, line, style.color, font);
     }
 
     /// Draws the field, at `field`, with what is typed in it as far as it
@@ -805,37 +852,19 @@ impl Picker {
         place.and_then(|(line, column)| self.row_on(self.first() + line, column))
     }
 
-    /// Finds the programs that match what has been typed: those whose name
-    /// begins with it first, then those that have it anywhere in their
-    /// name, then, if what programs say of themselves is shown, those that
-    /// have it there. Each lot is in the order the programs came in. If it
-    /// is a sum, and sums are worked out, its answer comes before them all.
-    /// The first of all is chosen.
+    /// Finds what matches what has been typed in each source shown, a
+    /// sum's answer first and then the programs, as each ranks them. The
+    /// first of all is the one Enter takes.
     fn search(&mut self) {
-        let answer = self
-            .show
-            .sums
-            .then(|| omorfos_sums::answer(self.field.text(), self.numbers));
-        let answer = answer.flatten();
-        self.answer = answer.map(|answer| {
-            let shown = format!("= {answer}");
-            (answer, shown)
+        let query = self.field.text();
+        let found = self.sources().into_iter().flat_map(|source| {
+            let section = source.section();
+            source
+                .find(query)
+                .into_iter()
+                .map(move |found| (section, found))
         });
-        let query = self.field.text().to_lowercase();
-        let described = self.show.descriptions;
-        // How well each program matches: the lower the better.
-        let rank = |app: &App| {
-            let name = app.name.to_lowercase();
-            let says = described && app.description.to_lowercase().contains(&query);
-            let ranks = [name.starts_with(&query), name.contains(&query), says];
-            ranks.into_iter().position(|matches| matches)
-        };
-        let ranked = self.apps.iter().enumerate();
-        let ranked = ranked.filter_map(|(place, app)| rank(app).map(|rank| (rank, place)));
-        let mut ranked: Vec<(usize, usize)> = ranked.collect();
-        // The sort is stable, so each lot stays in the order it came in.
-        ranked.sort_by_key(|(rank, _)| *rank);
-        self.found = ranked.into_iter().map(|(_, place)| place).collect();
+        self.found = found.collect();
         self.chosen = 0;
         self.top = 0;
     }
@@ -843,22 +872,13 @@ impl Picker {
     /// Asks for the chosen program to be started, or the chosen answer to
     /// be copied, if there is either.
     fn start(&self) -> Outcome {
-        match self.rows().nth(self.chosen) {
-            Some(Row::Answer(answer, _)) => Outcome::Start(Request::Copy {
-                text: answer.to_owned(),
+        match self.found.get(self.chosen).map(|(_, found)| &found.does) {
+            Some(Does::Copy(answer)) => Outcome::Start(Request::Copy {
+                text: answer.clone(),
             }),
-            Some(Row::App(app)) => {
-                // One that needs a terminal is started in the one the
-                // built-in bindings start.
-                let terminal = app.terminal.then(Command::terminal);
-                let terminal = terminal.iter().map(Command::program);
-                let command: Vec<&str> = terminal
-                    .chain(app.command.iter().map(String::as_str))
-                    .collect();
-                Outcome::Start(Request::Perform {
-                    action: json!({ "spawn": command }),
-                })
-            }
+            Some(Does::Spawn(command)) => Outcome::Start(Request::Perform {
+                action: json!({ "spawn": command }),
+            }),
             None => Outcome::Stay,
         }
     }
@@ -893,6 +913,8 @@ const fn on_the_left(room: u32) -> Edges<u32> {
 
 #[cfg(test)]
 mod tests {
+
+    use omorfos_config::Command;
 
     use super::*;
 
@@ -1829,7 +1851,7 @@ mod tests {
 
     fn grid(names: &[&str]) -> Picker {
         let mut picker = picker(names);
-        picker.set_grid(true);
+        picker.set_view(View::Mode(Mode::Programs));
         picker
     }
 
@@ -1877,6 +1899,15 @@ mod tests {
         list.key(Key::Down);
         list.key(Key::Down);
         assert_eq!(list.chosen(), Some("Books"));
+        // Without icons, a tile keeps their room, and nothing is in it.
+        let canvas = painted(&grid(&EIGHT));
+        let layout = Layout::of(&Theme::default(), true);
+        let style = Theme::default().style(Part::LauncherTile, States::NONE);
+        let (left, top, width, _) = inset(layout.tile(0, 1), style.margin);
+        let (left, top) = (left.unsigned_abs(), top.unsigned_abs());
+        let ground = canvas.at(left + 2, top + 2);
+        let room = (left + width / 4..left + width * 3 / 4).map(|x| canvas.at(x, top + 20));
+        assert!(room.into_iter().all(|pixel| pixel == ground));
     }
 
     #[test]
@@ -1896,36 +1927,6 @@ mod tests {
         picker.key(across(Way::On));
         picker.key(across(Way::On));
         assert_eq!(picker.chosen(), Some("Books"));
-    }
-
-    #[test]
-    fn a_sum_in_the_grid_has_a_line_of_its_own_above_the_programs() {
-        let theme = Theme::default();
-        let mut picker = grid(&["2+2 Drill", "2+2 Quiz", "Archive"]);
-        typed(&mut picker, "2+2");
-        assert_eq!(picker.chosen(), Some("4"));
-        picker.key(Key::Down);
-        picker.key(Key::Down);
-        assert_eq!(picker.chosen(), Some("2+2 Drill"));
-        picker.key(Key::Down);
-        assert_eq!(picker.chosen(), Some("2+2 Drill"), "the last line");
-        // Its line is the answer's all the way across.
-        let (_, y) = tile(0, 0);
-        let (x, _) = tile(0, 5);
-        assert!(picker.point(x, y, &theme));
-        assert_eq!(picker.chosen(), Some("4"));
-        let (x, y) = tile(1, 1);
-        assert!(picker.point(x, y, &theme));
-        assert_eq!(picker.chosen(), Some("2+2 Quiz"));
-        let canvas = still(&picker, &theme, Scale::ONE, &mut Icons::default());
-        let (_, y) = tile(0, 0);
-        let lit_across =
-            (0..canvas.width()).filter(|x| canvas.at(*x, y.unsigned_abs()) == lit(&theme));
-        assert_eq!(lit_across.count(), 0, "the answer is not chosen");
-        let tiled = theme.style(Part::LauncherTile, States::NONE.with(State::Active));
-        let (x, y) = tile(1, 1);
-        let at = canvas.at(x.unsigned_abs(), (y - 30).unsigned_abs());
-        assert_eq!(at, argb(tiled.background), "the tile chosen is lit");
     }
 
     #[test]
@@ -1999,7 +2000,7 @@ mod tests {
         };
         let apps = EIGHT.iter().map(|name| app(name)).collect();
         let mut picker = Picker::new(apps, show, Numbers::Point);
-        picker.set_grid(true);
+        picker.set_view(View::Mode(Mode::Programs));
         // The first lit, as Down from the field lights it.
         picker.key(Key::Down);
         let canvas = still(&picker, &theme, Scale::ONE, &mut icons);
@@ -2148,5 +2149,61 @@ mod tests {
             canvas.at(x.unsigned_abs() + 200, y.unsigned_abs()),
             lit(&theme)
         );
+    }
+
+    #[test]
+    fn super_and_a_digit_go_to_the_modes_shown_and_super_and_0_back() {
+        let mut picker = several();
+        assert_eq!(picker.view(), View::Generic);
+        assert_eq!(picker.key(Key::Mode(1)), Outcome::Stay);
+        assert_eq!(picker.view(), View::Mode(Mode::Programs));
+        // No other mode is built yet: the second is nothing.
+        picker.key(Key::Mode(2));
+        assert_eq!(picker.view(), View::Mode(Mode::Programs));
+        picker.key(Key::Mode(0));
+        assert_eq!(picker.view(), View::Generic);
+        // Escape in a mode goes back, and only then closes.
+        picker.key(Key::Mode(1));
+        assert_eq!(picker.key(Key::Escape), Outcome::Stay);
+        assert_eq!(picker.view(), View::Generic);
+        assert_eq!(picker.key(Key::Escape), Outcome::Close);
+        // Going to a mode gives what is typed the keyboard, nothing lit:
+        // the first arrow lights the first again.
+        picker.key(Key::Down);
+        picker.key(Key::Mode(1));
+        picker.key(across(Way::On));
+        assert_eq!(picker.chosen(), Some("Calculator"));
+        // Ordered otherwise, the programs are on their own digit.
+        let order = omorfos_config::ModeOrder::try_from(vec![Mode::Actions, Mode::Programs]);
+        let show = Show {
+            order: order.unwrap(),
+            ..NAMES
+        };
+        let apps = ["Files", "Firefox"].iter().map(|name| app(name)).collect();
+        let mut ordered = Picker::new(apps, show, Numbers::Point);
+        // Actions are not built yet, and take no number: the programs are
+        // still the first.
+        ordered.key(Key::Mode(1));
+        assert_eq!(ordered.view(), View::Mode(Mode::Programs));
+    }
+
+    #[test]
+    fn the_programs_mode_is_the_grid_and_finds_no_sums() {
+        let mut picker = picker(&["1+1 Trainer", "Files"]);
+        picker.key(Key::Mode(1));
+        let wide = picker.size(&Theme::default()).0;
+        assert_eq!(wide, Layout::of(&Theme::default(), true).width);
+        typed(&mut picker, "1+1");
+        assert_eq!(
+            picker.chosen(),
+            Some("1+1 Trainer"),
+            "no answer in the grid"
+        );
+        picker.key(Key::Mode(0));
+        assert_eq!(
+            picker.size(&Theme::default()).0,
+            Layout::new(&Theme::default()).width
+        );
+        assert_eq!(picker.chosen(), Some("2"), "the answer in the generic mode");
     }
 }

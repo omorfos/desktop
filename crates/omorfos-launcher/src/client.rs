@@ -12,7 +12,7 @@ use std::os::unix::net::UnixStream;
 use std::path::Path;
 use std::time::{Duration, Instant};
 
-use omorfos_config::{Config, Part, States, Store, Theme};
+use omorfos_config::{Config, Mode, Part, States, Store, Theme};
 use omorfos_i18n::{LAUNCHER, Words};
 use omorfos_ipc::Client as Ipc;
 use omorfos_shell::sheet::Sheet;
@@ -34,7 +34,7 @@ use wayland_protocols::wp::viewporter::client::{wp_viewport, wp_viewporter};
 use wayland_protocols_wlr::layer_shell::v1::client::{zwlr_layer_shell_v1, zwlr_layer_surface_v1};
 
 use crate::pasting::{self, Pasting};
-use crate::{App, Icons, Key, Numbers, Outcome, Picker};
+use crate::{App, Icons, Key, Numbers, Outcome, Picker, View};
 
 /// Why the launcher could not go on.
 pub type Failure = Box<dyn Error + Send + Sync>;
@@ -107,8 +107,14 @@ impl Launcher {
     /// The same launcher showing every program as a grid, each one's icon
     /// over its name, if `grid`, rather than as a list.
     #[must_use]
-    pub const fn in_grid(mut self, grid: bool) -> Self {
-        self.shell.picker.set_grid(grid);
+    pub fn in_grid(mut self, grid: bool) -> Self {
+        // The grid is the programs' mode.
+        let view = if grid {
+            View::Mode(Mode::Programs)
+        } else {
+            View::Generic
+        };
+        self.shell.picker.set_view(view);
         self
     }
 
@@ -555,7 +561,8 @@ impl Shell {
             Typed::Up => Some(Key::Up),
             Typed::Down => Some(Key::Down),
             Typed::Typed(typed) => Some(Key::Text(typed)),
-            Typed::Next | Typed::Previous | Typed::Mode(_) | Typed::Nothing => None,
+            Typed::Mode(number) => Some(Key::Mode(number)),
+            Typed::Next | Typed::Previous | Typed::Nothing => None,
         };
         // A key that types nothing, such as Shift, is no key to the launcher.
         if let Some(key) = key {
