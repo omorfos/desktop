@@ -180,6 +180,9 @@ struct Shown {
     offers: Offers,
     level: Option<u8>,
     tag: Option<String>,
+    /// How long it stays, if it goes of its own accord, counted again from
+    /// when the pointer leaves it.
+    lasts: Option<Duration>,
     /// When it goes, if it does of its own accord.
     until: Option<Duration>,
 }
@@ -262,10 +265,20 @@ impl Stack {
     /// that had to go to make room, if any did.
     pub fn show(&mut self, note: Note, now: Duration) -> Option<u32> {
         let stays = u64::try_from(note.stays).ok().map(Duration::from_millis);
-        // A critical one stays until it is seen to, unless its sender set
-        // a time itself.
-        let usual = self.usual.filter(|_| !note.urgent);
-        let lasts = stays.map_or(usual, |stays| Some(stays).filter(|stays| !stays.is_zero()));
+        let lasts = match (stays, self.usual) {
+            // Until it is dismissed, if its sender says so.
+            (Some(stays), _) if stays.is_zero() => None,
+            // A level keeps its sender's time: it says what a key just did,
+            // and is not there to be read (ADR 112).
+            (Some(stays), _) if note.level.is_some() => Some(stays),
+            // Until it is dismissed, if the user says so, over any sender.
+            (_, None) => None,
+            // The user's time is the shortest one is shown.
+            (Some(stays), Some(usual)) => Some(stays.max(usual)),
+            // A critical one stays until it is seen to, unless its sender
+            // set a time itself.
+            (None, Some(usual)) => (!note.urgent).then_some(usual),
+        };
         let said = plain(&note.body);
         let said = said.lines().map(str::trim).filter(|line| !line.is_empty());
         let said: Vec<String> = said.take(LINES).map(clipped).collect();
@@ -286,6 +299,7 @@ impl Stack {
             },
             level: note.level.map(|level| level.min(100)),
             tag: note.tag,
+            lasts,
             until: lasts.map(|lasts| now.saturating_add(lasts)),
         };
         let tagged = |other: &Shown| shown.tag.is_some() && other.tag == shown.tag;
@@ -345,15 +359,14 @@ impl Stack {
             let mut showing = self.shown.iter();
             let showing = showing.any(|shown| shown.problem.as_ref() == Some(problem));
             if !showing && !self.dismissed.contains(problem) {
-                self.say(problem, Some(problem.clone()), None);
+                self.say(problem, Some(problem.clone()), (None, now));
                 changed = true;
             }
         }
-        let lasts = self.usual.map(|usual| now.saturating_add(usual));
         for event in events.iter().take(MOST) {
             if !self.seen.contains(event) {
                 self.seen.push(event.clone());
-                self.say(event, None, lasts);
+                self.say(event, None, (self.usual, now));
                 changed = true;
             }
         }
@@ -361,9 +374,14 @@ impl Stack {
     }
 
     /// Shows something omorfos itself has to say, above everything else:
-    /// about a `problem`, which is urgent, or not, and staying `until` a
-    /// time if it goes by itself.
-    fn say(&mut self, words: &str, problem: Option<String>, until: Option<Duration>) {
+    /// about a `problem`, which is urgent, or not, and staying as long as
+    /// it `lasts` from `now` if it goes by itself.
+    fn say(
+        &mut self,
+        words: &str,
+        problem: Option<String>,
+        (lasts, now): (Option<Duration>, Duration),
+    ) {
         let said = vec![clipped(words.trim())];
         let shown = Shown {
             key: self.next(),
@@ -378,7 +396,8 @@ impl Stack {
             offers: Offers::default(),
             level: None,
             tag: None,
-            until,
+            lasts,
+            until: lasts.map(|lasts| now.saturating_add(lasts)),
         };
         self.shown.insert(0, shown);
     }
@@ -430,7 +449,13 @@ impl Stack {
     /// Takes away the notifications whose time has run out by `now`, and
     /// returns the numbers of those that were programs'.
     pub fn expire(&mut self, now: Duration) -> Vec<u32> {
-        let due = |shown: &Shown| shown.until.is_some_and(|until| until <= now);
+        // The one the pointer or the keyboard is on stays while it is
+        // (ADR 112).
+        let held = (self.under, self.focused.map(|(key, _)| key));
+        let due = |shown: &Shown| {
+            let held = held.0 == Some(shown.key) || held.1 == Some(shown.key);
+            !held && shown.until.is_some_and(|until| until <= now)
+        };
         let gone = self.shown.extract_if(.., |shown| due(shown));
         // Programs are told of their own, and only of their own.
         let theirs = gone.filter(|shown| !shown.ours);
@@ -440,7 +465,26 @@ impl Stack {
     /// When the next notification's time runs out, if any will.
     #[must_use]
     pub fn deadline(&self) -> Option<Duration> {
-        self.shown.iter().filter_map(|shown| shown.until).min()
+        let free = self.shown.iter().filter(|shown| !self.held(shown.key));
+        free.filter_map(|shown| shown.until).min()
+    }
+
+    /// Whether the notification `key` is of is held, by the pointer or the
+    /// keyboard being on it.
+    fn held(&self, key: Key) -> bool {
+        self.under == Some(key) || self.focused.is_some_and(|(focused, _)| focused == key)
+    }
+
+    /// Has the notification `key` is of, if any, go its time from `now`,
+    /// unless it is still held.
+    fn let_go(&mut self, key: Option<Key>, now: Duration) {
+        let Some(key) = key.filter(|key| !self.held(*key)) else {
+            return;
+        };
+        let left = self.shown.iter_mut().find(|shown| shown.key == key);
+        if let Some(left) = left {
+            left.until = left.lasts.map(|lasts| now.saturating_add(lasts));
+        }
     }
 
     /// Where each notification is put under `theme`, from the top.
@@ -458,14 +502,18 @@ impl Stack {
         places.collect()
     }
 
-    /// Notes which notification the pointer is on, if any, so that it can
-    /// be drawn as such. Returns whether that changed anything.
-    pub fn point(&mut self, under: Option<Key>) -> bool {
+    /// Notes which notification the pointer is on, if any, at `now`, so
+    /// that it can be drawn as such and stays while it is; the one it
+    /// leaves goes its time from then. Returns whether that changed
+    /// anything.
+    pub fn point(&mut self, under: Option<Key>, now: Duration) -> bool {
         let changed = under != self.under;
+        let before = self.under;
+        self.under = under;
         if changed {
             self.aimed = None;
+            self.let_go(before, now);
         }
-        self.under = under;
         changed
     }
 
@@ -512,12 +560,17 @@ impl Stack {
     }
 
     /// Gives the keyboard to the notification `key` is of, the notification
-    /// itself before any of its buttons, or takes it away. Returns whether
-    /// that changed anything.
-    pub fn focus(&mut self, key: Option<Key>) -> bool {
+    /// itself before any of its buttons, or takes it away, at `now`: the
+    /// one it was on goes its time from then, unless the pointer is on it
+    /// (ADR 112). Returns whether that changed anything.
+    pub fn focus(&mut self, key: Option<Key>, now: Duration) -> bool {
         let focused = key.map(|key| (key, None));
         let changed = focused != self.focused;
+        let before = self.focused.map(|(key, _)| key);
         self.focused = focused;
+        if changed {
+            self.let_go(before, now);
+        }
         changed
     }
 
@@ -837,7 +890,7 @@ mod tests {
     /// Points at the notification `index` from the top, clear of its
     /// buttons, and clicks: its number, and whether its sender is told.
     fn click(stack: &mut Stack, theme: &Theme, index: usize) -> Option<(u32, bool)> {
-        stack.point(Some(stack.layout(theme)[index].key));
+        stack.point(Some(stack.layout(theme)[index].key), START);
         clicked(stack)
     }
 
@@ -869,8 +922,8 @@ mod tests {
         stack.show(mail(1), START);
         let key = stack.layout(&theme)[0].key;
         let plain = painted(&stack, &theme, 0);
-        assert!(stack.focus(Some(key)), "the notification first");
-        assert!(!stack.focus(Some(key)), "as it was");
+        assert!(stack.focus(Some(key), START), "the notification first");
+        assert!(!stack.focus(Some(key), START), "as it was");
         let ringed = painted(&stack, &theme, 0);
         assert_ne!(ringed, plain, "drawn as having the keyboard");
         // Forwards through its buttons and round again, and back.
@@ -891,23 +944,23 @@ mod tests {
         stack.show(mail(2), START);
         stack.show(mail(3), START);
         let [upper, lower] = [0, 1].map(|index| stack.layout(&theme)[index].key);
-        stack.focus(Some(lower));
+        stack.focus(Some(lower), START);
         let chose = stack.press(true).unwrap();
         assert_eq!(
             (chose.id, chose.chose.as_deref()),
             (2, Some(DEFAULT_ACTION))
         );
-        stack.focus(Some(upper));
+        stack.focus(Some(upper), START);
         stack.step(true);
         let chose = stack.press(false).unwrap();
         assert_eq!((chose.id, chose.chose), (3, None));
         assert!(stack.is_empty());
-        assert!(!stack.focus(None), "had none already, as it went");
+        assert!(!stack.focus(None, START), "had none already, as it went");
 
         // Taken back by its program while it has the keyboard, there is
         // nothing to move through.
         stack.show(mail(4), START);
-        stack.focus(Some(stack.layout(&theme)[0].key));
+        stack.focus(Some(stack.layout(&theme)[0].key), START);
         assert!(stack.close(4));
         assert!(!stack.step(true));
         assert_eq!(stack.press(true), None);
@@ -941,7 +994,7 @@ mod tests {
         assert!(inside.clone().any(|pixel| pixel != beside), "a box drawn");
         assert_eq!(stack.buttons(&theme, Key(u64::MAX)), [], "of none");
         // The one the pointer is over is lit, and only it.
-        stack.point(Some(key));
+        stack.point(Some(key), START);
         let pointed = painted(&stack, &theme, 0);
         stack.aim(&theme, (second.0 + 2, second.1 + 2));
         let lit = painted(&stack, &theme, 0);
@@ -962,7 +1015,7 @@ mod tests {
         stack.show(mail(1), START);
         let key = stack.layout(&theme)[0].key;
         let reply = stack.buttons(&theme, key)[0];
-        stack.point(Some(key));
+        stack.point(Some(key), START);
         assert!(stack.aim(&theme, (reply.0 + 2, reply.1 + 2)), "lit");
         assert!(!stack.aim(&theme, (reply.0 + 3, reply.1 + 2)), "as it was");
         let chose = stack.click(true).unwrap();
@@ -982,7 +1035,7 @@ mod tests {
         );
         let key = stack.layout(&theme)[0].key;
         let read = stack.buttons(&theme, key)[1];
-        stack.point(Some(key));
+        stack.point(Some(key), START);
         stack.aim(&theme, (read.0 + 2, read.1 + 2));
         let chose = stack.click(true).unwrap();
         assert_eq!((chose.chose.as_deref(), chose.stays), (Some("read"), true));
@@ -999,7 +1052,7 @@ mod tests {
         stack.show(mail(3), START);
         let key = stack.layout(&theme)[0].key;
         let reply = stack.buttons(&theme, key)[0];
-        stack.point(Some(key));
+        stack.point(Some(key), START);
         stack.aim(&theme, (reply.0 + 2, reply.1 + 2));
         let chose = stack.click(false).unwrap();
         assert_eq!((chose.id, chose.chose, chose.stays), (3, None, false));
@@ -1035,28 +1088,55 @@ mod tests {
     }
 
     #[test]
-    fn a_notification_goes_when_its_time_runs_out() {
+    fn a_notification_goes_when_its_time_runs_out_and_the_users_time_is_the_shortest() {
         let mut stack = Stack::new(5);
         stack.show(note(1, "Usual", ""), START);
+        // A sender's time shorter than the user's lasts the user's.
         let brief = Note {
             stays: 1500,
             ..note(2, "Brief", "")
         };
         stack.show(brief, START);
+        // And one longer, its own.
+        let long = Note {
+            stays: 60_000,
+            ..note(3, "Long", "")
+        };
+        stack.show(long, START);
         let lasting = Note {
             stays: 0,
-            ..note(3, "Lasting", "")
+            ..note(4, "Lasting", "")
         };
         stack.show(lasting, START);
-        assert_eq!(stack.deadline(), Some(Duration::from_millis(1500)));
-        assert_eq!(stack.expire(seconds(1)), [0; 0]);
-        assert_eq!(stack.expire(seconds(2)), [2]);
         assert_eq!(stack.deadline(), Some(seconds(5)));
-        assert_eq!(stack.expire(seconds(5)), [1]);
+        assert_eq!(stack.expire(seconds(4)), [0; 0]);
+        assert_eq!(stack.expire(seconds(5)), [2, 1]);
+        assert_eq!(stack.deadline(), Some(seconds(60)));
+        assert_eq!(stack.expire(seconds(60)), [3]);
         // The one that said to stay does.
         assert_eq!(stack.deadline(), None);
         assert_eq!(stack.expire(seconds(5000)), [0; 0]);
-        assert_eq!(showing(&stack), [3]);
+        assert_eq!(showing(&stack), [4]);
+    }
+
+    #[test]
+    fn a_level_shown_keeps_its_senders_time() {
+        let level = |id, stays| Note {
+            stays,
+            level: Some(40),
+            ..note(id, "Volume", "")
+        };
+        let mut stack = Stack::new(30);
+        stack.show(level(1, 1500), START);
+        assert_eq!(stack.deadline(), Some(Duration::from_millis(1500)));
+        // Even where the user has notifications stay until dismissed.
+        let mut stack = Stack::new(0);
+        stack.show(level(1, 1500), START);
+        assert_eq!(stack.deadline(), Some(Duration::from_millis(1500)));
+        // And with no time of its own, the user's.
+        let mut stack = Stack::new(5);
+        stack.show(level(1, -1), START);
+        assert_eq!(stack.deadline(), Some(seconds(5)));
     }
 
     #[test]
@@ -1068,17 +1148,24 @@ mod tests {
         };
         stack.show(urgent.clone(), START);
         assert_eq!(stack.deadline(), None);
-        // Unless whoever sent it gave it a time.
+        // Unless whoever sent it gave it a time, and then for at least the
+        // user's.
         let timed = Note {
             stays: 2000,
-            ..urgent
+            ..urgent.clone()
         };
         stack.show(timed, START);
-        assert_eq!(stack.deadline(), Some(seconds(2)));
+        assert_eq!(stack.deadline(), Some(seconds(5)));
+        let longer = Note {
+            stays: 9000,
+            ..urgent
+        };
+        stack.show(longer, START);
+        assert_eq!(stack.deadline(), Some(seconds(9)));
     }
 
     #[test]
-    fn with_no_usual_time_notifications_stay_until_dismissed() {
+    fn with_no_usual_time_notifications_stay_until_dismissed_whatever_their_sender_says() {
         let mut stack = Stack::new(0);
         stack.show(note(1, "Stays", ""), START);
         assert_eq!(stack.deadline(), None);
@@ -1087,7 +1174,61 @@ mod tests {
             ..note(2, "Brief", "")
         };
         stack.show(brief, START);
-        assert_eq!(stack.deadline(), Some(seconds(1)));
+        assert_eq!(stack.deadline(), None);
+        assert_eq!(stack.expire(seconds(5000)), [0; 0]);
+        assert_eq!(showing(&stack).len(), 2);
+    }
+
+    #[test]
+    fn a_notification_pointed_at_stays_and_goes_its_time_after_the_pointer_leaves() {
+        let mut stack = Stack::new(5);
+        stack.show(note(1, "Held", ""), START);
+        stack.show(note(2, "Not", ""), START);
+        let key = stack.layout(&Theme::default())[1].key;
+        stack.point(Some(key), seconds(1));
+        // Its time is not waited for while it is held, and is never past.
+        assert_eq!(stack.deadline(), Some(seconds(5)));
+        assert_eq!(stack.expire(seconds(5)), [2]);
+        assert_eq!(stack.deadline(), None, "held, nothing is due");
+        assert_eq!(stack.expire(seconds(60)), [0; 0]);
+        // Let go of at a minute, it goes five seconds after.
+        stack.point(None, seconds(60));
+        assert_eq!(stack.deadline(), Some(seconds(65)));
+        assert_eq!(stack.expire(seconds(64)), [0; 0]);
+        assert_eq!(stack.expire(seconds(65)), [1]);
+    }
+
+    #[test]
+    fn a_notification_the_keyboard_is_on_stays_and_goes_its_time_after_it_leaves() {
+        let mut stack = Stack::new(5);
+        stack.show(note(1, "Held", ""), START);
+        let key = stack.layout(&Theme::default())[0].key;
+        stack.focus(Some(key), seconds(1));
+        assert_eq!(stack.deadline(), None, "held, nothing is due");
+        assert_eq!(stack.expire(seconds(60)), [0; 0]);
+        // Pointed at as the keyboard leaves, it is held still.
+        stack.point(Some(key), seconds(60));
+        stack.focus(None, seconds(61));
+        assert_eq!(stack.expire(seconds(100)), [0; 0]);
+        stack.point(None, seconds(100));
+        assert_eq!(stack.deadline(), Some(seconds(105)));
+        // And the other way about.
+        stack.focus(Some(key), seconds(101));
+        stack.point(Some(key), seconds(102));
+        stack.point(None, seconds(103));
+        assert_eq!(stack.deadline(), None, "the keyboard holds it still");
+        stack.focus(None, seconds(110));
+        assert_eq!(stack.deadline(), Some(seconds(115)));
+    }
+
+    #[test]
+    fn a_notification_that_stays_until_dismissed_still_does_once_pointed_at() {
+        let mut stack = Stack::new(0);
+        stack.show(note(1, "Stays", ""), START);
+        let key = stack.layout(&Theme::default())[0].key;
+        stack.point(Some(key), seconds(1));
+        stack.point(None, seconds(2));
+        assert_eq!(stack.deadline(), None);
     }
 
     #[test]
@@ -1431,7 +1572,7 @@ mod tests {
         // One the pointer was on that has gone by other means is not
         // there to click.
         stack.show(note(4, "Gone", ""), START);
-        stack.point(Some(stack.layout(&theme)[0].key));
+        stack.point(Some(stack.layout(&theme)[0].key), START);
         assert!(stack.close(4));
         assert_eq!(clicked(&mut stack), None);
     }
@@ -1453,13 +1594,13 @@ mod tests {
         assert_eq!(edge(&stack, 1), border(States::NONE.with(State::Urgent)));
 
         let keys: Vec<Key> = stack.layout(&theme).iter().map(|place| place.key).collect();
-        assert!(stack.point(Some(keys[0])));
-        assert!(!stack.point(Some(keys[0])), "still the same one");
+        assert!(stack.point(Some(keys[0]), START));
+        assert!(!stack.point(Some(keys[0]), START), "still the same one");
         assert_eq!(edge(&stack, 0), border(States::NONE.with(State::Hovered)));
-        assert!(stack.point(Some(keys[1])), "onto the next");
+        assert!(stack.point(Some(keys[1]), START), "onto the next");
         assert_eq!(edge(&stack, 0), plain);
-        assert!(stack.point(None), "off them");
-        assert!(!stack.point(None));
+        assert!(stack.point(None, START), "off them");
+        assert!(!stack.point(None, START));
         assert_eq!(edge(&stack, 1), border(States::NONE.with(State::Urgent)));
     }
 

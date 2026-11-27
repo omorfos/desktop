@@ -326,8 +326,11 @@ pub struct Notifications {
     /// Whether they are shown by omorfos. Turn it off to go without, or
     /// to use another program for them.
     pub enabled: bool,
-    /// How long one stays, in seconds, when the program that sent it does
-    /// not say. `0` leaves it until it is clicked.
+    /// How long one stays, in seconds, at the least: a program that sends
+    /// one may have it stay longer, not shorter, but for one that shows a
+    /// level, as the volume does, which keeps its own time. `0` leaves
+    /// every one until it is clicked, whatever its program says. One the
+    /// pointer or the keyboard is on stays while it is.
     pub timeout: Bounded<0, 3600>,
 }
 

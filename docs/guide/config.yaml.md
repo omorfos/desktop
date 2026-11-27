@@ -70,7 +70,7 @@ switcher:
   style: diagonal         # the windows one behind another; or flat, in rows
 notifications:
   enabled: true           # show what programs have to tell you
-  timeout: 5              # seconds one stays; 0 until it is clicked
+  timeout: 5              # seconds one stays at least; 0 until it is clicked
 screenshots:
   destination: file       # file | clipboard | both
 clipboard:

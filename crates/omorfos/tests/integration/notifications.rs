@@ -210,7 +210,8 @@ fn a_notification_is_shown_in_the_corner_of_the_screen_and_goes_when_its_time_is
     let peer = daemon.peer();
     until(&mut session, &mut notifier, Duration::ZERO, clear);
 
-    assert_eq!(notify(&peer, "Hello", 2000, HashMap::new()), 1);
+    // Asked to stay longer than the user's five seconds, it does.
+    assert_eq!(notify(&peer, "Hello", 8000, HashMap::new()), 1);
     until(&mut session, &mut notifier, Duration::ZERO, showing);
     // In the corner, with room around it, in its shadow, and nowhere else.
     let picture = session.draw();
@@ -218,10 +219,10 @@ fn a_notification_is_shown_in_the_corner_of_the_screen_and_goes_when_its_time_is
     assert!(shaded(picture.at(WIDTH - 20, 4), BACKGROUND));
     assert_eq!(picture.at(100, 50), BACKGROUND);
     assert_eq!(picture.at(WIDTH / 2, HEIGHT - 20), BACKGROUND);
-    assert_eq!(notifier.deadline(), Some(Duration::from_secs(2)));
+    assert_eq!(notifier.deadline(), Some(Duration::from_secs(8)));
 
-    until(&mut session, &mut notifier, Duration::from_secs(1), showing);
-    until(&mut session, &mut notifier, Duration::from_secs(2), clear);
+    until(&mut session, &mut notifier, Duration::from_secs(7), showing);
+    until(&mut session, &mut notifier, Duration::from_secs(8), clear);
     assert_eq!(notifier.deadline(), None);
 }
 

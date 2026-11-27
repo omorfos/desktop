@@ -129,6 +129,8 @@ impl Notifier {
         // here. A real failure is kept by the connection and comes back
         // from everything after it, down to the flush that ends the turn.
         let _ = self.queue.prepare_read().map(ReadEventsGuard::read);
+        // What the pointer does is taken in as of now.
+        self.shell.now = now;
         let handled = self.queue.dispatch_pending(&mut self.shell);
         let handled = handled.map(drop).map_err(Failure::from);
         // A notification on its way to another look is drawn again as it
@@ -287,6 +289,8 @@ struct Shell {
     /// is left: the one the first was put on, so that they stay together.
     screen: Option<wl_output::WlOutput>,
     stack: Stack,
+    /// The time, as of the turn being taken.
+    now: Duration,
     store: Store,
     text: Text,
     icons: Icons,
@@ -375,6 +379,7 @@ impl Shell {
             faces: Vec::new(),
             screen: None,
             stack: Stack::new(usual),
+            now: Duration::ZERO,
             store,
             text: Text::new(),
             icons,
@@ -738,7 +743,7 @@ impl Dispatch<wl_pointer::WlPointer, ()> for Shell {
             } => {
                 let mut faces = shell.faces.iter();
                 let on = faces.find(|face| *face.sheet.surface() == surface);
-                shell.stale |= shell.stack.point(on.map(|face| face.key));
+                shell.stale |= shell.stack.point(on.map(|face| face.key), shell.now);
                 shell.aim((surface_x, surface_y));
             }
             wl_pointer::Event::Motion {
@@ -746,7 +751,7 @@ impl Dispatch<wl_pointer::WlPointer, ()> for Shell {
                 surface_y,
                 ..
             } => shell.aim((surface_x, surface_y)),
-            wl_pointer::Event::Leave { .. } => shell.stale |= shell.stack.point(None),
+            wl_pointer::Event::Leave { .. } => shell.stale |= shell.stack.point(None, shell.now),
             wl_pointer::Event::Button {
                 button: button @ (LEFT_BUTTON | RIGHT_BUTTON),
                 state: WEnum::Value(wl_pointer::ButtonState::Pressed),
@@ -780,9 +785,9 @@ impl Dispatch<wl_keyboard::WlKeyboard, ()> for Shell {
             wl_keyboard::Event::Enter { surface, .. } => {
                 let mut faces = shell.faces.iter();
                 let on = faces.find(|face| *face.sheet.surface() == surface);
-                shell.stale |= shell.stack.focus(on.map(|face| face.key));
+                shell.stale |= shell.stack.focus(on.map(|face| face.key), shell.now);
             }
-            wl_keyboard::Event::Leave { .. } => shell.stale |= shell.stack.focus(None),
+            wl_keyboard::Event::Leave { .. } => shell.stale |= shell.stack.focus(None, shell.now),
             wl_keyboard::Event::Modifiers { mods_depressed, .. } => {
                 shell.shifted = mods_depressed & SHIFT != 0;
             }

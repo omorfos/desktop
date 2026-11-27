@@ -644,7 +644,7 @@
         },
         "timeout": {
           "default": 5,
-          "description": "How long one stays, in seconds, when the program that sent it does\nnot say. `0` leaves it until it is clicked.",
+          "description": "How long one stays, in seconds, at the least: a program that sends\none may have it stay longer, not shorter, but for one that shows a\nlevel, as the volume does, which keeps its own time. `0` leaves\nevery one until it is clicked, whatever its program says. One the\npointer or the keyboard is on stays while it is.",
           "maximum": 3600,
           "minimum": 0,
           "type": "integer"

@@ -355,7 +355,7 @@ The notifications that come with omorfos.
 Whether they are shown by omorfos. Turn it off to go without, or to use another program for them. By default \fBtrue\fR.
 .TP
 \fBnotifications.timeout\fR
-How long one stays, in seconds, when the program that sent it does not say. \fB0\fR leaves it until it is clicked. From 0 to 3600. By default \fB5\fR.
+How long one stays, in seconds, at the least: a program that sends one may have it stay longer, not shorter, but for one that shows a level, as the volume does, which keeps its own time. \fB0\fR leaves every one until it is clicked, whatever its program says. One the pointer or the keyboard is on stays while it is. From 0 to 3600. By default \fB5\fR.
 .TP
 \fBoutput\fR
 How every screen is driven, unless it is named in \fBoutputs\fR.
@@ -745,7 +745,7 @@ switcher:
   style: diagonal         # the windows one behind another; or flat, in rows
 notifications:
   enabled: true           # show what programs have to tell you
-  timeout: 5              # seconds one stays; 0 until it is clicked
+  timeout: 5              # seconds one stays at least; 0 until it is clicked
 screenshots:
   destination: file       # file | clipboard | both
 clipboard:
