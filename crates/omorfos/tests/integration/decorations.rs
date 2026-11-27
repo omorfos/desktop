@@ -966,6 +966,26 @@ fn a_theme_can_style_the_button_under_the_pointer_apart_from_the_other_two() {
 }
 
 #[test]
+fn two_presses_count_as_one_within_the_time_that_is_set() {
+    let mut session = Session::with_config(&[("config.yaml", "mouse: { double_click: 600 }\n")]);
+    let mut client = session.connect();
+    session.open_decorated(&mut client, "first", (200, 100), RED);
+    let title = (120, 14);
+    let press = |session: &mut Session, time: u32| {
+        point(session, title);
+        button(session, LEFT, true, time);
+        button(session, LEFT, false, time);
+        session.step();
+    };
+    press(&mut session, 1000);
+    press(&mut session, 1550);
+    assert_eq!(frames(&session), (true, 1), "550 ms apart, within 600");
+    press(&mut session, 5000);
+    press(&mut session, 5700);
+    assert_eq!(frames(&session), (true, 1), "700 ms apart are two");
+}
+
+#[test]
 fn a_double_click_on_a_titlebar_maximizes_the_frame_and_another_puts_it_back() {
     let mut session = Session::new();
     let mut client = session.connect();

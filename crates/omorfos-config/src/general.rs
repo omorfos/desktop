@@ -869,7 +869,7 @@ pub enum Acceleration {
 
 /// Mouse behaviour. A mouse and a touchpad are set apart because people
 /// expect opposite things of them.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(default, deny_unknown_fields)]
 pub struct Mouse {
@@ -881,6 +881,21 @@ pub struct Mouse {
     /// Whether a quick movement takes the pointer further than a slow one
     /// of the same length.
     pub acceleration: Acceleration,
+    /// How long, in milliseconds, there may be between two presses for
+    /// them to count as one double click, as on a titlebar, from 200 to
+    /// 2000: longer for a hand that is slower.
+    pub double_click: Bounded<200, 2000>,
+}
+
+impl Default for Mouse {
+    fn default() -> Self {
+        Self {
+            natural_scroll: false,
+            speed: Speed::default(),
+            acceleration: Acceleration::default(),
+            double_click: Bounded::clamped(400),
+        }
+    }
 }
 
 /// How the screen is driven.
@@ -2082,6 +2097,16 @@ autostart:
             "what is not said is as before"
         );
         assert!(parse("mouse: { tap_to_click: true }").is_err());
+    }
+
+    #[test]
+    fn two_presses_count_as_one_within_the_time_that_is_set() {
+        assert_eq!(General::default().mouse.double_click.get(), 400);
+        let set = |yaml: &str| parse(yaml).map(|general| general.mouse.double_click.get());
+        assert_eq!(set("mouse: { double_click: 200 }").unwrap(), 200);
+        assert_eq!(set("mouse: { double_click: 2000 }").unwrap(), 2000);
+        assert!(set("mouse: { double_click: 199 }").is_err());
+        assert!(set("mouse: { double_click: 2001 }").is_err());
     }
 
     #[test]

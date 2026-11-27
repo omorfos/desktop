@@ -273,10 +273,6 @@ pub(crate) enum Placed {
 }
 
 /// Linux input event codes for the pointer buttons.
-/// How long there may be between two presses on a titlebar for them to be
-/// a double click, in thousandths of a second.
-const DOUBLE_CLICK: u32 = 400;
-
 const BUTTON_LEFT: u32 = 0x110;
 const BUTTON_RIGHT: u32 = 0x111;
 const BUTTON_MIDDLE: u32 = 0x112;
@@ -401,6 +397,12 @@ impl FrameFacts {
 }
 
 impl Compositor {
+    /// How long there may be between two presses for them to be a double
+    /// click, in thousandths of a second, as `mouse.double_click` says.
+    fn double_click_within(&self) -> u32 {
+        self.config().general.mouse.double_click.get()
+    }
+
     /// Handles an input event that happened at `time`, in milliseconds on
     /// any monotonic clock.
     pub fn input(&mut self, event: Input, time: u32) {
@@ -986,7 +988,7 @@ impl Compositor {
         let before = self.hover.clicked.replace((window, time, position));
         before.is_some_and(|(last, at, place)| {
             let near = place.x.abs_diff(position.x) <= 4 && place.y.abs_diff(position.y) <= 4;
-            last == window && near && time.wrapping_sub(at) <= DOUBLE_CLICK
+            last == window && near && time.wrapping_sub(at) <= self.double_click_within()
         })
     }
 
@@ -1315,7 +1317,8 @@ impl Compositor {
         // Pressed twice in quick succession, it goes back to the middle.
         if pressed && button == BUTTON_LEFT {
             let before = self.hover.lines.pressed.replace(time);
-            let twice = before.is_some_and(|at| time.wrapping_sub(at) <= DOUBLE_CLICK);
+            let twice =
+                before.is_some_and(|at| time.wrapping_sub(at) <= self.double_click_within());
             if twice {
                 self.hover.lines.pressed = None;
                 self.move_line((output, which), None);

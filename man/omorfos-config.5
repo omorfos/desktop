@@ -333,6 +333,9 @@ A quick movement takes the pointer further than a slow one of the same length: s
 The pointer goes as far as the device moved, however quickly.
 .RE
 .TP
+\fBmouse.double_click\fR
+How long, in milliseconds, there may be between two presses for them to count as one double click, as on a titlebar, from 200 to 2000: longer for a hand that is slower. From 200 to 2000. By default \fB400\fR.
+.TP
 \fBmouse.natural_scroll\fR
 Whether content follows the wheel when scrolling. A wheel turned towards the user moves down the page unless this is on. By default \fBfalse\fR.
 .TP
@@ -698,6 +701,7 @@ mouse:
   natural_scroll: false   # content follows the wheel
   speed: 0                # \-1 slowest to 1 fastest
   acceleration: adaptive  # adaptive | flat
+  double_click: 400       # ms between two presses that count as one: 200 to 2000
 output:
   scale: auto             # auto | 1 to 4 in steps of 0.25
 screens: {}               # screens known by what they say, by names of yours

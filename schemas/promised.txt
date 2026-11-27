@@ -99,6 +99,7 @@ config.yaml mouse
 config.yaml mouse.acceleration
 config.yaml mouse.acceleration = "adaptive"
 config.yaml mouse.acceleration = "flat"
+config.yaml mouse.double_click
 config.yaml mouse.natural_scroll
 config.yaml mouse.speed
 config.yaml night_light

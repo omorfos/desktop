@@ -23,6 +23,7 @@ mouse:
   natural_scroll: false   # content follows the wheel
   speed: 0                # -1 slowest to 1 fastest
   acceleration: adaptive  # adaptive | flat
+  double_click: 400       # ms between two presses that count as one: 200 to 2000
 output:
   scale: auto             # auto | 1 to 4 in steps of 0.25
 screens: {}               # screens known by what they say, by names of yours

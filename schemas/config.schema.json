@@ -504,6 +504,13 @@
           "$ref": "#/$defs/Acceleration",
           "description": "Whether a quick movement takes the pointer further than a slow one\nof the same length."
         },
+        "double_click": {
+          "default": 400,
+          "description": "How long, in milliseconds, there may be between two presses for\nthem to count as one double click, as on a titlebar, from 200 to\n2000: longer for a hand that is slower.",
+          "maximum": 2000,
+          "minimum": 200,
+          "type": "integer"
+        },
         "natural_scroll": {
           "default": false,
           "description": "Whether content follows the wheel when scrolling. A wheel turned\ntowards the user moves down the page unless this is on.",
