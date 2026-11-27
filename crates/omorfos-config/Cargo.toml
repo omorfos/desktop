@@ -19,7 +19,7 @@ schema = ["dep:schemars", "dep:serde_json", "dep:omorfos-ipc"]
 [dependencies]
 inotify = { version = "0.11.5", default-features = false }
 rustix = { version = "1.1.5", default-features = false, features = ["event", "std", "time"] }
-jiff = { version = "0.2.38", default-features = false, features = ["std", "tz-system", "tzdb-zoneinfo"] }
+jiff = { version = "1.0.1", default-features = false, features = ["std", "tz-system", "tzdb-zoneinfo"] }
 schemars = { version = "1.2.2", optional = true }
 # Already in the tree, under schemars: the schemas are walked as JSON to
 # list what they promise.
