@@ -28,7 +28,7 @@ use omorfos_config::Forgotten;
 use smithay::backend::input::{Axis, ButtonState, KeyState};
 use smithay::desktop::WindowSurfaceType;
 use smithay::desktop::utils::under_from_surface_tree;
-use smithay::input::keyboard::{FilterResult, Keycode};
+use smithay::input::keyboard::{FilterResult, Keycode, Keysym};
 use smithay::input::pointer::{AxisFrame, ButtonEvent};
 use smithay::output::Output;
 use smithay::reexports::wayland_protocols::ext::session_lock::v1::server::ext_session_lock_v1::ExtSessionLockV1;
@@ -247,6 +247,11 @@ impl Compositor {
                 }
             }
             Placed::Button { button, pressed } => {
+                // A press of the pointer on a prompt answers it, or chooses
+                // where to type, which a key does not undo.
+                if pressed && !self.is_locked() {
+                    self.withholding.typed(true);
+                }
                 let state = if pressed {
                     ButtonState::Pressed
                 } else {
@@ -293,13 +298,15 @@ impl Compositor {
             KeyState::Released
         };
         let serial = SERIAL_COUNTER.next_serial();
-        keyboard.input(
-            self,
-            code,
-            state,
-            serial,
-            time,
-            |compositor, _, key| match virtual_terminal(key.modified_sym()) {
+        keyboard.input(self, code, state, serial, time, |compositor, _, key| {
+            // Enter and Escape answer a prompt; any other key is more of
+            // what is being typed into it.
+            if pressed {
+                let sym = key.modified_sym();
+                let answer = matches!(sym, Keysym::Return | Keysym::KP_Enter | Keysym::Escape);
+                compositor.withholding.typed(answer);
+            }
+            match virtual_terminal(key.modified_sym()) {
                 Some(terminal) => {
                     if pressed {
                         compositor.terminal_wanted = Some(terminal);
@@ -307,8 +314,8 @@ impl Compositor {
                     FilterResult::Intercept(())
                 }
                 None => FilterResult::Forward,
-            },
-        );
+            }
+        });
     }
 
     /// Points the pointer at the lock surface on the output it is on, if it

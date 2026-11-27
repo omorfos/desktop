@@ -380,6 +380,9 @@ pub struct Compositor {
     pub(crate) cards: Cards,
     /// How the screens stand for now, as the display key has them.
     pub(crate) interim: Interim,
+    /// Whether the keyboard is held back from everything, a prompt that
+    /// asked for a secret having gone unanswered.
+    pub(crate) withholding: crate::sealed::Withholding,
     pub(crate) text: Text,
     /// What it says, in the user's language (ADR 79).
     pub(crate) words: Words,
@@ -581,6 +584,7 @@ impl Compositor {
                     grabbed_popups: Vec::new(),
                     cards: Cards::default(),
                     interim: Interim::default(),
+                    withholding: crate::sealed::Withholding::default(),
                     text: Text::new(),
                     words: Words::of(&COMPOSITOR),
                     store,
@@ -1290,6 +1294,10 @@ impl Compositor {
             self.updates.next,
             self.shown_by(),
             self.interim.deadline(),
+            self.animation
+                .epoch
+                .zip(self.withholding.due())
+                .map(|(epoch, due)| epoch + due),
             self.cards.leave.deadline(),
             match self.on_demand.ending {
                 Ending::By(by) => Some(by),
@@ -1321,6 +1329,8 @@ impl Compositor {
         }
         let epoch = *self.animation.epoch.get_or_insert(now);
         self.animation.clock = now.saturating_duration_since(epoch);
+        let down = !self.keyboard.pressed_keys().is_empty();
+        self.withholding.settle(down, self.animation.clock);
         if self
             .watcher
             .as_mut()
@@ -3286,6 +3296,17 @@ impl Compositor {
     /// Gives the keyboard to whoever should have it now.
     fn sync_keyboard_focus(&mut self, focused: Option<WindowId>) {
         let sealed = self.sealed().map(|(_, surface, _)| surface);
+        self.withholding
+            .seen(sealed.is_some(), self.animation.clock);
+        if self.withholding.holding() && sealed.is_none() && !self.is_locked() {
+            // A prompt that asked for a secret has gone unanswered: what is
+            // typed now is the rest of it, and goes to nothing.
+            let keyboard = self.keyboard.clone();
+            if keyboard.current_focus().is_some() {
+                keyboard.set_focus(self, None, SERIAL_COUNTER.next_serial());
+            }
+            return;
+        }
         if self.is_locked() || sealed.is_some() {
             // The lock surface has the keyboard, or the prompt that asks for
             // a secret, or nothing does. Nothing below is consulted.

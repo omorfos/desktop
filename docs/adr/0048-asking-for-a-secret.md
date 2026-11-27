@@ -77,3 +77,27 @@ gone; nothing reads them, and the program holds no other secret.
   given up on, and polkit may give up on either meanwhile.
 - `omorfos-pinentry`, for GnuPG and SSH passphrases, is to use the same
   prompt, in words of omorfos's alone (ADR 58).
+
+## Addendum, 27 November 2026: a prompt withdrawn keeps the keyboard
+
+A review of the design for accessibility (`docs/reviews/2026-11-26-accessibility-design-wcag.md`,
+finding 26, #180) found that a prompt taken down unanswered handed the
+keyboard straight back: polkit withdraws a request the program that made
+it has ended, and gpg-agent's goes with it, and the rest of a password
+and Enter were typed into the window under it, which a program could
+bring about to read part of the administrator's password, and which
+types the end of one into a terminal where nothing ill is meant.
+
+**A prompt that goes other than by an answer leaves the keyboard to
+nothing until every key is up and half a second has gone by with none
+pressed, or until the pointer is pressed; what is typed meanwhile goes
+nowhere, no binding and no program seeing it.** An answer is the last
+thing done to the prompt being Enter, Escape or a press of the pointer;
+the compositor sees only the prompt go, and takes it as answered by that.
+A withdrawal that comes just after Enter leaks nothing, the whole secret
+having gone with it. A prompt put up meanwhile has the keyboard, and ends
+the wait. Half a second is what browsers keep a question from being
+answered by what was meant for something else (Chromium, Firefox); no
+desktop was found to hold the keyboard back in this case, GNOME's polkit
+agent and KDE's handing it back as the prompt goes.
+

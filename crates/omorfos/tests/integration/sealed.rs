@@ -2,6 +2,8 @@
 //! secret on the overlay layer, the session is dimmed behind it, and the
 //! keyboard and the pointer reach it alone.
 
+use std::time::Duration;
+
 use omorfos::{Input, Roles};
 use omorfos_config::Action;
 use wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_shell_v1::Layer;
@@ -295,4 +297,145 @@ fn dimmed_background(pixel: u32) -> bool {
         .zip(channels(BACKGROUND))
         .all(|(seen, open)| *seen <= open);
     pixel != BACKGROUND && darker && !blue(pixel)
+}
+
+/// Presses and lets go of `code`.
+fn tap(session: &mut Session, code: smithay::input::keyboard::Keycode) {
+    for pressed in [true, false] {
+        session
+            .compositor_mut()
+            .input(Input::Key { code, pressed }, 0);
+    }
+}
+
+/// Whether `app` was told of any key, or of having the keyboard again.
+fn keyed(session: &mut Session, app: &mut Client) -> (bool, bool) {
+    session.roundtrip(app);
+    let told = app.take_events();
+    let key = told.iter().any(|event| matches!(event, Event::Key { .. }));
+    let entered = told
+        .iter()
+        .any(|event| matches!(event, Event::KeyboardEnter));
+    (key, entered)
+}
+
+#[test]
+fn what_is_typed_as_a_prompt_is_withdrawn_does_not_reach_the_window_under_it() {
+    let (mut session, mut app) = busy();
+    let asking = ask(&mut session, Roles::ASK);
+    session.roundtrip(&mut app);
+    app.take_events();
+    // Some of a secret is typed into the prompt.
+    tap(&mut session, key::A);
+    // What asked gives up, as polkit does when the program that wanted
+    // leave ends its request, and the prompt is taken down.
+    answered(&mut session, asking);
+    // The compositor wakes to give it back in half a second at most.
+    let due = session.compositor().deadline();
+    let half = session.now + Duration::from_millis(500);
+    assert!(
+        due.is_some_and(|due| due > session.now && due <= half),
+        "{due:?}"
+    );
+    // The pointer moved is the pointer's as ever, and the window's no less.
+    session
+        .compositor_mut()
+        .input(Input::Motion { x: 60.0, y: 60.0 }, 0);
+    // The rest is typed before whoever types has seen it go.
+    tap(&mut session, key::RETURN);
+    assert_eq!(
+        keyed(&mut session, &mut app),
+        (false, false),
+        "the rest of the secret was typed into the window"
+    );
+    // Once every key is up and half a second has gone by with none, the
+    // window has the keyboard again, and what is typed then is its.
+    session.advance(Duration::from_millis(499));
+    assert_eq!(keyed(&mut session, &mut app), (false, false), "not yet");
+    session.advance(Duration::from_millis(1));
+    assert_eq!(keyed(&mut session, &mut app), (false, true));
+    tap(&mut session, key::A);
+    assert!(keyed(&mut session, &mut app).0);
+}
+
+#[test]
+fn a_key_typed_while_the_keyboard_is_held_back_holds_it_back_longer() {
+    let (mut session, mut app) = busy();
+    let asking = ask(&mut session, Roles::ASK);
+    tap(&mut session, key::A);
+    answered(&mut session, asking);
+    session.advance(Duration::from_millis(400));
+    tap(&mut session, key::A);
+    session.advance(Duration::from_millis(400));
+    assert_eq!(keyed(&mut session, &mut app), (false, false));
+    // A key still down holds it back however long.
+    session.compositor_mut().input(
+        Input::Key {
+            code: key::A,
+            pressed: true,
+        },
+        0,
+    );
+    session.advance(Duration::from_secs(2));
+    assert_eq!(keyed(&mut session, &mut app), (false, false));
+    session.compositor_mut().input(
+        Input::Key {
+            code: key::A,
+            pressed: false,
+        },
+        0,
+    );
+    session.advance(Duration::from_millis(500));
+    assert_eq!(keyed(&mut session, &mut app), (false, true));
+}
+
+#[test]
+fn a_prompt_answered_with_enter_hands_the_keyboard_back_at_once() {
+    let (mut session, mut app) = busy();
+    let asking = ask(&mut session, Roles::ASK);
+    tap(&mut session, key::A);
+    // The user's own answer: they know the prompt has gone.
+    tap(&mut session, key::RETURN);
+    answered(&mut session, asking);
+    assert!(keyed(&mut session, &mut app).1, "the window has it");
+    tap(&mut session, key::A);
+    assert!(keyed(&mut session, &mut app).0);
+}
+
+#[test]
+fn a_click_hands_the_keyboard_back_held_back_after_a_withdrawn_prompt() {
+    let (mut session, mut app) = busy();
+    let asking = ask(&mut session, Roles::ASK);
+    tap(&mut session, key::A);
+    answered(&mut session, asking);
+    assert_eq!(keyed(&mut session, &mut app), (false, false));
+    // Where the user clicks is where they mean to type next.
+    for pressed in [true, false] {
+        session.compositor_mut().input(
+            Input::Button {
+                button: 0x110,
+                pressed,
+            },
+            0,
+        );
+    }
+    session.step();
+    assert!(keyed(&mut session, &mut app).1);
+}
+
+#[test]
+fn a_prompt_put_up_while_the_keyboard_is_held_back_has_it_and_answered_gives_it_back() {
+    let (mut session, mut app) = busy();
+    let first = ask(&mut session, Roles::ASK);
+    tap(&mut session, key::A);
+    answered(&mut session, first);
+    // Asked again at once: the new prompt has the keyboard.
+    let again = ask(&mut session, Roles::ASK);
+    tap(&mut session, key::A);
+    tap(&mut session, key::RETURN);
+    answered(&mut session, again);
+    assert!(
+        keyed(&mut session, &mut app).1,
+        "answered, it is given back"
+    );
 }

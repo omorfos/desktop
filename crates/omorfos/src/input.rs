@@ -408,6 +408,19 @@ impl Compositor {
         let seat = self.seat.clone();
         self.idle.notify_activity(&seat);
         self.presence.stirred = true;
+        if self.withholding.holding() && !self.is_locked() && self.sealed().is_none() {
+            // Held back after a prompt that went unanswered: a key reaches
+            // nothing, and a press lets the keyboard go where it would.
+            match event {
+                Input::Key { code, pressed } => {
+                    self.withholding.touched(self.clock());
+                    self.withheld_key(code, pressed, time);
+                    return;
+                }
+                Input::Button { pressed: true, .. } => self.withholding.release(),
+                _ => {}
+            }
+        }
         if self.is_locked() || self.sealed().is_some() {
             // A locked session sees none of what follows, nor one a prompt
             // asks a secret over.
@@ -561,6 +574,22 @@ impl Compositor {
             self.desktop.show_desktop();
         }
         aside
+    }
+
+    /// Takes a key while the keyboard is held back: the keyboard is told
+    /// it went down or up, so that no key is taken to be held once a window
+    /// has it again, and nothing sees it, no binding and no program.
+    fn withheld_key(&mut self, code: Keycode, pressed: bool, time: u32) {
+        let keyboard = self.keyboard.clone();
+        let state = if pressed {
+            KeyState::Pressed
+        } else {
+            KeyState::Released
+        };
+        let serial = SERIAL_COUNTER.next_serial();
+        keyboard.input(self, code, state, serial, time, |_, _, _| {
+            FilterResult::Intercept(())
+        });
     }
 
     fn key(&mut self, code: Keycode, pressed: bool, time: u32) {

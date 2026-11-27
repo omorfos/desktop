@@ -22,6 +22,13 @@ the maintainer. An agent starting work reminds them of what is here, and
 an item goes once it has been tried: what was wrong goes to its stage as
 a known gap.
 
+- **A password box withdrawn keeps what is typed (#180, finding 26).**
+  In a terminal, `pkexec true`, and once the box is up type a few
+  letters; from another terminal end the `pkexec`. The box goes, and
+  what you go on typing, and Enter, reach nothing until you stop for
+  half a second, or click; then the terminal has the keyboard, with
+  nothing typed into it. Answered with Escape, the box gives the
+  keyboard back at once.
 - **The program's windows alone (#141).** With two windows of one
   program and one of another on a workspace, the first focused,
   Super+Ctrl+Down opens the overview with the two alone, the one in
@@ -3003,11 +3010,13 @@ to be put right before a release of any kind, and the first release
       ([finding 3](reviews/2026-11-26-accessibility-design-wcag.md#3-a-key-meant-for-another-program-says-yes-to-sharing-the-screen)):
       the portal's question takes the keyboard as it comes up, and Enter
       is "Share". Shown by tests that are there.
-- [ ] **High: a box for a secret that is withdrawn hands the keyboard
+- [x] **High: a box for a secret that is withdrawn hands the keyboard
       straight back**
       ([finding 26](reviews/2026-11-26-accessibility-design-wcag.md#26-a-box-for-a-secret-that-is-withdrawn-hands-the-keyboard-straight-back)):
-      the rest of a password is typed into the window under it. Shown by
-      a test, which the finding gives.
+      the rest of a password was typed into the window under it. A prompt
+      that goes unanswered now leaves the keyboard to nothing until every
+      key is up and half a second has gone by with none pressed, or until
+      the pointer is pressed (ADR 48, addendum).
 - [ ] Medium: the boxes that ask not answering alike
       ([finding 14](reviews/2026-11-26-accessibility-design-wcag.md#14-the-boxes-that-ask-do-not-answer-alike)).
 - [ ] Medium: nearly everything acting as the button goes down

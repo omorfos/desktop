@@ -10,6 +10,8 @@
 //!
 //! See `docs/adr/0037-who-may-do-what.md` and `docs/adr/0048-asking-for-a-secret.md`.
 
+use std::time::Duration;
+
 use omorfos_config::{Part, States};
 use omorfos_ui::Area;
 use smithay::backend::renderer::element::Kind;
@@ -37,6 +39,87 @@ pub(crate) struct Seal {
     dims: Vec<(Output, SolidColorBuffer)>,
     /// The shadow the prompt's box casts on the dim, as a question's.
     shadow: Option<Shadowing>,
+}
+
+/// How long the keyboard is held back from everything once a prompt that
+/// asked for a secret has gone without being answered, after the last key
+/// went down or up: as long as browsers keep a question from being
+/// answered by what was meant for something else.
+pub(crate) const HELD_BACK: Duration = Duration::from_millis(500);
+
+/// What becomes of the keyboard as a prompt that asks for a secret goes
+/// (#180, finding 26). A prompt goes when the user answers it, and also
+/// when what asked gives up, as polkit does when the program that asked
+/// ends its request: then whoever is typing goes on typing the secret, and
+/// Enter, into whatever would have the keyboard next. So a prompt that
+/// goes unanswered leaves the keyboard to nothing until every key is up and
+/// [`HELD_BACK`] has gone by with none pressed, or until the pointer is
+/// pressed, where the user means to type next; what is typed meanwhile
+/// reaches nothing.
+#[derive(Debug, Default)]
+pub(crate) struct Withholding {
+    /// Whether a prompt was up as the keyboard was last given out.
+    up: bool,
+    /// Whether the last thing done to it was an answer: Enter or Escape,
+    /// or a press of the pointer.
+    answered: bool,
+    /// While the keyboard is held back: when a key last went down or up,
+    /// or the prompt went, by the compositor's clock.
+    since: Option<Duration>,
+}
+
+impl Withholding {
+    /// Takes in that a prompt is `up` or not, at `now`: one that has gone
+    /// unanswered holds the keyboard back.
+    pub(crate) fn seen(&mut self, up: bool, now: Duration) {
+        if self.up && !up && !self.answered {
+            self.since = Some(now);
+        }
+        // A prompt put up anew has the keyboard, and what became of the
+        // last no longer counts.
+        if up && !self.up {
+            self.answered = false;
+            self.since = None;
+        }
+        self.up = up;
+    }
+
+    /// Takes in a key pressed in the prompt, `answer` if it answers it.
+    pub(crate) const fn typed(&mut self, answer: bool) {
+        self.answered = answer;
+    }
+
+    /// Whether the keyboard is held back from everything.
+    pub(crate) const fn holding(&self) -> bool {
+        self.since.is_some()
+    }
+
+    /// Takes in a key going down or up while the keyboard is held back, at
+    /// `now`: it is held back from then.
+    pub(crate) const fn touched(&mut self, now: Duration) {
+        self.since = Some(now);
+    }
+
+    /// Lets the keyboard go to whoever would have it, as a press of the
+    /// pointer does.
+    pub(crate) const fn release(&mut self) {
+        self.since = None;
+    }
+
+    /// Lets the keyboard go if no key is `down` and it has been held back
+    /// long enough by `now`.
+    pub(crate) fn settle(&mut self, down: bool, now: Duration) {
+        let long = self.since.is_some_and(|since| now >= since + HELD_BACK);
+        if long && !down {
+            self.since = None;
+        }
+    }
+
+    /// When the keyboard is next to be looked at again, by the compositor's
+    /// clock, while it is held back.
+    pub(crate) fn due(&self) -> Option<Duration> {
+        self.since.map(|since| since + HELD_BACK)
+    }
 }
 
 /// Whether `layer` is a prompt that asks for a secret: its program has

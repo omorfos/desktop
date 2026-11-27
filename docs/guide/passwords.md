@@ -22,7 +22,13 @@ While it asks, everything else is dimmed and blurred, and the keyboard and the
 pointer reach the box alone: no key binding works, no other program and
 no input method sees a key. Only a program omorfos started with the `ask`
 role can do that, which is how you know the box is omorfos's own and not
-a window imitating it. The dim is the theme's `sealed` part, blurred as
+a window imitating it. If what asked gives up while you are typing, as
+polkit does when the program that wanted something ends its request, the
+box goes, and the keyboard reaches nothing until every key is up and half
+a second has gone by with none pressed, or until you click where you
+mean to type: the rest of the password, and Enter, go nowhere rather than
+into the window under it. Answered by you, with Enter, Escape or a click,
+the box gives the keyboard back at once. The dim is the theme's `sealed` part, blurred as
 far as its `backdrop-filter` says, and the box
 is drawn as the `question` parts, its field as `question-input`.
 
