@@ -266,3 +266,10 @@ either way until the pinch opens it.
 - Every chord is to be tested in both ways, as the roadmap asks.
 - Nothing of this is built yet; until it is, the bindings are ADR 78's.
   The roadmap's stage 4 lists what is to be built.
+
+## Addendum, 27 November 2026: the question's minute
+
+The question's minute, which this kept fixed, is a setting, `power.wait`,
+put off by being there
+([ADR 112](0112-a-time-limit-can-be-turned-off-set-or-put-off.md)), after
+the review of the design for accessibility (#180, finding 7).

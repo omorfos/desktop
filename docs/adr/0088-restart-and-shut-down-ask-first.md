@@ -77,3 +77,14 @@ once. Sleep never asks: nothing is lost by it, and it locks first.
 - Settings and Task Manager, which the roadmap's omorfos menu names, are
   left out until they exist.
 - The bar's button, still to come, opens this menu hanging from the bar.
+
+## Addendum, 27 November 2026: the minute set, and put off by being there
+
+The review of the design for accessibility (#180, finding 7) found the
+minute a time limit that could neither be turned off, set nor put off.
+[ADR 112](0112-a-time-limit-can-be-turned-off-set-or-put-off.md) makes it
+`power.wait`, 60 seconds unless set, 0 for none, and has any key or the
+pointer moving start it again: walked away from, the machine still goes
+off. Since [ADR 111](0111-a-question-is-answered-by-what-was-meant-for-it.md),
+too, the keyboard starts on Cancel, and Enter does not go on until it is
+moved.
