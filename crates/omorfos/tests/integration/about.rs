@@ -760,3 +760,30 @@ fn the_buttons_of_about_are_pointed_at_with_a_hand() {
         GREEN
     );
 }
+
+#[test]
+fn the_button_that_closes_about_puts_it_away_as_it_is_let_go_and_not_if_let_go_off_it() {
+    let mut session = unblurred();
+    about(&mut session);
+    point(&mut session, GROUND);
+    session.settle();
+    let button = |session: &mut Session, pressed| {
+        let input = Input::Button {
+            button: 0x110,
+            pressed,
+        };
+        session.compositor_mut().input(input, 0);
+        session.settle();
+    };
+    let shown = |session: &mut Session| session.draw().at(GROUND.0, GROUND.1) != BACKGROUND;
+    // Down on the button, slid off it onto "About" and let go: still shown.
+    point(&mut session, (12 + 6, 12 + 6));
+    button(&mut session, true);
+    assert!(shown(&mut session), "not as it goes down");
+    point(&mut session, GROUND);
+    button(&mut session, false);
+    assert!(shown(&mut session), "let go off it");
+    // Pressed and let go on it, it is put away.
+    click(&mut session, (12 + 6, 12 + 6));
+    assert!(!shown(&mut session), "put away");
+}

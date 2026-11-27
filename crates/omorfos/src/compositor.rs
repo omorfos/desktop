@@ -5328,6 +5328,20 @@ pub(crate) struct Cards {
     /// Whether to start the machine again or turn it off, while that is
     /// asked.
     pub(crate) leave: crate::leaving::Leave,
+    /// What of a card the pointer's button went down on, done as it is
+    /// let go there (ADR 113).
+    pub(crate) pressing: Pressing<Card>,
+}
+
+/// What of a card a press can be on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Card {
+    /// The button that puts "About" away.
+    AboutClose,
+    /// The button that copies what "About" says of the computer.
+    AboutCopy,
+    /// The notice of what is wrong, which a click puts away.
+    Notice,
 }
 
 /// "About": whether it is to be shown, what the computer was as it was

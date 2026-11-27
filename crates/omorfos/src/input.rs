@@ -16,7 +16,7 @@ use smithay::wayland::shell::wlr_layer::Layer;
 use smithay::wayland::shell::xdg::PopupSurface;
 
 use crate::bridge::{self, Chord};
-use crate::compositor::{About, Compositor, Look};
+use crate::compositor::{About, Card, Compositor, Look};
 use crate::holding::Held;
 use crate::paint;
 use crate::reveal::Placing;
@@ -1157,18 +1157,33 @@ impl Compositor {
         by.is_some()
     }
 
-    /// A press while "About" is shown: beside it, or on its button that
-    /// closes it, it puts it away; on its button that copies, it copies
-    /// what the computer is; anywhere else on it does nothing. None is any
-    /// window's.
-    fn press_about(&mut self, position: DomainPoint) {
+    /// The pointer's button going down or up while "About" is shown: a
+    /// press beside it puts it away at once; its button that closes it
+    /// puts it away, and its button that copies copies what the computer
+    /// is, each as it is let go on the one it went down on (ADR 113);
+    /// anywhere else on it does nothing. None is any window's.
+    fn press_about(&mut self, position: DomainPoint, pressed: bool) {
         let about = self.cards.about.shown.as_ref();
-        if about.is_some_and(|about| about.closes_at(position)) {
-            self.cards.about.asked = None;
+        let on = if about.is_some_and(|about| about.closes_at(position)) {
+            Some(Card::AboutClose)
         } else if about.is_some_and(|about| about.copies_at(position)) {
-            self.copy_about();
-        } else if !self.over_about() {
-            self.cards.about.asked = None;
+            Some(Card::AboutCopy)
+        } else {
+            None
+        };
+        if pressed {
+            // A press beside it puts it away at once, as one beside a
+            // menu does; its buttons act as they are let go (ADR 113).
+            self.cards.pressing.press(on);
+            if on.is_none() && !self.over_about() {
+                self.cards.about.asked = None;
+            }
+            return;
+        }
+        match self.cards.pressing.release(on) {
+            Some(Card::AboutClose) => self.cards.about.asked = None,
+            Some(Card::AboutCopy) => self.copy_about(),
+            Some(Card::Notice) | None => {}
         }
     }
 
@@ -1468,14 +1483,15 @@ impl Compositor {
         }
         if self.cards.about.asked.is_some() {
             // "About" has the pointer while it is shown.
-            if pressed {
-                self.press_about(position);
-            }
+            self.press_about(position, pressed);
             return;
         }
         if self.over_notice() {
-            // A click on the notice dismisses it, until what it says changes.
+            // A click on the notice dismisses it, until what it says
+            // changes, as it is let go there (ADR 113).
             if pressed {
+                self.cards.pressing.press(Some(Card::Notice));
+            } else if self.cards.pressing.release(Some(Card::Notice)).is_some() {
                 self.cards.dismissed = self.said().into_owned();
             }
             return;

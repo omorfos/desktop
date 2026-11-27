@@ -225,3 +225,23 @@ fn the_notice_is_on_the_screen_that_comes_first() {
         "not the first"
     );
 }
+
+#[test]
+fn a_press_slid_onto_the_notice_and_let_go_there_leaves_it() {
+    let mut session = Session::with_config(&[("theme.css", BROKEN)]);
+    session.settle();
+    let at = |(x, y): (i32, i32)| Input::Motion {
+        x: f64::from(x),
+        y: f64::from(y),
+    };
+    let button = |pressed| Input::Button {
+        button: LEFT,
+        pressed,
+    };
+    session.compositor_mut().input(at((300, 400)), 0);
+    session.compositor_mut().input(button(true), 0);
+    session.compositor_mut().input(at(INSIDE), 0);
+    session.compositor_mut().input(button(false), 0);
+    session.settle();
+    assert_eq!(session.draw().at(INSIDE.0, INSIDE.1), PANEL, "still shown");
+}
