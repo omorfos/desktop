@@ -655,3 +655,92 @@ fn an_entry_starting_a_program_with_no_icon_anywhere_has_nothing_before_its_labe
     open_menu(&mut session);
     assert_eq!(signed(&session.draw(), 0), 0);
 }
+
+fn button(session: &mut Session, button: u32, pressed: bool) {
+    session
+        .compositor_mut()
+        .input(Input::Button { button, pressed }, 0);
+    session.step();
+}
+
+#[test]
+fn a_row_pressed_acts_as_it_is_let_go_and_not_if_let_go_off_it() {
+    let mut session = session();
+    open_menu(&mut session);
+    move_to(&mut session, 400, 217);
+    session.step();
+    button(&mut session, LEFT, true);
+    let held = session.draw().at(400, 217);
+    assert_ne!(held, RAISED, "drawn pressed, not only under the pointer");
+    assert_eq!(
+        session.compositor().desktop().active_workspace(),
+        0,
+        "not yet"
+    );
+    // Slid off and let go: nothing, and the menu stays.
+    move_to(&mut session, 400, 258);
+    session.step();
+    assert_ne!(session.draw().at(400, 217), held, "not pressed off it");
+    move_to(&mut session, 400, 217);
+    session.step();
+    assert_eq!(session.draw().at(400, 217), held, "pressed again on it");
+    move_to(&mut session, 400, 258);
+    session.step();
+    button(&mut session, LEFT, false);
+    assert_eq!(session.compositor().desktop().active_workspace(), 0);
+    assert_eq!(session.draw().at(530, 220), PANEL, "still open");
+    // Pressed and let go on it, it is chosen.
+    move_to(&mut session, 400, 217);
+    session.step();
+    click(&mut session, LEFT);
+    assert_eq!(session.compositor().desktop().active_workspace(), 1);
+}
+
+#[test]
+fn a_menu_is_chosen_from_by_pressing_dragging_and_letting_go() {
+    let mut session = session();
+    move_to(&mut session, 300, 200);
+    session.step();
+    button(&mut session, RIGHT, true);
+    assert_eq!(session.draw().at(530, 220), PANEL, "open as it goes down");
+    move_to(&mut session, 400, 217);
+    session.step();
+    assert_ne!(
+        session.draw().at(400, 217),
+        RAISED,
+        "drawn pressed as it is held"
+    );
+    button(&mut session, RIGHT, false);
+    assert_eq!(session.compositor().desktop().active_workspace(), 1);
+}
+
+#[test]
+fn let_go_where_it_opened_the_menu_stays_open_to_be_clicked_in() {
+    let mut session = session();
+    open_menu(&mut session);
+    assert_eq!(session.draw().at(530, 220), PANEL);
+    assert_eq!(session.compositor().desktop().active_workspace(), 0);
+    // Dragged onto a separator and let go: nothing, and still open.
+    move_to(&mut session, 300, 400);
+    session.step();
+    button(&mut session, RIGHT, true);
+    button(&mut session, RIGHT, false);
+    open_menu(&mut session);
+    move_to(&mut session, 400, 237);
+    session.step();
+    button(&mut session, RIGHT, true);
+    button(&mut session, RIGHT, false);
+    assert_eq!(session.compositor().desktop().active_workspace(), 0);
+}
+
+#[test]
+fn let_go_unmoved_on_a_row_the_menu_opened_under_it_chooses_nothing() {
+    // Opened near the foot of the screen, the menu is moved up to fit,
+    // and its first row is under the pointer as the button is let go.
+    let mut session = session();
+    move_to(&mut session, 300, 420);
+    button(&mut session, RIGHT, true);
+    button(&mut session, RIGHT, false);
+    assert_eq!(session.compositor().desktop().active_workspace(), 0);
+    assert_ne!(session.draw().at(400, 420), BACKGROUND, "still open");
+}

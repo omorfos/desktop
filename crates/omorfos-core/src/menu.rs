@@ -309,6 +309,16 @@ impl<A: Clone> Menu<A> {
         }
     }
 
+    /// The panel and the row of the entry at `point`, if it is on one: a
+    /// row that does something as it is chosen, not a submenu's or a
+    /// separator.
+    #[must_use]
+    pub fn entry_at(&self, point: Point) -> Option<(usize, usize)> {
+        let (panel, row) = self.locate(point)?;
+        let row = row?;
+        matches!(self.panels[panel].items[row], Item::Entry { .. }).then_some((panel, row))
+    }
+
     /// The outermost panel under `point` and, if the point is on a row that
     /// can be chosen, that row.
     fn locate(&self, point: Point) -> Option<(usize, Option<usize>)> {

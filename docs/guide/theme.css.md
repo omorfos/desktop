@@ -253,6 +253,9 @@ menu > item {
   color: var(--text);
 }
 menu > item:hover { background: var(--surface-raised); }
+/* The row the pointer's button is held on, chosen as it is let go there
+ * (ADR 113). */
+menu > item:active { background: var(--accent-tint); }
 menu > separator { color: var(--border); }
 /* What stands before a row's label, in the accent on a faint square of it
  * while what the row turns on and off is on. */

@@ -29,7 +29,7 @@ use omorfos_core::{
     Private, Screen, Showing, Sign, Standing, System, WindowId, WorkspaceId,
 };
 use omorfos_ipc::handing::Handing;
-use omorfos_ui::{Area, Seen};
+use omorfos_ui::{Area, Pressing, Seen};
 use rustix::event::{PollFd, PollFlags, Timespec, poll};
 use rustix::process::{Pid, PidfdFlags, Signal, kill_process, pidfd_open, pidfd_send_signal};
 use smithay::backend::allocator::Format;
@@ -369,6 +369,13 @@ pub struct Compositor {
     pub(crate) drag: Option<Drag>,
     /// The root menu, while it is open.
     pub(crate) menu: Option<Menu<Action>>,
+    /// The entry of the open menu the pointer's button went down on, by
+    /// its panel and row: chosen as the button is let go on it (ADR 113).
+    pub(crate) menu_pressing: Pressing<(usize, usize)>,
+    /// Where the open menu was opened by a press whose button is still
+    /// down: let go on an entry anywhere else, the pointer having been
+    /// dragged there, it chooses that; let go where it opened, nothing.
+    pub(crate) menu_dragged: Option<DomainPoint>,
     menu_chrome: Option<MenuChrome>,
     /// The layer surface that was clicked and accepts the keyboard, until
     /// something else is clicked.
@@ -579,6 +586,8 @@ impl Compositor {
                     sync_room: SyncRoom::default(),
                     drag: None,
                     menu: None,
+                    menu_pressing: Pressing::new(),
+                    menu_dragged: None,
                     menu_chrome: None,
                     layer_focus: None,
                     grabbed_popups: Vec::new(),
@@ -1777,6 +1786,10 @@ impl Compositor {
             overlap: MENU_OVERLAP,
         };
         self.menu = Some(Menu::open(items, self.pointer_position(), area, metrics));
+        // Nothing of it is pressed yet; a press that opened it says so
+        // itself.
+        self.menu_pressing.forget();
+        self.menu_dragged = None;
     }
 
     /// Opens the switcher, or goes on in it, as `action`, one of the four
@@ -3244,7 +3257,16 @@ impl Compositor {
         // since it was drawn.
         let scale = self.pointer_scale();
         let menu = self.menu.as_ref();
-        let looks = menu.map(|menu| paint::menu_looks(theme, &mut self.animation.motion, menu));
+        // The entry held, or, dragged onto from the press that opened it,
+        // the one under the pointer, is drawn pressed.
+        let pointer = self.pointer_position();
+        let dragged = self.menu_dragged.is_some_and(|at| at != pointer);
+        let held = menu.and_then(|menu| {
+            let dragged = dragged.then(|| menu.entry_at(pointer));
+            dragged.unwrap_or_else(|| self.menu_pressing.held())
+        });
+        let looks =
+            menu.map(|menu| paint::menu_looks(theme, &mut self.animation.motion, menu, held));
         // One that has been closed fades out as it was.
         let had = self.menu_chrome.take();
         let (had, closed) = if menu.is_some() {

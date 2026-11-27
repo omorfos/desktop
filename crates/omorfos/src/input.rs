@@ -896,6 +896,8 @@ impl Compositor {
         if let Some(menu) = &mut self.menu {
             // An open menu has the pointer, like a drag.
             menu.hover(position);
+            let on = menu.entry_at(position);
+            self.menu_pressing.moved(on);
             self.move_pointer(None, time);
             return;
         }
@@ -954,6 +956,7 @@ impl Compositor {
         self.begin(clicked, wanted);
         if wanted == Wanted::Menu {
             self.open_window_menu();
+            self.menu_dragged = self.menu.as_ref().map(|_| self.pointer_position());
         }
     }
 
@@ -1358,6 +1361,49 @@ impl Compositor {
         self.frame_under(true).or_else(|| self.frame_under(false))
     }
 
+    /// Takes the pointer's button going down or up at `position` while a
+    /// menu is open, which has the pointer meanwhile: an entry is chosen
+    /// as the button is let go on the one it went down on, or, dragged
+    /// onto from the press that opened the menu, on any (ADR 113); a press
+    /// beside the menu takes it away at once. Says whether one is open.
+    fn menu_button(&mut self, pressed: bool, position: DomainPoint) -> bool {
+        let Some(menu) = &mut self.menu else {
+            return false;
+        };
+        // An entry is chosen as the button is let go on the one it went
+        // down on, or, dragged onto from the press that opened the
+        // menu, on any (ADR 113). A press beside the menu takes it
+        // away at once.
+        let on = menu.entry_at(position);
+        let outcome = if pressed {
+            self.menu_pressing.press(on);
+            match menu.press(position) {
+                MenuOutcome::Dismiss => MenuOutcome::Dismiss,
+                _ => MenuOutcome::Nothing,
+            }
+        } else {
+            let chosen = self.menu_pressing.release(on).is_some();
+            // Let go where it opened, nothing: it is there to be
+            // clicked in, whatever row it opened under the pointer.
+            let opened = self.menu_dragged.take();
+            let dragged = opened.is_some_and(|at| at != position) && on.is_some();
+            if chosen || dragged {
+                menu.press(position)
+            } else {
+                MenuOutcome::Nothing
+            }
+        };
+        match outcome {
+            MenuOutcome::Activate(action) => {
+                self.menu = None;
+                self.perform(&action);
+            }
+            MenuOutcome::Dismiss => self.menu = None,
+            MenuOutcome::Nothing => {}
+        }
+        true
+    }
+
     /// The topmost frame, among those that are or are not fullscreen, whose
     /// decoration or surface is under the pointer, and which of the two.
     fn frame_under(&self, fullscreen: bool) -> Option<(WindowId, Hit)> {
@@ -1432,20 +1478,7 @@ impl Compositor {
             }
             return;
         }
-        if let Some(menu) = &mut self.menu {
-            let outcome = if pressed {
-                menu.press(position)
-            } else {
-                MenuOutcome::Nothing
-            };
-            match outcome {
-                MenuOutcome::Activate(action) => {
-                    self.menu = None;
-                    self.perform(&action);
-                }
-                MenuOutcome::Dismiss => self.menu = None,
-                MenuOutcome::Nothing => {}
-            }
+        if self.menu_button(pressed, position) {
             return;
         }
         if self.press_ours(button, pressed, time) || self.press_beside(pressed) {
@@ -1484,8 +1517,9 @@ impl Compositor {
         );
         if pressed && button == BUTTON_RIGHT && desktop {
             // A right click on the bare desktop, or on a wallpaper covering
-            // it, opens the root menu.
+            // it, opens the root menu, held until its button is let go.
             self.open_menu();
+            self.menu_dragged = self.menu.as_ref().map(|_| self.pointer_position());
             self.move_pointer(None, time);
             return;
         }

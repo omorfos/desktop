@@ -632,6 +632,7 @@ impl Part {
                     [
                         own(State::Hovered, 1, ":hover"),
                         own(State::Focused, 1, ":focus"),
+                        own(State::Pressed, 1, ":active"),
                     ]
                 }
             }
@@ -641,6 +642,7 @@ impl Part {
                         own(State::Hovered, 1, ":hover"),
                         own(State::Focused, 1, ":focus"),
                         own(State::Active, 1, ":checked"),
+                        own(State::Pressed, 1, ":active"),
                     ]
                 }
             }

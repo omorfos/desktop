@@ -266,13 +266,16 @@ pub(crate) fn menu_looks<A: Clone>(
     theme: &Theme,
     motion: &mut Motion,
     menu: &Menu<A>,
+    held: Option<(usize, usize)>,
 ) -> Vec<Vec<Style>> {
-    let panels = menu.panels().iter().zip(0_u64..);
-    let looks = panels.map(|(panel, depth)| {
+    let panels = menu.panels().iter().zip(0_u64..).enumerate();
+    let looks = panels.map(|(at, (panel, depth))| {
         let rows = (0..panel.items().len()).zip(0_u64..);
         let looks = rows.map(|(index, row)| {
             let highlighted = panel.highlighted() == Some(index);
             let states = row_states(highlighted, panel.keyed());
+            // The row the pointer's button is held on (ADR 113).
+            let states = states.when(State::Pressed, held == Some((at, index)));
             // A row is told from the others by its panel and its place.
             motion.style(theme, Part::MenuItem, depth << 32 | row, states)
         });
@@ -1344,7 +1347,7 @@ mod tests {
 
     /// The first panel of a menu with nothing on its way anywhere.
     fn menu_panel(text: &mut Text, theme: &Theme, menu: &Menu<()>) -> Canvas {
-        let looks = menu_looks(theme, &mut Motion::new(), menu);
+        let looks = menu_looks(theme, &mut Motion::new(), menu, None);
         let tools = (text, &mut WindowIcons::default());
         super::menu_panel(tools, theme, menu, &menu.panels()[0], &looks[0], Scale::ONE)
     }

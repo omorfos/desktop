@@ -448,13 +448,16 @@ theme.css launcher::backdrop :state(closing)
 theme.css menu
 theme.css menu :state(closing)
 theme.css menu > item
+theme.css menu > item :active
 theme.css menu > item :focus
 theme.css menu > item :hover
 theme.css menu > item > icon
+theme.css menu > item > icon item:active
 theme.css menu > item > icon item:checked
 theme.css menu > item > icon item:focus
 theme.css menu > item > icon item:hover
 theme.css menu > item > kbd
+theme.css menu > item > kbd item:active
 theme.css menu > item > kbd item:focus
 theme.css menu > item > kbd item:hover
 theme.css menu > separator

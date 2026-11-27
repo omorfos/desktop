@@ -36,13 +36,13 @@ Each element, at its place in the tree, and the states it can be in, each writte
 .PP
 \fBmenu\fR: \fB:state(closing)\fR
 .PP
-\fBmenu > item\fR: \fB:hover\fR, \fB:focus\fR
+\fBmenu > item\fR: \fB:hover\fR, \fB:focus\fR, \fB:active\fR
 .PP
 \fBmenu > separator\fR
 .PP
-\fBmenu > item > icon\fR: \fBitem:hover\fR, \fBitem:focus\fR, \fBitem:checked\fR
+\fBmenu > item > icon\fR: \fBitem:hover\fR, \fBitem:focus\fR, \fBitem:checked\fR, \fBitem:active\fR
 .PP
-\fBmenu > item > kbd\fR: \fBitem:hover\fR, \fBitem:focus\fR
+\fBmenu > item > kbd\fR: \fBitem:hover\fR, \fBitem:focus\fR, \fBitem:active\fR
 .PP
 \fBnotice\fR: \fB:state(closing)\fR
 .PP
@@ -382,6 +382,9 @@ menu > item {
   color: var(\-\-text);
 }
 menu > item:hover { background: var(\-\-surface\-raised); }
+/* The row the pointer's button is held on, chosen as it is let go there
+ * (ADR 113). */
+menu > item:active { background: var(\-\-accent\-tint); }
 menu > separator { color: var(\-\-border); }
 /* What stands before a row's label, in the accent on a faint square of it
  * while what the row turns on and off is on. */
