@@ -14,7 +14,7 @@ use omorfos_core::geometry::{Point as DomainPoint, Rect, Size as DomainSize};
 use omorfos_core::{Arrangement, Button, Home, WindowId};
 
 use crate::Scale;
-use crate::compositor::{Compositor, Painted};
+use crate::compositor::{Compositor, Ours, Painted};
 use crate::paint::{Canvas, Text};
 use crate::shadows::Shadowing;
 
@@ -206,6 +206,13 @@ impl Compositor {
 
     /// Puts the window the pictures are of in the part the pointer is on,
     /// if it is on one, and takes the pictures away.
+    /// What of the pictures the pointer is on, while they are up: a part
+    /// of an arrangement, for a window, or nothing, between them.
+    pub(crate) fn arrangement_pointed(&self) -> Option<Ours> {
+        let shown = self.hover.palette.shown.as_ref();
+        shown.map(|shown| Ours::Picture(shown.picked.map(|picked| (shown.window, picked))))
+    }
+
     pub(crate) fn choose_arrangement(&mut self) {
         let shown = self.hover.palette.shown.take();
         let chosen = shown.and_then(|shown| Some((shown.window, shown.picked?)));

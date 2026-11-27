@@ -841,3 +841,21 @@ fn a_see_through_window_given_more_room_by_the_line_is_drawn_as_it_draws_once_it
     session.roundtrip(&mut client);
     assert_eq!(session.draw().at(100, 300), still, "let go");
 }
+
+#[test]
+fn a_window_offered_is_put_in_its_part_as_the_button_is_let_go_and_not_if_let_go_off_it() {
+    let (mut session, mut client, _waiting) = waiting(&[]);
+    session.roundtrip(&mut client);
+    // Down on it, slid off it and let go: nothing.
+    point(&mut session, 480, 240);
+    button(&mut session, LEFT, true, 0);
+    assert_eq!(parts(&session).len(), 1, "not as it goes down");
+    point(&mut session, 100, 240);
+    button(&mut session, LEFT, false, 0);
+    assert_eq!(parts(&session).len(), 1, "let go off it");
+    // Pressed and let go on it, it is put there.
+    point(&mut session, 480, 240);
+    button(&mut session, LEFT, true, 0);
+    button(&mut session, LEFT, false, 0);
+    assert_eq!(parts(&session), [(0, 0, 320, 480), (320, 0, 320, 480)]);
+}

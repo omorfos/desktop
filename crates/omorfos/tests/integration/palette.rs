@@ -313,3 +313,26 @@ fn an_arrow_points_from_the_pictures_at_the_button_they_belong_to() {
         "and not in the titlebar: {above:#x}"
     );
 }
+
+#[test]
+fn a_part_pressed_puts_the_window_there_as_it_is_let_go_and_not_if_let_go_off_it() {
+    let (mut session, _client, corner) = window();
+    rest(&mut session, corner);
+    let hold = |pressed: bool| Input::Button {
+        button: LEFT,
+        pressed,
+    };
+    // Down on the right half, slid onto the left and let go: nothing.
+    point(&mut session, half(corner, true));
+    session.compositor_mut().input(hold(true), 0);
+    session.step();
+    assert_eq!(places(&session), 1, "not as it goes down");
+    point(&mut session, half(corner, false));
+    session.compositor_mut().input(hold(false), 0);
+    session.step();
+    assert_eq!(places(&session), 1, "let go off it");
+    // Pressed and let go on the right half, it is put there.
+    point(&mut session, half(corner, true));
+    press(&mut session);
+    assert_eq!(session.compositor().desktop().active_workspace(), 1);
+}

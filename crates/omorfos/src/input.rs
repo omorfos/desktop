@@ -16,7 +16,7 @@ use smithay::wayland::shell::wlr_layer::Layer;
 use smithay::wayland::shell::xdg::PopupSurface;
 
 use crate::bridge::{self, Chord};
-use crate::compositor::{About, Card, Compositor, Look, MENU_DRAG};
+use crate::compositor::{About, Card, Compositor, Look, MENU_DRAG, Ours};
 use crate::holding::Held;
 use crate::paint;
 use crate::reveal::Placing;
@@ -1334,18 +1334,25 @@ impl Compositor {
     /// windows, and says whether it was: nothing under them sees it.
     fn press_ours(&mut self, button: u32, pressed: bool, time: u32) -> bool {
         if self.over_palette() {
-            // A press on a part of a picture chooses it; anywhere else on
-            // them it only takes them away.
+            // A part of a picture is chosen as the button is let go on the
+            // one it went down on (ADR 113); anywhere else on them it only
+            // takes them away.
+            let on = self.arrangement_pointed();
             if pressed {
+                self.ours_pressing.press(on);
+            } else if self.ours_pressing.release(on).is_some() {
                 self.choose_arrangement();
                 self.move_pointer(None, time);
             }
             return true;
         }
         if let Some(window) = self.over_offer() {
-            // A press on a window offered in a part with nothing in it puts
-            // it there.
-            if pressed && button == BUTTON_LEFT {
+            // A window offered in a part with nothing in it is put there as
+            // the button is let go on the one it went down on.
+            let on = (button == BUTTON_LEFT).then_some(Ours::Offer(window));
+            if pressed {
+                self.ours_pressing.press(on);
+            } else if self.ours_pressing.release(on).is_some() {
                 self.choose_offered(window);
                 self.move_pointer(None, time);
             }

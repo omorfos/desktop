@@ -378,6 +378,9 @@ pub struct Compositor {
     /// before, nothing, as a hand that shakes lets go near where it went
     /// down.
     pub(crate) menu_dragged: Option<(DomainPoint, bool)>,
+    /// What of ours laid over the windows the pointer's button went down
+    /// on, done as it is let go there (ADR 113).
+    pub(crate) ours_pressing: Pressing<Ours>,
     menu_chrome: Option<MenuChrome>,
     /// The layer surface that was clicked and accepts the keyboard, until
     /// something else is clicked.
@@ -590,6 +593,7 @@ impl Compositor {
                     menu: None,
                     menu_pressing: Pressing::new(),
                     menu_dragged: None,
+                    ours_pressing: Pressing::new(),
                     menu_chrome: None,
                     layer_focus: None,
                     grabbed_popups: Vec::new(),
@@ -5333,6 +5337,16 @@ pub(crate) struct Cards {
     /// What of a card the pointer's button went down on, done as it is
     /// let go there (ADR 113).
     pub(crate) pressing: Pressing<Card>,
+}
+
+/// What of ours laid over the windows a press can be on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Ours {
+    /// The pictures of arrangements: a part of one, for a window, or
+    /// nothing, between them, which takes them away.
+    Picture(Option<(WindowId, (usize, usize))>),
+    /// A window offered in a part with nothing in it.
+    Offer(WindowId),
 }
 
 /// What of a card a press can be on.
