@@ -271,13 +271,20 @@ impl Session {
         let home = TempDir::new().unwrap();
         let config = home.path().join("omorfos");
         std::fs::create_dir(&config).unwrap();
-        for (name, contents) in files {
-            std::fs::write(config.join(name), contents).unwrap();
-        }
+        // Written elsewhere and moved in whole. A file is seen to change
+        // when the last copy of what wrote it closes, which a program
+        // another test starts meanwhile holds until it is under way: written
+        // here, that could come after the compositor began to watch, and
+        // load it all again as a test looks at what it waits for (#142).
+        let staging = TempDir::new().unwrap();
         // Nothing takes time unless the test says so.
         let theme = files.iter().find(|(name, _)| *name == "theme.css");
         let theme = theme.map_or("", |(_, contents)| contents);
-        std::fs::write(config.join("theme.css"), still(theme)).unwrap();
+        let others = files.iter().filter(|(name, _)| *name != "theme.css");
+        for (name, contents) in others.chain([&("theme.css", still(theme).as_str())]) {
+            std::fs::write(staging.path().join(name), contents).unwrap();
+            std::fs::rename(staging.path().join(name), config.join(name)).unwrap();
+        }
         Self::in_directory(home, &config)
     }
 
