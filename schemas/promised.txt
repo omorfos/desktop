@@ -415,6 +415,7 @@ theme.css dialog.about > heading
 theme.css dialog.question
 theme.css dialog.question :state(closing)
 theme.css dialog.question > button
+theme.css dialog.question > button :active
 theme.css dialog.question > button :default
 theme.css dialog.question > button :focus
 theme.css dialog.question > button :hover

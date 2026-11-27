@@ -754,13 +754,16 @@ impl Dispatch<wl_pointer::WlPointer, ()> for Shell {
             wl_pointer::Event::Leave { .. } => shell.stale |= shell.stack.point(None, shell.now),
             wl_pointer::Event::Button {
                 button: button @ (LEFT_BUTTON | RIGHT_BUTTON),
-                state: WEnum::Value(wl_pointer::ButtonState::Pressed),
+                state: WEnum::Value(state),
                 ..
             } => {
                 // The left button chooses: one of the notification's
                 // buttons, or the notification, which goes; the right one
-                // is a way to be rid of it without choosing anything.
-                if let Some(clicked) = shell.stack.click(button == LEFT_BUTTON) {
+                // is a way to be rid of it without choosing anything. Each
+                // as it is let go on what it went down on (ADR 113).
+                if state == wl_pointer::ButtonState::Pressed {
+                    shell.stack.pointer_down();
+                } else if let Some(clicked) = shell.stack.pointer_up(button == LEFT_BUTTON) {
                     shell.took(clicked);
                 }
                 shell.stale = true;

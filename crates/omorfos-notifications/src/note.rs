@@ -8,7 +8,7 @@ use std::time::Duration;
 
 use omorfos_config::{Edges, Part, State, States, Style, Theme};
 use omorfos_icons::Icons;
-use omorfos_ui::{Area, Canvas, Image, Motion, Scale, Text, button, button_look, inset};
+use omorfos_ui::{Area, Canvas, Image, Motion, Pressing, Scale, Text, button, button_look, inset};
 
 /// The most notifications kept at once. When there are more, the oldest
 /// of the others goes to make room for the one that has just come.
@@ -210,6 +210,9 @@ pub struct Stack {
     under: Option<Key>,
     /// Which of its buttons the pointer is over, if one.
     aimed: Option<usize>,
+    /// The notification, and its button if one, the pointer's button went
+    /// down on: what it does is done as it is let go there (ADR 113).
+    pressing: Pressing<(Key, Option<usize>)>,
     /// The one with the keyboard, and which of its buttons has it: none,
     /// for the notification itself.
     focused: Option<(Key, Option<usize>)>,
@@ -234,6 +237,7 @@ impl Stack {
             usual: (seconds > 0).then_some(usual),
             under: None,
             aimed: None,
+            pressing: Pressing::new(),
             focused: None,
             dismissed: Vec::new(),
             seen: Vec::new(),
@@ -313,6 +317,9 @@ impl Stack {
             Some(other) => {
                 shown.key = other.key;
                 *other = shown;
+                // What was pressed on is no longer there to act on, though
+                // what takes its place keeps its key (ADR 113).
+                self.pressing.forget();
             }
             None => self.shown.insert(0, shown),
         }
@@ -514,6 +521,7 @@ impl Stack {
             self.aimed = None;
             self.let_go(before, now);
         }
+        self.pressed_moved();
         changed
     }
 
@@ -530,6 +538,7 @@ impl Stack {
         let aimed = buttons.and_then(|buttons| buttons.iter().position(over));
         let changed = aimed != self.aimed;
         self.aimed = aimed;
+        self.pressed_moved();
         changed
     }
 
@@ -555,8 +564,31 @@ impl Stack {
     /// One about something that is wrong is not shown again while that
     /// stays wrong. Returns what it did, if it was on a program's.
     pub fn click(&mut self, choosing: bool) -> Option<Clicked> {
-        let aimed = self.under.map(|key| (key, self.aimed));
-        self.act(aimed, choosing)
+        self.pointer_down();
+        self.pointer_up(choosing)
+    }
+
+    /// Takes the pointer's button going down on what it is over: done as
+    /// it is let go there (ADR 113).
+    pub fn pointer_down(&mut self) {
+        let on = self.under.map(|key| (key, self.aimed));
+        self.pressing.press(on);
+    }
+
+    /// Takes the pointer's button being let go: on what it went down on,
+    /// that is done, as [`Stack::click`] says, `choosing` with the left
+    /// button; anywhere else nothing is.
+    pub fn pointer_up(&mut self, choosing: bool) -> Option<Clicked> {
+        let on = self.under.map(|key| (key, self.aimed));
+        let held = self.pressing.release(on)?;
+        self.act(Some(held), choosing)
+    }
+
+    /// The pointer moved: what its button went down on is pressed while
+    /// it is on it.
+    fn pressed_moved(&mut self) {
+        let on = self.under.map(|key| (key, self.aimed));
+        self.pressing.moved(on);
     }
 
     /// Gives the keyboard to the notification `key` is of, the notification
@@ -709,7 +741,9 @@ impl Stack {
             for (index, (act, area)) in shown.offers.buttons.iter().zip(row).enumerate() {
                 let lit = self.under == Some(shown.key) && self.aimed == Some(index);
                 let keyed = self.focused == Some((shown.key, Some(index)));
+                let pressed = self.pressing.held() == Some((shown.key, Some(index)));
                 let states = States::NONE.when(State::Hovered, lit);
+                let states = states.when(State::Pressed, pressed);
                 let states = states.when(State::Focused, keyed);
                 let (style, font) = button_look(theme, states);
                 button(&mut canvas, text, (&style, font), (&act.label, area));
@@ -1219,6 +1253,18 @@ mod tests {
         assert_eq!(stack.deadline(), None, "the keyboard holds it still");
         stack.focus(None, seconds(110));
         assert_eq!(stack.deadline(), Some(seconds(115)));
+    }
+
+    #[test]
+    fn a_notification_replaced_while_it_is_pressed_is_not_acted_on_as_it_is_let_go() {
+        let mut stack = Stack::new(5);
+        stack.show(note(1, "First", ""), START);
+        let key = stack.layout(&Theme::default())[0].key;
+        stack.point(Some(key), START);
+        stack.pointer_down();
+        stack.show(note(1, "Second", ""), START);
+        assert_eq!(stack.pointer_up(true), None, "not the one pressed");
+        assert_eq!(showing(&stack), [1]);
     }
 
     #[test]

@@ -1277,3 +1277,40 @@ fn those_below_slide_up_into_the_room_one_leaves_unless_nothing_is_to_move() {
         }
     }
 }
+
+#[test]
+fn a_notification_pressed_goes_as_the_button_is_let_go_and_not_if_let_go_off_it() {
+    let daemon = Daemon::start();
+    let mut session = Session::new();
+    let mut notifier = notifier(&mut session, &daemon);
+    let peer = daemon.peer();
+    notify(&peer, "Press me", 0, HashMap::new());
+    until(&mut session, &mut notifier, Duration::ZERO, showing);
+    let (x, y) = (f64::from(INSIDE.0), f64::from(INSIDE.1));
+    let button = |session: &mut Session, pressed| {
+        let input = Input::Button {
+            button: LEFT,
+            pressed,
+        };
+        session.compositor_mut().input(input, 0);
+    };
+    session.compositor_mut().input(Input::Motion { x, y }, 0);
+    until(&mut session, &mut notifier, Duration::ZERO, |_| true);
+    button(&mut session, true);
+    until(&mut session, &mut notifier, Duration::ZERO, |_| true);
+    assert!(showing(&mut session), "not as it goes down");
+    // Slid off it and let go: it stays.
+    session
+        .compositor_mut()
+        .input(Input::Motion { x: 50.0, y: 300.0 }, 0);
+    until(&mut session, &mut notifier, Duration::ZERO, |_| true);
+    button(&mut session, false);
+    until(&mut session, &mut notifier, Duration::ZERO, |_| true);
+    assert!(showing(&mut session), "let go off it");
+    // Pressed and let go on it, it goes.
+    session.compositor_mut().input(Input::Motion { x, y }, 0);
+    until(&mut session, &mut notifier, Duration::ZERO, |_| true);
+    button(&mut session, true);
+    button(&mut session, false);
+    until(&mut session, &mut notifier, Duration::ZERO, clear);
+}

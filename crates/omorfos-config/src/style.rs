@@ -691,6 +691,7 @@ impl Part {
                         own(State::Active, 1, ":default"),
                         own(State::Hovered, 1, ":hover"),
                         own(State::Focused, 1, ":focus"),
+                        own(State::Pressed, 1, ":active"),
                     ]
                 }
             }

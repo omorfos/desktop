@@ -561,6 +561,13 @@ dialog.question > button:default {
   background: var(--accent);
   color: var(--on-accent);
 }
+/* A button the pointer's button is held on, which acts as it is let go
+ * there (ADR 113), the one that goes on as well, in the ordinary colour
+ * on the tint: a notification's and the lock screen's draw it so. */
+dialog.question > button:active {
+  background: var(--accent-tint);
+  color: var(--text);
+}
 /* What the keyboard is on has a ring of the accent, a little way out from
  * it, which shows round a button filled with the accent as well as round
  * one that is not. */
