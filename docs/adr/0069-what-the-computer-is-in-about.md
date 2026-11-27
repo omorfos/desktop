@@ -58,6 +58,16 @@ each, after the version of omorfos.
   size. It is drawn apart from the rest of "About", so that only it is
   painted again as it changes; and the pointer over it is a hand.
 
+  The close button that was in the corner went on 19 November 2026, as a
+  window's red button on a card that is no window. It came back on
+  27 November 2026 as the overview's: a small cross in a ring on glass,
+  on the middle of the card's top left corner, where a titlebar's
+  buttons stand, which a press puts it away by and the pointer over is
+  a hand. It is there while the pointer is on the card, fading in and out
+  as a menu comes and goes, as the overview's do, so that the card is
+  plain while it is only read. With it a faint line at the foot says that Escape, or a click
+  outside, puts it away too, for the keyboard (#137).
+
 ## Consequences
 
 - A fault report can carry what it was found on in two clicks.

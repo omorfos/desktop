@@ -28,6 +28,19 @@ pub struct Motion {
     /// drawn.
     present: HashMap<(Part, u64), (Option<Duration>, bool)>,
     parts: HashMap<(Part, u64), Changing>,
+    fades: HashMap<(Part, u64), Fading>,
+}
+
+/// Something shown only while it is wanted, as it was last drawn.
+#[derive(Debug)]
+struct Fading {
+    /// Whether it is wanted, and since when.
+    wanted: bool,
+    since: Duration,
+    /// How much of it there was to see then.
+    from: f32,
+    /// Whether it is in the picture being drawn.
+    seen: bool,
 }
 
 /// One part as it was last drawn.
@@ -115,6 +128,9 @@ impl Motion {
         for (_, seen) in self.present.values_mut() {
             *seen = false;
         }
+        for fading in self.fades.values_mut() {
+            fading.seen = false;
+        }
     }
 
     /// How much of the `part` that goes by `key` there is to see in the
@@ -135,6 +151,51 @@ impl Motion {
         self.moving |= share < 1.0;
         let settled = settled.presence;
         Seen::between(theme.starting(part), settled, settled, share)
+    }
+
+    /// How much there is to see of the `part` that goes by `key`, from 0 to
+    /// 1, which is shown only while it is `wanted`, as a button is while
+    /// the pointer is near: it comes over the time the theme gives the
+    /// part to come in, and goes over its time `:closing`, setting out from
+    /// as much of it as there was when that changed. Asked of it in every
+    /// picture, wanted or not, for as long as it could be there; one not
+    /// yet asked after is not there.
+    pub fn fade(&mut self, theme: &Theme, part: Part, key: u64, wanted: bool) -> f32 {
+        let now = self.now;
+        let fading = self.fades.entry((part, key)).or_insert(Fading {
+            wanted: false,
+            since: now,
+            from: 0.0,
+            seen: true,
+        });
+        fading.seen = true;
+        let states = |wanted| {
+            if wanted {
+                States::NONE
+            } else {
+                States::NONE.with(State::Closing)
+            }
+        };
+        let at = |fading: &Fading| {
+            let transition = theme.style(part, states(fading.wanted)).transition;
+            let share = transition.progress(now.saturating_sub(fading.since));
+            let to = if fading.wanted { 1.0 } else { 0.0 };
+            // Where there was nothing to go, nothing is on its way.
+            let share = if (fading.from - to).abs() < f32::EPSILON {
+                1.0
+            } else {
+                share
+            };
+            (fading.from + (to - fading.from) * share, share)
+        };
+        if fading.wanted != wanted {
+            fading.from = at(fading).0;
+            fading.wanted = wanted;
+            fading.since = now;
+        }
+        let (seen, share) = at(fading);
+        self.moving |= share < 1.0;
+        seen
     }
 
     /// Takes the `part` that goes by `key` to have been in the picture all
@@ -210,6 +271,7 @@ impl Motion {
     pub fn end(&mut self) -> bool {
         self.parts.retain(|_, part| part.seen);
         self.present.retain(|_, (_, seen)| *seen);
+        self.fades.retain(|_, fading| fading.seen);
         self.again = self.moving.then(|| self.now.saturating_add(Self::FRAME));
         self.moving
     }
@@ -270,6 +332,63 @@ mod tests {
         motion.begin(millis(now));
         let style = motion.style(&theme(), part, 7, states);
         (style.background, motion.end())
+    }
+
+    /// How much of a part shown while `wanted` there is in a picture drawn
+    /// at `now`, and whether the picture has to be drawn again.
+    fn faded(motion: &mut Motion, wanted: bool, now: u64) -> (f32, bool) {
+        motion.begin(millis(now));
+        let seen = motion.fade(&theme(), Part::Task, 3, wanted);
+        (seen, motion.end())
+    }
+
+    #[test]
+    fn what_is_shown_only_while_wanted_comes_over_its_time_and_goes_over_its_time_closing() {
+        let theme = "task { transition: 100ms linear; } task:closing { transition: 50ms linear; }";
+        let theme = Theme::parse(theme).unwrap();
+        let mut motion = Motion::new();
+        let mut faded = |wanted, at| {
+            motion.begin(millis(at));
+            let seen = motion.fade(&theme, Part::Task, 3, wanted);
+            (seen, motion.end())
+        };
+        let near = |(seen, moving): (f32, bool), wanted: f32| {
+            ((seen - wanted).abs() < 0.01).then_some(moving)
+        };
+        assert_eq!(
+            near(faded(false, 0), 0.0),
+            Some(false),
+            "not there until wanted"
+        );
+        assert_eq!(near(faded(true, 1000), 0.0), Some(true));
+        assert_eq!(near(faded(true, 1050), 0.5), Some(true));
+        assert_eq!(near(faded(true, 1100), 1.0), Some(false));
+        assert_eq!(near(faded(false, 2000), 1.0), Some(true));
+        assert_eq!(near(faded(false, 2025), 0.5), Some(true), "quicker going");
+        assert_eq!(near(faded(false, 2050), 0.0), Some(false));
+    }
+
+    #[test]
+    fn what_turns_back_while_fading_sets_out_from_as_much_as_there_was() {
+        let mut motion = Motion::new();
+        faded(&mut motion, true, 0);
+        let (half, _) = faded(&mut motion, true, 50);
+        let (turned, moving) = faded(&mut motion, false, 50);
+        assert!((turned - half).abs() < 0.01, "no jump: {half} {turned}");
+        assert!(moving);
+        assert_eq!(faded(&mut motion, false, 150), (0.0, false));
+    }
+
+    #[test]
+    fn what_was_left_out_of_a_picture_comes_in_afresh_when_next_wanted() {
+        let mut motion = Motion::new();
+        faded(&mut motion, true, 0);
+        assert_eq!(faded(&mut motion, true, 200), (1.0, false));
+        motion.begin(millis(300));
+        motion.end();
+        let (again, moving) = faded(&mut motion, true, 400);
+        assert!(again < 0.01, "{again}");
+        assert!(moving);
     }
 
     #[test]

@@ -3131,6 +3131,11 @@ impl Compositor {
                 .style(theme, Part::AboutButton, 0, states);
             let font = theme.font(Part::AboutButton, states);
             about.dress(&mut self.text, (style, font), tick);
+            // Its button that closes, while the pointer is on it, coming
+            // and going as a menu does.
+            let on = about.area.contains(pointer) || about.closes_at(pointer);
+            let key = glass::key(&ABOUT_CLOSE);
+            about.close_seen = self.animation.motion.fade(theme, Part::Menu, key, on);
         }
         let about = self.cards.about.shown.as_ref();
         let share = about.map(|_| self.animation.motion.presence(theme, Part::About, 0));
@@ -5274,6 +5279,10 @@ impl Notice {
     }
 }
 
+/// What tells the button that closes "About" from others that fade, and
+/// its glass from other glass.
+const ABOUT_CLOSE: &str = "about's close button";
+
 /// The widest "About" gets, in units of layout.
 const ABOUT_WIDTH: u32 = 640;
 
@@ -5334,6 +5343,11 @@ pub(crate) struct About {
     pub(crate) area: Rect,
     copy: Rect,
     pixels: Painted,
+    /// The button that closes it, the overview's, on its top left corner,
+    /// and how much of it there is to see: it is shown while the pointer
+    /// is on "About".
+    close: Painted,
+    close_seen: f32,
     shadow: Option<Shadowing>,
     /// The button that copies, drawn apart, as it changes: how it looked,
     /// and how much of its tick there was, when it was last painted.
@@ -5402,6 +5416,8 @@ impl About {
             area,
             copy: on(copy),
             pixels: Painted::new(&canvas),
+            close: Painted::new(&paint::overview_close(theme, scale)),
+            close_seen: 0.0,
             shadow: shades.cast(&style, scale, placed, None),
             button: None,
             list: Painted::new(&list),
@@ -5434,6 +5450,11 @@ impl About {
         self.copy.contains(point)
     }
 
+    /// Whether `point` is on its button that closes it.
+    pub(crate) fn closes_at(&self, point: DomainPoint) -> bool {
+        crate::overview::close_of(self.area).contains(point)
+    }
+
     /// Scrolls what it lists `by` units of layout further down, or up if
     /// less than nothing: no further than its end, nor back past its top.
     pub(crate) fn scroll(&mut self, by: f64) {
@@ -5460,6 +5481,22 @@ impl About {
         R: Renderer + ImportAll + ImportMem,
         R::TextureId: Clone + Texture + Send + 'static,
     {
+        // The button that closes it, over it, on glass of its own, while
+        // the pointer is on it.
+        if self.close_seen > 0.0 {
+            let seen = opacity * self.close_seen;
+            let close = crate::overview::close_of(self.area);
+            let corner = Point::<i32, Logical>::from((close.origin.x, close.origin.y));
+            elements.extend(self.close.element(renderer, corner.to_f64(), view, seen));
+            let glass = (glass::key(&ABOUT_CLOSE), elements.len());
+            let place = (self.area, view);
+            panes.extend(crate::overview::close_glass(
+                &self.theme,
+                place,
+                glass,
+                seen,
+            ));
+        }
         let shown = self.shown;
         let at = Point::<i32, Logical>::from((shown.origin.x, shown.origin.y));
         let rows = (self.scrolled, shown.size.height);
@@ -5831,7 +5868,7 @@ struct MarkNote {
 pub(crate) struct Animation {
     /// The frames and menu rows that are on their way from one look to
     /// another, and what has just come into the picture.
-    motion: Motion,
+    pub(crate) motion: Motion,
     /// The same of the frames windows are pictured in by themselves, kept
     /// apart: a tab behind another is shown in front in its own picture.
     portrayal: Motion,

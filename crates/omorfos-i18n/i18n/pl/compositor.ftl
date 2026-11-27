@@ -116,6 +116,7 @@ credits = { $heading ->
 }
 version = Wersja { $version }
 licence = Na licencji MIT
+put-away = Naciśnij Escape lub kliknij obok, aby zamknąć
 copy = Kopiuj
 copied = Skopiowano
 

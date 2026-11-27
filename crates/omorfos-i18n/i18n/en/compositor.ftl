@@ -156,6 +156,9 @@ credits = { $heading ->
 }
 version = Version { $version }
 licence = Under the MIT licence
+# The faint line at its foot saying how it is put away, as it has no
+# button that does.
+put-away = Escape, or a click outside, puts it away
 # The button that copies what the computer is, as text for a bug report,
 # which is in English; and what it says once it has.
 copy = Copy

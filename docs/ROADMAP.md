@@ -1791,11 +1791,16 @@ the first than on the last.
 - [ ] What is left of the redesign of windows, decided on 24 November
       2026; Google Chrome puts its buttons where it is told, as tried on
       18 November 2026:
-      - [ ] "About" says how it is put away, in a faint line of help at
+      - [x] "About" says how it is put away, in a faint line of help at
             its foot, translated, as the screenshot picker's is: Escape
-            or a click outside. No sign of its own to press, as no other
-            card has one. The welcome card, which has Skip and Finish,
-            stays as it is.
+            or a click outside. The welcome card, which has Skip and
+            Finish, stays as it is (#137). The line is in the middle, in
+            `about-detail`, and stays where it is while what is listed
+            above it scrolls. With it, once tried, the overview's button
+            that closes, on the card's top left corner while the pointer
+            is on the card, which no other card had when this was decided
+            (ADR 69). It, and the overview's, fade in and out as a menu
+            does, by `Motion::fade`.
       - [x] The switcher's pictures show a window in its frame, as it
             will be when chosen, every program alike; as a window alone
             is drawn for pictures of it. In rows and in the queue, the

@@ -162,7 +162,8 @@ as a Mac's on a Space, it takes the desktop away and gives its windows to
 the one before it, or after it if it is the first, as they are, nothing
 closed; one in full screen or tiled that came from it goes back to that
 one when it leaves. The buttons show once the overview is open the whole
-way, not while fingers carry it. A
+way, not while fingers carry it, and come and go as a menu does, fading
+in and out over the theme's `menu` and `menu:closing` transitions. A
 private window is shown to you as any other is; in a picture of the
 screen it is blank or blurred, as its rule says, without its title.
 
