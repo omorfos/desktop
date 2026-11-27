@@ -47,10 +47,14 @@ screens-mirrored = Mirrored: every screen shows what { $first } shows
 screens-alone = Only { $alone }: the others are off
 keep-screens = Keep the screens like this?
 # How many seconds are $left before they go back as they were.
-keep-or-back = Enter keeps them. Escape, or { $left } { $left ->
+screens-back-in = They go back as they were in { $left } { $left ->
     [one] second
    *[other] seconds
-}, puts them back.
+}.
+# The question's buttons: putting the screens back as they were, which
+# refuses, and keeping them.
+put-back = Put back
+keep = Keep
 screens-kept = The screens are kept as they are
 screens-back = The screens are back as they were
 only-one-screen = There is only one screen, so it stands only one way

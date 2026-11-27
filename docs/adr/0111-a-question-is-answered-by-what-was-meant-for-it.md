@@ -116,3 +116,15 @@ it went down on.** It is made once, in `omorfos_ui`, as the box is
   from before, and see nothing given.
 - The question before leaving still says yes by itself after a minute;
   that is finding 7's, and a decision of its own.
+
+## Addendum, 27 November 2026: the screens' question has buttons
+
+The question whether to keep the screens as they are, which had no
+buttons and took only this ADR's half second and its rule for keys, has
+Put back and Keep since [ADR 112](0112-a-time-limit-can-be-turned-off-set-or-put-off.md),
+and is answered as every other box that asks is: the keyboard starts on
+Put back, so Enter puts them back, and Keep takes a move and Enter, or a
+press. Escape puts them back at once, as it refuses everywhere. Space
+alone is left to programs while it is asked, as the maintainer decided:
+it is what goes on with a slide on a screen just mirrored to a
+projector, and would otherwise put the screens back.

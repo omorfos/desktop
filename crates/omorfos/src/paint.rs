@@ -744,51 +744,6 @@ pub(crate) fn about_copy(
     canvas
 }
 
-/// Paints the question whether to keep the screens as they stand now,
-/// saying what that is, and how many seconds are `left` before they go
-/// back as they were.
-pub(crate) fn keep_screens(
-    (text, words): (&mut Text, &Words),
-    theme: &Theme,
-    (what, left): (&str, u64),
-    scale: Scale,
-) -> Canvas {
-    let left = i64::try_from(left).unwrap_or(i64::MAX);
-    let lines = [
-        what.to_owned(),
-        words.say("keep-screens", &[]),
-        words.say("keep-or-back", &[("left", Value::Number(left))]),
-    ];
-    let style = theme.style(Part::Notice, States::NONE);
-    let edges = style.inset();
-    // The first line is the heading.
-    let parts = [Part::NoticeHeading, Part::Notice, Part::Notice];
-    let fonts = parts.map(|part| (part, theme.font(part, States::NONE)));
-    let widest = lines
-        .iter()
-        .zip(fonts)
-        .map(|(line, (_, font))| text.measure(line, font));
-    let width = widest.max().unwrap_or(0).saturating_add(edges.across());
-    let rows = u32::try_from(lines.len()).unwrap_or(u32::MAX);
-    let height = NOTICE_ROW.saturating_mul(rows).saturating_add(edges.down());
-    let whole = (0, 0, width, height);
-    let mut canvas = Canvas::scaled(width, height, scale);
-    canvas.draw_box(whole, &style);
-    let (left_edge, mut top, room, _) = inset(whole, edges);
-    for (line, (part, font)) in lines.iter().zip(fonts) {
-        let ink = theme.style(part, States::NONE).color;
-        text.draw(
-            &mut canvas,
-            line,
-            (left_edge, top, room, NOTICE_ROW),
-            ink,
-            font,
-        );
-        top += NOTICE_ROW.cast_signed();
-    }
-    canvas
-}
-
 /// Paints a window's title as it is written under its picture where it is
 /// offered in a part with nothing in it: in the `offer` part's colour and
 /// font in `states`, `height` tall and only as wide as it is, but no wider

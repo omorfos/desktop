@@ -13,19 +13,32 @@ use omorfos_i18n::{Value, Words};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-use omorfos_ui::Answering;
+use omorfos_config::{Part, State, States};
+use omorfos_core::geometry::{Point as DomainPoint, Rect, Size as DomainSize};
+use omorfos_ui::question::Asked;
+use omorfos_ui::{Answering, Area, Canvas};
 use smithay::input::keyboard::Keysym;
 
 use omorfos_config::{KeptScreens, KeptWay, NamedOutput, Outputs, Rotation, Stands, Theme};
 use smithay::output::Output;
 use smithay::utils::{Logical, Point, Rectangle};
 
+use crate::Scale;
 use crate::compositor::{Compositor, Painted};
-use crate::{Scale, paint};
+use crate::leaving::held;
+use crate::paint::Text;
 
 /// How long a way the screens are tried in waits to be kept before they
 /// go back to the way they were.
 pub(crate) const KEPT_WITHIN: Duration = Duration::from_secs(15);
+
+/// How long after it was asked the question goes back by itself at the
+/// latest, however long being there puts it off: it is how the screens
+/// come back after a way of showing them that shows nothing (ADR 112).
+const KEPT_AT_MOST: Duration = Duration::from_secs(120);
+
+/// How wide the question is; the rest of its layout is a question's.
+const WIDTH: u32 = 380;
 
 /// A way for the screens to stand.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -76,15 +89,19 @@ pub(crate) struct Interim {
     /// The way last kept.
     kept: Option<Stood>,
     /// The way being tried, and when it goes back unless kept: none until
-    /// the compositor next knows what time it is.
+    /// the compositor next knows what time it is, and again each time the
+    /// user is there.
     trying: Option<(Stood, Option<Instant>)>,
+    /// When the way being tried was first counted from, past two minutes
+    /// after which being there no longer puts it off.
+    first: Option<Instant>,
     /// The question asked on each screen that is on while a way is tried.
     pub(crate) prompts: Vec<Prompt>,
     /// What is to be said of it, once the compositor knows what time it is.
     said: Vec<&'static str>,
     /// How the question whether to keep the way tried is being answered
-    /// (ADR 111): Enter keeps it a moment after it is asked, and only as
-    /// it is let go, having gone down while it was asked.
+    /// (ADR 111): the keyboard starts on Put back, and Keep keeps it only
+    /// a moment after it is asked, as it is let go.
     answering: Option<Answering<Duration, 2>>,
     /// What the session keeps of the screens between logins, and the file
     /// it keeps it in, once it is told where (ADR 104).
@@ -106,13 +123,37 @@ pub(crate) struct Prompt {
     /// are left.
     what: String,
     left: u64,
+    /// The button the pointer is on, if any, and the one the keyboard is.
+    hovered: Option<usize>,
+    focus: usize,
+    /// Where it is all, and its buttons, Put back and Keep, are.
+    whole: Rect,
+    buttons: [Rect; 2],
     pub(crate) pixels: Painted,
+}
+
+impl Prompt {
+    /// The button at `point`, if one is.
+    fn button_at(&self, point: DomainPoint) -> Option<usize> {
+        self.buttons
+            .iter()
+            .position(|button| button.contains(point))
+    }
 }
 
 impl Interim {
     /// Whether a way is being tried, and is to be kept or not.
     pub(crate) const fn trying(&self) -> bool {
         self.trying.is_some()
+    }
+
+    /// The user was there just now: the way tried waits its time again,
+    /// counted from the next time it is looked at, to two minutes after it
+    /// was asked at most.
+    pub(crate) fn stirred(&mut self) {
+        if let Some((_, until)) = self.trying.as_mut() {
+            *until = None;
+        }
     }
 
     /// When something is next due: a second less to wait, or the screens
@@ -204,6 +245,7 @@ impl Compositor {
             outputs,
         };
         self.interim.trying = Some((stood, None));
+        self.interim.first = None;
         let mut answering = Answering::new(PUT_BACK);
         answering.shown(self.clock());
         self.interim.answering = Some(answering);
@@ -261,27 +303,60 @@ impl Compositor {
         std::iter::once(first.clone()).chain(rest).collect()
     }
 
-    /// Takes a key going down or up, while a way of the
-    /// screens is tried: says whether it was the question's, Enter keeping
-    /// the way and Escape putting the one before back, each as it is let
-    /// go, Enter not until a moment after it was asked.
-    pub(crate) fn screens_key(&mut self, keysym: Keysym, pressed: bool) -> bool {
-        let button = match keysym {
-            Keysym::Return | Keysym::KP_Enter => KEEP,
-            Keysym::Escape => PUT_BACK,
-            _ => return false,
-        };
+    /// Takes a key, by its `code`, going down or up, while a way of the
+    /// screens is tried: says whether it was the question's. The keyboard
+    /// starts on Put back; Tab and Right move it to Keep, Enter presses
+    /// the one it is on, as it is let go, Keep not until a moment after;
+    /// and Escape puts the way before back at once, from wherever the
+    /// keyboard is (ADR 111, 112). Space is left to programs, as it goes
+    /// on with a slide on a screen just mirrored to a projector.
+    pub(crate) fn screens_key(&mut self, code: u32, keysym: Keysym, pressed: bool) -> bool {
         let now = self.clock();
         let trying = self.interim.trying();
         let answering = self.interim.answering.as_mut().filter(|_| trying);
-        let Some(answering) = answering else {
+        let held = held(keysym).filter(|_| keysym != Keysym::space);
+        let Some((answering, held)) = answering.zip(held) else {
             return false;
         };
-        // There are no buttons to be on here: each key presses its own.
-        if let Some(chosen) = answering.press(Some(button), pressed, now) {
+        if let Some(chosen) = answering.key(code, held, pressed, now) {
             self.answer_screens(chosen == KEEP);
         }
         true
+    }
+
+    /// Takes the pointer's button going down or up at `point` while a way
+    /// of the screens is tried: says whether it was on the question, where
+    /// a button is answered as it is let go on what it went down on.
+    pub(crate) fn screens_press(&mut self, pressed: bool, point: DomainPoint) -> bool {
+        let now = self.clock();
+        let trying = self.interim.trying();
+        let Some(answering) = self.interim.answering.as_mut().filter(|_| trying) else {
+            return false;
+        };
+        let prompts = &self.interim.prompts;
+        let Some(prompt) = prompts.iter().find(|prompt| prompt.whole.contains(point)) else {
+            // Let go off the question, a press on it is let go of too.
+            let _ = answering.press(None, pressed, now);
+            return false;
+        };
+        if let Some(chosen) = answering.press(prompt.button_at(point), pressed, now) {
+            self.answer_screens(chosen == KEEP);
+        }
+        true
+    }
+
+    /// Where the buttons of the question are on the first screen, while it
+    /// is asked, each by its middle: Put back, then Keep. For tests, which
+    /// press them.
+    #[must_use]
+    pub fn keep_screens_buttons(&self) -> Option<((i32, i32), (i32, i32))> {
+        let middle = |rect: &Rect| {
+            let across = i32::try_from(rect.size.width / 2).unwrap_or(0);
+            let down = i32::try_from(rect.size.height / 2).unwrap_or(0);
+            (rect.origin.x + across, rect.origin.y + down)
+        };
+        let prompt = self.interim.prompts.first();
+        prompt.map(|prompt| (middle(&prompt.buttons[0]), middle(&prompt.buttons[1])))
     }
 
     /// Keeps the way the screens are being tried in, if `keep`, and for the
@@ -311,8 +386,17 @@ impl Compositor {
     /// Starts the time a way being tried has to be kept in, and puts the
     /// screens back once it is up.
     pub(crate) fn time_screens(&mut self, now: Instant) {
+        let first = self
+            .interim
+            .trying
+            .as_ref()
+            .map(|_| *self.interim.first.get_or_insert(now));
         let trying = self.interim.trying.as_mut();
-        let until = trying.map(|(_, until)| *until.get_or_insert(now + KEPT_WITHIN));
+        let until = trying.zip(first).map(|((_, until), first)| {
+            // Its 15 seconds, from now or when the user was last there,
+            // but no later than two minutes after it was asked.
+            *until.get_or_insert((now + KEPT_WITHIN).min(first + KEPT_AT_MOST))
+        });
         if until.is_some_and(|until| until <= now) {
             self.answer_screens(false);
         }
@@ -336,11 +420,19 @@ impl Compositor {
         let Some((tried, _)) = self.interim.trying.as_ref() else {
             return;
         };
+        let pointer = self.pointer_position();
+        let focus = self
+            .interim
+            .answering
+            .as_ref()
+            .map_or(PUT_BACK, Answering::focus);
         let first = tried.order.first().map_or("", String::as_str);
         let what = tried.way.described(&self.words, first);
         let theme = self.config().theme.clone();
         let mut prompts = Vec::new();
         for head in &self.heads {
+            let before = had.iter().position(|prompt| prompt.output == head.output);
+            let hovered = before.and_then(|at| had[at].button_at(pointer));
             let known = had.iter().position(|prompt| {
                 prompt.output == head.output
                     && prompt.scale == head.scale
@@ -348,24 +440,35 @@ impl Compositor {
                     && prompt.what == what
                     && prompt.left == left
                     && prompt.theme == theme
+                    && prompt.hovered == hovered
+                    && prompt.focus == focus
             });
             let prompt = known.map(|at| had.swap_remove(at));
             let prompt = prompt.unwrap_or_else(|| {
-                let asked = (what.as_str(), left);
-                let canvas =
-                    paint::keep_screens((&mut self.text, &self.words), &theme, asked, head.scale);
+                let asked = (what.as_str(), left, (hovered, focus));
+                let tools = (&mut self.text, &self.words);
+                let (canvas, buttons) = paint_keep(tools, &theme, asked, head.scale);
                 let (width, height) = canvas.units();
                 let area = head.area();
                 let middle = |room: i32, length: u32| (room - length.cast_signed()) / 2;
                 let within = (middle(area.size.w, width), middle(area.size.h, height));
+                let at = area.loc + Point::from(within);
+                let on = |(x, y, wide, high): Area| {
+                    let origin = DomainPoint::new(at.x + x, at.y + y);
+                    Rect::new(origin, DomainSize::new(wide, high))
+                };
                 Prompt {
                     output: head.output.clone(),
-                    at: area.loc + Point::from(within),
+                    at,
                     scale: head.scale,
                     theme: theme.clone(),
                     area,
                     what: what.clone(),
                     left,
+                    hovered,
+                    focus,
+                    whole: on((0, 0, width, height)),
+                    buttons: [on(buttons.0), on(buttons.1)],
                     pixels: Painted::new(&canvas),
                 }
             });
@@ -373,6 +476,42 @@ impl Compositor {
         }
         self.interim.prompts = prompts;
     }
+}
+
+/// Paints the question whether to keep the screens as they stand now,
+/// saying what that is and how many seconds are `left` before they go back
+/// as they were, the button `hovered` lit and the one the keyboard is on,
+/// `focus`, as such; and says where its buttons are on it: Put back, then
+/// Keep, which is filled with the accent.
+fn paint_keep(
+    (text, words): (&mut Text, &Words),
+    theme: &Theme,
+    (what, left, (hovered, focus)): (&str, u64, (Option<usize>, usize)),
+    scale: Scale,
+) -> (Canvas, (Area, Area)) {
+    let question = words.say("keep-screens", &[]);
+    let left = i64::try_from(left).unwrap_or(i64::MAX);
+    let detail_font = theme.font(Part::QuestionDetail, States::NONE);
+    let inset = theme.style(Part::Question, States::NONE).inset();
+    let mut lines = text.wrap(what, WIDTH.saturating_sub(inset.across()), detail_font, 2);
+    lines.push(words.say("screens-back-in", &[("left", Value::Number(left))]));
+    let (put_back, keep) = (words.say("put-back", &[]), words.say("keep", &[]));
+    let asked = Asked {
+        question: &question,
+        lines: &lines,
+        room: 0,
+        buttons: [put_back.as_str(), keep.as_str()],
+    };
+    let laid = omorfos_ui::question::lay_out(text, theme, WIDTH, &asked);
+    let states = [PUT_BACK, KEEP].map(|button| {
+        States::NONE
+            .when(State::Hovered, hovered == Some(button))
+            .when(State::Active, button == KEEP)
+            .when(State::Focused, button == focus)
+    });
+    let canvas = omorfos_ui::question::paint_question(text, theme, (&asked, &laid), states, scale);
+    let [put_back, keep] = laid.buttons;
+    (canvas, (put_back, keep))
 }
 
 /// The screens called `order` standing `way`, each as `configured` has it

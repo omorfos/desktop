@@ -39,12 +39,14 @@ screens-configured = Tak, jak w config.yaml
 screens-mirrored = Lustrzane: każdy ekran pokazuje to, co { $first }
 screens-alone = Tylko { $alone }: pozostałe są wyłączone
 keep-screens = Zachować ten układ ekranów?
-keep-or-back = Enter go zachowuje. Escape lub { $left } { $left ->
-    [one] sekunda
+screens-back-in = Wrócą do poprzedniego układu za { $left } { $left ->
+    [one] sekundę
     [few] sekundy
     [many] sekund
    *[other] sekundy
-} przywraca poprzedni.
+}.
+put-back = Przywróć
+keep = Zachowaj
 screens-kept = Ekrany zostają tak, jak są
 screens-back = Ekrany wróciły do poprzedniego układu
 only-one-screen = Jest tylko jeden ekran, więc może stać tylko w jeden sposób

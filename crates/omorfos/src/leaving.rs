@@ -51,7 +51,7 @@ const GO_ON: usize = 1;
 
 /// What a key is to the question, by what it types, if it is the
 /// question's at all.
-fn held(keysym: Keysym) -> Option<Held> {
+pub(crate) fn held(keysym: Keysym) -> Option<Held> {
     match keysym {
         Keysym::Return | Keysym::KP_Enter | Keysym::space => Some(Held::Enter),
         Keysym::Escape => Some(Held::Escape),

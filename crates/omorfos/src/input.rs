@@ -411,6 +411,7 @@ impl Compositor {
         // And the question before leaving counts its wait again from now
         // (ADR 112): only a machine walked away from goes on by itself.
         self.cards.leave.stirred();
+        self.interim.stirred();
         if self.withholding.holding() && !self.is_locked() && self.sealed().is_none() {
             // Held back after a prompt that went unanswered: a key reaches
             // nothing, and a press lets the keyboard go where it would.
@@ -610,7 +611,7 @@ impl Compositor {
                     .raw_latin_sym_or_raw_current_sym()
                     .unwrap_or(key.modified_sym());
                 compositor.leaving_key(code.raw(), keysym, false);
-                compositor.screens_key(keysym, false);
+                compositor.screens_key(code.raw(), keysym, false);
                 return compositor.let_go(code, held);
             }
             if let Some(terminal) = virtual_terminal(key.modified_sym()) {
@@ -631,7 +632,7 @@ impl Compositor {
             // the arrows; the screens tried another way are kept by Enter
             // and put back by Escape. Nothing else then sees them.
             if compositor.leaving_key(code.raw(), keysym, true)
-                || compositor.screens_key(keysym, true)
+                || compositor.screens_key(code.raw(), keysym, true)
             {
                 compositor.taken.suppressed.push(code);
                 return FilterResult::Intercept(None);
@@ -1393,7 +1394,7 @@ impl Compositor {
             }
             return;
         }
-        if self.leaving_press(pressed, position) {
+        if self.leaving_press(pressed, position) || self.screens_press(pressed, position) {
             return;
         }
         if self.cards.about.asked.is_some() {

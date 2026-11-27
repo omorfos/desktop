@@ -103,12 +103,17 @@ the configuration says, then all showing what the one that comes first
 shows, then that one alone, then each of the others alone, and round
 again. Each screen keeps its `mode` and `rotate`. In the middle of each
 screen that is on, a box says which way they are in, such as "Mirrored:
-every screen shows what eDP-1 shows", and asks whether to keep them so:
-Enter keeps them, as it is let go, from half a second after the box is
-up, so that a key meant for something else does not; Escape puts them
-back as they were, and so does
-waiting 15 seconds, since it is the key you press when a screen has gone
-dark. Pressing the key again goes on to the next way. What is kept is for
+every screen shows what eDP-1 shows", and asks whether to keep them so,
+with two buttons, **Put back** and **Keep**. **Escape puts them back as
+they were at once**, whenever it is pressed, and so does **Put back**,
+where the keyboard starts, so that Enter does too; Tab, or Right, to
+**Keep** and Enter a moment after, or a click on it, keeps them (ADR
+111). Space is left to programs meanwhile, as it goes on with a slide
+on a screen just mirrored to a projector. Left alone 15 seconds they go back by themselves, since it is the
+key you press when a screen has gone dark; any key, a click or the
+pointer moving starts the 15 seconds again, but they go back two minutes
+after the box came up at the latest, however much you do meanwhile (ADR
+112). Pressing the key again goes on to the next way. What is kept is for
 the screens plugged in when it was; plugging one in or taking one out
 has them stand as this file says again, and plugging those back in has
 them stand as they were kept, at the next login too: each in the `mode`

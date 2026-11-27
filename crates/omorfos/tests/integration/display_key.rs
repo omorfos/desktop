@@ -29,6 +29,14 @@ fn tap(session: &mut Session, code: Keycode) {
     session.step();
 }
 
+/// Keeps the way tried, as a user does: the keyboard moved from Put back,
+/// where it starts, to Keep, and Enter a moment after (ADR 111).
+fn keep(session: &mut Session) {
+    tap(session, key::TAB);
+    session.advance(Duration::from_millis(500));
+    tap(session, key::RETURN);
+}
+
 fn next(session: &mut Session) {
     session.compositor_mut().perform(&Action::NextScreens);
     session.step();
@@ -111,7 +119,8 @@ fn enter_keeps_a_way_and_escape_puts_the_one_before_back() {
     // Other keys are anyone's, and leave it asked.
     tap(&mut session, key::A);
     assert_ne!(session.draw().at(WIDTH / 2, HEIGHT / 2), BACKGROUND);
-    // Enter keeps it only a moment after it is asked.
+    // Keep, the keyboard moved to it, keeps it only a moment after.
+    tap(&mut session, key::TAB);
     tap(&mut session, key::RETURN);
     assert!(!said(&session, "kept as they are"), "too soon");
     session.advance(Duration::from_millis(500));
@@ -130,8 +139,7 @@ fn enter_keeps_a_way_and_escape_puts_the_one_before_back() {
         next(&mut session);
     }
     assert_eq!(stand(&session, &second), SIDE_BY_SIDE);
-    session.advance(Duration::from_millis(500));
-    tap(&mut session, key::RETURN);
+    keep(&mut session);
     session.advance(Duration::from_secs(30));
     assert_eq!(stand(&session, &second), SIDE_BY_SIDE);
     // Enter and Escape are anyone's again once nothing is asked.
@@ -151,8 +159,7 @@ fn a_screen_plugged_in_or_taken_out_ends_what_was_tried() {
     }
     // And what was kept is for the screens it was kept with.
     next(&mut session);
-    session.advance(Duration::from_millis(500));
-    tap(&mut session, key::RETURN);
+    keep(&mut session);
     assert!(session.compositor().area_of(&second).is_empty());
     session.compositor_mut().remove_output(&third);
     session.step();
@@ -181,16 +188,14 @@ fn a_way_kept_is_how_the_screens_stand_at_the_next_login() {
     };
     let (mut session, second) = login();
     next(&mut session);
-    session.advance(Duration::from_millis(500));
-    tap(&mut session, key::RETURN);
+    keep(&mut session);
     assert_eq!(stand(&session, &second), MIRRORED);
     drop(session);
 
     let (mut session, second) = login();
     assert_eq!(stand(&session, &second), MIRRORED, "as it was kept");
     next(&mut session);
-    session.advance(Duration::from_millis(500));
-    tap(&mut session, key::RETURN);
+    keep(&mut session);
     assert_eq!(stand(&session, &second), FIRST_ALONE);
     drop(session);
 
@@ -200,10 +205,143 @@ fn a_way_kept_is_how_the_screens_stand_at_the_next_login() {
     // other, for the login after too.
     next(&mut session);
     next(&mut session);
-    session.advance(Duration::from_millis(500));
-    tap(&mut session, key::RETURN);
+    keep(&mut session);
     assert_eq!(stand(&session, &second), SIDE_BY_SIDE);
     drop(session);
     let (session, second) = login();
     assert_eq!(stand(&session, &second), SIDE_BY_SIDE);
+}
+
+/// Presses the left button on `at` and lets it go there.
+fn click(session: &mut Session, at: (i32, i32)) {
+    session.compositor_mut().input(
+        Input::Motion {
+            x: f64::from(at.0),
+            y: f64::from(at.1),
+        },
+        0,
+    );
+    for pressed in [true, false] {
+        let button = Input::Button {
+            button: 0x110,
+            pressed,
+        };
+        session.compositor_mut().input(button, 0);
+    }
+    session.step();
+}
+
+#[test]
+fn escape_puts_the_screens_back_at_once_however_soon_or_late() {
+    let (mut session, second) = two_screens();
+    next(&mut session);
+    tap(&mut session, key::ESCAPE);
+    assert_eq!(stand(&session, &second), SIDE_BY_SIDE, "at once");
+    assert_eq!(session.draw().at(WIDTH / 2, HEIGHT / 2), BACKGROUND);
+    // Put off by being there, past its 15 seconds, and then Escape.
+    next(&mut session);
+    for _ in 0..2 {
+        session.advance(Duration::from_secs(10));
+        session
+            .compositor_mut()
+            .input(Input::Motion { x: 9.0, y: 9.0 }, 0);
+    }
+    session.advance(Duration::from_secs(5));
+    assert_eq!(stand(&session, &second), MIRRORED, "put off, at 25 seconds");
+    tap(&mut session, key::ESCAPE);
+    assert_eq!(stand(&session, &second), SIDE_BY_SIDE, "late");
+    assert_eq!(session.draw().at(WIDTH / 2, HEIGHT / 2), BACKGROUND);
+}
+
+#[test]
+fn enter_puts_the_screens_back_where_the_keyboard_starts() {
+    let (mut session, second) = two_screens();
+    next(&mut session);
+    session.advance(Duration::from_secs(1));
+    tap(&mut session, key::RETURN);
+    assert_eq!(stand(&session, &second), SIDE_BY_SIDE);
+    assert!(said(&session, "back as they were"));
+}
+
+#[test]
+fn a_press_on_keep_keeps_the_screens_and_one_on_put_back_puts_them_back() {
+    let (mut session, second) = two_screens();
+    next(&mut session);
+    session.advance(Duration::from_secs(1));
+    let (_, keep) = session.compositor().keep_screens_buttons().unwrap();
+    click(&mut session, keep);
+    assert_eq!(stand(&session, &second), MIRRORED, "kept");
+    assert!(said(&session, "kept as they are"));
+    next(&mut session);
+    let (put_back, _) = session.compositor().keep_screens_buttons().unwrap();
+    click(&mut session, put_back);
+    assert_eq!(stand(&session, &second), MIRRORED, "back to the way kept");
+    assert_eq!(session.draw().at(WIDTH / 2, HEIGHT / 2), BACKGROUND);
+}
+
+#[test]
+fn being_there_puts_off_putting_the_screens_back_to_two_minutes_at_most() {
+    let (mut session, second) = two_screens();
+    next(&mut session);
+    for _ in 0..11 {
+        session.advance(Duration::from_secs(10));
+        session
+            .compositor_mut()
+            .input(Input::Motion { x: 9.0, y: 9.0 }, 0);
+    }
+    session.advance(Duration::from_secs(9));
+    assert_eq!(
+        stand(&session, &second),
+        MIRRORED,
+        "put off, at 119 seconds"
+    );
+    session
+        .compositor_mut()
+        .input(Input::Motion { x: 8.0, y: 8.0 }, 0);
+    session.advance(Duration::from_secs(2));
+    assert_eq!(
+        stand(&session, &second),
+        SIDE_BY_SIDE,
+        "back by two minutes"
+    );
+}
+
+#[test]
+fn a_press_on_keep_let_go_off_the_question_keeps_nothing() {
+    let (mut session, second) = two_screens();
+    next(&mut session);
+    session.advance(Duration::from_secs(1));
+    let (_, keep) = session.compositor().keep_screens_buttons().unwrap();
+    let at = |(x, y): (i32, i32)| Input::Motion {
+        x: f64::from(x),
+        y: f64::from(y),
+    };
+    let button = |pressed| Input::Button {
+        button: 0x110,
+        pressed,
+    };
+    session.compositor_mut().input(at(keep), 0);
+    session.compositor_mut().input(button(true), 0);
+    session.compositor_mut().input(at((5, 5)), 0);
+    session.compositor_mut().input(button(false), 0);
+    session.step();
+    assert!(!said(&session, "kept as they are"));
+    assert_eq!(stand(&session, &second), MIRRORED, "still asked");
+    assert_ne!(session.draw().at(WIDTH / 2, HEIGHT / 2), BACKGROUND);
+    // A click off it altogether is the desktop's, and answers nothing.
+    click(&mut session, (5, 5));
+    assert!(!said(&session, "kept as they are"));
+    assert_ne!(session.draw().at(WIDTH / 2, HEIGHT / 2), BACKGROUND);
+}
+
+#[test]
+fn space_is_left_to_programs_while_the_screens_are_asked_about() {
+    let (mut session, second) = two_screens();
+    next(&mut session);
+    session.advance(Duration::from_secs(1));
+    // As a slide on a projector is gone on with: not the question's.
+    tap(&mut session, key::SPACE);
+    assert_eq!(stand(&session, &second), MIRRORED, "still asked");
+    assert!(!said(&session, "back as they were"));
+    assert_ne!(session.draw().at(WIDTH / 2, HEIGHT / 2), BACKGROUND);
 }
