@@ -57,7 +57,7 @@ jobs:
           persist-credentials: false
       - name: Install the nightly toolchain
         run: rustup toolchain install "$NIGHTLY" --profile minimal
-      - uses: taiki-e/install-action@v2.90.3
+      - uses: taiki-e/install-action@v2.90.6
         with:
           tool: cargo-fuzz
       - name: Fuzz
