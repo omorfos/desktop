@@ -22,6 +22,7 @@ use std::time::Duration;
 use omorfos_config::{ButtonSide, Config, Easing, Part, State, States};
 use omorfos_core::geometry::{Point as DomainPoint, Rect};
 use omorfos_core::{OverviewMetrics, WindowId, overview};
+use omorfos_ui::Pressing;
 use smithay::backend::renderer::element::Kind;
 use smithay::backend::renderer::element::solid::{SolidColorBuffer, SolidColorRenderElement};
 use smithay::backend::renderer::element::utils::CropRenderElement;
@@ -92,6 +93,8 @@ pub(crate) struct Overview {
     /// is drawn: by the window, and the workspace in the strip it is
     /// drawn on, or none for where it is laid out itself.
     blanks: Vec<(Blank, SolidColorBuffer)>,
+    /// What the pointer's button went down on, while it is held.
+    pressing: Pressing<Target>,
 }
 
 /// Which of a private window's blanks one is: on which workspace in the
@@ -154,6 +157,20 @@ struct Drawn {
     close: Painted,
     /// The border and title of the window picked, if there is one.
     picked: Option<Picked>,
+}
+
+/// What a press in the overview is on, acted on as it is let go there
+/// (ADR 113).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Target {
+    /// A button that closes something.
+    Close(Closing),
+    /// The button after the strip, that makes a new workspace.
+    Add,
+    /// A workspace in the strip, by which desktop it is.
+    Strip(usize),
+    /// A window, or nothing, which closes the overview.
+    Elsewhere(Option<WindowId>),
 }
 
 /// What a button in the overview closes.
@@ -620,10 +637,11 @@ impl Compositor {
 
     /// Closes the overview, going to `chosen` once it has.
     fn close_overview(&mut self, chosen: Option<WindowId>) {
+        // A press held as it closes acts on nothing when it is next open.
+        self.cards.overview.pressing.forget();
         let clock = self.clock();
-        if let Some(looking) = self.cards.overview.open.as_mut() {
-            looking.close(clock, chosen);
-        }
+        let looking = self.cards.overview.open.iter_mut();
+        looking.for_each(|looking| looking.close(clock, chosen));
     }
 
     /// Takes a key pressed while the overview is open: Escape closes it,
@@ -704,6 +722,8 @@ impl Compositor {
     pub(crate) fn overview_motion(&mut self, at: DomainPoint) -> bool {
         // On a button that closes something, what it closes is still the
         // one under the pointer, though the button reaches past it.
+        let target = self.overview_target(at);
+        self.cards.overview.pressing.moved(Some(target));
         let closing = self.overview_close_under(at);
         let under = self.overview_under(at);
         let strip = self.overview_strip_under(at).map(|(place, _)| place);
@@ -745,58 +765,67 @@ impl Compositor {
         window.or(workspace)
     }
 
-    /// Takes a press of the pointer while the overview is open: on the
-    /// button after the strip it makes a new workspace and goes to it; on a
-    /// workspace in the strip it goes to it, and shows its windows; on a
-    /// window it goes to it; anywhere else it closes the overview.
-    pub(crate) fn overview_press(&mut self, at: DomainPoint) {
-        // A window closed as its titlebar's button would, so that its
-        // program may ask first; a workspace's windows given to the one
-        // beside it. The overview stays open on what is left.
-        match self.overview_close_under(at) {
-            Some(Closing::Window(window)) => {
-                self.mapped(window)
-                    .into_iter()
-                    .for_each(|mapped| mapped.role.close());
-                return;
-            }
-            Some(Closing::Workspace(desktop)) => {
-                let screen = self
-                    .cards
-                    .overview
-                    .open
-                    .as_ref()
-                    .map(|looking| looking.screen.origin);
-                self.desktop.turn_to(screen.unwrap_or_default());
-                self.desktop.close_workspace(desktop);
-                return;
-            }
-            None => {}
+    /// What a press at `at` is on while the overview is open.
+    fn overview_target(&self, at: DomainPoint) -> Target {
+        if let Some(closing) = self.overview_close_under(at) {
+            return Target::Close(closing);
         }
-        let adding = self.overview_adder_under(at);
-        let screen = self.cards.overview.open.as_ref();
-        if let Some((_, looking)) = adding.zip(screen) {
-            // Made at the end, and gone to, empty, for windows to come.
-            let origin = looking.screen.origin;
-            self.desktop.turn_to(origin);
-            self.desktop.new_workspace();
-            return;
+        if self.overview_adder_under(at).is_some() {
+            return Target::Add;
         }
         let strip = self.overview_strip_under(at);
+        strip.map_or_else(
+            || Target::Elsewhere(self.overview_under(at)),
+            |(_, desktop)| Target::Strip(desktop),
+        )
+    }
+
+    /// Takes the pointer's button going down or up at `at` while the
+    /// overview is open: what it went down on acts as it is let go on it
+    /// (ADR 113). On the button after the strip it makes a new workspace
+    /// and goes to it; on a workspace in the strip it goes to it, and
+    /// shows its windows; on a window it goes to it; anywhere else it
+    /// closes the overview.
+    pub(crate) fn overview_press(&mut self, at: DomainPoint, pressed: bool) {
+        let target = self.overview_target(at);
+        if pressed {
+            self.cards.overview.pressing.press(Some(target));
+            return;
+        }
+        let Some(target) = self.cards.overview.pressing.release(Some(target)) else {
+            return;
+        };
         let screen = self
             .cards
             .overview
             .open
             .as_ref()
             .map(|looking| looking.screen);
-        if let Some(((_, desktop), screen)) = strip.zip(screen) {
+        match target {
+            // A window closed as its titlebar's button would, so that its
+            // program may ask first; a workspace's windows given to the one
+            // beside it. The overview stays open on what is left.
+            Target::Close(Closing::Window(window)) => {
+                self.mapped(window)
+                    .into_iter()
+                    .for_each(|mapped| mapped.role.close());
+            }
+            Target::Close(Closing::Workspace(desktop)) => {
+                self.desktop.turn_to(screen.unwrap_or_default().origin);
+                self.desktop.close_workspace(desktop);
+            }
+            // Made at the end, and gone to, empty, for windows to come.
+            Target::Add => {
+                self.desktop.turn_to(screen.unwrap_or_default().origin);
+                self.desktop.new_workspace();
+            }
             // Gone to at once, its windows gliding in from where they are.
-            self.desktop.turn_to(screen.origin);
-            self.desktop.switch_workspace(desktop);
-            return;
+            Target::Strip(desktop) => {
+                self.desktop.turn_to(screen.unwrap_or_default().origin);
+                self.desktop.switch_workspace(desktop);
+            }
+            Target::Elsewhere(under) => self.close_overview(under),
         }
-        let under = self.overview_under(at);
-        self.close_overview(under);
     }
 
     /// Paints the border and the title of the window picked again, if

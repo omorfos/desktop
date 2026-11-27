@@ -1963,3 +1963,65 @@ fn a_window_gone_to_within_a_program_alone_comes_forward_and_shows_on_its_card()
         .collect();
     assert_eq!(stack, [green, blue, red]);
 }
+
+#[test]
+fn a_press_on_a_window_chooses_it_as_it_is_let_go_and_not_if_let_go_off_it() {
+    let (mut session, _client) = three();
+    alt_tab(&mut session, 1, false);
+    let layout = session.compositor().switcher_layout().unwrap();
+    let (first, last) = (layout.items[0].place, layout.items[2].place);
+    let at = |rect: Rect| Input::Motion {
+        x: f64::from(rect.origin.x + 20),
+        y: f64::from(rect.origin.y + 20),
+    };
+    let button = |pressed| Input::Button {
+        button: LEFT_BUTTON,
+        pressed,
+    };
+    session.compositor_mut().input(at(last), 0);
+    session.compositor_mut().input(button(true), 0);
+    session.step();
+    assert!(
+        session.compositor().switcher_layout().is_some(),
+        "open while held"
+    );
+    // Slid onto another and let go: nothing, and still open.
+    session.compositor_mut().input(at(first), 0);
+    session.compositor_mut().input(button(false), 0);
+    session.step();
+    assert!(
+        session.compositor().switcher_layout().is_some(),
+        "let go off it"
+    );
+    // Pressed and let go on it, it is chosen.
+    session.compositor_mut().input(at(last), 0);
+    session.compositor_mut().input(button(true), 0);
+    session.compositor_mut().input(button(false), 0);
+    session.step();
+    assert_eq!(focused(&session).as_deref(), Some("one"));
+    press(&mut session, key::ALT, false);
+}
+
+#[test]
+fn a_press_held_as_the_switcher_closes_chooses_nothing_when_it_is_next_open() {
+    let (mut session, _client) = three();
+    alt_tab(&mut session, 1, false);
+    let last = session.compositor().switcher_layout().unwrap().items[2].place;
+    let (x, y) = (f64::from(last.origin.x + 20), f64::from(last.origin.y + 20));
+    session.compositor_mut().input(Input::Motion { x, y }, 0);
+    let button = |pressed| Input::Button {
+        button: LEFT_BUTTON,
+        pressed,
+    };
+    session.compositor_mut().input(button(true), 0);
+    // Closed by letting Alt go, the button still held.
+    press(&mut session, key::ALT, false);
+    alt_tab(&mut session, 1, false);
+    session.compositor_mut().input(button(false), 0);
+    session.step();
+    assert!(
+        session.compositor().switcher_layout().is_some(),
+        "still open"
+    );
+    press(&mut session, key::ALT, false);
+}

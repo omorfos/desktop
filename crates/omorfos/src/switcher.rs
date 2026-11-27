@@ -18,7 +18,7 @@ use omorfos_core::geometry::{Point as DomainPoint, Rect, Size as DomainSize};
 use omorfos_core::{
     QueueMetrics, Switcher, SwitcherItem, SwitcherLayout, SwitcherMetrics, Used, WindowId,
 };
-use omorfos_ui::{Area, Image};
+use omorfos_ui::{Area, Image, Pressing};
 use smithay::backend::renderer::element::solid::{SolidColorBuffer, SolidColorRenderElement};
 use smithay::backend::renderer::element::{Id, Kind};
 use smithay::backend::renderer::{ImportAll, ImportMem, Renderer, Texture};
@@ -71,6 +71,9 @@ const FADE_IN: Duration = Duration::from_millis(120);
 pub(crate) struct Switch {
     /// The switcher, while it is open.
     open: Option<Switching>,
+    /// What the pointer's button went down on while it is open, a window
+    /// or nothing, chosen as it is let go there (ADR 113).
+    pressing: Pressing<Option<WindowId>>,
     /// The windows in the order they were last used.
     used: Used,
     /// The keys held with the binding being carried out, but for Shift;
@@ -111,6 +114,7 @@ impl Switch {
             held: Modifiers::NONE,
             icons: WindowIcons::default(),
             making: HashMap::new(),
+            pressing: Pressing::new(),
             dim: SolidColorBuffer::default(),
         }
     }
@@ -807,6 +811,8 @@ impl Compositor {
 
     /// Closes the switcher, choosing the window it is at if `chosen`.
     pub(crate) fn close_switcher(&mut self, chosen: bool) {
+        // A press held as it closes acts on nothing when it is next open.
+        self.switch.pressing.forget();
         // A program comes forward whole, as a Mac's does; but one gone
         // through window by window has only the window gone to come forward,
         // the others staying as they stood.
@@ -877,22 +883,35 @@ impl Compositor {
         self.switch.open.is_some()
     }
 
-    /// Takes a press of the pointer while the switcher is open: on a
-    /// window it chooses the one in front there, anywhere else it closes
-    /// the switcher.
-    pub(crate) fn switcher_press(&mut self, at: DomainPoint) {
-        let config = Arc::clone(self.store.current());
+    /// The window shown in the switcher at `at`, if one is.
+    fn switcher_under(&self, at: DomainPoint) -> Option<WindowId> {
+        let config = self.store.current();
         let (clock, still) = (self.clock(), self.switcher_still());
         // Before it is shown, nothing of it is there to be clicked on.
-        let open = self.switch.open.as_mut();
+        let open = self.switch.open.as_ref();
         let open = open.filter(|switching| clock >= switching.shown);
-        let under = open.and_then(|switching| {
-            let layout = laid_out(&config, switching, moved(switching, clock, still));
+        open.and_then(|switching| {
+            let layout = laid_out(config, switching, moved(switching, clock, still));
             let under = layout.items.iter().find(|item| item.place.contains(at));
-            let window = under.map(|item| item.window)?;
-            switching.switcher.pick(window);
-            Some(window)
-        });
+            under.map(|item| item.window)
+        })
+    }
+
+    /// Takes the pointer's button going down or up at `at` while the
+    /// switcher is open: what it went down on acts as it is let go on it
+    /// (ADR 113). On a window it chooses the one in front there, anywhere
+    /// else it closes the switcher.
+    pub(crate) fn switcher_press(&mut self, at: DomainPoint, pressed: bool) {
+        let under = self.switcher_under(at);
+        if pressed {
+            self.switch.pressing.press(Some(under));
+            return;
+        }
+        let Some(under) = self.switch.pressing.release(Some(under)) else {
+            return;
+        };
+        let open = self.switch.open.as_mut().into_iter().zip(under);
+        open.for_each(|(switching, window)| switching.switcher.pick(window));
         self.close_switcher(under.is_some());
     }
 

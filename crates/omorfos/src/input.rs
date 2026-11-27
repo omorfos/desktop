@@ -1455,9 +1455,11 @@ impl Compositor {
         if self.switcher_open() || self.overview_open() {
             // The switcher has the pointer while it is open, as the
             // overview has; each takes a press only while it is.
-            if pressed {
-                self.switcher_press(position);
-                self.overview_press(position);
+            if self.switcher_open() {
+                self.switcher_press(position, pressed);
+            }
+            if self.overview_open() {
+                self.overview_press(position, pressed);
             }
             return;
         }

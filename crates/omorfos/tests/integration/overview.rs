@@ -1334,3 +1334,41 @@ fn the_close_button_is_glass_with_a_small_cross_in_the_middle_of_it() {
     assert!(red(frame.at(x, y)).abs_diff(u32::from(ink.red)) < 0x30);
     assert!(red(frame.at(x - 6, y - 6)).abs_diff(u32::from(ink.red)) > 0x30);
 }
+
+#[test]
+fn a_press_on_a_window_goes_to_it_as_it_is_let_go_and_not_if_let_go_off_it() {
+    let (mut session, _client) = three(&[UNBLURRED]);
+    open(&mut session);
+    let (one, two) = (
+        middle(place(&session, "one")),
+        middle(place(&session, "two")),
+    );
+    let at = |(x, y): (i32, i32)| Input::Motion {
+        x: f64::from(x),
+        y: f64::from(y),
+    };
+    let button = |pressed| Input::Button {
+        button: LEFT_BUTTON,
+        pressed,
+    };
+    session.compositor_mut().input(at(one), 0);
+    session.compositor_mut().input(button(true), 0);
+    session.advance(GLIDE);
+    assert!(
+        session.compositor().overview_layout().is_some(),
+        "open while held"
+    );
+    // Slid onto another and let go: nothing, and still open.
+    session.compositor_mut().input(at(two), 0);
+    session.compositor_mut().input(button(false), 0);
+    session.advance(GLIDE);
+    assert!(
+        session.compositor().overview_layout().is_some(),
+        "let go off it"
+    );
+    // Pressed and let go on it, it is gone to.
+    click(&mut session, one);
+    session.advance(GLIDE);
+    assert_eq!(session.compositor().overview_layout(), None);
+    assert_eq!(focused(&session).as_deref(), Some("one"));
+}
