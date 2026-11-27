@@ -2,7 +2,7 @@
 
 use std::time::Duration;
 
-use jiff::Zoned;
+use jiff::ZonedDateTime;
 use jiff::civil::Date;
 
 /// The time now where the user is, as it reads on the bar, how long until
@@ -10,12 +10,12 @@ use jiff::civil::Date;
 /// time and the day agree at midnight too.
 #[must_use]
 pub fn now() -> (String, Duration, Date) {
-    of(&Zoned::now())
+    of(&ZonedDateTime::now())
 }
 
 /// How a moment reads on the bar, how long until it reads differently, and
 /// the day it is in: what [`now`] says of the moment it reads.
-fn of(moment: &Zoned) -> (String, Duration, Date) {
+fn of(moment: &ZonedDateTime) -> (String, Duration, Date) {
     let (time, changes) = reading(
         moment.hour(),
         moment.minute(),
@@ -31,7 +31,7 @@ fn of(moment: &Zoned) -> (String, Duration, Date) {
 pub fn at(seconds: u64) -> Option<String> {
     let seconds = i64::try_from(seconds).ok()?;
     let moment = jiff::Timestamp::from_second(seconds).ok()?;
-    let zoned = moment.to_zoned(jiff::tz::TimeZone::system());
+    let zoned = moment.to_zoned_datetime(jiff::tz::TimeZone::system());
     Some(reading(zoned.hour(), zoned.minute(), 0, 0).0)
 }
 
@@ -81,7 +81,7 @@ mod tests {
         let utc = jiff::tz::TimeZone::UTC;
         let before = jiff::civil::date(2026, 11, 23)
             .at(23, 59, 59, 999_000_000)
-            .to_zoned(utc)
+            .to_zoned_datetime(utc)
             .unwrap();
         assert_eq!(
             of(&before),

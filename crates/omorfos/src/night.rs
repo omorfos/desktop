@@ -10,7 +10,7 @@
 
 use std::time::{Duration, Instant, SystemTime};
 
-use jiff::Zoned;
+use jiff::ZonedDateTime;
 use omorfos_config::{DAYLIGHT, Easing, between};
 
 use crate::compositor::Compositor;
@@ -81,7 +81,7 @@ impl Compositor {
     /// Asks night light's schedule how warm the screens are to be at `now`,
     /// as it falls due, and as the configuration changes. A switch by hand
     /// lasts until the schedule turns the screens warm, or back.
-    pub fn light_the_night(&mut self, now: &Zoned) {
+    pub fn light_the_night(&mut self, now: &ZonedDateTime) {
         let general = &self.config().general;
         let (scheduled, due) = general.night_light.at(&general.appearance, now);
         let warm = scheduled < DAYLIGHT;
@@ -115,7 +115,7 @@ impl Compositor {
     /// clock on the wall at `wall`.
     pub fn light_the_night_if_due(&mut self, wall: SystemTime) {
         if self.night.due.is_some_and(|due| due <= wall) {
-            self.light_the_night(&Zoned::now());
+            self.light_the_night(&ZonedDateTime::now());
         }
     }
 

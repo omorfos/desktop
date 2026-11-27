@@ -5,7 +5,7 @@ use serde::Deserialize;
 use std::borrow::Cow;
 use std::time::SystemTime;
 
-use jiff::Zoned;
+use jiff::ZonedDateTime;
 
 use crate::daylight::{self, Day, Location};
 use crate::{
@@ -391,7 +391,7 @@ impl Appearance {
     /// The scheme the desktop is in at `now`, and, if it goes by the time
     /// of day, when it is next to be asked again.
     #[must_use]
-    pub fn scheme_at(&self, now: &Zoned) -> (Scheme, Option<SystemTime>) {
+    pub fn scheme_at(&self, now: &ZonedDateTime) -> (Scheme, Option<SystemTime>) {
         let fixed = match self.scheme {
             SchemeChoice::Dark => Scheme::Dark,
             SchemeChoice::Light => Scheme::Light,
@@ -399,7 +399,9 @@ impl Appearance {
                 let place = (self.location, self.day);
                 let (light, next) = daylight::light_at(now, place, now.time_zone().iana_name());
                 let scheme = if light { Scheme::Light } else { Scheme::Dark };
-                return (scheme, Some(next.into()));
+                // A time the system's clock cannot hold, which on Linux none
+                // that jiff can is, is no change that can be waited for.
+                return (scheme, SystemTime::try_from(next).ok());
             }
         };
         (fixed, None)

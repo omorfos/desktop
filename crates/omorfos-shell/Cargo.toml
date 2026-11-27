@@ -14,7 +14,7 @@ publish.workspace = true
 [dependencies]
 # Says what time it is where the user is, for the clocks of the panel and
 # the lock screen.
-jiff = { version = "0.2.38", default-features = false, features = ["std", "tz-system", "tzdb-zoneinfo"] }
+jiff = { version = "1.0.1", default-features = false, features = ["std", "tz-system", "tzdb-zoneinfo"] }
 omorfos-config = { path = "../omorfos-config" }
 omorfos-ui = { path = "../omorfos-ui" }
 # Already in the tree through Smithay. Makes the memory a picture is handed

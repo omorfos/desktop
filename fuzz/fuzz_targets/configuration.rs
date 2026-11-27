@@ -40,7 +40,7 @@ fuzz_target!(|data: &[u8]| {
     // the time of day.
     let now = Timestamp::from_second(1_800_000_000)
         .expect("a moment")
-        .to_zoned(TimeZone::UTC);
+        .to_zoned_datetime(TimeZone::UTC);
     let (loaded, _) = Config::load_at(&PLACE, &BUILT_IN, &now);
     let _ = Config::load_at(&PLACE, &loaded, &now);
 });

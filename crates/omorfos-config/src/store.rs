@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
-use jiff::Zoned;
+use jiff::ZonedDateTime;
 
 use crate::{Config, Diagnostic, SchemeChoice, Theme};
 
@@ -64,7 +64,8 @@ impl Store {
     #[must_use]
     pub fn open(directory: impl Into<PathBuf>) -> Self {
         let directory = directory.into();
-        let (config, loaded) = Config::loaded(&directory, &Config::default(), &Zoned::now());
+        let (config, loaded) =
+            Config::loaded(&directory, &Config::default(), &ZonedDateTime::now());
         let config = Arc::new(config);
         Self {
             directory,
@@ -138,7 +139,7 @@ impl Store {
             return;
         }
         let (fallback, _) = Config::load(kept, &Config::default());
-        let (config, loaded) = Config::loaded(&self.directory, &fallback, &Zoned::now());
+        let (config, loaded) = Config::loaded(&self.directory, &fallback, &ZonedDateTime::now());
         let config = Arc::new(config);
         self.current = Arc::clone(&config);
         self.loaded = config;
@@ -201,7 +202,7 @@ impl Store {
     /// kept as day turning into night, or night into day, for whoever
     /// draws to show over a minute: see [`Store::at`].
     pub fn reload(&mut self) -> bool {
-        let (config, loaded) = Config::loaded(&self.directory, &self.loaded, &Zoned::now());
+        let (config, loaded) = Config::loaded(&self.directory, &self.loaded, &ZonedDateTime::now());
         self.diagnostics = loaded.diagnostics;
         self.parsed = loaded.texts;
         self.keep();

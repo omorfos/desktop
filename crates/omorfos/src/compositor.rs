@@ -1468,7 +1468,7 @@ impl Compositor {
             .iter_mut()
             .for_each(|watcher| watcher.wake_at(due));
         self.switch.icons.set_theme(&config.general.icons.theme);
-        self.light_the_night(&jiff::Zoned::now());
+        self.light_the_night(&jiff::ZonedDateTime::now());
         problems.extend(self.store.diagnostics().iter().map(ToString::to_string));
         problems.extend(crate::outputs::misplaced(&config.general));
 

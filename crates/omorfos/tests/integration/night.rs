@@ -6,7 +6,7 @@ use std::time::{Duration, Instant, SystemTime};
 
 use jiff::civil::date;
 use jiff::tz::TimeZone;
-use jiff::{SignedDuration, Zoned};
+use jiff::{SignedDuration, ZonedDateTime};
 use omorfos_config::Action;
 
 use crate::common::Session;
@@ -16,9 +16,9 @@ const ON: &str = "night_light: { enabled: true, temperature: 4000 }\n\
                   appearance: { day: { from: '07:00', to: '19:00' } }\n";
 
 /// A moment, written in UTC, on a day in `year`.
-fn utc(year: i16, hour: i8, minute: i8) -> Zoned {
+fn utc(year: i16, hour: i8, minute: i8) -> ZonedDateTime {
     let moment = date(year, 1, 1).at(hour, minute, 0, 0);
-    moment.to_zoned(TimeZone::UTC).unwrap_or_default()
+    moment.to_zoned_datetime(TimeZone::UTC).unwrap_or_default()
 }
 
 /// A session with `config`, its clock started, as one is from its first
@@ -125,7 +125,7 @@ fn a_change_fades_in_over_a_moment_and_is_drawn_again_until_it_has() {
 fn the_first_temperature_a_compositor_is_asked_for_is_there_at_once() {
     // As one started again by night has the screens warm already. The day
     // is put hours from now, so that it is night whenever this is run.
-    let hour = |hours: i64| (Zoned::now() + SignedDuration::from_hours(hours)).hour();
+    let hour = |hours: i64| (ZonedDateTime::now() + SignedDuration::from_hours(hours)).hour();
     let config = format!(
         "night_light: {{ enabled: true }}\n\
          appearance: {{ day: {{ from: '{:02}:00', to: '{:02}:00' }} }}\n",

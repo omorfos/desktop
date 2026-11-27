@@ -108,7 +108,9 @@ pub fn told(arguments: &[OsString]) -> Result<Told, Failure> {
 /// of day where the user is, to the second.
 #[must_use]
 pub fn stamp() -> String {
-    jiff::Zoned::now().strftime("%Y-%m-%d %H-%M-%S").to_string()
+    jiff::ZonedDateTime::now()
+        .strftime("%Y-%m-%d %H-%M-%S")
+        .to_string()
 }
 
 /// What the compositor answers `request` with at its socket for scripts.

@@ -8,7 +8,7 @@
 
 use std::f64::consts::TAU;
 
-use jiff::{Timestamp, Zoned};
+use jiff::{Timestamp, ZonedDateTime};
 use serde::Deserialize;
 
 /// Where on Earth the user is, for when the sun is up there.
@@ -208,12 +208,12 @@ impl TryFrom<Hours> for Day {
 /// what `location: system` says too; and where that has no place, by the
 /// hours of the day.
 pub(crate) fn light_at(
-    now: &Zoned,
+    now: &ZonedDateTime,
     (location, day): (Option<Location>, Option<Day>),
     system: Option<&str>,
 ) -> (bool, Timestamp) {
     let midnight = now.date().tomorrow().ok();
-    let midnight = midnight.and_then(|date| date.to_zoned(now.time_zone().clone()).ok());
+    let midnight = midnight.and_then(|date| date.to_zoned_datetime(now.time_zone().clone()).ok());
     let midnight = midnight.map_or(now.timestamp(), |midnight| midnight.timestamp());
     let place = match (location, day) {
         (Some(Location::At(at)), _) => Some(at),
@@ -276,7 +276,9 @@ fn by_the_sun(now: &Timestamp, location: Coordinates) -> (bool, Option<Timestamp
     let today = now.as_second().div_euclid(DAY) * DAY;
     let days = [today - DAY, today, today + DAY].map(|midnight| {
         let of = Timestamp::from_second(midnight).ok();
-        let of = of.map_or(1, |of| of.to_zoned(jiff::tz::TimeZone::UTC).day_of_year());
+        let of = of.map_or(1, |of| {
+            of.to_zoned_datetime(jiff::tz::TimeZone::UTC).day_of_year()
+        });
         let at = |minutes: f64| {
             #[expect(clippy::cast_possible_truncation, reason = "within a day either side")]
             let seconds = (minutes * 60.0).round() as i64;
@@ -301,7 +303,7 @@ fn by_the_sun(now: &Timestamp, location: Coordinates) -> (bool, Option<Timestamp
 
 /// Whether it is between the hours of `day` at `now`, and when it next
 /// turns one of them.
-fn by_the_clock(now: &Zoned, day: Day) -> (bool, Option<Timestamp>) {
+fn by_the_clock(now: &ZonedDateTime, day: Day) -> (bool, Option<Timestamp>) {
     let minutes = |minutes: u16| i32::from(minutes);
     let time = now.time();
     let at = i32::from(time.hour()) * 60 + i32::from(time.minute());
@@ -318,7 +320,7 @@ fn by_the_clock(now: &Zoned, day: Day) -> (bool, Option<Timestamp>) {
             let (hour, minute) = (minutes / 60, minutes % 60);
             #[expect(clippy::cast_possible_truncation, reason = "an hour and a minute")]
             let time = jiff::civil::time(hour as i8, minute as i8, 0, 0);
-            date.to_datetime(time).to_zoned(zone.clone()).ok()
+            date.to_datetime(time).to_zoned_datetime(zone.clone()).ok()
         })
     });
     let next = turns.flatten().map(|turn| turn.timestamp());
@@ -345,16 +347,16 @@ mod tests {
     }
 
     /// A moment, written in UTC.
-    fn utc(year: i16, month: i8, day: i8, hour: i8, minute: i8) -> Zoned {
+    fn utc(year: i16, month: i8, day: i8, hour: i8, minute: i8) -> ZonedDateTime {
         let moment = date(year, month, day).at(hour, minute, 0, 0);
-        moment.to_zoned(TimeZone::UTC).unwrap()
+        moment.to_zoned_datetime(TimeZone::UTC).unwrap()
     }
 
     /// When the sun is next to rise or set after `now`, as `"HH:MM"` UTC,
     /// and whether it is up.
-    fn sun_at(now: &Zoned, location: Location) -> (bool, String) {
+    fn sun_at(now: &ZonedDateTime, location: Location) -> (bool, String) {
         let (light, next) = light_at(now, (Some(location), None), None);
-        let next = next.to_zoned(TimeZone::UTC);
+        let next = next.to_zoned_datetime(TimeZone::UTC);
         (light, format!("{:02}:{:02}", next.hour(), next.minute()))
     }
 
@@ -419,11 +421,11 @@ mod tests {
         let at = |hour: i8, minute: i8| {
             date(2026, 3, 10)
                 .at(hour, minute, 0, 0)
-                .to_zoned(zone.clone())
+                .to_zoned_datetime(zone.clone())
                 .unwrap()
         };
         let local = |next: Timestamp| {
-            let next = next.to_zoned(zone.clone());
+            let next = next.to_zoned_datetime(zone.clone());
             (next.day(), next.hour(), next.minute())
         };
         // Where neither a place nor a time zone with one is known.
@@ -495,7 +497,7 @@ mod tests {
             to: 14 * 60,
         });
         let polar = Some(degrees(78.22, 15.65));
-        let light = |now: &Zoned, place, zone| light_at(now, place, zone).0;
+        let light = |now: &ZonedDateTime, place, zone| light_at(now, place, zone).0;
         assert!(light(&noon, (None, None), london), "where the system is");
         assert!(!light(&midnight, (None, None), london));
         assert!(light(&noon, (Some(Location::System), long_night), london));

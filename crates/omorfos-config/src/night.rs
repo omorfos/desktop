@@ -3,7 +3,7 @@
 
 use std::time::SystemTime;
 
-use jiff::{SignedDuration, Zoned};
+use jiff::{SignedDuration, ZonedDateTime};
 use serde::Deserialize;
 
 use crate::bounded::Bounded;
@@ -51,7 +51,7 @@ impl NightLight {
     /// `appearance` goes by, in kelvin; and, while night light is on, when
     /// that is next to be asked again.
     #[must_use]
-    pub fn at(&self, appearance: &Appearance, now: &Zoned) -> (u16, Option<SystemTime>) {
+    pub fn at(&self, appearance: &Appearance, now: &ZonedDateTime) -> (u16, Option<SystemTime>) {
         if !self.enabled {
             return (DAYLIGHT, None);
         }
@@ -62,7 +62,9 @@ impl NightLight {
             let at = now
                 .timestamp()
                 .saturating_add(SignedDuration::from_mins(minutes));
-            let at = at.unwrap_or(now.timestamp()).to_zoned(zone.clone());
+            let at = at
+                .unwrap_or(now.timestamp())
+                .to_zoned_datetime(zone.clone());
             daylight::light_at(&at, place, system)
         };
         // How much of the last twenty minutes, and of the next, it is dark,
@@ -92,7 +94,9 @@ impl NightLight {
         } else {
             soon
         };
-        (kelvin, Some(SystemTime::from(next)))
+        // A time the system's clock cannot hold, which on Linux none that
+        // jiff can is, is no change that can be waited for.
+        (kelvin, SystemTime::try_from(next).ok())
     }
 }
 
@@ -183,9 +187,9 @@ mod tests {
     use super::*;
 
     /// A moment, written in UTC, where the day is from seven to seven.
-    fn utc(hour: i8, minute: i8) -> Zoned {
+    fn utc(hour: i8, minute: i8) -> ZonedDateTime {
         let moment = date(2026, 11, 12).at(hour, minute, 0, 0);
-        moment.to_zoned(TimeZone::UTC).unwrap()
+        moment.to_zoned_datetime(TimeZone::UTC).unwrap()
     }
 
     fn on() -> NightLight {
@@ -200,7 +204,9 @@ mod tests {
     fn at(light: NightLight, hour: i8, minute: i8) -> (u16, Option<String>) {
         let (kelvin, next) = light.at(&Appearance::default(), &utc(hour, minute));
         let next = next.map(|next| {
-            let next = Timestamp::try_from(next).unwrap().to_zoned(TimeZone::UTC);
+            let next = Timestamp::try_from(next)
+                .unwrap()
+                .to_zoned_datetime(TimeZone::UTC);
             format!(
                 "{:02}:{:02}:{:02}",
                 next.hour(),

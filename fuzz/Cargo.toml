@@ -15,7 +15,7 @@ cargo-fuzz = true
 
 [dependencies]
 # The moment a configuration is loaded at, as the compositor's.
-jiff = { version = "0.2.38", default-features = false, features = ["std"] }
+jiff = { version = "1.0.1", default-features = false, features = ["std"] }
 libfuzzer-sys = "0.4.10"
 omorfos-core = { path = "../crates/omorfos-core" }
 omorfos-config = { path = "../crates/omorfos-config" }

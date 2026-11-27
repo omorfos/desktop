@@ -5,7 +5,7 @@ use std::io::{self, Read};
 use std::path::Path;
 use std::time::SystemTime;
 
-use jiff::Zoned;
+use jiff::ZonedDateTime;
 use serde::de::DeserializeOwned;
 
 use crate::{Accent, Appearance, Diagnostic, General, Keys, Menu, Rules, Scheme, Theme};
@@ -66,14 +66,18 @@ impl Config {
     /// in effect when reloading.
     #[must_use]
     pub fn load(directory: &Path, fallback: &Self) -> (Self, Vec<Diagnostic>) {
-        Self::load_at(directory, fallback, &Zoned::now())
+        Self::load_at(directory, fallback, &ZonedDateTime::now())
     }
 
     /// Loads the configuration in `directory` as [`Config::load`] does, as
     /// it is at `now`: the scheme goes by the time of day if
     /// `appearance.scheme` is `auto`.
     #[must_use]
-    pub fn load_at(directory: &Path, fallback: &Self, now: &Zoned) -> (Self, Vec<Diagnostic>) {
+    pub fn load_at(
+        directory: &Path,
+        fallback: &Self,
+        now: &ZonedDateTime,
+    ) -> (Self, Vec<Diagnostic>) {
         let (config, loaded) = Self::loaded(directory, fallback, now);
         (config, loaded.diagnostics)
     }
@@ -81,7 +85,7 @@ impl Config {
     /// Loads the configuration in `directory` as [`Config::load_at`] does,
     /// with the text of each file that loaded, as it was parsed.
     #[must_use]
-    pub(crate) fn loaded(directory: &Path, fallback: &Self, now: &Zoned) -> (Self, Loaded) {
+    pub(crate) fn loaded(directory: &Path, fallback: &Self, now: &ZonedDateTime) -> (Self, Loaded) {
         let mut loaded = Loaded::default();
         let general: General = section(directory, GENERAL, &fallback.general, &mut loaded);
         // The theme is built in the scheme and with the accent `config.yaml`
@@ -323,10 +327,10 @@ mod tests {
     }
 
     /// A moment of 10 March 2026 an hour east of UTC.
-    fn at(hour: i8) -> Zoned {
+    fn at(hour: i8) -> ZonedDateTime {
         let zone = jiff::tz::TimeZone::fixed(jiff::tz::offset(1));
         let moment = jiff::civil::date(2026, 3, 10).at(hour, 0, 0, 0);
-        moment.to_zoned(zone).unwrap()
+        moment.to_zoned_datetime(zone).unwrap()
     }
 
     #[test]
@@ -338,7 +342,7 @@ mod tests {
         assert_eq!(noon.scheme, Scheme::Light);
         assert!(!noon.theme.dark());
         let evening = at(19).timestamp();
-        assert_eq!(noon.changes, Some(evening.into()));
+        assert_eq!(noon.changes, SystemTime::try_from(evening).ok());
         let (night, _) = Config::load_at(directory.path(), &noon, &at(22));
         assert_eq!(night.scheme, Scheme::Dark);
         assert!(night.theme.dark());
