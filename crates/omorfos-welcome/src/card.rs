@@ -7,7 +7,7 @@
 //! Nothing here knows of Wayland or of files.
 
 use omorfos_config::{Color, Edges, Part, SchemeChoice, State, States, Style, Theme};
-use omorfos_ui::{Area, Canvas, Image, Scale, Text, inset};
+use omorfos_ui::{Area, Canvas, Image, Pressing, Scale, Text, inset};
 
 /// The room between what stands side by side, and between a row of
 /// pictures and what is under it.
@@ -191,6 +191,9 @@ pub struct Card {
     scheme: SchemeChoice,
     focus: Focus,
     hovered: Option<Focus>,
+    /// What the pointer's button went down on, pressed as it is let go
+    /// there (ADR 113).
+    pressing: Pressing<Focus>,
     /// Why the last choice was not saved.
     problem: Option<String>,
 }
@@ -330,6 +333,7 @@ impl Card {
             scheme,
             focus: Focus::Next,
             hovered: None,
+            pressing: Pressing::new(),
             problem: None,
         }
     }
@@ -468,15 +472,33 @@ impl Card {
     /// says whether that changes how it looks.
     pub fn point(&mut self, x: i32, y: i32, theme: &Theme) -> bool {
         let over = self.at(x, y, theme);
+        self.pressing.moved(over);
         let changed = over != self.hovered;
         self.hovered = over;
         changed
     }
 
-    /// What a click at `x`, `y` on the card comes to.
+    /// What a click at `x`, `y` on the card comes to: the button pressed
+    /// and let go there.
     pub fn click(&mut self, x: i32, y: i32, theme: &Theme) -> Outcome {
+        self.pointer_down(x, y, theme);
+        self.pointer_up(Some((x, y)), theme)
+    }
+
+    /// Takes the pointer's button going down at `x`, `y` on the card:
+    /// what is there is pressed as the button is let go on it (ADR 113).
+    pub fn pointer_down(&mut self, x: i32, y: i32, theme: &Theme) {
         let over = self.at(x, y, theme);
-        over.map_or(Outcome::Stay, |focus| self.press(focus))
+        self.pressing.press(over);
+    }
+
+    /// Takes the pointer's button being let go `at` a place on the card,
+    /// or off it: on what it went down on, that is pressed; anywhere else,
+    /// nothing.
+    pub fn pointer_up(&mut self, at: Option<(i32, i32)>, theme: &Theme) -> Outcome {
+        let over = at.and_then(|(x, y)| self.at(x, y, theme));
+        let held = self.pressing.release(over);
+        held.map_or(Outcome::Stay, |focus| self.press(focus))
     }
 
     /// Takes in that `choice` was saved, and is in use.

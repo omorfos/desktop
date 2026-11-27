@@ -568,8 +568,16 @@ impl Dispatch<wl_pointer::WlPointer, ()> for Shell {
                 button: LEFT_BUTTON,
                 state: WEnum::Value(wl_pointer::ButtonState::Pressed),
                 ..
-            } if shell.on_box => {
-                let outcome = shell.card.click(x, y, &shell.theme);
+            } if shell.on_box => shell.card.pointer_down(x, y, &shell.theme),
+            // What it went down on is pressed as it is let go on it, which
+            // beside the card it never is (ADR 113).
+            wl_pointer::Event::Button {
+                button: LEFT_BUTTON,
+                state: WEnum::Value(wl_pointer::ButtonState::Released),
+                ..
+            } => {
+                let at = shell.on_box.then_some((x, y));
+                let outcome = shell.card.pointer_up(at, &shell.theme);
                 shell.take(outcome);
             }
             _ => {}

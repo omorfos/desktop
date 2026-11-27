@@ -415,3 +415,46 @@ fn a_card_running_by_itself_gives_up_when_the_session_ends() {
 
     assert!(card.join().unwrap().is_err());
 }
+
+#[test]
+fn skip_pressed_closes_the_card_as_it_is_let_go_and_not_if_let_go_off_it() {
+    let mut session = Session::new();
+    let state = tempfile::TempDir::new().unwrap();
+    let theme = omorfos_config::Theme::default();
+    let marked = state.path().join("welcomed");
+    let (mut card, (width, height)) =
+        card_in(&mut session, &theme, &marked, (Chosen::default(), false));
+    assert!(!settle(&mut session, &mut card));
+    let (left, top) = ((WIDTH - width) / 2, (HEIGHT - height) / 2);
+    let skip = (left + 13 + 60, top + height - 13 - 18);
+    let to = |session: &mut Session, (x, y): (i32, i32)| {
+        let (x, y) = (f64::from(x), f64::from(y));
+        session
+            .compositor_mut()
+            .input(omorfos::Input::Motion { x, y }, 0);
+        session
+            .compositor_mut()
+            .input(omorfos::Input::Motion { x: x + 1.0, y }, 0);
+    };
+    let button = |session: &mut Session, pressed| {
+        let button = omorfos::Input::Button {
+            button: 0x110,
+            pressed,
+        };
+        session.compositor_mut().input(button, 0);
+    };
+    // Down on Skip, slid onto the middle of the card and let go: nothing.
+    to(&mut session, skip);
+    button(&mut session, true);
+    assert!(!settle(&mut session, &mut card), "not as it goes down");
+    to(&mut session, (left + width / 2, top + height / 2));
+    button(&mut session, false);
+    assert!(!settle(&mut session, &mut card), "let go off it");
+    assert!(!marked.exists());
+    // Pressed and let go on it, the card closes.
+    to(&mut session, skip);
+    button(&mut session, true);
+    button(&mut session, false);
+    assert!(settle(&mut session, &mut card));
+    assert!(marked.exists());
+}
