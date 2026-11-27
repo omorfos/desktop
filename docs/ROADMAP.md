@@ -29,6 +29,14 @@ a known gap.
   half a second, or click; then the terminal has the keyboard, with
   nothing typed into it. Answered with Escape, the box gives the
   keyboard back at once.
+- **Questions answered only by what was meant for them (#180,
+  finding 3; ADR 111).** In a browser, start sharing the screen while
+  typing in a text field, and press Enter as the question comes up: it
+  is cancelled, nothing shared, the keyboard's ring on Cancel. Asked
+  again, Tab to Share and Enter at once does nothing; a moment later it
+  shares. Press on Share, drag off it and let go: nothing. Shut Down
+  from the root menu: Enter cancels, Tab and Enter after a moment goes
+  on.
 - **The program's windows alone (#141).** With two windows of one
   program and one of another on a workspace, the first focused,
   Super+Ctrl+Down opens the overview with the two alone, the one in
@@ -3010,11 +3018,15 @@ the maintainer decided that day, omorfos having had no release: they are
 to be put right before a release of any kind, and the first release
 (below, under "Reaching people") waits for them:
 
-- [ ] **High: a key meant for another program says yes to sharing the
+- [x] **High: a key meant for another program says yes to sharing the
       screen**
       ([finding 3](reviews/2026-11-26-accessibility-design-wcag.md#3-a-key-meant-for-another-program-says-yes-to-sharing-the-screen)):
-      the portal's question takes the keyboard as it comes up, and Enter
-      is "Share". Shown by tests that are there.
+      the portal's question took the keyboard as it came up, and Enter
+      was "Share". Every box that asks is answered now as ADR 111 has
+      it: the keyboard starts on what refuses, shown; what gives waits
+      half a second after the box is up; a key counts as it is let go,
+      having gone down while it was up, and a press as it is let go on
+      what it went down on.
 - [x] **High: a box for a secret that is withdrawn hands the keyboard
       straight back**
       ([finding 26](reviews/2026-11-26-accessibility-design-wcag.md#26-a-box-for-a-secret-that-is-withdrawn-hands-the-keyboard-straight-back)):
@@ -3024,8 +3036,13 @@ to be put right before a release of any kind, and the first release
       the pointer is pressed (ADR 48, addendum).
 - [ ] Medium: the boxes that ask not answering alike
       ([finding 14](reviews/2026-11-26-accessibility-design-wcag.md#14-the-boxes-that-ask-do-not-answer-alike)).
+      The portal's question, the one before leaving, the screens' and
+      the password box's buttons answer alike since ADR 111; what is
+      left is the rest of the finding.
 - [ ] Medium: nearly everything acting as the button goes down
       ([finding 5](reviews/2026-11-26-accessibility-design-wcag.md#5-nearly-everything-acts-as-the-button-goes-down)).
+      The boxes that ask act as it is let go since ADR 111; menus, the
+      launcher, the bar and notifications do not yet.
 - [ ] Medium: times that cannot be changed, and the question before leaving
       saying yes by itself after a minute
       ([finding 7](reviews/2026-11-26-accessibility-design-wcag.md#7-times-that-cannot-be-changed-and-one-that-says-yes-by-itself)).

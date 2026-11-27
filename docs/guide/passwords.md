@@ -13,7 +13,10 @@ ordinary way, work as on the lock screen. The eye at the end of the field shows 
 hides it again, and says so when the pointer rests on it. Tab moves from
 the field to the eye, Cancel and Authenticate in turn, and Shift+Tab
 back; Enter presses the one you are on, which looks
-`question-button:focus`, and typing goes back to the field. A wrong
+`question-button:focus`, and typing goes back to the field. A click on a
+button counts as it is let go on it, and a click on Authenticate does
+nothing until the box has been up for half a second (ADR 111); Enter,
+in the field or on Authenticate, hands over what you typed at once. A wrong
 password is asked for again, and the box shakes; a theme that has the
 `question` part change at once, `question { transition: none; }`, keeps it
 still, and its cursor too, which otherwise blinks.

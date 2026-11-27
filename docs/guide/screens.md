@@ -104,7 +104,9 @@ shows, then that one alone, then each of the others alone, and round
 again. Each screen keeps its `mode` and `rotate`. In the middle of each
 screen that is on, a box says which way they are in, such as "Mirrored:
 every screen shows what eDP-1 shows", and asks whether to keep them so:
-Enter keeps them, Escape puts them back as they were, and so does
+Enter keeps them, as it is let go, from half a second after the box is
+up, so that a key meant for something else does not; Escape puts them
+back as they were, and so does
 waiting 15 seconds, since it is the key you press when a screen has gone
 dark. Pressing the key again goes on to the next way. What is kept is for
 the screens plugged in when it was; plugging one in or taking one out

@@ -12,8 +12,13 @@ An application can also ask for a picture of the screen, as a browser or
 a chat in a sandbox does. Each time, a question goes up in the middle of
 the screen, over everything, saying which application asks, by the name
 its desktop entry gives it, or by what its sandbox calls it if it has
-none. Escape or **Cancel** gives it nothing. Enter or **Take picture**
-takes a picture of every screen, and then you pick what of it the
+none. Escape or **Cancel** gives it nothing; the keyboard starts on
+**Cancel**, which shows a ring, so Enter gives nothing too. Tab, or
+Right, to **Take picture** and, a moment after, Enter, or a click on it,
+takes a picture of every screen, but not until the question has been up
+for half a second, and a click counts as it is let go on the button it went down
+on: so that a key or a click meant for the window you were in cannot
+answer it (ADR 111). Then you pick what of it the
 application is given, as `Shift+Print` picks: drag to draw a region,
 click a window to take it whole or anywhere else to take that screen,
 Enter to take every screen, as one, and Escape or another button to give
@@ -26,15 +31,18 @@ the application see as `question-detail`, and the buttons as
 An application can ask for a colour on the screen too, as a drawing
 program's colour picker does. Nothing is asked: a still picture of each
 screen goes up over it, and a click, or Enter, gives the application the
-colour under the pointer, on whichever screen it is, and nothing else; Escape or
+colour under the pointer, on whichever screen it is, and nothing else,
+half a second after the picture is up, as it is let go; Escape or
 another button gives it none. The pointer is a crosshair meanwhile, and
 a round loupe beside it shows the pixels round it larger, with the one
 it would give outlined in the middle.
 
 An application can ask to share the screen too, as a browser or a call
 does. The same question goes up, saying that it wants to share your
-screen: **Cancel** or Escape gives it nothing, and **Share** or Enter
-gives it the screen as a live stream, through PipeWire, for as long as
+screen: **Cancel** or Escape gives it nothing, as Enter does where the
+keyboard starts, and **Share**, reached with Tab and pressed with Enter
+or a click, as for a picture, gives it the screen as a live stream,
+through PipeWire, for as long as
 the application keeps it. With more than one screen, or if the
 application can take a window as well, you then pick what: the screens
 go still and dim but for what is under the pointer, a window or, beside

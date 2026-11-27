@@ -100,8 +100,10 @@ as a film being played, holds off all three. They are off by default.
 `power.ask` has the `log_out`, `restart` and `shut_down` actions ask first, from the
 root menu, a key or `omorfosctl` alike: a card in the middle of the dimmed
 screen says what not saved will be lost and counts a minute down, after
-which it is done; Enter or its button goes on at once, while Escape,
-Cancel or a click elsewhere does not. Set it to `false` to have them act
+which it is done. The keyboard starts on Cancel, so Enter does not go
+on; Tab, or Right, to its button and, a moment after, Enter, or a
+click on it, does, from half a second after the card is up, a click as
+it is let go on the button (ADR 111). Escape, Cancel or a click elsewhere does not. Set it to `false` to have them act
 at once. `sleep` never asks. What the lock screen offers is
 `lock.power`, apart from this.
 
