@@ -585,6 +585,38 @@ fn only_the_time_is_shown_until_a_key_or_a_button_is_pressed_and_again_after_a_w
 }
 
 #[test]
+fn the_pointer_moving_puts_off_showing_only_the_time_but_does_not_wake_it() {
+    let there = tempfile::TempDir::new().unwrap();
+    let mut session = Session::new();
+    let mut lock = joined(&mut session, there.path(), &[Way::Password]);
+    until(&mut session, &mut lock, |session| {
+        session.compositor().is_locked()
+    });
+    settle(&mut session, &mut lock);
+    let moved = |session: &mut Session, at: f64| {
+        let motion = Input::Motion { x: at, y: at };
+        session.compositor_mut().input(motion, 0);
+    };
+    // Showing only the time, the pointer moving does not wake it.
+    moved(&mut session, 20.0);
+    settle(&mut session, &mut lock);
+    moved(&mut session, 40.0);
+    settle(&mut session, &mut lock);
+    assert!(!inked(&mut session, FIELD_ROW), "only the time");
+    // Awake, it puts off showing only the time, as a key does.
+    tap(&mut session, key::A);
+    settle(&mut session, &mut lock);
+    assert!(inked(&mut session, FIELD_ROW));
+    let woken = Instant::now();
+    moved(&mut session, 60.0);
+    settle_at(&mut session, &mut lock, woken + Duration::from_secs(25));
+    settle_at(&mut session, &mut lock, woken + Duration::from_secs(40));
+    assert!(inked(&mut session, FIELD_ROW), "put off, at 40 seconds");
+    settle_at(&mut session, &mut lock, woken + Duration::from_secs(60));
+    assert!(!inked(&mut session, FIELD_ROW), "left alone after");
+}
+
+#[test]
 fn who_is_to_unlock_is_shown_by_their_face_and_what_they_are_called() {
     let there = tempfile::TempDir::new().unwrap();
     crate::wallpaper::png(&there.path().join("face.png"), (8, 8), |_, _| RED);

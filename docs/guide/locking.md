@@ -71,7 +71,9 @@ typed (Ctrl+A with `defaults: ordinary` in `keys.yaml`),
 which `question-input:active` marks, for Backspace to take it out at once
 or what you type next to take its place. Escape, or being
 left alone for 30 seconds, empties the field and shows only the time
-again, the rest going the way it came. Your name is
+again, the rest going the way it came; a key, a button or the pointer
+moving counts as being there, though moving the pointer over the time
+alone does not show the rest (ADR 112). Your name is
 your full name where your system has one (the first part of the comment
 in `/etc/passwd`, which `chfn` sets), and your face is the picture your
 login screen shows (`/var/lib/AccountsService/icons/` and your name),

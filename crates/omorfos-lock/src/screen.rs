@@ -651,6 +651,15 @@ impl Shell {
         resting
     }
 
+    /// The pointer moved: someone is there, so showing only the time is
+    /// put off as a key puts it off, once more than the time is shown; it
+    /// does not show more of itself (ADR 112).
+    fn stirred(&mut self) {
+        if matches!(self.view, View::Awake { .. }) {
+            self.view = View::Awake { until: None };
+        }
+    }
+
     /// Shows only the time again, the rest going out of view as the theme
     /// has things move, and forgets what was typed, what was being asked
     /// about and the button the keyboard was on.
@@ -1240,6 +1249,7 @@ impl Dispatch<wl_pointer::WlPointer, ()> for Shell {
                 });
                 shell.pointer = on.map(|screen| (screen.global, (surface_x, surface_y)));
                 shell.hover();
+                shell.stirred();
             }
             wl_pointer::Event::Motion {
                 surface_x,
@@ -1249,6 +1259,7 @@ impl Dispatch<wl_pointer::WlPointer, ()> for Shell {
                 let moved = shell.pointer.map(|(on, _)| (on, (surface_x, surface_y)));
                 shell.pointer = moved;
                 shell.hover();
+                shell.stirred();
             }
             wl_pointer::Event::Leave { .. } => {
                 shell.pointer = None;
