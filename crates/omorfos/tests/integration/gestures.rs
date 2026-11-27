@@ -423,7 +423,8 @@ fn four_fingers_spread_send_the_windows_aside_and_pinched_bring_them_back() {
     touch(&mut session, &pinch(4, 0.5));
     assert!(!showing(&session));
     session.eventually(|session| session.draw().at(INSIDE.0, INSIDE.1) == RED);
-    // Pinched in with nothing aside, or hardly spread, it does nothing.
+    // Pinched in with nothing aside, or hardly spread, no window moves:
+    // the pinch is for the launcher, which this session has none of.
     touch(&mut session, &pinch(4, 0.5));
     touch(&mut session, &pinch(4, 1.05));
     assert!(!showing(&session));

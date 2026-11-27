@@ -125,7 +125,10 @@ ten, as `1e20`.
 The `show_programs` action opens the launcher onto every program
 installed, as a Mac shows its Apps: a grid of their icons, each with its
 name under it, six to a line in alphabetical order, the launcher as wide
-as a line of them. It has no key of its own; bind one in `keys.yaml`:
+as a line of them. Four fingers pinched together on a touchpad open it,
+with no window set aside to bring back, and spread apart close it again,
+as a click beside it does. It has no key of its own; bind
+one in `keys.yaml`:
 
 ```yaml
 bindings:

@@ -1283,6 +1283,88 @@ fn every_program_is_asked_for_by_starting_the_launcher_onto_its_grid() {
     );
 }
 
+/// Four fingers pinched on a touchpad, from as far apart as they began to
+/// `scale` times that, over a fifth of a second from `at` thousandths of
+/// a second.
+fn pinch_four(session: &mut Session, scale: f64, at: u32) {
+    let gesture = |gesture| Input::Gesture(gesture);
+    let update = |scale| omorfos::Gesture::PinchUpdate {
+        dx: 0.0,
+        dy: 0.0,
+        scale,
+        rotation: 0.0,
+    };
+    let compositor = session.compositor_mut();
+    compositor.input(gesture(omorfos::Gesture::PinchBegin { fingers: 4 }), at);
+    compositor.input(gesture(update(f64::midpoint(1.0, scale))), at + 100);
+    compositor.input(gesture(update(scale)), at + 200);
+    let end = omorfos::Gesture::PinchEnd { cancelled: false };
+    compositor.input(gesture(end), at + 200);
+    session.step();
+}
+
+#[test]
+fn four_fingers_pinched_with_nothing_set_aside_open_the_launcher_onto_every_program() {
+    let mut session = Session::new();
+    session.listen();
+    session.compositor_mut().set_launcher(stand_in_launcher());
+    // Hardly pinched, and let go slowly: nothing, so that the launcher
+    // asked for after it opens as it is asked, onto no grid.
+    pinch_four(&mut session, 0.95, 0);
+    session.compositor_mut().perform(&Action::ShowLauncher);
+    session.eventually(|session| mark(session, "launcher-opened") == "x");
+    assert_eq!(mark(&session, "launcher-arguments"), ";", "hardly pinched");
+    std::fs::write(session.config.path().join("launcher-close"), "").unwrap();
+    // Pinched together, once it has gone: the launcher, onto its grid,
+    // pinched again until it could open, each time onto its grid.
+    let mut at = 1000;
+    session.eventually(|session| {
+        pinch_four(session, 0.5, at);
+        at += 1000;
+        mark(session, "launcher-opened").len() > 1
+    });
+    let arguments = mark(&session, "launcher-arguments");
+    let pinched = arguments.strip_prefix(";--programs;").unwrap_or_default();
+    assert!(
+        pinched.is_empty() || pinched.split_terminator(';').all(|one| one == "--programs"),
+        "{arguments:?}"
+    );
+}
+
+#[test]
+fn four_fingers_spread_while_the_launcher_is_open_close_it_and_set_nothing_aside() {
+    let mut session = Session::new();
+    let mut client = session.connect();
+    session.open(&mut client, "app", (200, 100), RED);
+    let mut launcher = launcher(&mut session);
+    settle(&mut session, &mut launcher);
+    // Hardly spread, and let go slowly: it stays.
+    pinch_four(&mut session, 1.05, 0);
+    assert!(!settle(&mut session, &mut launcher), "hardly spread");
+    // Spread apart: no window goes with the fingers, and as they lift the
+    // launcher closes, as a click beside it would.
+    let frame = session.compositor().desktop().frames().next().unwrap();
+    let geometry = frame.geometry;
+    let gesture = |gesture| Input::Gesture(gesture);
+    let begin = omorfos::Gesture::PinchBegin { fingers: 4 };
+    session.compositor_mut().input(gesture(begin), 1000);
+    let half_way = omorfos::Gesture::PinchUpdate {
+        dx: 0.0,
+        dy: 0.0,
+        scale: 1.3,
+        rotation: 0.0,
+    };
+    session.compositor_mut().input(gesture(half_way), 1100);
+    session.step();
+    let carried = session.compositor().desktop().frames().next().unwrap();
+    assert_eq!(carried.geometry, geometry, "not carried aside");
+    let end = omorfos::Gesture::PinchEnd { cancelled: true };
+    session.compositor_mut().input(gesture(end), 1100);
+    pinch_four(&mut session, 1.6, 2000);
+    assert!(settle(&mut session, &mut launcher), "closed by the spread");
+    assert!(!session.compositor().desktop().showing_desktop());
+}
+
 #[test]
 fn the_launcher_is_opened_by_its_key_and_from_the_menu_by_default() {
     let mut session = Session::new();
