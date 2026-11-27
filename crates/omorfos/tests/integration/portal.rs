@@ -248,9 +248,37 @@ fn picked(results: &HashMap<String, OwnedValue>) -> u32 {
     u32::from_be_bytes([0xff, channel(red), channel(green), channel(blue)])
 }
 
-/// Draws until the question is on the screen.
+/// Draws until the question is on the screen, and a moment longer, as
+/// its button that gives answers nothing until then (ADR 111).
 fn asked(session: &mut Session) {
     session.eventually(question_up);
+    std::thread::sleep(Duration::from_millis(600));
+}
+
+/// Says yes, as a user does: the keyboard to the button that gives, from
+/// The screen, every fourth pixel across and down: enough to see a ring
+/// move.
+fn looks(session: &mut Session) -> Vec<u32> {
+    let picture = session.draw();
+    let at = |y| (0..WIDTH).step_by(4).map(move |x| (x, y));
+    let all = (0..HEIGHT).step_by(4).flat_map(at);
+    all.map(|(x, y)| picture.at(x, y)).collect()
+}
+
+/// Cancel where it starts, and Enter.
+fn yes(session: &mut Session) {
+    let before = looks(session);
+    press(session, key::TAB);
+    // A button the keyboard comes to gives only a moment after the portal
+    // is told of the move (ADR 111): once the ring is seen to have moved,
+    // which says it was, a moment more, the compositor going on.
+    session.eventually(|session| looks(session) != before);
+    let until = Instant::now() + Duration::from_millis(600);
+    while Instant::now() < until {
+        session.step();
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    press(session, key::RETURN);
 }
 
 /// Whether the question is on the screen.
@@ -330,9 +358,10 @@ fn an_application_is_given_a_picture_once_the_user_says_so() {
     let asking = ask(&daemon, "a");
     asked(&mut session);
     assert!(!asking.is_finished(), "it waits for the user");
-    // A key that is neither yes nor no is passed over, and Enter twice is
-    // one yes.
+    // A key that is neither yes nor no is passed over, and Enter twice, on
+    // the button that gives, is one yes.
     press(&mut session, key::A);
+    press(&mut session, key::TAB);
     press(&mut session, key::RETURN);
     press(&mut session, key::RETURN);
     // Then what the picture is of is picked: Enter, every screen.
@@ -444,6 +473,7 @@ fn the_buttons_say_yes_and_no_and_the_rest_of_the_box_nothing() {
     let asking = ask(&daemon, "d");
     asked(&mut session);
     click(&mut session, (360, 114));
+    // Then every screen, with Enter, once what is picked from is up.
     let picked = acted_until_answered(&mut session, asking, |session: &mut Session| {
         press(session, key::RETURN);
     });
@@ -484,7 +514,7 @@ fn without_leave_to_take_pictures_the_application_is_told_it_failed() {
     let _running = start(&mut session, &daemon, Roles::PANEL.with(Roles::OVERLAY));
     let asking = ask(&daemon, "g");
     asked(&mut session);
-    press(&mut session, key::RETURN);
+    yes(&mut session);
     assert_eq!(answered(&mut session, asking), (2, HashMap::new()));
 }
 
@@ -518,6 +548,8 @@ fn a_colour_is_picked_from_whichever_screen_the_pointer_is_on() {
     let asking = ask_by(&daemon, "first", "PickColor");
     point_at(&mut session, (100, 60));
     loupe_up(&mut session, (100, 60), RED, drawn);
+    // A moment after it is up, as picking gives (ADR 111).
+    std::thread::sleep(Duration::from_millis(600));
     button_at(&mut session, (100, 60), LEFT);
     let (response, results) = answered(&mut session, asking);
     assert_eq!((response, picked(&results)), (0, RED));
@@ -618,8 +650,19 @@ fn picking_a_colour_the_pointer_is_a_crosshair_beside_a_loupe() {
 /// Says yes to the question, and draws until what the picture is to be
 /// of is up to be picked: the screen is dimmed.
 fn yes_and_picking(session: &mut Session) {
-    press(session, key::RETURN);
+    yes(session);
     session.eventually(|session| session.draw().at(WIDTH - 5, HEIGHT - 5) != BACKGROUND);
+}
+
+/// Takes every screen, as one, with Enter, once what is picked from has
+/// been up a moment (ADR 111), the compositor going on meanwhile.
+fn pick_every_screen(session: &mut Session) {
+    let until = Instant::now() + Duration::from_millis(600);
+    while Instant::now() < until {
+        session.step();
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    press(session, key::RETURN);
 }
 
 /// Presses the left button at `from`, moves to `to`, and lets go.
@@ -739,7 +782,7 @@ fn once_a_picture_is_given_the_screen_is_no_longer_taken() {
     let asking = ask(&daemon, "done");
     asked(&mut session);
     yes_and_picking(&mut session);
-    press(&mut session, key::RETURN);
+    pick_every_screen(&mut session);
     assert_eq!(answered(&mut session, asking).0, 0);
     // The portal stays, and so would what it took pictures with, and the
     // mark that says the screen is being taken, were it not let go.
@@ -855,7 +898,7 @@ fn a_picture_picked_that_cannot_be_saved_is_a_failure() {
     let asking = ask(&daemon, "unsaved");
     asked(&mut session);
     yes_and_picking(&mut session);
-    press(&mut session, key::RETURN);
+    pick_every_screen(&mut session);
     assert_eq!(answered(&mut session, asking), (2, HashMap::new()));
 }
 
@@ -1036,6 +1079,7 @@ fn after_a_picture_is_taken_the_next_is_asked_about_too() {
     for request in ["m", "n", "o"] {
         let asking = ask(&daemon, request);
         asked(&mut session);
+        yes_and_picking(&mut session);
         let picked = acted_until_answered(&mut session, asking, |session: &mut Session| {
             press(session, key::RETURN);
         });
@@ -1127,6 +1171,7 @@ fn asked_first_as_the_portal_asks_the_question_still_goes_up() {
         reply.unwrap().body().deserialize::<Answered>().unwrap()
     });
     asked(&mut session);
+    yes_and_picking(&mut session);
     let picked = acted_until_answered(&mut session, asking, |session: &mut Session| {
         press(session, key::RETURN);
     });
@@ -1177,4 +1222,98 @@ fn a_player_that_asks_the_desktop_over_d_bus_keeps_the_session_awake_until_it_le
         session.advance(Duration::from_secs(61));
         !session.compositor().screens_on()
     });
+}
+
+/// Steps the session a while, as the question would have been answered
+/// by then if it were to be.
+fn a_while(session: &mut Session) {
+    for _ in 0..20 {
+        session.advance(Duration::from_millis(10));
+        std::thread::sleep(Duration::from_millis(5));
+    }
+}
+
+#[test]
+fn a_key_typed_as_the_question_comes_up_says_nothing() {
+    let daemon = Daemon::start();
+    let mut session = Session::new();
+    let mut app = session.connect();
+    session.open(&mut app, "app", (200, 100), RED);
+    let _running = start(&mut session, &daemon, ITS_OWN);
+
+    // Typed for the window as the question comes up: a letter and Enter.
+    // The keyboard is on Cancel, which Enter presses: nothing is given.
+    let asking = ask(&daemon, "k");
+    session.eventually(question_up);
+    press(&mut session, key::A);
+    press(&mut session, key::RETURN);
+    assert_eq!(answered(&mut session, asking).0, 1, "refused");
+}
+
+#[test]
+fn a_press_counts_only_let_go_on_the_button_it_went_down_on() {
+    let daemon = Daemon::start();
+    let mut session = Session::new();
+    let mut app = session.connect();
+    session.open(&mut app, "app", (200, 100), RED);
+    let _running = start(&mut session, &daemon, ITS_OWN);
+
+    let asking = ask(&daemon, "p");
+    asked(&mut session);
+    // Down on Take picture, let go on what is said above it: nothing.
+    let (left, top) = ((WIDTH - 440) / 2, (HEIGHT - 150) / 2);
+    let at = |(x, y): (i32, i32)| Input::Motion {
+        x: f64::from(left + x),
+        y: f64::from(top + y),
+    };
+    let button = |pressed| Input::Button {
+        button: 0x110,
+        pressed,
+    };
+    session.compositor_mut().input(at((360, 114)), 0);
+    session.compositor_mut().input(button(true), 0);
+    session.compositor_mut().input(at((220, 30)), 0);
+    session.compositor_mut().input(button(false), 0);
+    a_while(&mut session);
+    assert!(!asking.is_finished(), "let go off it");
+    press(&mut session, key::ESCAPE);
+    assert_eq!(answered(&mut session, asking).0, 1);
+}
+
+#[test]
+fn a_question_put_up_after_another_starts_afresh() {
+    let daemon = Daemon::start();
+    let mut session = Session::new();
+    let mut app = session.connect();
+    session.open(&mut app, "app", (200, 100), RED);
+    let _running = start(&mut session, &daemon, ITS_OWN);
+
+    // The keyboard moved to Take picture, and the question refused.
+    let first = ask(&daemon, "f");
+    asked(&mut session);
+    press(&mut session, key::TAB);
+    press(&mut session, key::ESCAPE);
+    assert_eq!(answered(&mut session, first).0, 1);
+    session.eventually(|session| session.draw().at(WIDTH / 2, HEIGHT / 2) == BACKGROUND);
+    // The next starts with the keyboard on Cancel again: Enter refuses.
+    let next = ask(&daemon, "n");
+    asked(&mut session);
+    press(&mut session, key::RETURN);
+    assert_eq!(answered(&mut session, next).0, 1);
+}
+
+#[test]
+fn left_takes_the_keyboard_back_to_cancel_where_enter_refuses() {
+    let daemon = Daemon::start();
+    let mut session = Session::new();
+    let _running = start(&mut session, &daemon, ITS_OWN);
+    let asking = ask(&daemon, "back");
+    asked(&mut session);
+    let on_cancel = looks(&mut session);
+    press(&mut session, key::TAB);
+    session.eventually(|session| looks(session) != on_cancel);
+    press(&mut session, key::LEFT);
+    session.eventually(|session| looks(session) == on_cancel);
+    press(&mut session, key::RETURN);
+    assert_eq!(answered(&mut session, asking).0, 1);
 }

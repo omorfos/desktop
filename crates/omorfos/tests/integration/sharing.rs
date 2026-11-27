@@ -15,7 +15,7 @@ use std::process::{Child, Command};
 use std::rc::Rc;
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::thread::JoinHandle;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use omorfos::Roles;
 use pipewire as pw;
@@ -331,9 +331,37 @@ fn question() -> u32 {
     u32::from_be_bytes([u8::MAX, looks.red, looks.green, looks.blue])
 }
 
-/// Draws until the question is on the screen.
+/// Draws until the question is on the screen, and a moment longer, as
+/// its button that gives answers nothing until then (ADR 111).
 fn asked(session: &mut Session) {
     session.eventually(|session| session.draw().at(WIDTH / 2, HEIGHT / 2) == question());
+    std::thread::sleep(Duration::from_millis(600));
+}
+
+/// Says yes, as a user does: the keyboard to the button that gives, from
+/// The screen, every fourth pixel across and down: enough to see a ring
+/// move.
+fn looks(session: &mut Session) -> Vec<u32> {
+    let picture = session.draw();
+    let at = |y| (0..WIDTH).step_by(4).map(move |x| (x, y));
+    let all = (0..HEIGHT).step_by(4).flat_map(at);
+    all.map(|(x, y)| picture.at(x, y)).collect()
+}
+
+/// Cancel where it starts, and Enter.
+fn yes(session: &mut Session) {
+    let before = looks(session);
+    press(session, key::TAB);
+    // A button the keyboard comes to gives only a moment after the portal
+    // is told of the move (ADR 111): once the ring is seen to have moved,
+    // which says it was, a moment more, the compositor going on.
+    session.eventually(|session| looks(session) != before);
+    let until = Instant::now() + Duration::from_millis(600);
+    while Instant::now() < until {
+        session.step();
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    press(session, key::RETURN);
 }
 
 /// Draws until the question is off the screen. The application is
@@ -721,7 +749,7 @@ fn a_call_is_given_the_screen_to_read_once_the_user_says_so() {
     make(&peer, call_session, HIDDEN);
     let starting = begin(&daemon, call_session);
     asked(&mut session);
-    press(&mut session, key::RETURN);
+    yes(&mut session);
     let (response, results) = answered(&mut session, starting);
     assert_eq!(response, 0);
     let (node, size) = stream(&results);
@@ -851,8 +879,8 @@ fn sharing_with(
 /// done.
 #[track_caller]
 fn wait(session: &mut Session, long: Duration, mut also: impl FnMut()) {
-    let until = std::time::Instant::now() + long;
-    while std::time::Instant::now() < until {
+    let until = Instant::now() + long;
+    while Instant::now() < until {
         session.step();
         also();
         std::thread::sleep(Duration::from_millis(2));
@@ -1174,7 +1202,11 @@ fn shared(
 ) -> Answered {
     let starting = begin(daemon, call_session);
     asked(session);
-    press(session, answer);
+    if answer == key::RETURN {
+        yes(session);
+    } else {
+        press(session, answer);
+    }
     answered(session, starting)
 }
 
@@ -1325,7 +1357,7 @@ fn a_screen_that_goes_ends_its_sharing_and_the_session_is_closed() {
     make(&peer, call_session, DRAWN);
     let starting = begin(&daemon, call_session);
     asked(&mut session);
-    press(&mut session, key::RETURN);
+    yes(&mut session);
     // With two screens, the one to share is picked.
     assert_eq!(picked_screen(&mut session, starting, (10, 10)).0, 0);
     let output = session.output();
@@ -1401,7 +1433,7 @@ fn picking_a_screen(
     make(&peer, call_session, HIDDEN);
     let starting = begin(daemon, call_session);
     asked(session);
-    press(session, key::RETURN);
+    yes(session);
     (peer, starting)
 }
 
@@ -1659,7 +1691,7 @@ fn a_window_the_user_picks_is_shared_by_itself_at_its_size_as_that_changes() {
     // hears of each click: what it is told is read meanwhile.
     let starting = begin(&daemon, call_session);
     asked(&mut session);
-    press(&mut session, key::RETURN);
+    yes(&mut session);
     let on = Input::Motion { x: 50.0, y: 50.0 };
     session.eventually(|session| {
         session.compositor_mut().input(on, 0);
@@ -1754,7 +1786,7 @@ fn where_a_window_may_be_shared_the_screen_is_shared_from_beside_the_windows() {
     make_of(&peer, call_session, HIDDEN, SCREENS_AND_WINDOWS);
     let starting = begin(&daemon, call_session);
     asked(&mut session);
-    press(&mut session, key::RETURN);
+    yes(&mut session);
     // Enter, with the pointer beside every window, picks the screen.
     let beside = Input::Motion {
         x: f64::from(WIDTH - 20),
@@ -1790,7 +1822,7 @@ fn a_window_behind_another_is_reached_by_tab_and_shared() {
     make_of(&peer, call_session, HIDDEN, SCREENS_AND_WINDOWS);
     let starting = begin(&daemon, call_session);
     asked(&mut session);
-    press(&mut session, key::RETURN);
+    yes(&mut session);
     // Once the picture to pick from is up, which outlines the window on
     // top, Tab goes to the one behind it, and a click picks that.
     // The outline goes round the edge of the screen, which the window on
@@ -1852,7 +1884,7 @@ fn a_call_sharing_a_window_is_told_where_the_pointer_is_over_it() {
     make_of(&peer, call_session, BESIDE, SCREENS_AND_WINDOWS);
     let starting = begin(&daemon, call_session);
     asked(&mut session);
-    press(&mut session, key::RETURN);
+    yes(&mut session);
     let on = Input::Motion { x: 50.0, y: 40.0 };
     session.eventually(|session| {
         session.compositor_mut().input(on, 0);
@@ -1909,7 +1941,7 @@ fn a_region_dragged_over_a_screen_is_shared_by_itself() {
     make_of(&peer, call_session, BESIDE, SCREENS_AND_WINDOWS);
     let starting = begin(&daemon, call_session);
     asked(&mut session);
-    press(&mut session, key::RETURN);
+    yes(&mut session);
     // Once the picture to pick from is up, a drag from half way along the
     // window to beyond it draws a region of the screen.
     let to = |x: f64, y: f64| Input::Motion { x, y };
@@ -1995,7 +2027,7 @@ fn shared_window(
     make_of(&daemon.peer(), called, HIDDEN, SCREENS_AND_WINDOWS);
     let starting = begin(daemon, called);
     asked(session);
-    press(session, key::RETURN);
+    yes(session);
     let on = Input::Motion { x: 50.0, y: 50.0 };
     session.eventually(|session| {
         session.compositor_mut().input(on, 0);

@@ -19,12 +19,13 @@ use std::mem;
 use std::os::fd::{AsFd, BorrowedFd, OwnedFd};
 use std::os::unix::fs::FileExt;
 use std::os::unix::net::UnixStream;
+use std::time::Instant;
 
 use omorfos_config::{Color, Part, State, States, Store, Theme};
 use omorfos_shell::sheet::Sheet;
 use omorfos_shell::{picture, whole};
 use omorfos_ui::question::{self, Asked, Laid};
-use omorfos_ui::{Canvas, Scale, Text};
+use omorfos_ui::{Answering, Canvas, Held, Scale, Text};
 use rustix::event::{PollFd, PollFlags, Timespec, poll};
 use wayland_client::backend::ReadEventsGuard;
 use wayland_client::protocol::{
@@ -54,6 +55,11 @@ const UNPLACED: (u32, u32) = (WIDTH, 150);
 
 /// The left button of a mouse, as Linux numbers it.
 const LEFT_BUTTON: u32 = 0x110;
+
+/// The button that keeps what was asked for, where the keyboard starts,
+/// and the one that gives it (ADR 111).
+const KEEP: usize = 0;
+const GIVE: usize = 1;
 
 /// The largest keyboard layout taken in, in bytes.
 const LARGEST_KEYMAP: u32 = 1024 * 1024;
@@ -294,13 +300,25 @@ pub fn button_at(laid: &Laid<2>, at: (i32, i32)) -> Option<Answer> {
     question::button_at(laid, at).and_then(|index| answers.get(index).copied())
 }
 
+/// What a key is to the question, by what it types (ADR 111).
+fn held(sym: xkb::Keysym) -> Held {
+    match sym {
+        xkb::Keysym::Return | xkb::Keysym::KP_Enter | xkb::Keysym::space => Held::Enter,
+        xkb::Keysym::Escape => Held::Escape,
+        xkb::Keysym::Tab | xkb::Keysym::Right => Held::On,
+        xkb::Keysym::ISO_Left_Tab | xkb::Keysym::Left => Held::Back,
+        _ => Held::Other,
+    }
+}
+
 /// Paints the box: what is asked, and the two buttons, the one that gives
-/// in the colour of what is picked out.
+/// in the colour of what is picked out, and the one the keyboard is on,
+/// `focus`, as such.
 #[must_use]
 pub fn paint(
     theme: &Theme,
     text: &mut Text,
-    scale: Scale,
+    (scale, focus): (Scale, usize),
     (app, question): (&str, Question),
 ) -> Canvas {
     let lines = lines(question);
@@ -312,7 +330,10 @@ pub fn paint(
         buttons,
     };
     let laid = question::lay_out(text, theme, WIDTH, &asked);
-    let states = [States::NONE, States::NONE.with(State::Active)];
+    let mut states = [States::NONE, States::NONE.with(State::Active)];
+    if let Some(focused) = states.get_mut(focus) {
+        *focused = focused.with(State::Focused);
+    }
     question::paint_question(text, theme, (&asked, &laid), states, scale)
 }
 
@@ -381,6 +402,10 @@ struct Shell {
     over: Option<(usize, (i32, i32))>,
     /// How the box asking the question is laid out, while one is asked.
     laid: Option<Laid<2>>,
+    /// How what is asked is being answered (ADR 111): which button the
+    /// keyboard is on, and what of the keys and the pointer was meant for
+    /// it. Made anew for each question.
+    answering: Answering<Instant, 2>,
     /// The surface of this program's that the keyboard is on, if any.
     keyboard: Option<wl_surface::WlSurface>,
     store: Store,
@@ -438,25 +463,46 @@ impl Shell {
         self.typing = keymap.as_ref().map(xkb::State::new);
     }
 
-    /// Takes in a key going down: Enter gives, or picks the colour under
-    /// the pointer, and Escape does neither.
+    /// Takes in a key going down or up, by its `code` (ADR 111): Tab and
+    /// the arrows move the keyboard between the buttons, Enter and space
+    /// press the one it is on, and Escape keeps; picking a colour, Enter
+    /// picks the one under the pointer. A key counts as it is let go, and
+    /// only if it went down while the question was up, and the button that
+    /// gives answers nothing until a moment after it was shown.
     ///
-    /// Only a key pressed on what is up now counts. One pressed on a box
-    /// already taken down, which the compositor has not yet let go of, may
-    /// come after the next question is put up, and the user never saw that
-    /// one: it would answer yes to an application they did not know asked.
-    fn pressed(&mut self, code: u32) {
+    /// Only a key on what is up now counts. One pressed on a box already
+    /// taken down, which the compositor has not yet let go of, may come
+    /// after the next question is put up, and the user never saw that one:
+    /// it would answer yes to an application they did not know asked.
+    fn keyed(&mut self, code: u32, pressed: bool) {
         let on = self.keyboard.as_ref();
         let up = on.is_some_and(|on| self.faces.iter().any(|face| face.sheet.surface() == on));
         // The numbers the layout knows keys by are eight higher.
-        let code = xkb::Keycode::new(code.saturating_add(8));
+        let sym = xkb::Keycode::new(code.saturating_add(8));
         let typing = self.typing.as_ref().filter(|_| up);
-        let answer = typing.and_then(|typing| match typing.key_get_one_sym(code) {
-            xkb::Keysym::Return | xkb::Keysym::KP_Enter => self.giving(),
-            xkb::Keysym::Escape => Some(Answer::Keep),
-            _ => None,
-        });
+        let Some(held) = typing.map(|typing| held(typing.key_get_one_sym(sym))) else {
+            return;
+        };
+        let picking = matches!(self.asked, Some((Asking::Pick(_), _)));
+        let now = Instant::now();
+        let before = self.answering.focus();
+        let chosen = if picking && held == Held::Enter {
+            self.answering.press(Some(GIVE), pressed, now)
+        } else {
+            self.answering.key(code, held, pressed, now)
+        };
+        self.stale |= self.answering.focus() != before;
+        let answer = chosen.and_then(|button| self.answer_of(button));
         self.answered(answer);
+    }
+
+    /// What pressing `button` answers: giving, or keeping.
+    fn answer_of(&self, button: usize) -> Option<Answer> {
+        if button == GIVE {
+            self.giving()
+        } else {
+            Some(Answer::Keep)
+        }
     }
 
     /// What giving is, as Enter or the left button gives: the question's
@@ -479,19 +525,23 @@ impl Shell {
         }
     }
 
-    /// Takes in a button going down: on the box, the button under the
-    /// pointer; on a picture, the left picks the colour and any other none.
-    fn clicked(&mut self, button: u32) {
+    /// Takes in a button of the pointer going down or up: on the box, the
+    /// button under the pointer; on a picture, the left picks the colour
+    /// and any other keeps. It counts as it is let go on what it went down
+    /// on (ADR 111).
+    fn pointed(&mut self, button: u32, pressed: bool) {
         let picking = matches!(self.asked, Some((Asking::Pick(_), _)));
-        let answer = match (picking, button) {
-            (true, LEFT_BUTTON) => self.giving(),
-            (true, _) => Some(Answer::Keep),
+        let on = match (picking, button) {
+            (true, LEFT_BUTTON) => Some(GIVE),
+            (true, _) => Some(KEEP),
             (false, LEFT_BUTTON) => {
                 let on = self.laid.as_ref().zip(self.over);
-                on.and_then(|(laid, (_, at))| button_at(laid, at))
+                on.and_then(|(laid, (_, at))| question::button_at(laid, at))
             }
             (false, _) => None,
         };
+        let chosen = self.answering.press(on, pressed, Instant::now());
+        let answer = chosen.and_then(|button| self.answer_of(button));
         self.answered(answer);
     }
 
@@ -618,13 +668,16 @@ impl Shell {
         let theme = &self.store.current().theme;
         let shm = &globals.shm;
         let text = &mut self.text;
+        let focus = self.answering.focus();
         let ready = self
             .faces
             .iter_mut()
             .filter_map(|face| face.ready.map(|shown| (face, shown)));
         let painted = ready.map(|(face, shown)| {
             let canvas = match asking {
-                Asking::Question(app, question) => paint(theme, text, face.scale, (app, *question)),
+                Asking::Question(app, question) => {
+                    paint(theme, text, (face.scale, focus), (app, *question))
+                }
                 Asking::Pick(stills) => {
                     // Each picture's face is made with it, so there is one.
                     let still = face.still.and_then(|still| stills.get(still));
@@ -641,7 +694,15 @@ impl Shell {
                 }
             })
         });
-        painted.collect()
+        // One for each face put up; nothing is kept, a `()` taking no room.
+        let painted: io::Result<Vec<()>> = painted.collect();
+        // What is asked is on the screen from when it is first drawn, not
+        // from when it is made, which may be a while before, and answers
+        // nothing that gives until a moment after.
+        if painted.as_ref().is_ok_and(|put| !put.is_empty()) {
+            self.answering.shown(Instant::now());
+        }
+        painted.map(drop)
     }
 }
 
@@ -730,6 +791,7 @@ impl Desk {
                 answer: None,
                 over: None,
                 laid: None,
+                answering: Answering::new(KEEP),
                 keyboard: None,
                 store,
                 text: Text::new(),
@@ -781,6 +843,7 @@ impl Desk {
         let asked = globals.is_some();
         self.shell.asked = globals.map(|globals| (asking, globals));
         self.shell.answer = None;
+        self.shell.answering = Answering::new(KEEP);
         self.shell.stale = true;
         asked
     }
@@ -995,9 +1058,9 @@ impl Dispatch<wl_keyboard::WlKeyboard, ()> for Shell {
             wl_keyboard::Event::Leave { .. } => shell.keyboard = None,
             wl_keyboard::Event::Key {
                 key,
-                state: WEnum::Value(wl_keyboard::KeyState::Pressed),
+                state: WEnum::Value(state),
                 ..
-            } => shell.pressed(key),
+            } => shell.keyed(key, state == wl_keyboard::KeyState::Pressed),
             _ => {}
         }
     }
@@ -1045,9 +1108,9 @@ impl Dispatch<wl_pointer::WlPointer, ()> for Shell {
             }
             wl_pointer::Event::Button {
                 button,
-                state: WEnum::Value(wl_pointer::ButtonState::Pressed),
+                state: WEnum::Value(state),
                 ..
-            } => shell.clicked(button),
+            } => shell.pointed(button, state == wl_pointer::ButtonState::Pressed),
             _ => {}
         }
     }
@@ -1227,10 +1290,11 @@ mod tests {
     #[test]
     fn the_button_that_gives_is_in_the_colour_of_what_is_picked_out() {
         let theme = Theme::default();
+        // The keyboard on neither, as it is on no button but these two.
         let canvas = paint(
             &theme,
             &mut Text::new(),
-            Scale::ONE,
+            (Scale::ONE, 2),
             ("org.example.App", Question::Picture),
         );
         let picked = theme.style(Part::QuestionButton, States::NONE.with(State::Active));
@@ -1248,5 +1312,25 @@ mod tests {
         let (x, y) = near(keep);
         assert_eq!(canvas.at(x, y), argb(unpicked.background));
         assert_eq!(canvas.units(), laid.size);
+    }
+
+    #[test]
+    fn the_button_the_keyboard_is_on_is_drawn_so() {
+        let theme = Theme::default();
+        let asked = ("org.example.App", Question::Share);
+        let drawn = |focus| paint(&theme, &mut Text::new(), (Scale::ONE, focus), asked);
+        let (on_keep, on_none) = (drawn(KEEP), drawn(2));
+        let laid = laid_out(&theme);
+        let (left, top, wide, tall) = laid.buttons[KEEP];
+        // Somewhere about Cancel looks otherwise, where the theme rings it.
+        let around = (left - 6..left + wide.cast_signed() + 6)
+            .flat_map(|x| (top - 6..top + tall.cast_signed() + 6).map(move |y| (x, y)));
+        let differs = around
+            .filter(|(x, y)| {
+                on_keep.at(x.unsigned_abs(), y.unsigned_abs())
+                    != on_none.at(x.unsigned_abs(), y.unsigned_abs())
+            })
+            .count();
+        assert!(differs > 0, "Cancel is drawn as the keyboard's");
     }
 }
