@@ -20,7 +20,7 @@ use omorfos_shell::shake::{FRAME, SHAKE, SHAKING, shaken};
 use omorfos_shell::sheet::Sheet;
 use omorfos_shell::typing::{Key, Repeat, Typing};
 use omorfos_shell::whole;
-use omorfos_ui::{Area, Blink, Canvas, Scale, Text};
+use omorfos_ui::{Answering, Area, Blink, Canvas, Scale, Text};
 use rustix::event::{PollFd, PollFlags, Timespec, poll};
 use wayland_client::backend::ReadEventsGuard;
 use wayland_client::protocol::{
@@ -134,6 +134,20 @@ pub enum Button {
     Cancel,
     /// Goes on.
     Go,
+}
+
+/// Cancel, which gives up and where nothing is given, and Authenticate,
+/// as the box is answered (ADR 111).
+const CANCEL_AT: usize = 0;
+const GO_AT: usize = 1;
+
+/// Where `button` is among those that answer: Authenticate goes on, and
+/// any other gives up.
+const fn answered_by(button: Button) -> usize {
+    match button {
+        Button::Go => GO_AT,
+        Button::Cancel | Button::Show => CANCEL_AT,
+    }
 }
 
 /// The button at a place on the box, if there is one.
@@ -507,6 +521,13 @@ struct Shell {
     /// The button the keyboard is on, reached with Tab; on none, it is on
     /// the field.
     focused: Option<Button>,
+    /// How Cancel and Authenticate are being answered (ADR 111):
+    /// Authenticate not until the box has been up a moment, and either by
+    /// a press only as it is let go on what it went down on. Made anew
+    /// with each request.
+    answering: Answering<Instant, 2>,
+    /// The button the pointer's button went down on, if one.
+    down: Option<Button>,
     /// What is asked for, in lines as wide as the box, wrapped once as it
     /// is asked: the box is as much taller as they are more than one.
     lines: Vec<String>,
@@ -615,6 +636,11 @@ impl Shell {
             self.focused = None;
         }
         match key {
+            // Enter presses the button the keyboard is on, at once, and in
+            // the field hands over what is typed, as Authenticate does: a
+            // wait on Authenticate would guard nothing that Enter in the
+            // field does not give at once (ADR 111). It is what is typed
+            // that was meant for the box.
             Key::Enter => match self.focus() {
                 Some(button) => self.press(button),
                 None => self.go(),
@@ -721,11 +747,22 @@ impl Shell {
         self.stale |= was != (self.pointed() == Some(Button::Show));
     }
 
-    /// Takes in a button going down on the box.
-    fn clicked(&mut self, button: u32) {
+    /// Takes in a button going down or up on the box: a button of the box
+    /// is pressed as it is let go on what it went down on, and
+    /// Authenticate not until the box has been up a moment (ADR 111).
+    fn clicked(&mut self, button: u32, pressed: bool) {
         let on = self.pointed().filter(|_| button == LEFT_BUTTON);
-        if let Some(button) = on {
-            self.press(button);
+        let answers = on.filter(|on| *on != Button::Show).map(answered_by);
+        let chosen = self.answering.press(answers, pressed, self.now);
+        if pressed {
+            self.down = on;
+            return;
+        }
+        let went = self.down.take();
+        match on.filter(|on| went == Some(*on)) {
+            Some(Button::Show) => self.press(Button::Show),
+            Some(button) if chosen.is_some() => self.press(button),
+            _ => {}
         }
     }
 
@@ -777,7 +814,11 @@ impl Shell {
         surface.set_input_region(Some(&region));
         region.destroy();
         let size = (SURFACE.0, SURFACE.1 + lower.unsigned_abs());
-        face.sheet.put(&globals.shm, &canvas, size, handle)
+        let put = face.sheet.put(&globals.shm, &canvas, size, handle);
+        // Up from when it is first drawn, and answering nothing that goes
+        // on until a moment after.
+        self.answering.shown(self.now);
+        put
     }
 }
 
@@ -850,6 +891,8 @@ impl Desk {
                 answer: None,
                 over: None,
                 focused: None,
+                answering: Answering::new(CANCEL_AT),
+                down: None,
                 lines: Vec::new(),
                 shaking: None,
                 store,
@@ -879,6 +922,7 @@ impl Desk {
             self.shell.repeat.stop();
             self.shell.answer = None;
             self.shell.focused = None;
+            self.shell.answering = Answering::new(CANCEL_AT);
         }
         let theme = &self.shell.store.current().theme;
         self.shell.lines = message(&mut self.shell.text, theme, &asking.message);
@@ -1113,9 +1157,9 @@ impl Dispatch<wl_pointer::WlPointer, ()> for Shell {
             wl_pointer::Event::Leave { .. } => shell.point(None),
             wl_pointer::Event::Button {
                 button,
-                state: WEnum::Value(wl_pointer::ButtonState::Pressed),
+                state: WEnum::Value(state),
                 ..
-            } => shell.clicked(button),
+            } => shell.clicked(button, state == wl_pointer::ButtonState::Pressed),
             _ => {}
         }
     }

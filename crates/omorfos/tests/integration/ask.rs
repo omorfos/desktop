@@ -351,6 +351,8 @@ fn the_password_typed_in_the_sealed_prompt_is_checked_by_polkits_helper() {
     // Shown and hidden again by the button, which types nothing.
     click(&mut session, on_prompt(EYE));
     click(&mut session, on_prompt(EYE));
+    // Authenticate answers once the box has been up a moment (ADR 111).
+    std::thread::sleep(std::time::Duration::from_millis(600));
     click(&mut session, on_prompt(GO));
     session.eventually(|_| answer.is_finished());
     assert_eq!(answer.join().unwrap(), Ok(()));
@@ -1784,4 +1786,46 @@ fn the_cursor_blinks_from_the_last_key_unless_nothing_is_to_move() {
         }
         assert_eq!((on, off), (true, blinks), "{files:?}");
     }
+}
+
+#[test]
+fn a_press_on_authenticate_let_go_off_it_does_nothing() {
+    let mut session = Session::new();
+    let asker = start(&mut session);
+    let cookie = asker.directory.path().join("asked");
+    let me = rustix::process::getuid().as_raw();
+    let answer = begin(
+        &asker.polkit.connection,
+        &asker.agent,
+        &cookie,
+        (&[me], &[]),
+    );
+    wait_up(&mut session);
+    // Long enough after it is up that Authenticate may answer.
+    std::thread::sleep(std::time::Duration::from_millis(600));
+    for code in [key::A, key::T, key::X] {
+        tap(&mut session, code);
+    }
+    session.eventually(typing);
+    // Down on Authenticate, let go on the field: nothing.
+    let (x, y) = on_prompt(GO);
+    session.compositor_mut().input(Input::Motion { x, y }, 0);
+    let button = |pressed| Input::Button {
+        button: 0x110,
+        pressed,
+    };
+    session.compositor_mut().input(button(true), 0);
+    let (x, y) = on_prompt(FIELD);
+    session.compositor_mut().input(Input::Motion { x, y }, 0);
+    session.compositor_mut().input(button(false), 0);
+    for _ in 0..30 {
+        session.step();
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    assert!(!answer.is_finished(), "let go off it");
+    // Pressed and let go on it, it goes on.
+    click(&mut session, on_prompt(GO));
+    session.eventually(|_| answer.is_finished());
+    assert_eq!(answer.join().unwrap(), Ok(()));
+    assert!(helped(&cookie).ends_with("typed atx\n"));
 }
