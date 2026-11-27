@@ -4,9 +4,14 @@ What omorfos is to become, in the order it is to be built. Stages are
 worked top to bottom and one at a time; within a stage the order is a
 suggestion. Tick items as they land and keep the "Next" pointer current.
 
-**Next:** what closes stage 4, decided on 24 November 2026 and to be
-built: the keys and gestures of ADR 101 as accepted, and the rest of the
-redesign of windows (ADR 97, ADR 107). Stage 5, the bar and the dock, follows, wearing that look.
+**Next:** what closes stage 4. What was decided on 24 November 2026 is
+built: the keys and gestures of ADR 101 as accepted, and the redesign of
+windows (ADR 97, ADR 107). Left of it are the theme's elements in a tree
+(ADR 110, its later steps), the findings of the review of 26 November
+2026 that are of the look (#180), and dragging a window in the overview
+onto a workspace (#212), which waits for everything acting as the
+button is let go (ADR 113, #210). Stage 5, the bar and the dock, follows,
+wearing that look.
 What else is left of stages 3 and 4 is known gaps, taken as the code
 beside them is touched. Of what is taken from stage 8 ahead of its turn,
 the first release waits, there being no hurry for it, as do packages
@@ -99,14 +104,6 @@ a known gap.
   with a ring round All; Right moves the ring to Programs, Enter goes
   there with `fi` still typed; Up from the ring goes back to the last
   program, Escape to the field.
-
-- **Four fingers pinched open every program (#138).** With no window
-  set aside, pinch four fingers together on the touchpad and lift: the
-  launcher opens onto its grid of every program. Pinched only a little
-  and lifted slowly, nothing. With windows set aside by a spread, the
-  pinch brings them back as before, and opens nothing. Spread four
-  fingers with the launcher open: it closes, and no window moves. Two
-  fingers pinched still zoom in the program under the pointer.
 
 ## Where this is going
 
