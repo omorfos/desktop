@@ -5,10 +5,11 @@ use omorfos_core::geometry::{Point as DomainPoint, Rect, Size as DomainSize};
 use omorfos_core::{Button, Edges, Home, MenuKey, MenuOutcome, Part, Pattern, WindowId, resize};
 use omorfos_i18n::Value;
 use smithay::backend::input::{Axis, ButtonState, KeyState};
-use smithay::desktop::{WindowSurfaceType, layer_map_for_output};
+use smithay::desktop::{LayerSurface, WindowSurfaceType, layer_map_for_output};
 use smithay::input::keyboard::{FilterResult, KeyboardTarget, Keycode, Keysym, ModifiersState};
 use smithay::input::pointer::{AxisFrame, ButtonEvent, CursorIcon, CursorImageStatus, MotionEvent};
 use smithay::reexports::wayland_server::Resource;
+use smithay::reexports::wayland_server::backend::ClientId;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::utils::{Logical, Point, SERIAL_COUNTER, Serial};
 use smithay::wayland::shell::wlr_layer::Layer;
@@ -1280,12 +1281,29 @@ impl Compositor {
             }
         }
         if over {
-            for layer in shown {
-                layer.layer_surface().send_close();
-            }
+            close_all(shown);
         }
         self.hover.beside = over;
         over
+    }
+
+    /// Closes what the program that is `demanding`, that demands the
+    /// keyboard, shows, as a press beside it would: a way of saying never
+    /// mind.
+    pub(crate) fn close_demanding(&self, demanding: &ClientId) {
+        let theirs = |layer: &LayerSurface| {
+            let client = layer.wl_surface().client().map(|client| client.id());
+            client.as_ref() == Some(demanding)
+        };
+        let shown = self.heads.iter().flat_map(|head| {
+            let layers = layer_map_for_output(&head.output);
+            layers
+                .layers()
+                .filter(|layer| theirs(layer))
+                .cloned()
+                .collect::<Vec<_>>()
+        });
+        close_all(shown.collect());
     }
 
     /// Takes a press or a release that is for something of ours laid over
@@ -1604,3 +1622,10 @@ impl KeyboardShortcutsInhibitHandler for Compositor {
 }
 
 delegate_keyboard_shortcuts_inhibit!(Compositor);
+
+/// Tells each of `layers` it is closed.
+fn close_all(layers: Vec<LayerSurface>) {
+    for layer in layers {
+        layer.layer_surface().send_close();
+    }
+}

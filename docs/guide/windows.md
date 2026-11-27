@@ -205,7 +205,12 @@ close them. Four fingers spread apart show the desktop: every
 window of the workspace shown goes with them, straight out from the
 middle of the screen until a sliver of it is left at the edge it comes to,
 and none has the keyboard. Four fingers pinched together bring them back
-the same way. As with the workspaces, the fingers can take the windows
+the same way; pinched with nothing set aside, as they lift, far enough or
+quickly enough, they open the launcher onto every program, as a Mac opens
+its Apps (see [Every program](launcher.md#every-program)). While the
+launcher, or anything else that has the keyboard to itself, is open, four
+fingers spread close it, as a click beside it does, and set no window
+aside: a gesture does one thing at a time. As with the workspaces, the fingers can take the windows
 part of the way and back; lifted past half way, or flicked, they go on,
 and otherwise back. Escape, clicking a sliver, choosing a window anywhere
 and one opening bring them back too (`show_desktop`), and so does leaving

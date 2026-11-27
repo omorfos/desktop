@@ -7,8 +7,12 @@
 //! gesture, the rest of the way taking the time a window takes to go where
 //! it was sent, as when Escape brings them back.
 //!
-//! Pinched together with nothing set aside, nothing moves: that is to
-//! show the launcher's every program, once there is that.
+//! Pinched together with nothing set aside, nothing moves, and the
+//! launcher opens onto every program as they lift, if they went far enough
+//! or fast enough by the same rule, as a Mac opens its Apps (ADR 101).
+//! Spread apart while the launcher, or anything else that demands the
+//! keyboard, is open, they close it by the same rule, as a press beside it
+//! would, and set nothing aside: one gesture means one thing at a time.
 //!
 //! A workspace left with its windows aside, by fingers beginning to swipe
 //! to another or by a key, has them back over the same time as it begins
@@ -21,6 +25,8 @@
 use std::time::Duration;
 
 use omorfos_config::Easing;
+use smithay::reexports::wayland_server::Resource;
+use smithay::reexports::wayland_server::backend::ClientId;
 
 use crate::compositor::Compositor;
 use crate::fingers::Fingers;
@@ -34,13 +40,20 @@ const WHOLE: f64 = 1.5;
 const BACK: Duration = Duration::from_millis(240);
 
 /// Fingers carrying the windows aside or back.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub(crate) struct Spread {
     /// Whether the windows were aside as they began.
     aside: bool,
     /// How far aside the fingers have taken them, out of one.
     reached: f64,
     fingers: Fingers,
+    /// With nothing aside, how far toward every program the fingers have
+    /// pinched, out of one, and how they went there.
+    pinched: (f64, Fingers),
+    /// With nothing aside, the program that demanded the keyboard as they
+    /// began, if one did, for a spread to close rather than set windows
+    /// aside.
+    closing: Option<ClientId>,
 }
 
 impl Spread {
@@ -52,6 +65,13 @@ impl Spread {
         // half: what is told is a share of how far apart they began.
         let way = scale.max(f64::MIN_POSITIVE).ln() / WHOLE.ln();
         (from + way).clamp(0.0, 1.0)
+    }
+
+    /// How far toward every program fingers pinched to `scale` times as
+    /// far apart as they began go: as far as they would bring the windows
+    /// back from aside.
+    fn pinch(scale: f64) -> f64 {
+        1.0 - Self::reach(true, scale)
     }
 }
 
@@ -69,10 +89,14 @@ impl Compositor {
     /// Takes four fingers that began to pinch at `time`.
     pub(crate) fn spread_began(&mut self, time: u32) -> Spread {
         let aside = self.desktop.showing_desktop();
+        let demanding = self.demanding().and_then(|surface| surface.client());
+        let closing = demanding.map(|client| client.id()).filter(|_| !aside);
         Spread {
             aside,
             reached: if aside { 1.0 } else { 0.0 },
             fingers: Fingers::down(time),
+            pinched: (0.0, Fingers::down(time)),
+            closing,
         }
     }
 
@@ -82,20 +106,39 @@ impl Compositor {
         let reached = Spread::reach(spread.aside, scale);
         spread.fingers.went(reached - spread.reached, time);
         spread.reached = reached;
-        if !self.config().general.appearance.reduce_motion {
+        if !spread.aside {
+            let (was, fingers) = &mut spread.pinched;
+            let pinched = Spread::pinch(scale);
+            fingers.went(pinched - *was, time);
+            *was = pinched;
+        }
+        if spread.closing.is_none() && !self.config().general.appearance.reduce_motion {
             self.desktop.carry_aside(share(reached));
         }
     }
 
     /// Takes the fingers of `spread` lifting, or the pinch being
     /// `cancelled`: the windows go on aside or back from where they were
-    /// let go of.
+    /// let go of; or, pinched with nothing aside far or fast enough, the
+    /// launcher opens onto every program.
     pub(crate) fn spread_ended(&mut self, spread: Spread, cancelled: bool) {
         let Spread {
             aside,
             reached,
             fingers,
+            pinched: (pinched, pinching),
+            closing,
         } = spread;
+        if let Some(demanding) = closing {
+            if !cancelled && reached > 0.0 && fingers.go_on(reached, true) {
+                self.close_demanding(&demanding);
+            }
+            return;
+        }
+        if !aside && !cancelled && pinched > 0.0 && pinching.go_on(pinched, true) {
+            self.perform(&omorfos_config::Action::ShowPrograms);
+            return;
+        }
         let from = if aside { 1.0 } else { 0.0 };
         // Not moved at all, as a pinch with nothing aside, there is nothing
         // to let go of.

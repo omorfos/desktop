@@ -100,6 +100,14 @@ a known gap.
   there with `fi` still typed; Up from the ring goes back to the last
   program, Escape to the field.
 
+- **Four fingers pinched open every program (#138).** With no window
+  set aside, pinch four fingers together on the touchpad and lift: the
+  launcher opens onto its grid of every program. Pinched only a little
+  and lifted slowly, nothing. With windows set aside by a spread, the
+  pinch brings them back as before, and opens nothing. Spread four
+  fingers with the launcher open: it closes, and no window moves. Two
+  fingers pinched still zoom in the program under the pointer.
+
 ## Where this is going
 
 omorfos is small, fast and driven by text files, but what is being asked
@@ -1014,7 +1022,13 @@ what only games and touchpads need last.
             fingers by one rule, `fingers.rs`.
       - [x] Down, with nothing open, the program in front's windows
             alone, and up closing them (`show_program_windows`).
-      - [ ] Four fingers pinched, the launcher's every program (#157).
+      - [x] Four fingers pinched, with nothing set aside, the
+            launcher's every program (#157), as they lift, far or fast
+            enough by the rule of `fingers.rs`; nothing moves while they
+            pinch. Spread while the launcher, or anything that demands
+            the keyboard, is open, they close it, as a click beside it
+            does, and set nothing aside, so that a gesture does one thing
+            at a time.
       - [ ] The page of settings.
 - [x] The session outliving the compositor (ADR 60), the holder first,
       `omorfos-hold`: a small program that binds the socket and starts
@@ -1968,9 +1982,9 @@ the first than on the last.
             with Ctrl in the ordinary way; the compositor hands them Super
             as it is, as it does no other program. What a Mac's fields do
             with Ctrl, as Ctrl+A to the start of the line, is to come;
-      - [ ] the touchpad's three or four fingers, a pinch for every
-            program and a spread for the desktop; a page of settings for
-            the gestures, for stage 7;
+      - [x] the touchpad's three or four fingers, a pinch for every
+            program and a spread for the desktop (#138); the page of
+            settings for the gestures waits for stage 7;
       - [x] `defaults: ordinary`, and the release that moves the keys
             saying which (#133): those ADR 101 names, and with Alt and
             Ctrl GNOME's where it names none, `Alt+F10` maximizing and
@@ -2198,8 +2212,8 @@ to false, as `launcher.sums` is (ADR 83).
       scrolled by lines past half the screen. Typing narrows the grid; the
       arrows walk it, Left and Right only while nothing is typed, as they
       move the cursor once something is; a sum's answer has a line to
-      itself above. No key is bound to it; the four-finger pinch is to
-      open it (#138). Still missing: a screen reader is told nothing of
+      itself above. No key is bound to it; four fingers pinched open it
+      (#138). Still missing: a screen reader is told nothing of
       it, as of the rest of the launcher, which has no accessibility at
       all yet; the number of columns is fixed, not the theme's or the
       screen's; and with `launcher.icons: false` a tile keeps the room its
