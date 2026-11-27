@@ -571,6 +571,7 @@ impl Shell {
         self.stale |= self.picker.drag(x, y, theme, text);
         self.stale |= self.picker.hover(Some((x, y)), theme, text);
         self.stale |= self.picker.point(x, y, &self.theme);
+        self.picker.pressed_over(x, y, &self.theme, &mut self.text);
     }
 
     /// Takes in the pointer leaving the launcher, which hides the row of
@@ -1060,7 +1061,10 @@ impl Dispatch<wl_pointer::WlPointer, ()> for Shell {
                 button: LEFT_BUTTON,
                 state: WEnum::Value(wl_pointer::ButtonState::Released),
                 ..
-            } => shell.picker.release(),
+            } => {
+                let outcome = shell.picker.let_go(x, y, &shell.theme, &mut shell.text);
+                shell.take(outcome);
+            }
             _ => {}
         }
     }

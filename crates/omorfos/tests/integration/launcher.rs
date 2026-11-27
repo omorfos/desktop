@@ -1874,3 +1874,38 @@ fn the_generic_mode_starts_the_top_hit_on_enter() {
     session.eventually(|session| mark(session, "files") == "x");
     assert_eq!(mark(&session, "firefox"), "");
 }
+
+#[test]
+fn a_press_on_a_program_starts_it_as_it_is_let_go_and_not_if_let_go_off_it() {
+    let mut session = Session::new();
+    let mut launcher = launcher(&mut session);
+    settle(&mut session, &mut launcher);
+    press(&mut session, E);
+    settle(&mut session, &mut launcher);
+    let ((x, files), (_, other)) = (row(1), row(3));
+    let motion = |session: &mut Session, y: i32| {
+        let (x, y) = (f64::from(x), f64::from(y));
+        session.compositor_mut().input(Input::Motion { x, y }, 0);
+    };
+    let button = |session: &mut Session, pressed| {
+        let button = Input::Button {
+            button: LEFT,
+            pressed,
+        };
+        session.compositor_mut().input(button, 0);
+    };
+    motion(&mut session, files - 2);
+    motion(&mut session, files);
+    button(&mut session, true);
+    assert!(!settle(&mut session, &mut launcher), "not as it goes down");
+    // Slid onto another and let go: nothing started, and still open.
+    motion(&mut session, other);
+    button(&mut session, false);
+    assert!(!settle(&mut session, &mut launcher), "let go off it");
+    // Pressed and let go on it, it is started.
+    motion(&mut session, files);
+    button(&mut session, true);
+    button(&mut session, false);
+    assert!(settle(&mut session, &mut launcher));
+    session.eventually(|session| mark(session, "files") == "x");
+}

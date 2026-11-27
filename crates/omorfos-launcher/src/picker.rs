@@ -7,7 +7,7 @@ use omorfos_config::{Color, Edges, Launcher as Show, Mode, Part, State, States, 
 use omorfos_i18n::{Value, Words};
 use omorfos_ipc::Request;
 use omorfos_ui::field::{Edit, Field, Reach, Way};
-use omorfos_ui::{Area, Canvas, Motion, Scale, Text, inset};
+use omorfos_ui::{Area, Canvas, Motion, Pressing, Scale, Text, inset};
 use serde_json::json;
 
 use crate::sources::{Does, Found, Programs, Section, Source, Sums};
@@ -77,6 +77,14 @@ pub enum Key {
     Mode(u8),
 }
 
+/// What a press on the launcher is on, done as it is let go there
+/// (ADR 113): a mode in the row of modes, or a program's row.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Spot {
+    Mode(View),
+    Row(usize),
+}
+
 /// What the launcher shows: everything it finds, or one mode's own.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum View {
@@ -130,6 +138,9 @@ pub struct Picker {
     /// Whether the pointer was pressed in the field and is still held,
     /// choosing what it moves over.
     dragging: bool,
+    /// What else the pointer's button went down on, done as it is let go
+    /// there.
+    pressing: Pressing<Spot>,
     /// Everything, or one mode's own; the programs' is a grid.
     view: View,
     /// Whether the keyboard is on the programs, Down having taken it
@@ -370,6 +381,7 @@ impl Picker {
             room: ROWS,
             top: 0,
             dragging: false,
+            pressing: Pressing::new(),
             view: View::Generic,
             listing: false,
             hovered: false,
@@ -974,10 +986,25 @@ impl Picker {
         self.chosen = 0;
     }
 
-    /// Takes a click at a point of the launcher: in the field it puts the
-    /// cursor there, and chooses what the pointer is then dragged over
-    /// until it is let go; on a program's row it starts that program; and
-    /// anywhere else it does nothing. `text` measures what is typed.
+    /// What a press at a point of the launcher is on, but for the field.
+    fn spot_at(&self, x: i32, y: i32, theme: &Theme, text: &mut Text) -> Option<Spot> {
+        let mode = self.mode_at(x, y, theme, text).map(Spot::Mode);
+        mode.or_else(|| self.row_at(x, y, theme).map(Spot::Row))
+    }
+
+    /// Takes the pointer moving to a point of the launcher while its
+    /// button may be held: what it went down on is pressed while the
+    /// pointer is on it.
+    pub fn pressed_over(&mut self, x: i32, y: i32, theme: &Theme, text: &mut Text) {
+        let spot = self.spot_at(x, y, theme, text);
+        self.pressing.moved(spot);
+    }
+
+    /// Takes the pointer's button going down at a point of the launcher:
+    /// in the field it puts the cursor there, and chooses what the pointer
+    /// is then dragged over until it is let go; on a mode or a program's
+    /// row it holds that until the button is let go (ADR 113).
+    /// `text` measures what is typed.
     pub fn click(&mut self, x: i32, y: i32, theme: &Theme, text: &mut Text) -> Outcome {
         let (left, top, width, height) = self.layout(theme).input;
         let across = x.checked_sub(left).and_then(|x| u32::try_from(x).ok());
@@ -989,13 +1016,29 @@ impl Picker {
             self.field.place(at, false);
             return Outcome::Stay;
         }
-        if let Some(view) = self.mode_at(x, y, theme, text) {
-            self.set_view(view);
-            return Outcome::Stay;
+        let spot = self.spot_at(x, y, theme, text);
+        self.pressing.press(spot);
+        Outcome::Stay
+    }
+
+    /// Takes the pointer's button being let go at a point of the launcher:
+    /// on the mode it went down on it goes to that mode, on the program's
+    /// row it went down on it starts that program, and anywhere else it
+    /// does nothing.
+    pub fn let_go(&mut self, x: i32, y: i32, theme: &Theme, text: &mut Text) -> Outcome {
+        self.release();
+        let spot = self.spot_at(x, y, theme, text);
+        match self.pressing.release(spot) {
+            Some(Spot::Mode(view)) => {
+                self.set_view(view);
+                Outcome::Stay
+            }
+            Some(Spot::Row(row)) => {
+                self.chosen = row;
+                self.start()
+            }
+            None => Outcome::Stay,
         }
-        let over = self.row_at(x, y, theme);
-        self.chosen = over.unwrap_or(self.chosen);
-        over.map_or(Outcome::Stay, |_| self.start())
     }
 
     /// Takes the pointer moving to a point of the launcher while it is
@@ -1546,6 +1589,13 @@ mod tests {
     use omorfos_config::Command;
 
     use super::*;
+
+    /// A click as people make one: the button pressed and let go at one
+    /// place, which acts as it is let go (ADR 113).
+    fn clicked(picker: &mut Picker, x: i32, y: i32, theme: &Theme, text: &mut Text) -> Outcome {
+        let _ = picker.click(x, y, theme, text);
+        picker.let_go(x, y, theme, text)
+    }
 
     /// Backspace, taking out the character before the cursor.
     const BACKSPACE: Key = Key::Edit(Edit::Remove {
@@ -2102,17 +2152,17 @@ mod tests {
         // Under the heading over all but the first.
         let (x, y) = row(5);
         assert_eq!(
-            picker.click(x, y, &theme, &mut Text::new()),
+            clicked(&mut picker, x, y, &theme, &mut Text::new()),
             spawn(&["terminal", "--go"])
         );
         assert_eq!(
-            picker.click(x, 2, &theme, &mut Text::new()),
+            clicked(&mut picker, x, 2, &theme, &mut Text::new()),
             Outcome::Stay,
             "on the text field"
         );
         let (x, below) = row(8);
         assert_eq!(
-            picker.click(x, below, &theme, &mut Text::new()),
+            clicked(&mut picker, x, below, &theme, &mut Text::new()),
             Outcome::Stay
         );
     }
@@ -2485,10 +2535,13 @@ mod tests {
         assert!(picker.point(x, y, &theme));
         assert_eq!(picker.chosen(), Some("Counter 1+1"));
         let (x, y) = row(1);
-        assert_eq!(picker.click(x, y, &theme, &mut Text::new()), copy("2"));
+        assert_eq!(
+            clicked(&mut picker, x, y, &theme, &mut Text::new()),
+            copy("2")
+        );
         let (x, below) = row(4);
         assert_eq!(
-            picker.click(x, below, &theme, &mut Text::new()),
+            clicked(&mut picker, x, below, &theme, &mut Text::new()),
             Outcome::Stay
         );
     }
@@ -2715,7 +2768,7 @@ mod tests {
         assert_eq!(picker.chosen(), Some("Photos"));
         let (x, y) = tile(0, 1);
         let mut text = Text::new();
-        let started = picker.click(x, y, &theme, &mut text);
+        let started = clicked(&mut picker, x, y, &theme, &mut text);
         assert_eq!(started, spawn(&["books", "--go"]));
         // A launcher wider than a line of tiles leaves what is over past
         // the last column to the last column, not to the next line.
@@ -3226,12 +3279,12 @@ mod tests {
         let marked = at(&picker, programs);
         assert!(![unmarked, lit].contains(&marked), "{marked:#x}");
         // A click goes to it.
-        assert_eq!(picker.click(x, y, &theme, text), Outcome::Stay);
+        assert_eq!(clicked(&mut picker, x, y, &theme, text), Outcome::Stay);
         assert_eq!(picker.view(), programs);
         assert_eq!(at(&picker, programs), lit);
         assert_ne!(at(&picker, View::Generic), lit);
         let (x, y) = mode_middle(&picker, View::Generic).unwrap_or_default();
-        assert_eq!(picker.click(x, y, &theme, text), Outcome::Stay);
+        assert_eq!(clicked(&mut picker, x, y, &theme, text), Outcome::Stay);
         assert_eq!(picker.view(), View::Generic);
         // Each mode has its name, and its digit after it but everything.
         let words = Words::in_languages(&omorfos_i18n::LAUNCHER, &[]);
