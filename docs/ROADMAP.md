@@ -29,6 +29,16 @@ a known gap.
   half a second, or click; then the terminal has the keyboard, with
   nothing typed into it. Answered with Escape, the box gives the
   keyboard back at once.
+- **Time limits put off by being there (#180, finding 7; ADR 112).**
+  Shut Down from the root menu, and move the mouse now and then: it does
+  not go ahead while you do; left alone a minute, it does. With
+  `power: { wait: 0 }` it says no seconds and waits. Press the display
+  key with two screens: Put back and Keep are there, Escape puts the
+  screens back at once, and moving the mouse puts the 15 seconds off, but
+  they go back by two minutes. Rest the pointer on a notification: it
+  stays, and goes five seconds after the pointer leaves. With `mouse:
+  { double_click: 800 }`, two slow clicks on a titlebar maximize it. On
+  the lock screen, awake, moving the mouse keeps the field.
 - **Questions answered only by what was meant for them (#180,
   finding 3; ADR 111).** In a browser, start sharing the screen while
   typing in a text field, and press Enter as the question comes up: it
@@ -3043,9 +3053,17 @@ to be put right before a release of any kind, and the first release
       ([finding 5](reviews/2026-11-26-accessibility-design-wcag.md#5-nearly-everything-acts-as-the-button-goes-down)).
       The boxes that ask act as it is let go since ADR 111; menus, the
       launcher, the bar and notifications do not yet.
-- [ ] Medium: times that cannot be changed, and the question before leaving
+- [x] Medium: times that cannot be changed, and the question before leaving
       saying yes by itself after a minute
       ([finding 7](reviews/2026-11-26-accessibility-design-wcag.md#7-times-that-cannot-be-changed-and-one-that-says-yes-by-itself)).
+      ADR 112: `power.wait`, put off by being there; the screens'
+      question with buttons, put off to two minutes at most and put back
+      at once by Escape; a notification held while pointed at, the user's
+      timeout the shortest; `mouse.double_click`; the lock screen's
+      pointer. Left: the volume shown for a second and a half, a
+      tooltip's half second, a full screen's bar.
+- [ ] A history of notifications, to read again one that has gone: what
+      finding 7 found missing, a feature of its own (ADR 112).
 - [ ] Medium: which program is taking pictures told only to a pointer at
       rest
       ([finding 6](reviews/2026-11-26-accessibility-design-wcag.md#6-which-program-is-taking-pictures-is-told-only-to-a-pointer-at-rest)).
