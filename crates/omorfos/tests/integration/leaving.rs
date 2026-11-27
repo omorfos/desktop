@@ -345,3 +345,92 @@ fn enter_just_after_the_keyboard_comes_to_go_on_does_not_go_on() {
     a_moment();
     assert_eq!(said(&asked), "", "nothing asked of the machine");
 }
+
+#[test]
+fn a_key_at_59_seconds_puts_off_leaving_by_a_minute() {
+    let (mut session, _directory, asked) = session("");
+    session.compositor_mut().perform(&Action::ShutDown);
+    session.step();
+    session.advance(Duration::from_secs(59));
+    press(&mut session, key::A);
+    session.advance(Duration::from_secs(2));
+    a_moment();
+    assert_eq!(said(&asked), "", "still there, at 61 seconds");
+    assert!(asked_on_screen(&mut session));
+    session.advance(Duration::from_secs(55));
+    a_moment();
+    assert_eq!(said(&asked), "", "a minute from the key");
+    session.advance(Duration::from_secs(5));
+    session.eventually(|_| said(&asked) == "shut-down\n");
+}
+
+#[test]
+fn the_pointer_moving_puts_off_leaving_too() {
+    let (mut session, _directory, asked) = session("");
+    session.compositor_mut().perform(&Action::Restart);
+    session.step();
+    session.advance(Duration::from_secs(59));
+    session
+        .compositor_mut()
+        .input(Input::Motion { x: 3.0, y: 4.0 }, 0);
+    session.advance(Duration::from_secs(2));
+    a_moment();
+    assert_eq!(said(&asked), "", "still there, at 61 seconds");
+    assert!(asked_on_screen(&mut session));
+}
+
+#[test]
+fn the_question_before_leaving_waits_as_long_as_is_set() {
+    let (mut session, _directory, asked) = session("power: { wait: 10 }\n");
+    session.compositor_mut().perform(&Action::ShutDown);
+    session.step();
+    session.advance(Duration::from_secs(9));
+    a_moment();
+    assert_eq!(said(&asked), "", "not yet");
+    session.advance(Duration::from_secs(2));
+    assert!(!asked_on_screen(&mut session), "gone on at 11 seconds");
+    session.eventually(|_| said(&asked) == "shut-down\n");
+}
+
+#[test]
+fn with_no_wait_set_the_question_is_asked_until_it_is_answered() {
+    let (mut session, _directory, asked) = session("power: { wait: 0 }\n");
+    session.compositor_mut().perform(&Action::ShutDown);
+    session.step();
+    let (cancel, _) = session.compositor().leaving_buttons().unwrap();
+    // The lines above the buttons, where seconds left would be said.
+    let said_above = |session: &mut Session| {
+        let picture = session.draw();
+        let rows = cancel.1 - 70..cancel.1;
+        let columns = cancel.0 - 100..cancel.0 + 100;
+        let place = columns.flat_map(|x| rows.clone().map(move |y| (x, y)));
+        place.map(|(x, y)| picture.at(x, y)).collect::<Vec<u32>>()
+    };
+    let at_first = said_above(&mut session);
+    session.advance(Duration::from_secs(600));
+    a_moment();
+    assert_eq!(said(&asked), "", "ten minutes on");
+    assert!(asked_on_screen(&mut session));
+    assert_eq!(said_above(&mut session), at_first, "no seconds counted");
+    press(&mut session, key::ESCAPE);
+    assert!(!asked_on_screen(&mut session), "answered");
+}
+
+#[test]
+fn no_wait_set_while_it_is_asked_leaves_nothing_due_in_the_past() {
+    let (mut session, _directory, asked) = session("");
+    session.compositor_mut().perform(&Action::ShutDown);
+    session.step();
+    session.write_config("config.yaml", "power: { wait: 0 }\n");
+    session.compositor_mut().reload_config();
+    session.step();
+    session.advance(Duration::from_secs(61));
+    let now = session.now;
+    assert!(
+        session.compositor().deadline().is_none_or(|due| due > now),
+        "nothing is waited for that has passed"
+    );
+    a_moment();
+    assert_eq!(said(&asked), "", "asked still");
+    assert!(asked_on_screen(&mut session));
+}

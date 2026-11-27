@@ -85,6 +85,7 @@ update:
   wait: 3600              # seconds omorfos's new version waits for a quiet moment; 0 however long
 power:
   ask: true               # ask before restarting or shutting down
+  wait: 60                # seconds it waits, put off by any key or movement; 0: until answered
 ```
 
 The values shown are the defaults, except `workspaces`, which defaults to
@@ -99,8 +100,11 @@ as a film being played, holds off all three. They are off by default.
 
 `power.ask` has the `log_out`, `restart` and `shut_down` actions ask first, from the
 root menu, a key or `omorfosctl` alike: a card in the middle of the dimmed
-screen says what not saved will be lost and counts a minute down, after
-which it is done. The keyboard starts on Cancel, so Enter does not go
+screen says what not saved will be lost and counts `power.wait` seconds
+down, a minute unless set, after which it is done. Any key, a click or
+the pointer moving starts the count again, so that only a machine walked
+away from goes on by itself; `wait: 0` has it wait until it is answered,
+counting nothing (ADR 112). The keyboard starts on Cancel, so Enter does not go
 on; Tab, or Right, to its button and, a moment after, Enter, or a
 click on it, does, from half a second after the card is up, a click as
 it is let go on the button (ADR 111). Escape, Cancel or a click elsewhere does not. Set it to `false` to have them act

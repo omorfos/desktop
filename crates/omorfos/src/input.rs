@@ -408,6 +408,9 @@ impl Compositor {
         let seat = self.seat.clone();
         self.idle.notify_activity(&seat);
         self.presence.stirred = true;
+        // And the question before leaving counts its wait again from now
+        // (ADR 112): only a machine walked away from goes on by itself.
+        self.cards.leave.stirred();
         if self.withholding.holding() && !self.is_locked() && self.sealed().is_none() {
             // Held back after a prompt that went unanswered: a key reaches
             // nothing, and a press lets the keyboard go where it would.

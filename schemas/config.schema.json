@@ -819,6 +819,13 @@
           "default": true,
           "description": "Whether they ask the user first, so that a stray click or key does\nnot end what is not saved. False: they act at once.",
           "type": "boolean"
+        },
+        "wait": {
+          "default": 60,
+          "description": "How long, in seconds, the question waits before it goes ahead,\ncounted again from any key or the pointer moving, so that only a\nmachine walked away from goes ahead by itself. `0` waits until it\nis answered.",
+          "maximum": 3600,
+          "minimum": 0,
+          "type": "integer"
         }
       },
       "type": "object"

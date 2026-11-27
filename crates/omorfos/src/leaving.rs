@@ -27,9 +27,6 @@ use crate::Scale;
 use crate::compositor::{Compositor, Painted};
 use crate::paint::Text;
 
-/// How long the question waits, left alone, before it is taken as a yes.
-const WAITS: Duration = Duration::from_secs(60);
-
 /// How wide the card is; the rest of its layout is a question's.
 const WIDTH: u32 = 380;
 
@@ -65,11 +62,21 @@ fn held(keysym: Keysym) -> Option<Held> {
 }
 
 impl Leave {
+    /// The user was there just now: what is asked waits its time again,
+    /// counted from the next time it is looked at.
+    pub(crate) const fn stirred(&mut self) {
+        self.until = None;
+    }
+
     /// When something is next due, while it is asked: a second less to
     /// wait, or its being done.
     pub(crate) fn deadline(&self) -> Option<Instant> {
         let until = self.until.filter(|_| self.asked.is_some())?;
-        let left = self.shown.as_ref().map_or(0, |asking| asking.left);
+        let left = self
+            .shown
+            .as_ref()
+            .and_then(|asking| asking.left)
+            .unwrap_or(0);
         let next = Duration::from_secs(left.saturating_sub(1));
         Some(until.checked_sub(next).unwrap_or(until))
     }
@@ -127,8 +134,8 @@ pub(crate) struct Asking {
     hovered: Option<Choice>,
     /// The button the keyboard was on as it was painted.
     focus: usize,
-    /// How many seconds it said were left.
-    left: u64,
+    /// How many seconds it said were left, if it counts them.
+    left: Option<u64>,
     /// Where it is, and its buttons.
     pub(crate) at: Point<i32, Logical>,
     whole: Rect,
@@ -241,13 +248,22 @@ impl Compositor {
     /// many seconds are left, painted again only if how it would look has
     /// changed; or takes it away.
     pub(crate) fn ask_to_leave(&mut self, now: Instant) {
-        let asked = self.cards.leave.asked.is_some();
-        let until = asked.then(|| *self.cards.leave.until.get_or_insert(now + WAITS));
+        // As long as `power.wait` says, from when it was asked or the user
+        // was last seen to be there; with none, until it is answered.
+        let wait = u64::from(self.config().general.power.wait.get());
+        let wait = Duration::from_secs(wait);
+        let counts = self.cards.leave.asked.is_some() && !wait.is_zero();
+        // Nothing counted, nothing is due: not even what was, before the
+        // wait was set to none while it was asked.
+        if !counts {
+            self.cards.leave.until = None;
+        }
+        let until = counts.then(|| *self.cards.leave.until.get_or_insert(now + wait));
         if until.is_some_and(|until| until <= now) {
             self.answer_leaving(true);
         }
         // Each whole second or part of one left is said as one.
-        let left = until.map_or(0, |until| {
+        let left = until.map(|until| {
             let left = until.saturating_duration_since(now);
             left.as_secs() + u64::from(left.subsec_nanos() > 0)
         });
@@ -329,17 +345,20 @@ impl Compositor {
 fn paint(
     (text, words): (&mut Text, &Words),
     theme: &Theme,
-    (what, (hovered, focus), left): (Leaving, (Option<Choice>, usize), u64),
+    (what, (hovered, focus), left): (Leaving, (Option<Choice>, usize), Option<u64>),
     scale: Scale,
 ) -> (Canvas, (Area, Area)) {
     let (question, going, counting) = what.said();
     let (question, going) = (words.say(question, &[]), words.say(going, &[]));
-    let left = i64::try_from(left).unwrap_or(i64::MAX);
-    let counting = words.say(counting, &[("left", Value::Number(left))]);
+    // How many seconds are left, said only where they are counted.
+    let counting = left.map(|left| {
+        let left = i64::try_from(left).unwrap_or(i64::MAX);
+        words.say(counting, &[("left", Value::Number(left))])
+    });
     let (unsaved, cancel) = (words.say("leave-unsaved", &[]), words.say("cancel", &[]));
     let detail_font = theme.font(Part::QuestionDetail, States::NONE);
     let inset = theme.style(Part::Question, States::NONE).inset();
-    let mut lines = vec![counting];
+    let mut lines: Vec<String> = counting.into_iter().collect();
     lines.extend(text.wrap(
         &unsaved,
         WIDTH.saturating_sub(inset.across()),

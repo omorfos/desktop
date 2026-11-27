@@ -143,6 +143,7 @@ config.yaml portals
 config.yaml portals.enabled
 config.yaml power
 config.yaml power.ask
+config.yaml power.wait
 config.yaml screens
 config.yaml screens.*.maker
 config.yaml screens.*.name

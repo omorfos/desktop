@@ -192,11 +192,19 @@ pub struct Power {
     /// Whether they ask the user first, so that a stray click or key does
     /// not end what is not saved. False: they act at once.
     pub ask: bool,
+    /// How long, in seconds, the question waits before it goes ahead,
+    /// counted again from any key or the pointer moving, so that only a
+    /// machine walked away from goes ahead by itself. `0` waits until it
+    /// is answered.
+    pub wait: Bounded<0, 3600>,
 }
 
 impl Default for Power {
     fn default() -> Self {
-        Self { ask: true }
+        Self {
+            ask: true,
+            wait: Bounded::clamped(60),
+        }
     }
 }
 
@@ -1655,6 +1663,18 @@ autostart:
         assert!(parse("panel: {}").unwrap().panel.enabled);
         assert!(!parse("panel: { enabled: false }").unwrap().panel.enabled);
         assert!(parse("panel: { position: top }").is_err());
+    }
+
+    #[test]
+    fn the_question_before_leaving_waits_a_minute_unless_told_otherwise() {
+        assert_eq!(General::default().power.wait.get(), 60);
+        assert_eq!(parse("power: { wait: 0 }").unwrap().power.wait.get(), 0);
+        assert_eq!(
+            parse("power: { wait: 3600 }").unwrap().power.wait.get(),
+            3600
+        );
+        assert!(parse("power: { wait: 3601 }").is_err());
+        assert!(parse("power: { wait: -1 }").is_err());
     }
 
     #[test]

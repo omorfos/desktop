@@ -477,6 +477,9 @@ What the \fBrestart\fR and \fBshut_down\fR actions do before they act.
 \fBpower.ask\fR
 Whether they ask the user first, so that a stray click or key does not end what is not saved. False: they act at once. By default \fBtrue\fR.
 .TP
+\fBpower.wait\fR
+How long, in seconds, the question waits before it goes ahead, counted again from any key or the pointer moving, so that only a machine walked away from goes ahead by itself. \fB0\fR waits until it is answered. From 0 to 3600. By default \fB60\fR.
+.TP
 \fBscreens\fR
 Screens known by what they say they are, by names of the user's, which \fBoutputs\fR, \fBarrangements\fR and \fBmirror\fR take in place of a socket's.
 .TP
@@ -757,6 +760,7 @@ update:
   wait: 3600              # seconds omorfos's new version waits for a quiet moment; 0 however long
 power:
   ask: true               # ask before restarting or shutting down
+  wait: 60                # seconds it waits, put off by any key or movement; 0: until answered
 .RE
 .fi
 .SH SEE ALSO
