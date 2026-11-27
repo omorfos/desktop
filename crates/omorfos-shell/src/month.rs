@@ -190,6 +190,16 @@ impl Month {
         self.shown = self.shown.checked_add(by.months()).unwrap_or(self.shown);
     }
 
+    /// Which arrow is at `x`, `y` on a month laid out by `theme`, if one
+    /// is: `true` for the one to the month after.
+    #[must_use]
+    pub fn arrow_at(x: i32, y: i32, theme: &Theme) -> Option<bool> {
+        match Layout::new(theme).at(x, y) {
+            Some(Over::Arrow(arrow)) => Some(arrow == Arrow::After),
+            _ => None,
+        }
+    }
+
     /// What a click at `x`, `y` on the month comes to: says whether it
     /// shows another month.
     pub fn click(&mut self, x: i32, y: i32, theme: &Theme) -> bool {
@@ -403,6 +413,12 @@ mod tests {
         let (x, y) = middle(layout.cell(3, 4));
         assert!(!month.click(x, y, &theme));
         assert!(!month.click(-1, -1, &theme));
+        // And which arrow is where, for a press to be held on.
+        let at = |(x, y): (i32, i32)| Month::arrow_at(x, y, &theme);
+        assert_eq!(at(middle(layout.cell(6, 0))), Some(true));
+        assert_eq!(at(middle(layout.cell(0, 0))), Some(false));
+        assert_eq!(at(middle(layout.cell(3, 4))), None, "a day");
+        assert_eq!(Month::arrow_at(-1, -1, &theme), None);
         month.turn(true);
         assert_eq!(month.shown(), date(2026, 12, 1));
     }

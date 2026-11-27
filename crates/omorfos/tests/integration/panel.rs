@@ -1046,3 +1046,36 @@ fn a_theme_saved_while_the_month_is_open_closes_it_and_it_opens_again_as_the_the
     assert!(above_the_bar(&mut session, WIDTH - 100, tall + 8 * 8 - 4));
     assert!(!above_the_bar(&mut session, WIDTH - 100, tall + 8 * 8 + 4));
 }
+
+#[test]
+fn a_press_on_a_workspace_shows_it_as_it_is_let_go_and_not_if_let_go_off_it() {
+    let mut session = Session::with_workspaces();
+    let mut panel = panel(&mut session);
+    settle(&mut session, &mut panel);
+    let (second, third) = (
+        button(&mut session, &workspace(2)),
+        button(&mut session, &workspace(3)),
+    );
+    let held = |session: &mut Session, pressed| {
+        let input = Input::Button {
+            button: LEFT,
+            pressed,
+        };
+        session.compositor_mut().input(input, 0);
+    };
+    move_to(&mut session, 3, HEIGHT - 5);
+    move_to(&mut session, second, HEIGHT - 5);
+    held(&mut session, true);
+    settle(&mut session, &mut panel);
+    assert_eq!(shown(&mut session), [1], "not as it goes down");
+    // Slid onto the third and let go: nothing.
+    move_to(&mut session, third, HEIGHT - 5);
+    held(&mut session, false);
+    settle(&mut session, &mut panel);
+    assert_eq!(shown(&mut session), [1], "let go off it");
+    // Pressed and let go on it, it is shown.
+    move_to(&mut session, second, HEIGHT - 5);
+    click(&mut session, LEFT);
+    settle(&mut session, &mut panel);
+    assert_eq!(shown(&mut session), [2]);
+}

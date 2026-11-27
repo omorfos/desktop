@@ -19,7 +19,7 @@ use omorfos_shell::popover::{Hanging, Popovers, Tip};
 use omorfos_shell::sheet::Sheet;
 use omorfos_shell::tooltip::Resting;
 use omorfos_shell::whole;
-use omorfos_ui::{Area, Motion, Scale, Text};
+use omorfos_ui::{Area, Motion, Pressing, Scale, Text};
 use rustix::event::{PollFd, PollFlags, Timespec, poll};
 use wayland_client::backend::ReadEventsGuard;
 use wayland_client::protocol::{
@@ -36,6 +36,7 @@ use wayland_protocols::wp::viewporter::client::{wp_viewport, wp_viewporter};
 use wayland_protocols::xdg::shell::client::{xdg_popup, xdg_positioner, xdg_surface, xdg_wm_base};
 use wayland_protocols_wlr::layer_shell::v1::client::{zwlr_layer_shell_v1, zwlr_layer_surface_v1};
 
+use crate::bar::Target;
 use crate::{Bar, Click, Hint};
 
 /// Why the panel could not go on.
@@ -260,6 +261,16 @@ pub(crate) fn run(wayland: &Path, socket: &Path, config: (&Path, Option<&Path>))
     }
 }
 
+/// What a press on the panel is on, acted on as it is let go there
+/// (ADR 113).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Press {
+    /// An item of the bar of the screen of a number.
+    Bar(u32, Target),
+    /// An arrow of the month: `true` for the one to the month after.
+    Arrow(bool),
+}
+
 /// What the Wayland connection's events act on: the screens and their
 /// bars, and what is needed to draw them.
 struct Shell {
@@ -281,6 +292,9 @@ struct Shell {
     month: Option<(u32, Month)>,
     /// Where on the month the pointer is, while it is on it.
     on_month: Option<(i32, i32)>,
+    /// What the pointer's button went down on, acted on as it is let go
+    /// there (ADR 113).
+    pressing: Pressing<Press>,
     /// Which tooltip the pointer rests on, and whether it is to be shown.
     resting: Resting<Tipped>,
     /// The tooltip shown.
@@ -418,6 +432,7 @@ impl Shell {
             seat: None,
             screens: Vec::new(),
             over: None,
+            pressing: Pressing::new(),
             popovers: Popovers::default(),
             month: None,
             on_month: None,
@@ -499,6 +514,22 @@ impl Shell {
         })
     }
 
+    /// What a press where the pointer is now is on: an item of a bar, by
+    /// its screen, or an arrow of the month.
+    fn pressed_on(&self) -> Option<Press> {
+        let theme = &self.store.current().theme;
+        if let Some((x, y)) = self.on_month {
+            return Month::arrow_at(x, y, theme).map(Press::Arrow);
+        }
+        let (global, along) = self.over?;
+        let screens = self.screens.iter();
+        let screens = screens.filter(|screen| screen.global == global);
+        let faces = screens.filter_map(|screen| screen.face.as_ref());
+        let mut bars = faces.filter_map(|face| face.shown.as_ref());
+        let target = bars.find_map(|(bar, ..)| bar.target_at(whole(along)));
+        target.map(|target| Press::Bar(global, target))
+    }
+
     /// Does what a click at `serial` on what is under the pointer comes
     /// to: on the month, what it does there; on a bar, what its button
     /// asks of the compositor, or the month opened under the clock, or
@@ -522,16 +553,21 @@ impl Shell {
             let clicked = bars.find_map(|(bar, ..)| bar.click(whole(along)));
             clicked.map(|clicked| (global, clicked))
         });
-        match clicked {
-            Some((_, Click::Ask(request))) => {
-                let sent = self.commands.send(&request, self.now);
-                self.sent = mem::replace(&mut self.sent, Ok(())).and(sent);
-            }
-            Some((global, Click::Month(under))) => {
-                self.month_under(global, under, (serial, handle));
-            }
-            None => {}
-        }
+        // Only what does something is pressed, so something was clicked:
+        // there is no arm for nothing, which cannot be.
+        #[expect(
+            clippy::needless_for_each,
+            reason = "an `if let` would have an arm for nothing clicked, which cannot be"
+        )]
+        clicked
+            .into_iter()
+            .for_each(|(global, clicked)| match clicked {
+                Click::Ask(request) => {
+                    let sent = self.commands.send(&request, self.now);
+                    self.sent = mem::replace(&mut self.sent, Ok(())).and(sent);
+                }
+                Click::Month(under) => self.month_under(global, under, (serial, handle)),
+            });
     }
 
     /// Opens the month under the clock at `under` on the bar of `global`,
@@ -572,6 +608,8 @@ impl Shell {
     /// Takes in where the pointer is: on the month, while it is on it,
     /// and on what has a tooltip on a bar.
     fn pointed(&mut self) {
+        let on = self.pressed_on();
+        self.pressing.moved(on);
         let theme = &self.store.current().theme;
         let (x, y) = self.on_month.unwrap_or((-1, -1));
         let months = self.month.iter_mut();
@@ -970,9 +1008,17 @@ impl Dispatch<wl_pointer::WlPointer, ()> for Shell {
             wl_pointer::Event::Button {
                 serial,
                 button: LEFT_BUTTON,
-                state: WEnum::Value(wl_pointer::ButtonState::Pressed),
+                state: WEnum::Value(state),
                 ..
-            } => shell.click(serial, handle),
+            } => {
+                // What it went down on acts as it is let go on it.
+                let on = shell.pressed_on();
+                if state == wl_pointer::ButtonState::Pressed {
+                    shell.pressing.press(on);
+                } else if shell.pressing.release(on).is_some() {
+                    shell.click(serial, handle);
+                }
+            }
             _ => {}
         }
     }

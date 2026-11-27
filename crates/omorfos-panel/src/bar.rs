@@ -6,9 +6,9 @@ use omorfos_ipc::{Request, State, Window, Workspace};
 use omorfos_ui::{Area, Canvas, Motion, Scale, Text, inset};
 use serde_json::json;
 
-/// What a button stands for.
+/// What a button stands for: what a click on it comes to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Target {
+pub enum Target {
     /// A workspace of the bar's output, by its number.
     Workspace(u32),
     /// A window, by its identifier.
@@ -272,6 +272,14 @@ impl Bar {
             }
         };
         hint.map(|hint| (item.area, hint))
+    }
+
+    /// What the item at `x` is, if there is one there that a click does
+    /// something with: not one that is only read.
+    #[must_use]
+    pub fn target_at(&self, x: i32) -> Option<Target> {
+        let item = self.at(x).filter(|item| item.target != Target::Radios);
+        item.map(|item| item.target)
     }
 
     /// What is `x` units from the bar's left edge, if anything is.
