@@ -20,8 +20,8 @@ use std::time::{Duration, Instant, SystemTime};
 
 use omorfos_brand::pointer::Shape;
 use omorfos_config::{
-    Action, Application, Config, Debouncer, Font, Half, Part, Scheme, State, States, Store, Style,
-    Theme, Watcher, WorkspaceNumber,
+    Action, Application, ButtonSide, Config, Debouncer, Font, Half, Part, Scheme, State, States,
+    Store, Style, Theme, Watcher, WorkspaceNumber,
 };
 use omorfos_core::geometry::{Point as DomainPoint, Rect, Size as DomainSize};
 use omorfos_core::{
@@ -3102,12 +3102,14 @@ impl Compositor {
                 && about.scheme == scheme
                 && about.within == within
                 && about.scale == scale
+                && about.side == config.general.appearance.buttons
         });
         self.cards.about.shown = match (current, wanted) {
             (Some(about), _) => Some(about),
             (None, true) => {
                 let tools = (&mut self.text, &mut self.animation.shades, &self.words);
-                let what = (theme, scheme, &self.cards.about.system);
+                let side = config.general.appearance.buttons;
+                let what = (theme, scheme, &self.cards.about.system, side);
                 let mut about = About::paint(tools, what, within, scale);
                 about.scroll(scrolled);
                 Some(about)
@@ -5348,6 +5350,9 @@ pub(crate) struct About {
     /// is on "About".
     close: Painted,
     close_seen: f32,
+    /// The side a titlebar's buttons stand, whose top corner of it the
+    /// button that closes it is on.
+    side: ButtonSide,
     shadow: Option<Shadowing>,
     /// The button that copies, drawn apart, as it changes: how it looked,
     /// and how much of its tick there was, when it was last painted.
@@ -5362,7 +5367,7 @@ pub(crate) struct About {
 impl About {
     fn paint(
         (text, shades, words): (&mut Text, &mut Shades, &Words),
-        (theme, scheme, system): (&Theme, Scheme, &System),
+        (theme, scheme, system, buttons): (&Theme, Scheme, &System, ButtonSide),
         within: Rectangle<i32, Logical>,
         scale: Scale,
     ) -> Self {
@@ -5418,6 +5423,7 @@ impl About {
             pixels: Painted::new(&canvas),
             close: Painted::new(&paint::overview_close(theme, scale)),
             close_seen: 0.0,
+            side: buttons,
             shadow: shades.cast(&style, scale, placed, None),
             button: None,
             list: Painted::new(&list),
@@ -5452,7 +5458,7 @@ impl About {
 
     /// Whether `point` is on its button that closes it.
     pub(crate) fn closes_at(&self, point: DomainPoint) -> bool {
-        crate::overview::close_of(self.area).contains(point)
+        crate::overview::close_of(self.area, self.side).contains(point)
     }
 
     /// Scrolls what it lists `by` units of layout further down, or up if
@@ -5485,11 +5491,11 @@ impl About {
         // the pointer is on it.
         if self.close_seen > 0.0 {
             let seen = opacity * self.close_seen;
-            let close = crate::overview::close_of(self.area);
+            let close = crate::overview::close_of(self.area, self.side);
             let corner = Point::<i32, Logical>::from((close.origin.x, close.origin.y));
             elements.extend(self.close.element(renderer, corner.to_f64(), view, seen));
             let glass = (glass::key(&ABOUT_CLOSE), elements.len());
-            let place = (self.area, view);
+            let place = (self.area, self.side, view);
             panes.extend(crate::overview::close_glass(
                 &self.theme,
                 place,

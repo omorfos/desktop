@@ -34,7 +34,8 @@ impl Appearance {
     /// language has it.
     /// The pointer, the icons and whether motion is to be reduced are as
     /// `general` has them, the pointer in `scheme`. The buttons of a
-    /// titlebar are as [`Theme::button_layout`] has them.
+    /// titlebar are as [`Theme::button_layout`] has them, on the side
+    /// `general` says.
     #[must_use]
     pub fn of(theme: &Theme, general: &General, scheme: Scheme) -> Self {
         let cursor = &general.cursor;
@@ -49,7 +50,7 @@ impl Appearance {
             font: theme.font_name(),
             monospace: theme.monospace_font_name(),
             icons: general.icons.theme.clone(),
-            buttons: theme.button_layout(),
+            buttons: theme.button_layout(general.appearance.buttons),
             still: general.appearance.reduce_motion,
         }
     }
@@ -80,6 +81,14 @@ mod tests {
         let (red, green, blue) = appearance.accent;
         assert!(blue > green && green > red, "{:?}", appearance.accent);
         assert!((blue - f64::from(0xee_u8) / 255.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn programs_are_told_the_buttons_stand_at_the_right_where_they_do() {
+        let mut general = General::default();
+        general.appearance.buttons = omorfos_config::ButtonSide::Right;
+        let appearance = Appearance::of(&Theme::default(), &general, Scheme::Dark);
+        assert_eq!(appearance.buttons, ":minimize,maximize,close");
     }
 
     #[test]

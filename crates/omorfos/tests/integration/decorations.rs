@@ -862,6 +862,47 @@ fn a_titlebar_has_buttons_that_close_make_fullscreen_and_minimize() {
 }
 
 #[test]
+fn with_the_buttons_on_the_right_they_read_minimize_maximize_close_and_do_the_same() {
+    let config = ("config.yaml", "appearance: { buttons: right }\n");
+    let mut session = Session::with_config(&[config]);
+    let mut client = session.connect();
+    session.open_decorated(&mut client, "first", (200, 100), RED);
+    client.take_events();
+    // As at the left, mirrored, with close at the outer end: its middle
+    // as far in from the frame's right edge as at the left from its left.
+    let right = first_frame(&session).geometry.right();
+    let right = i32::try_from(right).unwrap();
+    let from_right = |(x, y): (i32, i32)| (right - x, y);
+    let (close, maximize, minimize) = (
+        from_right(CLOSE),
+        from_right(MINIMIZE),
+        from_right(MAXIMIZE),
+    );
+    let picture = session.draw();
+    let shown = [close, minimize, maximize].map(|(x, y)| picture.at(x, y));
+    assert_eq!(shown, BUTTONS);
+    assert!(
+        !BUTTONS.contains(&picture.at(CLOSE.0, CLOSE.1)),
+        "nothing of them at the left"
+    );
+
+    click(&mut session, close);
+    session.roundtrip(&mut client);
+    assert!(client.take_events().contains(&Event::Close), "close closes");
+    click(&mut session, maximize);
+    assert!(
+        first_frame(&session).fullscreen,
+        "maximize makes it fullscreen"
+    );
+    session
+        .compositor_mut()
+        .perform(&omorfos_config::Action::Fullscreen);
+    session.step();
+    click(&mut session, minimize);
+    assert_eq!(frames(&session).1, 0, "and minimize puts it away");
+}
+
+#[test]
 fn a_button_does_nothing_unless_the_pointer_is_let_go_on_it() {
     let mut session = Session::new();
     let mut client = session.connect();

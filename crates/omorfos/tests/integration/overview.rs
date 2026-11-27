@@ -1233,6 +1233,37 @@ fn the_button_that_closes_comes_and_goes_as_a_menu_does_as_another_window_is_pic
 }
 
 #[test]
+fn with_a_titlebars_buttons_on_the_right_the_button_that_closes_is_on_the_top_right() {
+    let config = ("config.yaml", "appearance: { buttons: right }\n");
+    let mut session = Session::with_config(&[UNBLURRED, config]);
+    let mut client = session.connect();
+    session.open(&mut client, "first", (180, 120), RED);
+    session.open(&mut client, "second", (180, 120), BLUE);
+    session.step();
+    open(&mut session);
+    client.take_events();
+    let first = place(&session, "first");
+    point(&mut session, middle(first));
+    let ink = Theme::default().style_in(
+        Part::ButtonClose,
+        States::NONE.with(State::Focused),
+        States::NONE.with(State::Hovered),
+    );
+    let ink = ink.background;
+    let ink = u32::from_be_bytes([ink.alpha, ink.red, ink.green, ink.blue]);
+    let (x, y) = corner(first);
+    let right = x + i32::try_from(first.size.width).unwrap();
+    let frame = session.draw();
+    // A ring on its right edge, past the window's right, and none where
+    // it stands at the left.
+    assert_eq!(frame.at(right + 12, y), ink, "at the top right");
+    assert_ne!(frame.at(x - 12, y), ink, "not at the top left");
+    click(&mut session, (right + 6, y - 6));
+    session.roundtrip(&mut client);
+    assert!(client.take_events().contains(&Event::Close));
+}
+
+#[test]
 fn a_workspace_closed_from_the_strip_gives_its_windows_to_the_one_before_but_not_the_last() {
     let mut session = Session::with_config(&[UNBLURRED, ("config.yaml", FOUR_WORKSPACES)]);
     let mut client = session.connect();

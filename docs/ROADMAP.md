@@ -1863,8 +1863,11 @@ the first than on the last.
             program that draws its own frame is pictured as it draws
             itself. A private window in a picture of the screen keeps no
             frame, as its titlebar would say what it is (#140).
-      - [ ] The side of a titlebar's buttons a setting,
-            `appearance.buttons`, `left` or `right` (ADR 107).
+      - [x] The side of a titlebar's buttons a setting,
+            `appearance.buttons`, `left` or `right` (ADR 107, #135): at
+            the right, minimize, maximize, close, as Windows has them;
+            programs told through the portal and X11's settings; the
+            close buttons of the overview and "About" on that top corner.
 - [x] A theme able to style the button under the pointer apart from the
       other two (ADR 105): the three are in `windowcontrols`, `:hover`
       while the pointer is on any of them, and each is `:hover` only

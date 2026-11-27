@@ -20,8 +20,8 @@ use crate::value::{
     words,
 };
 use crate::{
-    Accent, Bounded, Color, Easing, Edges, Gradient, Part, Position, Presence, Scheme, Shadow,
-    State, States, Style, Transition,
+    Accent, Bounded, ButtonSide, Color, Easing, Edges, Gradient, Part, Position, Presence, Scheme,
+    Shadow, State, States, Style, Transition,
 };
 
 /// The stylesheet every theme starts from.
@@ -282,21 +282,31 @@ impl Theme {
 
     /// The buttons of a titlebar as GNOME's `button-layout` setting writes
     /// them, which programs that draw their own titlebars read to put
-    /// theirs where omorfos puts its own: at the left, from the left,
-    /// those the theme gives a width, and none at the right,
-    /// `close,minimize,maximize:`.
+    /// theirs where omorfos puts its own: those the theme gives a width,
+    /// on `side`, from the left. At the left, close outermost and none at
+    /// the right, `close,minimize,maximize:`; at the right, none at the
+    /// left and close outermost, `:minimize,maximize,close`.
     #[must_use]
-    pub fn button_layout(&self) -> String {
+    pub fn button_layout(&self, side: ButtonSide) -> String {
         let buttons = [
             (Part::ButtonClose, "close"),
             (Part::ButtonMinimize, "minimize"),
             (Part::ButtonMaximize, "maximize"),
         ];
-        let shown = buttons
+        let mut shown: Vec<&str> = buttons
             .into_iter()
             .filter(|(part, _)| self.style(*part, States::NONE).min_width > 0)
-            .map(|(_, name)| name);
-        format!("{}:", shown.collect::<Vec<_>>().join(","))
+            .map(|(_, name)| name)
+            .collect();
+        match side {
+            ButtonSide::Left => format!("{}:", shown.join(",")),
+            ButtonSide::Right => {
+                // Minimize, maximize, close, as Windows has them.
+                let close = usize::from(shown.first() == Some(&"close"));
+                shown.rotate_left(close);
+                format!(":{}", shown.join(","))
+            }
+        }
     }
 
     /// The font `part` is written in while it is in `states`.
@@ -1509,14 +1519,31 @@ mod tests {
 
     #[test]
     fn programs_are_told_the_buttons_of_a_titlebar_stand_at_the_left_as_the_theme_has_them() {
-        assert_eq!(Theme::default().button_layout(), "close,minimize,maximize:");
+        let left = ButtonSide::Left;
+        assert_eq!(
+            Theme::default().button_layout(left),
+            "close,minimize,maximize:"
+        );
         let without =
             Theme::parse("window > titlebar > controls > button.maximize { min-width: 0 }")
                 .unwrap();
-        assert_eq!(without.button_layout(), "close,minimize:", "not there");
+        assert_eq!(without.button_layout(left), "close,minimize:", "not there");
         let none = "window > titlebar > controls > button.close, window > titlebar > controls > button.maximize, window > titlebar > controls > button.minimize { min-width: 0 }";
         let none = Theme::parse(none).unwrap();
-        assert_eq!(none.button_layout(), ":", "none at all");
+        assert_eq!(none.button_layout(left), ":", "none at all");
+    }
+
+    #[test]
+    fn programs_are_told_the_buttons_stand_at_the_right_as_windows_has_them_if_asked() {
+        let right = ButtonSide::Right;
+        assert_eq!(
+            Theme::default().button_layout(right),
+            ":minimize,maximize,close"
+        );
+        let without =
+            Theme::parse("window > titlebar > controls > button.minimize { min-width: 0 }")
+                .unwrap();
+        assert_eq!(without.button_layout(right), ":maximize,close", "not there");
     }
 
     #[test]

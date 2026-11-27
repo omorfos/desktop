@@ -59,6 +59,7 @@ appearance:
   accent: cyan            # cyan | blue | teal | purple | pink | orange, or a colour as '#rrggbb'
   reduce_transparency: false # every surface the theme makes glass solid
   reduce_motion: false    # nothing moves: what comes and goes only fades
+  buttons: left           # left | right: the end of a titlebar its buttons stand at, close outermost
 night_light:
   enabled: false          # the screens warmer after dark, by appearance's day and night
   temperature: 4000       # kelvin at night, 1900 to 6500: lower is warmer

@@ -34,6 +34,17 @@ The colour the built\-in theme picks out what has focus with: one that comes wit
 \fBorange\fR
 .RE
 .TP
+\fBappearance.buttons\fR
+Which end of a titlebar its buttons stand at, close outermost: \fBleft\fR, as macOS has them, or \fBright\fR, as Windows has them. Programs that draw their own titlebars are told, to do the same.
+.RS
+.TP
+\fBleft\fR
+At the left, close outermost.
+.TP
+\fBright\fR
+At the right, close outermost.
+.RE
+.TP
 \fBappearance.day\fR
 The hours \fBscheme: auto\fR is light between where no location is given.
 .TP
@@ -737,6 +748,7 @@ appearance:
   accent: cyan            # cyan | blue | teal | purple | pink | orange, or a colour as '#rrggbb'
   reduce_transparency: false # every surface the theme makes glass solid
   reduce_motion: false    # nothing moves: what comes and goes only fades
+  buttons: left           # left | right: the end of a titlebar its buttons stand at, close outermost
 night_light:
   enabled: false          # the screens warmer after dark, by appearance's day and night
   temperature: 4000       # kelvin at night, 1900 to 6500: lower is warmer

@@ -4315,6 +4315,7 @@ mod tests {
     // --- Decorations -------------------------------------------------------
 
     const METRICS: Metrics = Metrics {
+        side: crate::decoration::Side::Left,
         border: 2,
         titlebar: 20,
         buttons: [0; 3],

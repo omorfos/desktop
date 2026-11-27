@@ -21,7 +21,14 @@ is a setting to the review of the defaults, which decided it on
 buttons stand on: `left`, as now and by default, or `right`.**
 
 - omorfos's own frames draw them on that side, close outermost on
-  either, and its tabs and title share what they leave, as now.
+  either, and its tabs and title share what they leave, as now. At the
+  right they read minimize, maximize, close, as Windows and GNOME's own
+  layout at the right have them, rather than the left's order mirrored,
+  which no desktop has; a lone title stays in the middle of what they
+  leave, and a margin the theme gives close towards the frame's edge is
+  towards it at either end.
+- The close buttons of the overview and of "About" stand on the top
+  corner of that side, as a titlebar's do.
 - Programs that draw their own titlebars are told that side as they are
   told the left now, so that they follow it, and told again when it
   changes, as a change of any other part of the look is.

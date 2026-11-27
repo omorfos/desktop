@@ -244,6 +244,29 @@ fn the_button_that_closes_about_is_on_its_top_left_corner_while_the_pointer_is_o
 }
 
 #[test]
+fn with_a_titlebars_buttons_on_the_right_the_button_that_closes_about_is_on_its_top_right() {
+    let mut session = Session::with_config(&[
+        ("theme.css", "dialog.about { backdrop-filter: none; }\n"),
+        ("config.yaml", "appearance: { buttons: right }\n"),
+    ]);
+    about(&mut session);
+    point(&mut session, GROUND);
+    session.settle();
+    let shown = red(&mut session);
+    assert!(shown.len() > 20, "a ring and a cross: {}", shown.len());
+    let right = WIDTH - 12 - 13..WIDTH - 12 + 13;
+    let on_corner = |&(x, y): &(i32, i32)| right.contains(&x) && CLOSE.contains(&y);
+    assert!(shown.iter().all(on_corner), "on its top right corner only");
+    // Inside "About", where only the button can take the press.
+    click(&mut session, (WIDTH - 12 - 6, 12 + 6));
+    assert_eq!(
+        session.draw().at(GROUND.0, GROUND.1),
+        BACKGROUND,
+        "put away"
+    );
+}
+
+#[test]
 fn a_press_on_the_button_that_closes_about_puts_it_away_and_reaches_no_window() {
     let mut session = unblurred();
     let mut client = session.connect();

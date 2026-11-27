@@ -639,7 +639,9 @@ impl Compositor {
             },
             font: config.theme.font_name(),
             icons: config.general.icons.theme.clone(),
-            buttons: config.theme.button_layout(),
+            buttons: config
+                .theme
+                .button_layout(config.general.appearance.buttons),
             animated: !config.general.appearance.reduce_motion,
         };
         // A configuration that changed in something else tells them nothing
