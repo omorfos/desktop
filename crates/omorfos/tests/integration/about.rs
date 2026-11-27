@@ -1,5 +1,6 @@
 //! "About omorfos": shown in the middle of the screen when asked for, over
-//! everything, and put away by Escape, a click beside it, or asking again;
+//! everything, and put away by Escape, a click beside it, its button that
+//! closes, or asking again;
 //! no taller than its screen, what it lists scrolled by the wheel and the
 //! keys, which no window sees while it is shown; what the computer is,
 //! which its button, or Enter, copies for any program to paste.
@@ -176,18 +177,101 @@ fn about_fades_out_as_it_goes_and_a_theme_may_give_it_no_shadow() {
     assert_eq!(session.draw().at(GROUND.0, GROUND.1), BARE);
 }
 
-#[test]
-fn about_has_no_button_that_closes_it_and_a_press_where_one_was_does_nothing() {
-    // A window's button that closes it, as "About" once had in its corner.
-    const DANGER: u32 = 0xfff8_616d;
-    let mut session = unblurred();
-    about(&mut session);
+/// The colour of the ring and cross of the button that closes "About", as
+/// the overview's: a titlebar's close button with the pointer on it.
+const DANGER: u32 = 0xfff8_616d;
+
+/// The button that closes "About", 26 units across, on the middle of its
+/// top left corner, which is 12 units in from the screen's.
+const CLOSE: std::ops::Range<i32> = 12 - 13..12 + 13;
+
+/// Moves the pointer to `at`, and draws the frame that sees it there.
+fn point(session: &mut Session, (x, y): (i32, i32)) {
+    let position = Input::Motion {
+        x: f64::from(x),
+        y: f64::from(y),
+    };
+    session.compositor_mut().input(position, 0);
+    session.step();
+}
+
+/// Where on the screen the button that closes "About" has its colour.
+fn red(session: &mut Session) -> Vec<(i32, i32)> {
     let screen = session.draw();
-    let red = (0..HEIGHT)
+    (0..HEIGHT)
         .flat_map(|y| (0..WIDTH).map(move |x| (x, y)))
         .filter(|&(x, y)| screen.at(x, y) == DANGER)
-        .count();
-    assert_eq!(red, 0, "nothing in the colour of a button that closes");
+        .collect()
+}
+
+#[test]
+fn the_button_that_closes_about_is_on_its_top_left_corner_while_the_pointer_is_on_it() {
+    // It comes and goes as a menu does.
+    let theme = "about { backdrop-filter: none; }\n\
+                 menu { transition: 100ms linear; }\n\
+                 menu:closing { transition: 100ms linear; }\n";
+    let mut session = Session::with_config(&[("theme.css", theme)]);
+    // Beside "About", in the corner of the screen below it.
+    point(&mut session, (4, HEIGHT - 4));
+    about(&mut session);
+    assert!(
+        red(&mut session).is_empty(),
+        "not there with the pointer beside it"
+    );
+
+    point(&mut session, GROUND);
+    session.advance(Duration::from_millis(50));
+    let coming = red(&mut session);
+    assert!(coming.is_empty(), "on its way, not yet as it will be");
+    session.settle();
+    let shown = red(&mut session);
+    assert!(shown.len() > 20, "a ring and a cross: {}", shown.len());
+    let on_corner = |&(x, y): &(i32, i32)| CLOSE.contains(&x) && CLOSE.contains(&y);
+    assert!(
+        shown.iter().all(on_corner),
+        "and nothing else in its colour"
+    );
+
+    // It goes as a menu does, over a little time, and is then gone.
+    point(&mut session, (4, HEIGHT - 4));
+    session.advance(Duration::from_millis(50));
+    let (x, y) = shown[0];
+    let going = session.draw().at(x, y);
+    session.settle();
+    let gone = session.draw().at(x, y);
+    assert!(![DANGER, gone].contains(&going), "going: {going:#x}");
+    assert!(red(&mut session).is_empty(), "gone");
+}
+
+#[test]
+fn a_press_on_the_button_that_closes_about_puts_it_away_and_reaches_no_window() {
+    let mut session = unblurred();
+    let mut client = session.connect();
+    let window = session.open(&mut client, "app", (100, 50), GREEN);
+    about(&mut session);
+    session.roundtrip(&mut client);
+    client.take_events();
+    // Inside "About", where only the button can take the press, over the
+    // window.
+    click(&mut session, (12 + 6, 12 + 6));
+    session.roundtrip(&mut client);
+    let events = client.take_events();
+    let pressed = events
+        .iter()
+        .any(|event| matches!(event, Event::PointerButton { .. }));
+    assert!(!pressed, "the window under it is not pressed");
+    assert_eq!(
+        session.draw().at(GROUND.0, GROUND.1),
+        BACKGROUND,
+        "put away"
+    );
+    drop(window);
+}
+
+#[test]
+fn a_press_in_the_top_right_corner_of_about_where_a_button_once_was_does_nothing() {
+    let mut session = unblurred();
+    about(&mut session);
     // The middle of where it was: 16 across, in the top right corner
     // inside the border and padding of 21, "About" being 12 from the
     // screen's edges, as `COPY` has it.
@@ -229,8 +313,10 @@ fn seen(session: &mut Session) -> Vec<Vec<u32>> {
 }
 
 /// Where "About" on a short screen has nothing drawn on its ground, in
-/// pixels: inside its left edge, which is 12 units in from the screen's.
-const LEFT_SIDE: i32 = 40;
+/// pixels: inside its left edge, which is 12 units in from the screen's,
+/// in its padding, and right of the button that closes it, which is 13
+/// units either side of that edge.
+const LEFT_SIDE: i32 = 60;
 
 /// The rows of "About" that do not scroll, in pixels: from its top, 12
 /// units down, past the mark, 20 units below that.
@@ -262,6 +348,68 @@ fn about_on_a_screen_too_short_for_it_keeps_inside_it_and_scrolls_what_it_lists(
     assert_eq!(seen(&mut session), end, "no further than its end");
     scroll(&mut session, -100_000.0);
     assert_eq!(seen(&mut session), top, "nor back past its top");
+}
+
+/// The rows of the screen that say how "About" is put away, its scale
+/// being `scale`: a line 20 units tall at its foot, inside its border and
+/// padding of 21, it being as tall as the screen less 12 units each side,
+/// as what it lists is too long for even the larger screen.
+fn foot(scale: i32) -> std::ops::Range<usize> {
+    let row = |units: i32| (HEIGHT - scale * units).unsigned_abs() as usize;
+    row(12 + 21 + 20)..row(12 + 21)
+}
+
+/// The columns of `rows` with something drawn on "About"'s ground `ground`
+/// inside its border and padding, 12 + 21 units from each side of the
+/// screen, its scale being `scale`.
+fn inked_across(rows: &[Vec<u32>], ground: u32, scale: i32) -> Vec<usize> {
+    let inside = (scale * (12 + 21)).unsigned_abs() as usize;
+    let width = WIDTH.unsigned_abs() as usize;
+    (inside..width - inside)
+        .filter(|&x| rows.iter().any(|row| row[x] != ground))
+        .collect()
+}
+
+#[test]
+fn about_says_at_its_foot_how_it_is_put_away_and_that_line_does_not_scroll() {
+    let mut session = short(&[]);
+    about(&mut session);
+    let top = seen(&mut session);
+    let foot = foot(2);
+    assert!(
+        !inked_across(&top[foot.clone()], BARE, 2).is_empty(),
+        "something is said at its foot"
+    );
+    scroll(&mut session, 100_000.0);
+    let end = seen(&mut session);
+    assert!(
+        end[..foot.start] != top[..foot.start],
+        "what it lists scrolls"
+    );
+    assert!(
+        end[foot.clone()] == top[foot],
+        "but not what is said at its foot"
+    );
+}
+
+#[test]
+fn what_about_says_at_its_foot_is_in_the_middle() {
+    let theme = "about { backdrop-filter: none; box-shadow: none; }\n";
+    let mut session = Session::with_config(&[("theme.css", theme)]);
+    about(&mut session);
+    let rows = seen(&mut session);
+    let columns = inked_across(&rows[foot(1)], BARE, 1);
+    let (Some(first), Some(last)) = (columns.first(), columns.last()) else {
+        panic!("nothing is said at its foot");
+    };
+    // As far from its left as from its right, and well inside both.
+    let half = usize::try_from(WIDTH / 2).unwrap();
+    assert!((first + last) / 2 >= half - 4, "{first}..{last}");
+    assert!((first + last) / 2 <= half + 4, "{first}..{last}");
+    assert!(
+        *first > 100,
+        "{first}..{last}: a short line, not one from its left"
+    );
 }
 
 #[test]
@@ -578,6 +726,11 @@ fn the_buttons_of_about_are_pointed_at_with_a_hand() {
     assert_eq!(
         crate::cursors::pointer_at(&mut session, COPY.0, COPY.1),
         YELLOW
+    );
+    assert_eq!(
+        crate::cursors::pointer_at(&mut session, 12 + 6, 12 + 6),
+        YELLOW,
+        "the one that closes it too"
     );
     assert_eq!(
         crate::cursors::pointer_at(&mut session, GROUND.0, GROUND.1),

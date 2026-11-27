@@ -1192,6 +1192,47 @@ fn the_window_picked_has_a_button_to_close_it_which_asks_its_program() {
 }
 
 #[test]
+fn the_button_that_closes_comes_and_goes_as_a_menu_does_as_another_window_is_picked() {
+    let theme = "overview-backdrop { backdrop-filter: none; }\n\
+                 menu { transition: 100ms linear; }\n\
+                 menu:closing { transition: 100ms linear; }\n";
+    let mut session = Session::with_config(&[("theme.css", theme)]);
+    let mut client = session.connect();
+    session.open(&mut client, "first", (180, 120), RED);
+    session.open(&mut client, "second", (180, 120), BLUE);
+    session.step();
+    open(&mut session);
+    session.settle();
+    let (first, second) = (place(&session, "first"), place(&session, "second"));
+    // A pixel of each button's ring, on its left edge, as it is there and
+    // as it is once gone.
+    let ring = |place: Rect| {
+        let (x, y) = corner(place);
+        (x - 12, y)
+    };
+    let pixel = |session: &mut Session, (x, y): (i32, i32)| session.draw().at(x, y);
+    let second_there = pixel(&mut session, ring(second));
+    let first_none = pixel(&mut session, ring(first));
+    point(&mut session, middle(first));
+    session.advance(Duration::from_millis(50));
+    let first_coming = pixel(&mut session, ring(first));
+    let second_going = pixel(&mut session, ring(second));
+    session.settle();
+    let first_there = pixel(&mut session, ring(first));
+    let second_none = pixel(&mut session, ring(second));
+    assert_ne!(first_there, first_none, "the first's button came");
+    assert_ne!(second_there, second_none, "the second's went");
+    assert!(
+        ![first_none, first_there].contains(&first_coming),
+        "coming: {first_coming:#x}"
+    );
+    assert!(
+        ![second_none, second_there].contains(&second_going),
+        "going: {second_going:#x}"
+    );
+}
+
+#[test]
 fn a_workspace_closed_from_the_strip_gives_its_windows_to_the_one_before_but_not_the_last() {
     let mut session = Session::with_config(&[UNBLURRED, ("config.yaml", FOUR_WORKSPACES)]);
     let mut client = session.connect();

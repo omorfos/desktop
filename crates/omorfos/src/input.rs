@@ -1082,10 +1082,10 @@ impl Compositor {
             None => {}
         }
         let about = self.cards.about.asked.is_some();
-        // The button of "About" is pointed at with a hand.
+        // The buttons of "About" are pointed at with a hand.
         let shown = self.cards.about.shown.as_ref().filter(|_| about);
         let position = self.pointer_position();
-        if shown.is_some_and(|about| about.copies_at(position)) {
+        if shown.is_some_and(|about| about.copies_at(position) || about.closes_at(position)) {
             return Look::Icon(CursorIcon::Pointer);
         }
         // So are those of the question whether to leave.
@@ -1151,12 +1151,15 @@ impl Compositor {
         by.is_some()
     }
 
-    /// A press while "About" is shown: beside it, it puts it away; on its
-    /// button, it copies what the computer is; anywhere else on it does
-    /// nothing. None is any window's.
+    /// A press while "About" is shown: beside it, or on its button that
+    /// closes it, it puts it away; on its button that copies, it copies
+    /// what the computer is; anywhere else on it does nothing. None is any
+    /// window's.
     fn press_about(&mut self, position: DomainPoint) {
         let about = self.cards.about.shown.as_ref();
-        if about.is_some_and(|about| about.copies_at(position)) {
+        if about.is_some_and(|about| about.closes_at(position)) {
+            self.cards.about.asked = None;
+        } else if about.is_some_and(|about| about.copies_at(position)) {
             self.copy_about();
         } else if !self.over_about() {
             self.cards.about.asked = None;

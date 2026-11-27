@@ -131,6 +131,9 @@ struct Looking {
     /// The border and title of the window picked, kept until they would
     /// be painted differently.
     painted: Option<Drawn>,
+    /// How much there is to see of each button that closes, which comes
+    /// while it can be pressed and goes once it cannot.
+    closes: Vec<(Closing, f32)>,
 }
 
 /// What the overview draws besides the windows, and what it was painted
@@ -154,7 +157,7 @@ struct Drawn {
 }
 
 /// What a button in the overview closes.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 enum Closing {
     /// A window, as its titlebar's button would.
     Window(WindowId),
@@ -163,10 +166,10 @@ enum Closing {
     Workspace(usize),
 }
 
-/// Where the button that closes what is at `place` in the overview is: in
-/// the middle of its top left corner, on the side a titlebar's buttons
-/// stand.
-fn close_of(place: Rect) -> Rect {
+/// Where the button that closes what is at `place` in the overview, or
+/// "About", is: in the middle of its top left corner, on the side a
+/// titlebar's buttons stand.
+pub(crate) fn close_of(place: Rect) -> Rect {
     let side = paint::OVERVIEW_CLOSE;
     let half = (side / 2).cast_signed();
     Rect::new(
@@ -177,17 +180,24 @@ fn close_of(place: Rect) -> Rect {
 
 /// The glass under the button that closes what is at `place`, round, as
 /// the theme makes a menu glass, `key` telling it from others, put in at
-/// `at` among what is drawn, what is behind it beginning there.
-fn close_glass(
+/// `at` among what is drawn, what is behind it beginning there, as
+/// see-through as `opacity` says.
+pub(crate) fn close_glass(
     theme: &omorfos_config::Theme,
-    place: Rect,
-    view: View,
+    (place, view): (Rect, View),
     (key, at): (u64, usize),
+    opacity: f32,
 ) -> Option<Pane> {
     let mut style = theme.style(Part::Menu, States::NONE);
     style.radius = paint::OVERVIEW_CLOSE / 2;
     let area = crate::compositor::logical(close_of(place));
-    Pane::of(&style, (area, view), (key, at, at), 1.0)
+    Pane::of(&style, (area, view), (key, at, at), opacity)
+}
+
+/// What tells the button that closes `closing` from others that fade, and
+/// its glass from other glass.
+fn close_key(closing: Closing) -> u64 {
+    glass::key(&("the overview's close button", closing))
 }
 
 /// Where the button that closes what is at `place` is drawn, and how
@@ -310,6 +320,12 @@ impl Held {
 }
 
 impl Looking {
+    /// How much there is to see of the button that closes `closing`.
+    fn close_seen(&self, closing: Closing) -> f32 {
+        let found = self.closes.iter().find(|(each, _)| *each == closing);
+        found.map_or(0.0, |(_, seen)| *seen)
+    }
+
     /// How open it is at `clock`: none as it opens, all of it once open,
     /// and none again once it has closed; or as far as the fingers have
     /// taken it.
@@ -425,6 +441,7 @@ impl Compositor {
             closing: false,
             chosen: None,
             painted: None,
+            closes: Vec::new(),
         });
     }
 
@@ -779,8 +796,41 @@ impl Compositor {
 
     /// Paints the border and the title of the window picked again, if
     /// what they show, the theme or the scale changed since.
+    /// How much there is to see of each button that closes, as it comes
+    /// while it can be pressed, on the window picked and on the workspace
+    /// in the strip under the pointer, and goes once it cannot: as a menu
+    /// comes and goes.
+    fn closes(
+        &mut self,
+        looking: &Looking,
+        cards: &[Card],
+        theme: &omorfos_config::Theme,
+    ) -> Vec<(Closing, f32)> {
+        let still = looking.still(self.clock());
+        let others = self.overview_desktops(looking.output).len() > 1;
+        let windows = cards.iter().map(|card| {
+            let wanted = still && looking.picked == Some(card.window);
+            (Closing::Window(card.window), wanted)
+        });
+        let strip = self.strip(looking).into_iter().enumerate();
+        let workspaces = strip.map(|(at, (_, index, _, _))| {
+            let wanted = still && others && looking.hovered == Some(at);
+            (Closing::Workspace(index), wanted)
+        });
+        let wanted: Vec<(Closing, bool)> = windows.chain(workspaces).collect();
+        let motion = &mut self.animation.motion;
+        let seen = |(closing, wanted)| {
+            let seen = motion.fade(theme, Part::Menu, close_key(closing), wanted);
+            (closing, seen)
+        };
+        wanted.into_iter().map(seen).collect()
+    }
+
     pub(crate) fn repaint_overview(&mut self) {
         let config = Arc::clone(self.store.current());
+        // What the buttons that close fade by, as `config` goes into what
+        // is painted.
+        let theme = Arc::clone(&config);
         let scale = self.pointer_scale();
         let clock = self.clock();
         let Some(mut looking) = self.cards.overview.open.take() else {
@@ -875,6 +925,7 @@ impl Compositor {
         }
         // The one picked is one shown, whatever had focus.
         looking.picked = window;
+        looking.closes = self.closes(&looking, &cards, &theme.theme);
         self.cards.overview.open = Some(looking);
     }
 
@@ -918,16 +969,18 @@ impl Compositor {
         let mut stacked: Vec<&Card> = cards.iter().collect();
         stacked.sort_by_key(|card| height(card.window));
         // A button to close the window under the pointer, and the workspace
-        // in the strip under it while there are others, over them.
-        let still = looking.still(clock);
+        // in the strip under it while there are others, over them, as much
+        // as there is of each to see as it comes and goes.
         for card in stacked {
-            if still && looking.picked == Some(card.window) {
+            let closing = Closing::Window(card.window);
+            let seen = looking.close_seen(closing);
+            if seen > 0.0 {
                 let drawn_button = drawn
                     .close
-                    .stretched(renderer, button(card.place), view, 1.0);
+                    .stretched(renderer, button(card.place), view, seen);
                 elements.extend(drawn_button);
-                let key = glass::key(&("the overview's close button", card.window));
-                panes.extend(close_glass(theme, card.place, view, (key, elements.len())));
+                let glass = (close_key(closing), elements.len());
+                panes.extend(close_glass(theme, (card.place, view), glass, seen));
             }
             // The border and title of the one picked just over it, under
             // whatever stands over it.
@@ -1010,14 +1063,14 @@ impl Compositor {
         R: Renderer + ImportAll + ImportMem,
         R::TextureId: Clone + Texture + Send + 'static,
     {
-        let still = looking.still(self.clock());
-        let others = self.overview_desktops(looking.output).len() > 1;
         for (at, (rect, index, _, shown)) in self.strip(looking).into_iter().enumerate() {
-            if still && others && looking.hovered == Some(at) {
-                elements.extend(drawn.close.stretched(renderer, button(rect), view, 1.0));
-                let key = glass::key(&("the overview's close button for a workspace", at));
+            let closing = Closing::Workspace(index);
+            let seen = looking.close_seen(closing);
+            if seen > 0.0 {
+                elements.extend(drawn.close.stretched(renderer, button(rect), view, seen));
+                let glass = (close_key(closing), elements.len());
                 let theme = &drawn.config.theme;
-                panes.extend(close_glass(theme, rect, view, (key, elements.len())));
+                panes.extend(close_glass(theme, (rect, view), glass, seen));
             }
             let place = (at, index, shown, looking.hovered == Some(at));
             let miniature = (output, looking.screen, rect);

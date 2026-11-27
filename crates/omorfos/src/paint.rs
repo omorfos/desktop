@@ -480,11 +480,12 @@ pub(crate) const ABOUT_MARK: u32 = 56;
 /// The room after the mark, and after each list of what is someone else's.
 const ABOUT_GAP: u32 = 12;
 
-/// How tall "About" is but for what it lists: its padding and border, and
-/// the mark with the room below it.
+/// How tall "About" is but for what it lists: its padding and border, the
+/// mark with the room below it, and the line at its foot that says how it
+/// is put away.
 pub(crate) fn about_head(theme: &Theme) -> u32 {
     let style = theme.style(Part::About, States::NONE);
-    style.inset().down() + ABOUT_MARK + ABOUT_GAP
+    style.inset().down() + ABOUT_MARK + ABOUT_GAP + ABOUT_ROW
 }
 
 /// A line of what "About" lists: what is first on it, in its part; then
@@ -603,9 +604,11 @@ pub(crate) fn about_list(
 /// Paints "About omorfos", `width` across, with room `list` tall below the
 /// mark for what it lists, which is drawn on it apart: `mark`, which is
 /// empty if it could not be drawn, and beside it the name, `version` and
-/// the licence. Says where on it the button that copies is, and where
-/// what it lists goes. It has no button that closes it, as no card that
-/// is not a window has: Escape puts it away, and a press beside it.
+/// the licence; and at its foot, faint and in the middle, how it is put
+/// away. Says where on it the button that copies is, and where what it
+/// lists goes. The button that closes it, the overview's, is drawn over
+/// it apart; Escape puts it away too, and a press beside it, as its foot
+/// says.
 pub(crate) fn about(
     (text, words): (&mut Text, &Words),
     theme: &Theme,
@@ -658,6 +661,21 @@ pub(crate) fn about(
         at += ABOUT_ROW.cast_signed();
     }
     let below = (left, top + size + ABOUT_GAP.cast_signed(), room, list);
+    let help = words.say("put-away", &[]);
+    let (ink, font) = (
+        theme.style(Part::AboutDetail, States::NONE).color,
+        theme.font(Part::AboutDetail, States::NONE),
+    );
+    let wide = text.measure(&help, font).min(room);
+    let across = left + (room - wide).cast_signed() / 2;
+    let under = below.1 + list.cast_signed();
+    text.draw(
+        &mut canvas,
+        &help,
+        (across, under, wide, ABOUT_ROW),
+        ink,
+        font,
+    );
     (canvas, copy, below)
 }
 
