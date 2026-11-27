@@ -376,14 +376,18 @@ mod tests {
 
     /// What the program started writes into the pipe at `mark`: read once
     /// it has written, without waiting by the clock. One that never starts
-    /// is said to, after a while.
+    /// leaves nothing said, after a while; and a read waited for no longer
+    /// writes into a later one, as a thread writing "never started" into
+    /// the pipe once did (#207).
     fn told(mark: &Path) -> String {
-        let late = mark.to_owned();
-        std::thread::spawn(move || {
-            std::thread::sleep(Duration::from_secs(10));
-            let _ = fs::write(late, "never started");
-        });
-        fs::read_to_string(mark).unwrap().trim().to_owned()
+        let (said, heard) = std::sync::mpsc::channel();
+        let read = mark.to_owned();
+        std::thread::spawn(move || said.send(fs::read_to_string(read)));
+        let told = heard.recv_timeout(Duration::from_secs(10)).ok();
+        told.and_then(Result::ok)
+            .unwrap_or_default()
+            .trim()
+            .to_owned()
     }
 
     #[test]
