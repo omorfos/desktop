@@ -111,6 +111,10 @@ fn enter_keeps_a_way_and_escape_puts_the_one_before_back() {
     // Other keys are anyone's, and leave it asked.
     tap(&mut session, key::A);
     assert_ne!(session.draw().at(WIDTH / 2, HEIGHT / 2), BACKGROUND);
+    // Enter keeps it only a moment after it is asked.
+    tap(&mut session, key::RETURN);
+    assert!(!said(&session, "kept as they are"), "too soon");
+    session.advance(Duration::from_millis(500));
     tap(&mut session, key::RETURN);
     assert!(said(&session, "kept as they are"));
     session.advance(Duration::from_secs(30));
@@ -126,6 +130,7 @@ fn enter_keeps_a_way_and_escape_puts_the_one_before_back() {
         next(&mut session);
     }
     assert_eq!(stand(&session, &second), SIDE_BY_SIDE);
+    session.advance(Duration::from_millis(500));
     tap(&mut session, key::RETURN);
     session.advance(Duration::from_secs(30));
     assert_eq!(stand(&session, &second), SIDE_BY_SIDE);
@@ -146,6 +151,7 @@ fn a_screen_plugged_in_or_taken_out_ends_what_was_tried() {
     }
     // And what was kept is for the screens it was kept with.
     next(&mut session);
+    session.advance(Duration::from_millis(500));
     tap(&mut session, key::RETURN);
     assert!(session.compositor().area_of(&second).is_empty());
     session.compositor_mut().remove_output(&third);
@@ -175,6 +181,7 @@ fn a_way_kept_is_how_the_screens_stand_at_the_next_login() {
     };
     let (mut session, second) = login();
     next(&mut session);
+    session.advance(Duration::from_millis(500));
     tap(&mut session, key::RETURN);
     assert_eq!(stand(&session, &second), MIRRORED);
     drop(session);
@@ -182,6 +189,7 @@ fn a_way_kept_is_how_the_screens_stand_at_the_next_login() {
     let (mut session, second) = login();
     assert_eq!(stand(&session, &second), MIRRORED, "as it was kept");
     next(&mut session);
+    session.advance(Duration::from_millis(500));
     tap(&mut session, key::RETURN);
     assert_eq!(stand(&session, &second), FIRST_ALONE);
     drop(session);
@@ -192,6 +200,7 @@ fn a_way_kept_is_how_the_screens_stand_at_the_next_login() {
     // other, for the login after too.
     next(&mut session);
     next(&mut session);
+    session.advance(Duration::from_millis(500));
     tap(&mut session, key::RETURN);
     assert_eq!(stand(&session, &second), SIDE_BY_SIDE);
     drop(session);

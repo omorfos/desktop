@@ -602,6 +602,12 @@ impl Compositor {
         let serial = self.key_serial(pressed);
         let action = keyboard.input(self, code, state, serial, time, |compositor, held, key| {
             if !pressed {
+                // A question is answered as a key is let go (ADR 111).
+                let keysym = key
+                    .raw_latin_sym_or_raw_current_sym()
+                    .unwrap_or(key.modified_sym());
+                compositor.leaving_key(code.raw(), keysym, false);
+                compositor.screens_key(keysym, false);
                 return compositor.let_go(code, held);
             }
             if let Some(terminal) = virtual_terminal(key.modified_sym()) {
@@ -618,24 +624,14 @@ impl Compositor {
             // window, and is the window's all the same.
             compositor.hover.reveal.dismiss();
             compositor.hover.palette.dismiss();
-            // Whether to leave is answered by Enter and Escape.
-            if compositor.leaving_key(keysym) {
+            // Whether to leave is answered by Enter, space, Escape, Tab and
+            // the arrows; the screens tried another way are kept by Enter
+            // and put back by Escape. Nothing else then sees them.
+            if compositor.leaving_key(code.raw(), keysym, true)
+                || compositor.screens_key(keysym, true)
+            {
                 compositor.taken.suppressed.push(code);
                 return FilterResult::Intercept(None);
-            }
-            // The screens tried another way are kept by Enter and put back
-            // by Escape, which nothing else then sees.
-            if compositor.interim.trying() {
-                let screens = match keysym {
-                    Keysym::Return | Keysym::KP_Enter => Some(true),
-                    Keysym::Escape => Some(false),
-                    _ => None,
-                };
-                if let Some(keep) = screens {
-                    compositor.answer_screens(keep);
-                    compositor.taken.suppressed.push(code);
-                    return FilterResult::Intercept(None);
-                }
             }
             // An open switcher is steered by Escape, Enter and the arrows,
             // and so is the overview, by them alone: with a modifier held

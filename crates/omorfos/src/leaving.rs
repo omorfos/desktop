@@ -4,9 +4,12 @@
 //!
 //! The question is a card in the middle of the screen it was asked on,
 //! drawn as the theme's `question` says, with a button that cancels and one
-//! that goes on. It has the pointer and Enter and Escape while it is up:
-//! Enter or the button that goes on does it, and Escape, Cancel or a click
-//! anywhere else does not. Left alone, it counts down a minute and does it,
+//! that goes on. It has the pointer and the keys that answer it while it is
+//! up, and is answered as ADR 111 has every box that asks: the keyboard
+//! starts on Cancel, Tab and the arrows move it, Enter and space press the
+//! button it is on, and Escape, or a click anywhere else, cancels; the
+//! button that goes on does nothing until the question has been up for
+//! half a second. Left alone, it counts down a minute and does it,
 //! as GNOME's does: whoever walked away from a machine being turned off
 //! did not mean it to stay on.
 
@@ -14,7 +17,7 @@ use omorfos_config::{Part, State, States, Theme};
 use omorfos_core::geometry::{Point as DomainPoint, Rect, Size as DomainSize};
 use omorfos_i18n::{Value, Words};
 use omorfos_ui::question::Asked;
-use omorfos_ui::{Area, Canvas};
+use omorfos_ui::{Answering, Area, Canvas, Held};
 use smithay::input::keyboard::Keysym;
 use smithay::output::Output;
 use smithay::utils::{Logical, Point, Rectangle};
@@ -40,6 +43,25 @@ pub(crate) struct Leave {
     until: Option<Instant>,
     /// The question as it is shown.
     pub(crate) shown: Option<Asking>,
+    /// How it is being answered, made anew as it is asked.
+    answering: Option<Answering<Duration, 2>>,
+}
+
+/// The button that cancels, where the keyboard starts, and the one that
+/// goes on.
+const CANCEL: usize = 0;
+const GO_ON: usize = 1;
+
+/// What a key is to the question, by what it types, if it is the
+/// question's at all.
+fn held(keysym: Keysym) -> Option<Held> {
+    match keysym {
+        Keysym::Return | Keysym::KP_Enter | Keysym::space => Some(Held::Enter),
+        Keysym::Escape => Some(Held::Escape),
+        Keysym::Tab | Keysym::Right => Some(Held::On),
+        Keysym::ISO_Left_Tab | Keysym::Left => Some(Held::Back),
+        _ => None,
+    }
 }
 
 impl Leave {
@@ -103,6 +125,8 @@ pub(crate) struct Asking {
     theme: Theme,
     /// The button the pointer was on as it was painted.
     hovered: Option<Choice>,
+    /// The button the keyboard was on as it was painted.
+    focus: usize,
     /// How many seconds it said were left.
     left: u64,
     /// Where it is, and its buttons.
@@ -142,6 +166,7 @@ impl Compositor {
         if self.config().general.power.ask {
             self.cards.leave.asked = Some((what, self.pointer_location));
             self.cards.leave.until = None;
+            self.cards.leave.answering = Some(Answering::new(CANCEL));
         } else {
             self.go(what);
         }
@@ -163,41 +188,51 @@ impl Compositor {
         }
     }
 
-    /// Takes a key while the question is up: Enter says yes, and Escape
-    /// no. Says whether the key was the question's.
-    pub(crate) fn leaving_key(&mut self, keysym: Keysym) -> bool {
-        let answer = match keysym {
-            Keysym::Return | Keysym::KP_Enter => Some(true),
-            Keysym::Escape => Some(false),
-            _ => None,
+    /// Takes a key, by its `code`, going down or up, while the question is
+    /// up: says whether the key was the question's. It is answered as the
+    /// key is let go, if it went down while the question was up.
+    pub(crate) fn leaving_key(&mut self, code: u32, keysym: Keysym, pressed: bool) -> bool {
+        let now = self.clock();
+        let leave = &mut self.cards.leave;
+        let answering = leave.answering.as_mut().filter(|_| leave.asked.is_some());
+        let Some((answering, held)) = answering.zip(held(keysym)) else {
+            return false;
         };
-        let answer = answer.filter(|_| self.cards.leave.asked.is_some());
-        answer
-            .inspect(|go_on| self.answer_leaving(*go_on))
-            .is_some()
+        let chosen = answering.key(code, held, pressed, now);
+        if let Some(button) = chosen {
+            self.answer_leaving(button == GO_ON);
+        }
+        true
     }
 
     /// Takes a button pressed, or let go, at `point`, while the question is
-    /// up, which has the pointer meanwhile. Says whether it is up.
+    /// up, which has the pointer meanwhile: a button is answered as it is
+    /// let go on what it went down on, and a press anywhere but on the
+    /// card cancels. Says whether it is up.
     pub(crate) fn leaving_press(&mut self, pressed: bool, point: DomainPoint) -> bool {
-        let up = self.cards.leave.asked.is_some();
-        if up && pressed {
-            self.press_leaving(point);
+        let now = self.clock();
+        let leave = &mut self.cards.leave;
+        let Some(answering) = leave.answering.as_mut().filter(|_| leave.asked.is_some()) else {
+            return false;
+        };
+        let asking = leave.shown.as_ref();
+        let on = asking.and_then(|asking| asking.choice_at(point));
+        let on_card = asking.is_some_and(|asking| asking.contains(point));
+        let button = on.map(|choice| {
+            if choice == Choice::GoOn {
+                GO_ON
+            } else {
+                CANCEL
+            }
+        });
+        if pressed && !on_card {
+            self.answer_leaving(false);
+            return true;
         }
-        up
-    }
-
-    /// Takes a press at `point` while the question is up: on a button, its
-    /// answer; anywhere else but on the card, no.
-    fn press_leaving(&mut self, point: DomainPoint) {
-        let asking = self.cards.leave.shown.as_ref();
-        let choice = asking.and_then(|asking| asking.choice_at(point));
-        let on = asking.is_some_and(|asking| asking.contains(point));
-        match choice {
-            Some(choice) => self.answer_leaving(choice == Choice::GoOn),
-            None if !on => self.answer_leaving(false),
-            None => {}
+        if let Some(button) = answering.press(button, pressed, now) {
+            self.answer_leaving(button == GO_ON);
         }
+        true
     }
 
     /// Starts the minute the question waits, as of `now`, and does it once
@@ -225,6 +260,12 @@ impl Compositor {
         let theme = self.config().theme.clone();
         let pointer = self.pointer_position();
         let hovered = before.as_ref().and_then(|asking| asking.choice_at(pointer));
+        let clock = self.clock();
+        let answering = self.cards.leave.answering.as_mut();
+        let focus = answering.map_or(CANCEL, |answering| {
+            answering.shown(clock);
+            answering.focus()
+        });
         let tools = (&mut self.text, &self.words);
         self.cards.leave.shown = placed.and_then(|(output, area, scale)| {
             let same = |asking: &Asking| {
@@ -234,10 +275,11 @@ impl Compositor {
                     && asking.scale == scale
                     && asking.theme == theme
                     && asking.hovered == hovered
+                    && asking.focus == focus
                     && asking.left == left
             };
             before.filter(same).or_else(|| {
-                let asked = (what, hovered, left);
+                let asked = (what, (hovered, focus), left);
                 let (canvas, (cancel, go_on)) = paint(tools, &theme, asked, scale);
                 let (width, height) = canvas.units();
                 let middle = |room: i32, length: u32| (room - length.cast_signed()) / 2;
@@ -254,6 +296,7 @@ impl Compositor {
                     scale,
                     theme,
                     hovered,
+                    focus,
                     left,
                     at,
                     whole: on((0, 0, width, height)),
@@ -278,14 +321,15 @@ impl Compositor {
     }
 }
 
-/// Paints the question whether to do `what`, the button `hovered` lit and
-/// how many seconds are `left` before it is done, and says where its
-/// buttons are on it: the one that cancels, then the one that goes on,
-/// which has the keyboard and is filled with the accent.
+/// Paints the question whether to do `what`, the button `hovered` lit, the
+/// one the keyboard is on, `focus`, as such, and how many seconds are
+/// `left` before it is done, and says where its buttons are on it: the one
+/// that cancels, then the one that goes on, which is filled with the
+/// accent.
 fn paint(
     (text, words): (&mut Text, &Words),
     theme: &Theme,
-    (what, hovered, left): (Leaving, Option<Choice>, u64),
+    (what, (hovered, focus), left): (Leaving, (Option<Choice>, usize), u64),
     scale: Scale,
 ) -> (Canvas, (Area, Area)) {
     let (question, going, counting) = what.said();
@@ -309,13 +353,14 @@ fn paint(
         buttons: [cancel.as_str(), going.as_str()],
     };
     let laid = omorfos_ui::question::lay_out(text, theme, WIDTH, &asked);
-    // The one that goes on is picked out and has the keyboard.
+    // The one that goes on is picked out; the keyboard is where it is.
     let states = [Choice::Cancel, Choice::GoOn].map(|choice| {
         let going_on = choice == Choice::GoOn;
+        let index = if going_on { GO_ON } else { CANCEL };
         States::NONE
             .when(State::Hovered, hovered == Some(choice))
             .when(State::Active, going_on)
-            .when(State::Focused, going_on)
+            .when(State::Focused, index == focus)
     });
     let canvas = omorfos_ui::question::paint_question(text, theme, (&asked, &laid), states, scale);
     let [cancelling, go_on] = laid.buttons;

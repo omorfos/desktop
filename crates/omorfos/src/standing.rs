@@ -13,6 +13,9 @@ use omorfos_i18n::{Value, Words};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
+use omorfos_ui::Answering;
+use smithay::input::keyboard::Keysym;
+
 use omorfos_config::{KeptScreens, KeptWay, NamedOutput, Outputs, Rotation, Stands, Theme};
 use smithay::output::Output;
 use smithay::utils::{Logical, Point, Rectangle};
@@ -61,6 +64,11 @@ struct Stood {
     outputs: Outputs,
 }
 
+/// The question's answers: putting the way before back, which refuses, and
+/// keeping the way tried.
+const PUT_BACK: usize = 0;
+const KEEP: usize = 1;
+
 /// How the screens are made to stand for now, if otherwise than the
 /// configuration says.
 #[derive(Debug, Default)]
@@ -74,6 +82,10 @@ pub(crate) struct Interim {
     pub(crate) prompts: Vec<Prompt>,
     /// What is to be said of it, once the compositor knows what time it is.
     said: Vec<&'static str>,
+    /// How the question whether to keep the way tried is being answered
+    /// (ADR 111): Enter keeps it a moment after it is asked, and only as
+    /// it is let go, having gone down while it was asked.
+    answering: Option<Answering<Duration, 2>>,
     /// What the session keeps of the screens between logins, and the file
     /// it keeps it in, once it is told where (ADR 104).
     pub(crate) remembered: KeptScreens,
@@ -192,6 +204,9 @@ impl Compositor {
             outputs,
         };
         self.interim.trying = Some((stood, None));
+        let mut answering = Answering::new(PUT_BACK);
+        answering.shown(self.clock());
+        self.interim.answering = Some(answering);
         self.apply_scale();
     }
 
@@ -244,6 +259,29 @@ impl Compositor {
         let first = first.unwrap_or_default();
         let rest = plugged.iter().filter(|name| **name != first).cloned();
         std::iter::once(first.clone()).chain(rest).collect()
+    }
+
+    /// Takes a key going down or up, while a way of the
+    /// screens is tried: says whether it was the question's, Enter keeping
+    /// the way and Escape putting the one before back, each as it is let
+    /// go, Enter not until a moment after it was asked.
+    pub(crate) fn screens_key(&mut self, keysym: Keysym, pressed: bool) -> bool {
+        let button = match keysym {
+            Keysym::Return | Keysym::KP_Enter => KEEP,
+            Keysym::Escape => PUT_BACK,
+            _ => return false,
+        };
+        let now = self.clock();
+        let trying = self.interim.trying();
+        let answering = self.interim.answering.as_mut().filter(|_| trying);
+        let Some(answering) = answering else {
+            return false;
+        };
+        // There are no buttons to be on here: each key presses its own.
+        if let Some(chosen) = answering.press(Some(button), pressed, now) {
+            self.answer_screens(chosen == KEEP);
+        }
+        true
     }
 
     /// Keeps the way the screens are being tried in, if `keep`, and for the

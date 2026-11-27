@@ -110,13 +110,18 @@ fn enter_or_the_button_says_yes_and_the_machine_is_asked_to_do_it() {
     let (cancel, go_on) = session.compositor().leaving_buttons().unwrap();
     click_at(&mut session, (cancel.0 - 30, cancel.1 - 30));
     assert!(asked_on_screen(&mut session), "still asked");
+    // The keyboard moved from Cancel, and a moment after, Enter.
+    press(&mut session, key::TAB);
+    session.advance(Duration::from_millis(500));
     press(&mut session, key::RETURN);
+    assert!(!asked_on_screen(&mut session), "gone on at Enter");
     session.eventually(|_| said(&asked) == "shut-down\n");
 
     session.compositor_mut().perform(&Action::Restart);
     session.step();
     let (_, go_on_again) = session.compositor().leaving_buttons().unwrap();
     assert_ne!(go_on_again, go_on, "restart's button says otherwise");
+    session.advance(Duration::from_millis(500));
     click_at(&mut session, middle(go_on_again));
     session.eventually(|_| said(&asked) == "shut-down\nrestart\n");
     assert!(!asked_on_screen(&mut session));
@@ -248,6 +253,8 @@ fn logging_out_asks_first_and_ends_the_session_once_told_to() {
     assert!(session.compositor().is_running(), "not at Escape");
     session.compositor_mut().perform(&Action::LogOut);
     session.step();
+    press(&mut session, key::TAB);
+    session.advance(Duration::from_millis(500));
     press(&mut session, key::RETURN);
     assert!(!session.compositor().is_running(), "ended at Enter");
     assert_eq!(said(&asked), "", "nothing asked of the machine");
@@ -258,4 +265,83 @@ fn told_not_to_ask_logging_out_ends_the_session_at_once() {
     let (mut session, _directory, _asked) = session("power: { ask: false }\n");
     session.compositor_mut().perform(&Action::LogOut);
     assert!(!session.compositor().is_running());
+}
+
+#[test]
+fn enter_as_the_question_before_leaving_comes_up_cancels_it() {
+    let (mut session, _directory, asked) = session("");
+    session.compositor_mut().perform(&Action::ShutDown);
+    session.step();
+    // The keyboard is on Cancel, which Enter presses.
+    press(&mut session, key::RETURN);
+    assert!(!asked_on_screen(&mut session), "cancelled");
+    a_moment();
+    assert_eq!(said(&asked), "", "nothing asked of the machine");
+}
+
+#[test]
+fn the_question_before_leaving_goes_on_by_tab_and_enter_after_half_a_second() {
+    let (mut session, _directory, asked) = session("");
+    session.compositor_mut().perform(&Action::ShutDown);
+    session.step();
+    press(&mut session, key::TAB);
+    session.advance(Duration::from_millis(400));
+    press(&mut session, key::RETURN);
+    assert!(asked_on_screen(&mut session), "too soon: still asked");
+    session.advance(Duration::from_millis(500));
+    press(&mut session, key::RETURN);
+    session.eventually(|_| said(&asked) == "shut-down\n");
+}
+
+#[test]
+fn a_press_on_go_on_counts_as_it_is_let_go_on_it() {
+    let (mut session, _directory, asked) = session("");
+    session.compositor_mut().perform(&Action::ShutDown);
+    session.step();
+    session.advance(Duration::from_millis(500));
+    let (cancel, go_on) = session.compositor().leaving_buttons().unwrap();
+    // Down on it, let go beside it, on the card: nothing.
+    let (x, y) = middle(go_on);
+    let at = |x: i32, y: i32| Input::Motion {
+        x: f64::from(x),
+        y: f64::from(y),
+    };
+    session.compositor_mut().input(at(x, y), 0);
+    let button = |pressed| Input::Button {
+        button: 0x110,
+        pressed,
+    };
+    session.compositor_mut().input(button(true), 0);
+    session
+        .compositor_mut()
+        .input(at(cancel.0 - 30, cancel.1 - 30), 0);
+    session.compositor_mut().input(button(false), 0);
+    session.step();
+    assert!(asked_on_screen(&mut session), "still asked");
+    click_at(&mut session, middle(go_on));
+    session.eventually(|_| said(&asked) == "shut-down\n");
+}
+
+#[test]
+fn enter_just_after_the_keyboard_comes_to_go_on_does_not_go_on() {
+    let (mut session, _directory, asked) = session("");
+    session.compositor_mut().perform(&Action::ShutDown);
+    session.step();
+    // Long after it is up, Tab and Enter at once, as a form is gone
+    // through in the program meant: nothing.
+    session.advance(Duration::from_secs(5));
+    press(&mut session, key::TAB);
+    session.advance(Duration::from_millis(100));
+    press(&mut session, key::RETURN);
+    assert!(asked_on_screen(&mut session), "too soon after the move");
+    // Back to Cancel, which is first: Left again does not go round to Go
+    // on, nor does Down move it, the buttons being side by side.
+    press(&mut session, key::LEFT);
+    press(&mut session, key::LEFT);
+    press(&mut session, key::DOWN);
+    session.advance(Duration::from_secs(1));
+    press(&mut session, key::RETURN);
+    assert!(!asked_on_screen(&mut session), "cancelled");
+    a_moment();
+    assert_eq!(said(&asked), "", "nothing asked of the machine");
 }
