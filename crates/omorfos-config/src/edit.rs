@@ -525,7 +525,18 @@ mod tests {
         // Its line break would be read as a space.
         let said = refused(scheme("appearance:\n  scheme: dark\n", "dark\n   light"));
         assert_eq!(said, "the change could not be made safely");
+        // Nor where the line it is broken onto is under the key: unreadable
+        // to a strict reader, and read as a space by one that, as PyYAML
+        // does, takes a quoted value's line less indented than its key.
+        // Refused either way.
         let said = refused(scheme("appearance:\n  scheme: dark\n", "dark\nlight"));
+        let unsafe_or_unread = ["the change could not be made safely", "it cannot be read"];
+        assert!(
+            unsafe_or_unread.iter().any(|why| said.starts_with(why)),
+            "{said}"
+        );
+        // And one that cannot be written at all is said so.
+        let said = refused(scheme("appearance:\n  scheme: dark\n", "dark\u{1}light"));
         assert!(said.starts_with("it cannot be read"), "{said}");
         assert!(
             !holds(
