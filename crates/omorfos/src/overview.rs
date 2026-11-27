@@ -19,7 +19,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use omorfos_config::{Config, Easing, Part, State, States};
+use omorfos_config::{ButtonSide, Config, Easing, Part, State, States};
 use omorfos_core::geometry::{Point as DomainPoint, Rect};
 use omorfos_core::{OverviewMetrics, WindowId, overview};
 use smithay::backend::renderer::element::Kind;
@@ -167,14 +167,18 @@ enum Closing {
 }
 
 /// Where the button that closes what is at `place` in the overview, or
-/// "About", is: in the middle of its top left corner, on the side a
+/// "About", is: in the middle of its top corner on `side`, the side a
 /// titlebar's buttons stand.
-pub(crate) fn close_of(place: Rect) -> Rect {
-    let side = paint::OVERVIEW_CLOSE;
-    let half = (side / 2).cast_signed();
+pub(crate) fn close_of(place: Rect, side: ButtonSide) -> Rect {
+    let wide = paint::OVERVIEW_CLOSE;
+    let half = (wide / 2).cast_signed();
+    let x = match side {
+        ButtonSide::Left => place.origin.x,
+        ButtonSide::Right => place.origin.x + place.size.width.cast_signed(),
+    };
     Rect::new(
-        DomainPoint::new(place.origin.x - half, place.origin.y - half),
-        omorfos_core::geometry::Size::new(side, side),
+        DomainPoint::new(x - half, place.origin.y - half),
+        omorfos_core::geometry::Size::new(wide, wide),
     )
 }
 
@@ -184,13 +188,13 @@ pub(crate) fn close_of(place: Rect) -> Rect {
 /// see-through as `opacity` says.
 pub(crate) fn close_glass(
     theme: &omorfos_config::Theme,
-    (place, view): (Rect, View),
+    (place, side, view): (Rect, ButtonSide, View),
     (key, at): (u64, usize),
     opacity: f32,
 ) -> Option<Pane> {
     let mut style = theme.style(Part::Menu, States::NONE);
     style.radius = paint::OVERVIEW_CLOSE / 2;
-    let area = crate::compositor::logical(close_of(place));
+    let area = crate::compositor::logical(close_of(place, side));
     Pane::of(&style, (area, view), (key, at, at), opacity)
 }
 
@@ -201,9 +205,9 @@ fn close_key(closing: Closing) -> u64 {
 }
 
 /// Where the button that closes what is at `place` is drawn, and how
-/// large.
-fn button(place: Rect) -> (Point<f64, Logical>, Size<i32, Logical>) {
-    let at = close_of(place);
+/// large, on `side`.
+fn button(place: Rect, side: ButtonSide) -> (Point<f64, Logical>, Size<i32, Logical>) {
+    let at = close_of(place, side);
     let corner = Point::from((f64::from(at.origin.x), f64::from(at.origin.y)));
     (
         corner,
@@ -728,12 +732,13 @@ impl Compositor {
         let cards = self.cards(looking, clock);
         let pointed = cards.iter().filter(|_| still);
         let window = pointed.filter(|card| Some(card.window) == looking.picked);
-        let window = window.filter(|card| close_of(card.place).contains(at));
+        let side = self.config().general.appearance.buttons;
+        let window = window.filter(|card| close_of(card.place, side).contains(at));
         let window = window.map(|card| Closing::Window(card.window)).next();
         let others = self.overview_desktops(looking.output).len() > 1;
         let strip = self.strip(looking).into_iter().enumerate();
         let strip = strip.filter(|(place, _)| still && others && looking.hovered == Some(*place));
-        let workspace = strip.filter(|(_, (rect, _, _, _))| close_of(*rect).contains(at));
+        let workspace = strip.filter(|(_, (rect, _, _, _))| close_of(*rect, side).contains(at));
         let workspace = workspace
             .map(|(_, (_, _, desktop, _))| Closing::Workspace(desktop))
             .next();
@@ -975,12 +980,14 @@ impl Compositor {
             let closing = Closing::Window(card.window);
             let seen = looking.close_seen(closing);
             if seen > 0.0 {
-                let drawn_button = drawn
-                    .close
-                    .stretched(renderer, button(card.place), view, seen);
+                let side = drawn.config.general.appearance.buttons;
+                let drawn_button =
+                    drawn
+                        .close
+                        .stretched(renderer, button(card.place, side), view, seen);
                 elements.extend(drawn_button);
                 let glass = (close_key(closing), elements.len());
-                panes.extend(close_glass(theme, (card.place, view), glass, seen));
+                panes.extend(close_glass(theme, (card.place, side, view), glass, seen));
             }
             // The border and title of the one picked just over it, under
             // whatever stands over it.
@@ -1067,10 +1074,12 @@ impl Compositor {
             let closing = Closing::Workspace(index);
             let seen = looking.close_seen(closing);
             if seen > 0.0 {
-                elements.extend(drawn.close.stretched(renderer, button(rect), view, seen));
+                let side = drawn.config.general.appearance.buttons;
+                let placed = button(rect, side);
+                elements.extend(drawn.close.stretched(renderer, placed, view, seen));
                 let glass = (close_key(closing), elements.len());
                 let theme = &drawn.config.theme;
-                panes.extend(close_glass(theme, (rect, view), glass, seen));
+                panes.extend(close_glass(theme, (rect, side, view), glass, seen));
             }
             let place = (at, index, shown, looking.hovered == Some(at));
             let miniature = (output, looking.screen, rect);

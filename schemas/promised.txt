@@ -6,6 +6,9 @@ config.yaml appearance.accent = "orange"
 config.yaml appearance.accent = "pink"
 config.yaml appearance.accent = "purple"
 config.yaml appearance.accent = "teal"
+config.yaml appearance.buttons
+config.yaml appearance.buttons = "left"
+config.yaml appearance.buttons = "right"
 config.yaml appearance.day
 config.yaml appearance.day.from
 config.yaml appearance.day.to

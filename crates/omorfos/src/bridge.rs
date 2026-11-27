@@ -49,6 +49,10 @@ pub fn settings(config: &Config) -> Settings {
             omorfos_config::Placement::Pointer => Placement::Pointer,
         },
         decoration: Metrics {
+            side: match general.appearance.buttons {
+                omorfos_config::ButtonSide::Left => omorfos_core::Side::Left,
+                omorfos_config::ButtonSide::Right => omorfos_core::Side::Right,
+            },
             border: theme.style(Part::Window, States::NONE).border.top.width,
             titlebar: theme.style(Part::Titlebar, States::NONE).height,
             buttons: Button::ALL.map(|button| {
@@ -388,7 +392,8 @@ mod tests {
     use std::path::Path;
 
     use omorfos_config::Command;
-    use omorfos_core::KeyOutcome;
+    use omorfos_core::geometry::{Point, Rect, Size};
+    use omorfos_core::{Decoration, KeyOutcome};
     use smithay::input::keyboard::Keysym;
 
     use super::*;
@@ -401,24 +406,40 @@ mod tests {
             Button::Minimize => "minimize",
             Button::Maximize => "maximize",
         };
-        // At the left, from the left, those drawn, and none at the right.
+        // Those drawn on a frame, from the left, at the end they stand at.
         let drawn = |config: &Config| {
-            let shown = Button::ALL.into_iter().filter(|button| {
-                let part = button_part(*button);
-                config.theme.style(part, States::NONE).min_width > 0
-            });
-            let names: Vec<&str> = shown.map(name).collect();
-            format!("{}:", names.join(","))
+            let outer = Rect::new(Point::new(0, 0), Size::new(1000, 500));
+            let frame = Decoration::new(outer, settings(config).decoration, 1);
+            let mut shown: Vec<(Rect, Button)> = Button::ALL
+                .into_iter()
+                .map(|button| (frame.button(button), button))
+                .filter(|(place, _)| place.size.width > 0)
+                .collect();
+            shown.sort_by_key(|(place, _)| place.origin.x);
+            let names: Vec<&str> = shown.iter().map(|(_, button)| name(*button)).collect();
+            let right = shown.first().is_some_and(|(place, _)| place.origin.x > 500);
+            if right {
+                format!(":{}", names.join(","))
+            } else {
+                format!("{}:", names.join(","))
+            }
+        };
+        let told = |config: &Config| {
+            let side = config.general.appearance.buttons;
+            config.theme.button_layout(side)
         };
         let built_in = Config::default();
-        assert_eq!(built_in.theme.button_layout(), drawn(&built_in));
+        assert_eq!(told(&built_in), drawn(&built_in));
         assert_eq!(drawn(&built_in), "close,minimize,maximize:");
         let without = config(
             "theme.css",
             "window > titlebar > controls > button.minimize { min-width: 0 }\n",
         );
-        assert_eq!(without.theme.button_layout(), drawn(&without));
+        assert_eq!(told(&without), drawn(&without));
         assert_eq!(drawn(&without), "close,maximize:");
+        let right = config("config.yaml", "appearance: { buttons: right }\n");
+        assert_eq!(told(&right), drawn(&right));
+        assert_eq!(drawn(&right), ":minimize,maximize,close");
     }
 
     /// Loads a configuration made of one file.
@@ -453,6 +474,7 @@ mod tests {
             raise_on_focus: true,
             placement: Placement::Cascade,
             decoration: Metrics {
+                side: omorfos_core::Side::Left,
                 border: 1,
                 titlebar: 48,
                 buttons: [32, 24, 24],
@@ -472,6 +494,7 @@ mod tests {
         assert_eq!(
             settings(&theme).decoration,
             Metrics {
+                side: omorfos_core::Side::Left,
                 border: 3,
                 titlebar: 40,
                 // One as wide as it says with its margin, one as the
@@ -491,6 +514,7 @@ mod tests {
                 raise_on_focus: false,
                 placement: Placement::Center,
                 decoration: Metrics {
+                    side: omorfos_core::Side::Left,
                     border: 1,
                     titlebar: 48,
                     buttons: [32, 24, 24],

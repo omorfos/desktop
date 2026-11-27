@@ -7,7 +7,7 @@ rather, such as Visual Studio Code, are left alone; a rule with
 
 | To | Do this |
 |---|---|
-| Close a window, minimize it, or make it fullscreen | Click the first, second or third button at the left of its titlebar: red, amber and green. With the pointer on any of them, each shows what it does |
+| Close a window, minimize it, or make it fullscreen | Click the first, second or third button at the left of its titlebar: red, amber and green. With the pointer on any of them, each shows what it does. With `appearance.buttons: right` in `config.yaml` they stand at the right instead, as Windows has them: minimize, then fullscreen, then close at the end, and programs that draw their own titlebars are told to do the same |
 | Put two windows side by side | Rest the pointer on the third button of one's titlebar and click a half of the first picture, then open the other. Or right-click the titlebar and choose Tile |
 | Put a window in a half or a quarter of the screen | Drag it by its titlebar to an edge of the screen, or to an edge near a corner, and let go |
 | Give one of two windows side by side more room | Drag the line between them; double-click it to halve the screen again |
@@ -144,7 +144,7 @@ click goes to it, once the overview has closed; Escape, or a click where
 nothing is, closes it where you were. Any other key is a binding as
 ever, so `Super+Tab` opens the switcher in its stead. The window picked
 has a close button on its top left corner, where a titlebar's buttons
-stand: on glass, as a menu is, a ring and a small cross in the colour the
+stand, or its top right with `appearance.buttons: right`: on glass, as a menu is, a ring and a small cross in the colour the
 titlebar's close button has with the pointer on it. Clicked, it asks the program to close that
 window, as the titlebar's button would, so a program with work unsaved
 still asks, and the overview stays open on what is left.

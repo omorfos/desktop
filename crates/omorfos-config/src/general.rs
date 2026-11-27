@@ -368,6 +368,23 @@ pub struct Appearance {
     /// at most, workspaces change without sliding, and nothing shakes.
     /// Programs are told, to do the same.
     pub reduce_motion: bool,
+    /// Which end of a titlebar its buttons stand at, close outermost:
+    /// `left`, as macOS has them, or `right`, as Windows has them. Programs
+    /// that draw their own titlebars are told, to do the same.
+    pub buttons: ButtonSide,
+}
+
+/// Which end of a titlebar its buttons stand at, as `appearance.buttons`
+/// chooses (ADR 107).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum ButtonSide {
+    /// At the left, close outermost.
+    #[default]
+    Left,
+    /// At the right, close outermost.
+    Right,
 }
 
 impl Appearance {
@@ -1416,6 +1433,16 @@ mod tests {
         assert!(reduced.appearance.reduce_motion);
         assert!(!reduced.appearance.reduce_transparency);
         assert!(parse("appearance: { reduce_motion: sometimes }").is_err());
+    }
+
+    #[test]
+    fn the_buttons_stand_at_the_left_unless_the_right_is_asked_for() {
+        assert_eq!(General::default().appearance.buttons, ButtonSide::Left);
+        let left = parse("appearance: { buttons: left }").unwrap();
+        assert_eq!(left.appearance.buttons, ButtonSide::Left);
+        let right = parse("appearance: { buttons: right }").unwrap();
+        assert_eq!(right.appearance.buttons, ButtonSide::Right);
+        assert!(parse("appearance: { buttons: middle }").is_err());
     }
 
     #[test]

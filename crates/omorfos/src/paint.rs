@@ -8,7 +8,7 @@
 //! changes, not every frame.
 
 use omorfos_config::{Color, Edges, Font, Line, Part, State, States, Style, Theme};
-use omorfos_core::{Button, Decoration, Item, Keycap, Mark, Menu, Panel, SwitcherLayout};
+use omorfos_core::{Button, Decoration, Item, Keycap, Mark, Menu, Panel, Side, SwitcherLayout};
 use omorfos_i18n::{Value, Words};
 use omorfos_ui::{Area, Image, inset};
 pub(crate) use omorfos_ui::{Canvas, Motion, Text};
@@ -163,7 +163,13 @@ pub(crate) fn titlebar(
     for (button, style) in Button::ALL.into_iter().zip(&looks.buttons) {
         let share = decoration.button(button);
         let left = share.origin.x - bar.origin.x;
-        let area = inset((left, 0, share.size.width, share.size.height), style.margin);
+        // A margin the theme gives a button towards the edge of the frame,
+        // as close's, is towards it at either end.
+        let mut margin = style.margin;
+        if decoration.side() == Side::Right {
+            (margin.left, margin.right) = (margin.right, margin.left);
+        }
+        let area = inset((left, 0, share.size.width, share.size.height), margin);
         canvas.draw_box(area, style);
         sign(&mut canvas, button, area, style.color);
     }
@@ -191,9 +197,12 @@ pub(crate) fn titlebar(
             text.draw(&mut canvas, title, within, style.color, font);
         } else {
             // A title alone stands in the middle of its titlebar: of what
-            // the buttons leave of it, less as much again at the other end.
-            let clear = tab.size.width.saturating_sub(left.unsigned_abs());
-            let within = inset((left, edge, clear, inner_height), style.inset());
+            // the buttons leave of it, less as much again at the other end,
+            // whichever end they stand at.
+            let buttons = bar.size.width.saturating_sub(tab.size.width);
+            let clear = tab.size.width.saturating_sub(buttons);
+            let room = (buttons.cast_signed(), edge, clear, inner_height);
+            let within = inset(room, style.inset());
             text.draw_centered(&mut canvas, title, within, style.color, font);
         }
     }
@@ -1680,6 +1689,7 @@ mod tests {
     }
 
     const METRICS: FrameMetrics = FrameMetrics {
+        side: Side::Left,
         border: 1,
         titlebar: 28,
         buttons: [0; 3],

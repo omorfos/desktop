@@ -279,6 +279,7 @@ mod tests {
         Decoration::new(
             outer,
             Metrics {
+                side: omorfos_core::Side::Left,
                 border: 1,
                 titlebar: 28,
                 buttons: [0; 3],

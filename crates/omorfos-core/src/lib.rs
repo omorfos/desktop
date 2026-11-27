@@ -29,7 +29,7 @@ mod switcher;
 mod system;
 
 pub use credits::{Credit, Credits, credits};
-pub use decoration::{Button, CORNER, Decoration, Edges, GRIP, Metrics, Part, resize};
+pub use decoration::{Button, CORNER, Decoration, Edges, GRIP, Metrics, Part, Side, resize};
 pub use desktop::{
     Arrangement, Desk, Desktop, Frame, Half, Home, Kept, Line, Listed, Offer, Opening, Place,
     Screen, Settings, Showing, Standing, States, Tab, Tile, Window, WindowId, WorkspaceId,
