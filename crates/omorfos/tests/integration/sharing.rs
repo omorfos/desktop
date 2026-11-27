@@ -1620,14 +1620,20 @@ fn a_screen_that_changes_size_goes_on_being_shared_at_its_new_size() {
 
     // And larger again. The next picture is asked for a sixtieth of a
     // second later, and waits, in memory made to the smaller size, for the
-    // screen to be drawn again: by then it has grown, and the picture is
-    // not taken. No more is asked for in memory too small to hold one.
-    for _ in 0..20 {
-        session.step();
+    // screen to be drawn again. Before it is, the portal hears of the new
+    // size and has PipeWire make memory to it, which takes back what the
+    // picture was to go in: the portal gives the picture up, and nothing is
+    // asked of the compositor any more, though it has drawn nothing (#191).
+    // No more is asked for in memory too small to hold one.
+    session.eventually(|session| {
         viewer.turn(node);
-        std::thread::sleep(Duration::from_millis(10));
-    }
+        session.compositor().pictures_asked() == 1
+    });
     session.resize_output((WIDTH, HEIGHT));
+    session.eventually(|session| {
+        viewer.turn(node);
+        session.compositor().pictures_asked() == 0
+    });
     session.eventually(|session| {
         session.draw();
         viewer.turn(node);
