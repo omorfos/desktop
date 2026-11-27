@@ -854,10 +854,10 @@ before what is in them.
 | `window > titlebar > controls > button.maximize` | `window:focus-within`, `:hover`, `controls:hover` |
 | `window > titlebar > controls > button.minimize` | `window:focus-within`, `:hover`, `controls:hover` |
 | `menu` | `:state(closing)` |
-| `menu > item` | `:hover`, `:focus` |
+| `menu > item` | `:hover`, `:focus`, `:active` |
 | `menu > separator` | — |
-| `menu > item > icon` | `item:hover`, `item:focus`, `item:checked` |
-| `menu > item > kbd` | `item:hover`, `item:focus` |
+| `menu > item > icon` | `item:hover`, `item:focus`, `item:checked`, `item:active` |
+| `menu > item > kbd` | `item:hover`, `item:focus`, `item:active` |
 | `notice` | `:state(closing)` |
 | `notice > heading` | — |
 | `capture` | — |
@@ -888,7 +888,7 @@ before what is in them.
 | `notification > meter` | — |
 | `dialog.question` | `:state(closing)` |
 | `dialog.question > detail` | — |
-| `dialog.question > button` | `:default`, `:hover`, `:focus` |
+| `dialog.question > button` | `:default`, `:hover`, `:focus`, `:active` |
 | `dialog.question > input` | `:focus`, `::selection` |
 | `switcher` | `:state(closing)` |
 | `switcher > item` | `:checked` |

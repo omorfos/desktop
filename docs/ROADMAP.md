@@ -34,6 +34,14 @@ a known gap.
   half a second, or click; then the terminal has the keyboard, with
   nothing typed into it. Answered with Escape, the box gives the
   keyboard back at once.
+- **Acting as the button is let go (#180, finding 5; ADR 113).** Right
+  press on the desktop, drag to a row of the menu and let go: it is
+  chosen; right click and let go without moving: the menu stays open.
+  Press on a row, slide off and let go: nothing. The same on the bar's
+  workspaces, a program in the launcher, a notification, the overview,
+  Alt+Tab's windows and the lock screen's buttons. A menu's row, and a
+  notification's and the lock screen's buttons, go the accent's tint
+  while held; a right click let go a few pixels off chooses nothing.
 - **Time limits put off by being there (#180, finding 7; ADR 112).**
   Shut Down from the root menu, and move the mouse now and then: it does
   not go ahead while you do; left alone a minute, it does. With
@@ -3099,10 +3107,19 @@ to be put right before a release of any kind, and the first release
       The portal's question, the one before leaving, the screens' and
       the password box's buttons answer alike since ADR 111; what is
       left is the rest of the finding.
-- [ ] Medium: nearly everything acting as the button goes down
+- [x] Medium: nearly everything acting as the button goes down
       ([finding 5](reviews/2026-11-26-accessibility-design-wcag.md#5-nearly-everything-acts-as-the-button-goes-down)).
-      The boxes that ask act as it is let go since ADR 111; menus, the
-      launcher, the bar and notifications do not yet.
+      ADR 113: menus, with pressing, dragging and letting go, the
+      overview, the switcher, the bar and its month, the launcher,
+      notifications, the lock screen's buttons, About and the notice, the
+      welcome card, the pictures of tiling arrangements and the windows
+      offered for an empty tile act as the button is let go on what it
+      went down on, `:active` while held on a menu's row and on a
+      notification's and the lock screen's buttons.
+- [ ] `:active` drawn on the overview's and the switcher's windows, the
+      bar's items, the launcher's rows, the buttons of the boxes that ask,
+      and "About"'s buttons and the notice, which act as they are let go
+      but are drawn pressed nowhere yet (ADR 113), with the looks unified.
 - [x] Medium: times that cannot be changed, and the question before leaving
       saying yes by itself after a minute
       ([finding 7](reviews/2026-11-26-accessibility-design-wcag.md#7-times-that-cannot-be-changed-and-one-that-says-yes-by-itself)).
