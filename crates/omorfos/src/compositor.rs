@@ -373,9 +373,11 @@ pub struct Compositor {
     /// its panel and row: chosen as the button is let go on it (ADR 113).
     pub(crate) menu_pressing: Pressing<(usize, usize)>,
     /// Where the open menu was opened by a press whose button is still
-    /// down: let go on an entry anywhere else, the pointer having been
-    /// dragged there, it chooses that; let go where it opened, nothing.
-    pub(crate) menu_dragged: Option<DomainPoint>,
+    /// down, and whether the pointer has since gone [`MENU_DRAG`] from
+    /// there: let go on an entry after it has, it chooses that; let go
+    /// before, nothing, as a hand that shakes lets go near where it went
+    /// down.
+    pub(crate) menu_dragged: Option<(DomainPoint, bool)>,
     menu_chrome: Option<MenuChrome>,
     /// The layer surface that was clicked and accepts the keyboard, until
     /// something else is clicked.
@@ -3260,7 +3262,7 @@ impl Compositor {
         // The entry held, or, dragged onto from the press that opened it,
         // the one under the pointer, is drawn pressed.
         let pointer = self.pointer_position();
-        let dragged = self.menu_dragged.is_some_and(|at| at != pointer);
+        let dragged = self.menu_dragged.is_some_and(|(_, far)| far);
         let held = menu.and_then(|menu| {
             let dragged = dragged.then(|| menu.entry_at(pointer));
             dragged.unwrap_or_else(|| self.menu_pressing.held())
@@ -5662,6 +5664,11 @@ const LOCKER: &str = "locker";
 /// How long the locker a compositor before started, which the relay kept, is
 /// given to lock the session again, before it is taken to be stuck.
 const RELOCKING: Duration = Duration::from_secs(5);
+
+/// How far, in units of layout, the pointer goes from where a press opened
+/// a menu before letting go chooses what it is on: as far as toolkits have
+/// a press go before it is a drag.
+pub(crate) const MENU_DRAG: i32 = 8;
 
 /// The width of a menu panel, in pixels: room for the longest of the
 /// labels of a window's menu, "Show on every workspace", after its sign. A

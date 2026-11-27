@@ -16,7 +16,7 @@ use smithay::wayland::shell::wlr_layer::Layer;
 use smithay::wayland::shell::xdg::PopupSurface;
 
 use crate::bridge::{self, Chord};
-use crate::compositor::{About, Card, Compositor, Look};
+use crate::compositor::{About, Card, Compositor, Look, MENU_DRAG};
 use crate::holding::Held;
 use crate::paint;
 use crate::reveal::Placing;
@@ -898,6 +898,11 @@ impl Compositor {
             menu.hover(position);
             let on = menu.entry_at(position);
             self.menu_pressing.moved(on);
+            // Gone far enough from where it opened, it is dragged.
+            if let Some((at, far)) = self.menu_dragged.as_mut() {
+                let (across, down) = (position.x - at.x, position.y - at.y);
+                *far |= across.abs().max(down.abs()) >= MENU_DRAG;
+            }
             self.move_pointer(None, time);
             return;
         }
@@ -956,7 +961,7 @@ impl Compositor {
         self.begin(clicked, wanted);
         if wanted == Wanted::Menu {
             self.open_window_menu();
-            self.menu_dragged = self.menu.as_ref().map(|_| self.pointer_position());
+            self.menu_dragged = self.menu.as_ref().map(|_| (self.pointer_position(), false));
         }
     }
 
@@ -1401,7 +1406,7 @@ impl Compositor {
             // Let go where it opened, nothing: it is there to be
             // clicked in, whatever row it opened under the pointer.
             let opened = self.menu_dragged.take();
-            let dragged = opened.is_some_and(|at| at != position) && on.is_some();
+            let dragged = opened.is_some_and(|(_, far)| far) && on.is_some();
             if chosen || dragged {
                 menu.press(position)
             } else {
@@ -1537,7 +1542,7 @@ impl Compositor {
             // A right click on the bare desktop, or on a wallpaper covering
             // it, opens the root menu, held until its button is let go.
             self.open_menu();
-            self.menu_dragged = self.menu.as_ref().map(|_| self.pointer_position());
+            self.menu_dragged = self.menu.as_ref().map(|_| (self.pointer_position(), false));
             self.move_pointer(None, time);
             return;
         }

@@ -744,3 +744,17 @@ fn let_go_unmoved_on_a_row_the_menu_opened_under_it_chooses_nothing() {
     assert_eq!(session.compositor().desktop().active_workspace(), 0);
     assert_ne!(session.draw().at(400, 420), BACKGROUND, "still open");
 }
+
+#[test]
+fn a_right_click_let_go_a_few_pixels_off_where_it_went_down_chooses_nothing() {
+    // A hand that shakes: let go five pixels lower, on the first row.
+    let mut session = session();
+    move_to(&mut session, 300, 200);
+    button(&mut session, RIGHT, true);
+    move_to(&mut session, 300, 205);
+    session.step();
+    button(&mut session, RIGHT, false);
+    assert_eq!(session.compositor().desktop().active_workspace(), 0);
+    // Still open: the row after the separator is the panel's.
+    assert_eq!(session.draw().at(530, 260), PANEL, "still open");
+}
