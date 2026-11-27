@@ -332,8 +332,8 @@ fn stateless(compound: &Compound) -> Option<Fault> {
         }
         let kind = compound.kind.as_deref().unwrap_or("*");
         let hint = match written.as_str() {
-            ":active" => " `:active` is pressed, which nothing is drawn as yet; the one picked or \
-                          shown is `:checked`."
+            ":active" => " `:active` is pressed, which this never is; the one picked or shown is \
+                          `:checked`."
                 .to_owned(),
             ":urgent" | ":closing" => format!(
                 " A state of omorfos's own is written `:state({})`.",

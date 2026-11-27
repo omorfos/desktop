@@ -41,7 +41,13 @@ fn looks_of_the_built_in_theme() -> String {
         Accent::Orange,
         Accent::Own(Color::rgb(0x12, 0x34, 0x56)),
     ];
-    let every = 1 << State::ALL.len();
+    // The states there were when the record was made: what is pressed
+    // (ADR 113) is drawn so part by part, and what was is kept the same.
+    let kept: Vec<State> = State::ALL
+        .into_iter()
+        .filter(|state| *state != State::Pressed)
+        .collect();
+    let every = 1 << kept.len();
     let holders = 1 << Part::HOLDER_STATES.len();
     let mut lines = String::new();
     for scheme in [Scheme::Dark, Scheme::Light] {
@@ -57,7 +63,7 @@ fn looks_of_the_built_in_theme() -> String {
                 };
                 let mut text = format!("{:?}", theme.starting(part));
                 for n in 0..every {
-                    let states = combination(&State::ALL, n);
+                    let states = combination(&kept, n);
                     for holder in &held {
                         let style = theme.style_in(part, states, *holder);
                         write!(text, "{style:?}").unwrap();

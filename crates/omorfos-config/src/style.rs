@@ -847,16 +847,20 @@ pub enum State {
     /// own transition and leaves over the one it has in this state, so
     /// that what leaves can go quicker than it came.
     Closing,
+    /// The pointer's button went down on it and is held, the pointer on
+    /// it still: it acts as the button is let go (ADR 113). `:active`.
+    Pressed,
 }
 
 impl State {
     /// Every state there is.
-    pub const ALL: [Self; 5] = [
+    pub const ALL: [Self; 6] = [
         Self::Focused,
         Self::Active,
         Self::Hovered,
         Self::Urgent,
         Self::Closing,
+        Self::Pressed,
     ];
 
     /// What the state is called in a stylesheet, after a `:`.
@@ -868,6 +872,7 @@ impl State {
             Self::Hovered => "hover",
             Self::Urgent => "urgent",
             Self::Closing => "closing",
+            Self::Pressed => "pressed",
         }
     }
 
@@ -1379,7 +1384,10 @@ mod tests {
             ]
         );
         let states: Vec<&str> = State::ALL.iter().map(|state| state.name()).collect();
-        assert_eq!(states, ["focus", "active", "hover", "urgent", "closing"]);
+        assert_eq!(
+            states,
+            ["focus", "active", "hover", "urgent", "closing", "pressed"]
+        );
         // The table of looks is laid out by a part's place in the list.
         for (index, part) in Part::ALL.into_iter().enumerate() {
             assert_eq!(part as usize, index);
