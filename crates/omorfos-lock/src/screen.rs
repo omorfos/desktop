@@ -20,7 +20,7 @@ use omorfos_shell::said::Said;
 use omorfos_shell::shake::{FRAME, SHAKING, shaken};
 use omorfos_shell::sheet::Sheet;
 use omorfos_shell::typing::{Key, Repeat, Typing};
-use omorfos_ui::{Blink, Canvas, Image, Scale, Text};
+use omorfos_ui::{Blink, Canvas, Image, Pressing, Scale, Text};
 use rustix::event::{PollFd, PollFlags, Timespec, poll};
 use rustix::pipe::{PipeFlags, pipe_with};
 use wayland_client::backend::ReadEventsGuard;
@@ -321,6 +321,9 @@ struct Shell {
     /// layout; the button it is over; and one pressed, to be done.
     pointer: Option<(u32, (f64, f64))>,
     hovered: Option<Button>,
+    /// The button the pointer's button went down on, pressed as it is let
+    /// go there (ADR 113).
+    pressing: Pressing<Button>,
     chosen: Option<Button>,
     /// The button the keyboard is on, reached with Tab; on none, it is on
     /// the field.
@@ -426,6 +429,7 @@ impl Shell {
             power: None,
             pointer: None,
             hovered: None,
+            pressing: Pressing::new(),
             chosen: None,
             focused: None,
             called,
@@ -572,7 +576,11 @@ impl Shell {
         let done = |elapsed: &u32| Duration::from_millis(u64::from(*elapsed)) >= lasts;
         self.moving = self.moving.filter(|(_, elapsed)| !done(elapsed));
         let who = (self.called.as_str(), self.face.as_ref());
-        let power = (self.power.as_ref(), self.hovered, self.focus());
+        let power = (
+            self.power.as_ref(),
+            (self.hovered, self.pressing.held()),
+            self.focus(),
+        );
         let cursor = self.blink.draw(self.now);
         let faces = self
             .screens
@@ -741,7 +749,9 @@ impl Shell {
     /// Notes the button the pointer is over, drawn as hovered.
     fn hover(&mut self) {
         let over = self.over();
-        if over != self.hovered {
+        let held = self.pressing.held();
+        self.pressing.moved(over);
+        if over != self.hovered || held != self.pressing.held() {
             self.hovered = over;
             self.stale = true;
         }
@@ -873,9 +883,13 @@ struct Shown<'a> {
     /// view: from 0, only the time, to 1, all of it.
     share: f32,
     /// The power buttons, if offered, the one the pointer is over and the
-    /// one the keyboard is on.
-    power: (Option<&'a Power>, Option<Button>, Option<Button>),
+    /// one its button is held on, and the one the keyboard is on.
+    power: (Option<&'a Power>, Pointed, Option<Button>),
 }
+
+/// The power button the pointer is over, and the one its button is held
+/// on, if any.
+type Pointed = (Option<Button>, Option<Button>);
 
 /// Paints a screen `size` units large at `scale`: the time, in the middle
 /// while it is all there is; and as the rest comes into view, rising into
@@ -982,8 +996,8 @@ fn paint(
     }
     let buttons = shown.power.0.map_or_else(Vec::new, |power| {
         let painting = (&mut canvas, text);
-        let (_, hovered, focused) = shown.power;
-        paint_power(theme, painting, (power, hovered, focused), (size, share))
+        let (_, pointed, focused) = shown.power;
+        paint_power(theme, painting, (power, pointed, focused), (size, share))
     });
     (canvas, buttons)
 }
@@ -1048,7 +1062,7 @@ fn paint_field(
 fn paint_power(
     theme: &Theme,
     (canvas, text): (&mut Canvas, &mut Text),
-    (power, hovered, focused): (&Power, Option<Button>, Option<Button>),
+    (power, (hovered, pressed), focused): (&Power, Pointed, Option<Button>),
     ((width, height), share): ((u32, u32), f32),
 ) -> Vec<(Button, Area)> {
     let faint = |color: Color| Color::rgba(0, 0, 0, 0).toward(color, share);
@@ -1091,6 +1105,9 @@ fn paint_power(
         }
         if hovered == Some(button) {
             states = states.with(State::Hovered);
+        }
+        if pressed == Some(button) {
+            states = states.with(State::Pressed);
         }
         if focused == Some(button) {
             states = states.with(State::Focused);
@@ -1267,12 +1284,25 @@ impl Dispatch<wl_pointer::WlPointer, ()> for Shell {
             }
             // A button pressed shows who is to unlock, as a key does; and
             // once they are shown, presses the button it is over.
+            // A press that wakes it presses nothing; once awake, a button
+            // is pressed as the pointer's is let go on the one it went down
+            // on (ADR 113).
             wl_pointer::Event::Button {
                 state: WEnum::Value(wl_pointer::ButtonState::Pressed),
                 ..
             } => {
                 let woke = shell.wake();
-                shell.chosen = shell.over().filter(|_| !woke);
+                let over = shell.over().filter(|_| !woke);
+                shell.pressing.press(over);
+                shell.stale = true;
+            }
+            wl_pointer::Event::Button {
+                state: WEnum::Value(wl_pointer::ButtonState::Released),
+                ..
+            } => {
+                let over = shell.over();
+                shell.chosen = shell.pressing.release(over).or(shell.chosen);
+                shell.stale = true;
             }
             _ => {}
         }

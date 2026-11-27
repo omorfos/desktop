@@ -1230,3 +1230,42 @@ fn the_cursor_blinks_from_the_last_key_unless_nothing_is_to_move() {
         assert_eq!(caret(&mut session), !blinks, "{files:?}");
     }
 }
+
+#[test]
+fn a_power_button_pressed_acts_as_it_is_let_go_and_not_if_let_go_off_it() {
+    let there = tempfile::TempDir::new().unwrap();
+    let mut session = Session::new();
+    let offered = "can sleep\ncan restart\ncan shut-down\ncan log-out\n";
+    let mut lock = powered(&mut session, there.path(), offered);
+    point(&mut session, f64::from(WIDTH / 2));
+    click(&mut session);
+    let middles = shown(&mut session, &mut lock, 4);
+    let held = |session: &mut Session, pressed| {
+        let input = Input::Button {
+            button: 0x110,
+            pressed,
+        };
+        session.compositor_mut().input(input, 0);
+    };
+    // Down on Sleep, slid onto Restart and let go: nothing.
+    point(&mut session, middles[0]);
+    settle(&mut session, &mut lock);
+    held(&mut session, true);
+    settle(&mut session, &mut lock);
+    point(&mut session, middles[1]);
+    settle(&mut session, &mut lock);
+    held(&mut session, false);
+    settle(&mut session, &mut lock);
+    assert!(!there.path().join("asked").exists(), "let go off it");
+    assert!(
+        !inked(&mut session, ABOVE_BUTTONS_ROW),
+        "nor Restart asked about"
+    );
+    // Pressed and let go on Sleep, it is done.
+    point(&mut session, middles[0]);
+    click(&mut session);
+    assert_eq!(
+        asked(&mut session, &mut lock, there.path(), 1),
+        ["sleep --locked"]
+    );
+}
