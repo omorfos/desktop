@@ -34,6 +34,8 @@ serde-saphyr = { version = "2.0.0", default-features = false, features = ["deser
 granit-parser = { version = "2.1.0", default-features = false, features = ["std", "error_messages"] }
 
 [dev-dependencies]
+# Already in the tree; reads the coverage gate's regular expression in a test.
+regex = "1.13.1"
 tempfile = "3.27.0"
 
 [lints]
