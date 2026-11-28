@@ -1,4 +1,4 @@
-# Maintainer: Rafal Proszowski <foss@paroxp.org>
+# Maintainer: Rafal Proszowski <contact@omorfos.io>
 #
 # The release workflow fills in pkgver and sha256sums and pushes this file
 # to the AUR. See docs/RELEASING.md.
@@ -8,7 +8,7 @@ pkgver=0.1.0
 pkgrel=1
 pkgdesc='A lightweight Wayland compositor'
 arch=('x86_64' 'aarch64')
-url='https://github.com/omorfos/desktop'
+url='https://omorfos.io'
 license=('MIT' 'CC-BY-SA-4.0' 'ISC')
 depends=('gcc-libs' 'glibc' 'libglvnd' 'libinput' 'libpipewire>=1.4' 'libxkbcommon' 'mesa' 'pam'
          'seatd' 'systemd-libs' 'ttf-font')

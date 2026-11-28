@@ -9,6 +9,9 @@ A Wayland desktop for Linux, written in Rust: small, fast, driven by text
 files, with windows that can share a frame as tabs, and growing into a
 whole desktop with a modern look. *omorfos* is Greek for "beautiful".
 
+[omorfos.io](https://omorfos.io) · [contact@omorfos.io](mailto:contact@omorfos.io) ·
+a vulnerability is reported privately, as [SECURITY.md](docs/SECURITY.md) says.
+
 It means to add nothing to the ways a Linux desktop already has of doing
 one thing: it speaks the standards there are, and where there is none it
 [says so](docs/STANDARDS.md) and takes the question to those who could

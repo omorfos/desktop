@@ -8,13 +8,14 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
+homepage.workspace = true
 repository.workspace = true
 publish.workspace = true
 
 [package.metadata.deb]
 # The older names of the pointer's shapes are links to them, kept as links.
 preserve-symlinks = true
-maintainer = "Rafal Proszowski <foss@paroxp.org>"
+maintainer = "Rafal Proszowski <contact@omorfos.io>"
 copyright = "2026, Rafal Proszowski and the omorfos contributors"
 license-file = ["../../LICENSE", "0"]
 extended-description = """\

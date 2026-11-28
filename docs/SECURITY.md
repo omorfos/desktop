@@ -10,7 +10,8 @@ welcome, and handled before anything else.
 
 Report it privately, through GitHub's
 [private vulnerability reporting](https://github.com/omorfos/desktop/security/advisories/new),
-not in a public issue. Say what is affected, how to bring it about, and
+or, without a GitHub account or by choice, by email to
+[security@omorfos.io](mailto:security@omorfos.io); never in a public issue. Say what is affected, how to bring it about, and
 what an attacker would gain; a program or configuration that shows it
 helps most.
 

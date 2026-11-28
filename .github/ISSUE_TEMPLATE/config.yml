@@ -2,4 +2,4 @@ blank_issues_enabled: false
 contact_links:
   - name: A security vulnerability
     url: https://github.com/omorfos/desktop/security/advisories/new
-    about: Report it privately, as docs/SECURITY.md says, not in a public issue.
+    about: Report it privately, here or to security@omorfos.io, as docs/SECURITY.md says, not in a public issue.
