@@ -1867,6 +1867,150 @@ mod tests {
         }
     }
 
+    /// Whether a part writes something to be read, and what it is drawn
+    /// in: said of every part, so that one cannot be added without saying
+    /// (finding 15 of the review of 26 November 2026).
+    #[derive(Debug, Clone, Copy)]
+    enum Written {
+        /// It writes nothing to be read, and is drawn in what it says, if
+        /// anything: others may be in it.
+        Nothing(Option<Part>),
+        /// Its text, on its own background over that of what it is in, if
+        /// anything, and that over whatever is behind.
+        In(Option<Part>),
+        /// A mark rather than words, as a sign is, which is seen at 3 to 1
+        /// (WCAG 1.4.11), in what it says, as text is.
+        Mark(Option<Part>),
+    }
+
+    /// What each part writes, and what it is in.
+    const fn written_in(part: Part) -> Written {
+        match part {
+            Part::Desktop
+            | Part::Window
+            | Part::TileLine
+            | Part::WindowControls
+            | Part::ButtonClose
+            | Part::ButtonMaximize
+            | Part::ButtonMinimize
+            | Part::MenuSeparator
+            | Part::Capture
+            | Part::CaptureBorder
+            | Part::Popover
+            | Part::LauncherBackdrop
+            | Part::NotificationLevel
+            | Part::SwitcherItem
+            | Part::SwitcherWindow
+            | Part::SwitcherBackdrop
+            | Part::OverviewWindow
+            | Part::OverviewWorkspace
+            | Part::OverviewAdd
+            | Part::OverviewClose
+            | Part::OverviewBackdrop
+            | Part::Picker
+            | Part::Sealed
+            | Part::Switcher => Written::Nothing(None),
+            Part::LauncherModes => Written::Nothing(Some(Part::Launcher)),
+            Part::Titlebar
+            | Part::Menu
+            | Part::Notice
+            | Part::Tooltip
+            | Part::Panel
+            | Part::Launcher
+            | Part::Notification
+            | Part::Question
+            | Part::About
+            | Part::Offer
+            | Part::OverviewTitle => Written::In(None),
+            Part::Tab => Written::In(Some(Part::Titlebar)),
+            Part::MenuItem => Written::In(Some(Part::Menu)),
+            Part::MenuSign => Written::Mark(Some(Part::MenuItem)),
+            Part::MenuKeys => Written::In(Some(Part::MenuItem)),
+            Part::NoticeHeading => Written::In(Some(Part::Notice)),
+            Part::Workspace | Part::Task | Part::Clock => Written::In(Some(Part::Panel)),
+            Part::PopoverItem | Part::PopoverDay | Part::PopoverDayOutside => {
+                Written::In(Some(Part::Popover))
+            }
+            Part::LauncherInput
+            | Part::LauncherItem
+            | Part::LauncherTop
+            | Part::LauncherTile
+            | Part::LauncherHeading => Written::In(Some(Part::Launcher)),
+            Part::LauncherDescription => Written::In(Some(Part::LauncherItem)),
+            Part::LauncherMode => Written::In(Some(Part::LauncherModes)),
+            Part::LauncherModeKey => Written::In(Some(Part::LauncherMode)),
+            Part::NotificationTitle | Part::NotificationBody => {
+                Written::In(Some(Part::Notification))
+            }
+            Part::QuestionDetail | Part::QuestionButton | Part::QuestionInput => {
+                Written::In(Some(Part::Question))
+            }
+            Part::SwitcherTitle => Written::In(Some(Part::Switcher)),
+            Part::AboutHeading | Part::AboutDetail | Part::AboutButton => {
+                Written::In(Some(Part::About))
+            }
+        }
+    }
+
+    /// What `part` in `states` is drawn on, over `behind`: its background
+    /// over that of what it is in, and so on down.
+    fn ground_of(theme: &Theme, part: Part, states: States, behind: Color) -> Color {
+        let own = theme.style(part, states).background;
+        let under = match written_in(part) {
+            Written::In(Some(within))
+            | Written::Mark(Some(within))
+            | Written::Nothing(Some(within)) => ground_of(theme, within, states, behind),
+            Written::In(None) | Written::Mark(None) | Written::Nothing(None) => behind,
+        };
+        over(own, under)
+    }
+
+    /// Every combination of the states a part can be drawn in, but
+    /// `:closing`, which is on its way out: from `State::ALL`, so that a
+    /// state added is walked too.
+    fn every_states() -> impl Iterator<Item = States> {
+        let plain: Vec<State> = State::ALL
+            .into_iter()
+            .filter(|state| *state != State::Closing)
+            .collect();
+        let count = 1_u32 << plain.len();
+        (0..count).map(move |bits| {
+            let on = plain
+                .iter()
+                .enumerate()
+                .filter(move |(bit, _)| bits & (1 << bit) != 0);
+            on.fold(States::NONE, |all, (_, state)| all.with(*state))
+        })
+    }
+
+    /// Asserts that what every part writes, in every state, is read at 4.5
+    /// to 1 over an ordinary ground behind it and 3 over the worst, and
+    /// what it marks seen at 3 to 1 over either: walking `Part::ALL`, so
+    /// that no part is left out (finding 15).
+    fn every_part_is_read(theme: &Theme, which: &str, worst: Color) {
+        for part in Part::ALL {
+            let (read, seen) = match written_in(part) {
+                Written::Nothing(_) => continue,
+                Written::In(_) => (4.5, 3.0),
+                Written::Mark(_) => (3.0, 3.0),
+            };
+            for states in every_states() {
+                let text = theme.style(part, states).color;
+                let ordinary = text.contrast(ground_of(theme, part, states, ORDINARY));
+                let at_worst = text.contrast(ground_of(theme, part, states, worst));
+                let name = part.selector();
+                assert!(
+                    ordinary >= read,
+                    "{which}: {name} in {states:?}: {ordinary:.2} to 1"
+                );
+                assert!(
+                    at_worst >= seen,
+                    "{which}: {name} in {states:?} at worst: {at_worst:.2} to 1"
+                );
+            }
+        }
+    }
+
     /// What `top` comes to over `under`, which is solid.
     fn over(top: Color, under: Color) -> Color {
         let share = u32::from(top.alpha);
@@ -1881,81 +2025,9 @@ mod tests {
         )
     }
 
-    /// Each text of `theme`, and what it is written on: the part's own
-    /// background, or that of the part it is in where its own is clear.
-    fn written(theme: &Theme) -> Vec<(Style, Option<Part>)> {
-        let style = |part, states| theme.style(part, states);
-        let hovered = States::NONE.with(State::Hovered);
-        vec![
-            (style(Part::Titlebar, FOCUSED), None),
-            (style(Part::Titlebar, States::NONE), None),
-            (
-                style(Part::Tab, FOCUSED.with(State::Active)),
-                Some(Part::Titlebar),
-            ),
-            (style(Part::Tab, States::NONE), Some(Part::Titlebar)),
-            (style(Part::Menu, States::NONE), None),
-            (style(Part::MenuItem, States::NONE), Some(Part::Menu)),
-            (style(Part::MenuItem, hovered), None),
-            (style(Part::MenuSign, States::NONE), Some(Part::Menu)),
-            (style(Part::MenuKeys, States::NONE), Some(Part::Menu)),
-            (style(Part::Notice, States::NONE), None),
-            (style(Part::NoticeHeading, States::NONE), Some(Part::Notice)),
-            (style(Part::About, States::NONE), None),
-            (style(Part::AboutHeading, States::NONE), Some(Part::About)),
-            (style(Part::AboutDetail, States::NONE), Some(Part::About)),
-            (style(Part::AboutButton, States::NONE), None),
-            (style(Part::AboutButton, hovered), None),
-            (style(Part::AboutButton, ACTIVE), None),
-            (style(Part::AboutButton, ACTIVE.with(State::Hovered)), None),
-            (style(Part::Tooltip, States::NONE), None),
-            (style(Part::Panel, States::NONE), None),
-            (style(Part::Workspace, States::NONE), Some(Part::Panel)),
-            (style(Part::Task, ACTIVE), None),
-            (style(Part::Clock, States::NONE), Some(Part::Panel)),
-            (style(Part::Launcher, States::NONE), None),
-            // What is typed is on the launcher's glass, the field having
-            // none of its own.
-            (
-                style(Part::LauncherInput, States::NONE),
-                Some(Part::Launcher),
-            ),
-            (
-                style(Part::LauncherItem, States::NONE),
-                Some(Part::Launcher),
-            ),
-            (style(Part::LauncherItem, ACTIVE), None),
-            (
-                style(Part::LauncherDescription, States::NONE),
-                Some(Part::Launcher),
-            ),
-            (
-                style(Part::LauncherDescription, ACTIVE),
-                Some(Part::LauncherItem),
-            ),
-            (style(Part::Notification, States::NONE), None),
-            (
-                style(Part::NotificationBody, States::NONE),
-                Some(Part::Notification),
-            ),
-            (style(Part::Question, States::NONE), None),
-            (
-                style(Part::QuestionDetail, States::NONE),
-                Some(Part::Question),
-            ),
-            (style(Part::QuestionButton, States::NONE), None),
-            (style(Part::QuestionButton, ACTIVE), None),
-            (style(Part::QuestionInput, States::NONE), None),
-            (style(Part::QuestionInput, ACTIVE), None),
-            (
-                style(Part::SwitcherTitle, States::NONE),
-                Some(Part::Switcher),
-            ),
-        ]
-    }
-
     /// Asserts that each text of `theme` is at least 4.5 to 1 against what
-    /// it is written on, and each edge that says a state 3 to 1.
+    /// it is written on, each sign 3 to 1, and each edge that says a state
+    /// 3 to 1.
     fn meets_contrast(theme: &Theme, which: &str) {
         let style = |part, states| theme.style(part, states);
         let hovered = States::NONE.with(State::Hovered);
@@ -1969,27 +2041,7 @@ mod tests {
         } else {
             Color::rgb(0, 0, 0)
         };
-        for (index, (text, within)) in written(theme).into_iter().enumerate() {
-            let under = within.map_or(text.background, |part| {
-                let states = if part == Part::LauncherItem {
-                    ACTIVE
-                } else {
-                    States::NONE
-                };
-                style(part, states).background
-            });
-            let ratio = text.color.contrast(over(under, ORDINARY));
-            assert!(ratio >= 4.5, "{which}: text {index}: {ratio:.2} to 1");
-            let ratio = text.color.contrast(over(under, worst));
-            assert!(ratio >= 3.0, "{which}: text {index} at worst: {ratio:.2}");
-        }
-        for states in [FOCUSED, States::NONE] {
-            let bar = style(Part::Titlebar, states);
-            let ratio = bar.color.contrast(over(bar.background, ORDINARY));
-            assert!(ratio >= 4.5, "{which}: a title on glass: {ratio:.2} to 1");
-            let ratio = bar.color.contrast(over(bar.background, worst));
-            assert!(ratio >= 3.0, "{which}: a title at worst: {ratio:.2} to 1");
-        }
+        every_part_is_read(theme, which, worst);
         let surface = style(Part::Menu, States::NONE).background;
         let raised = style(Part::MenuItem, hovered).background;
         let background = style(Part::Desktop, States::NONE).background;
@@ -2016,7 +2068,7 @@ mod tests {
                 style(Part::QuestionButton, FOCUSED).outline.color,
                 style(Part::Question, States::NONE).background,
             ),
-            // A sign that is on, in the accent on a faint square of it.
+            // A sign that is on, in the accent, on what is behind it.
             (
                 style(Part::MenuSign, ACTIVE).color,
                 over(style(Part::MenuSign, ACTIVE).background, surface),

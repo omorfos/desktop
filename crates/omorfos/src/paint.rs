@@ -774,12 +774,35 @@ pub(crate) fn offer_title(
     } else {
         (height + BESIDE).min(room)
     };
-    let width = (aside + text.measure(title, font)).clamp(1, room.max(1));
+    // On a ground of its own, its padding at either end, whatever the
+    // wallpaper is behind it; none where there is no title to write.
+    let (left, right) = if title.is_empty() {
+        (0, 0)
+    } else {
+        (style.padding.left, style.padding.right)
+    };
+    let wanted = left + aside + text.measure(title, font) + right;
+    let width = wanted.clamp(1, room.max(1));
     let mut canvas = Canvas::scaled(width, height, scale);
-    if let Before::Icon(image) = before {
-        canvas.draw_image((0, 0, height.min(width), height), image);
+    let ground = Style {
+        background: style.background,
+        radius: style.radius.min(height / 2),
+        ..Style::NONE
+    };
+    if left + right > 0 {
+        canvas.draw_box((0, 0, width, height), &ground);
     }
-    let rest = (aside.cast_signed(), 0, width.saturating_sub(aside), height);
+    if let Before::Icon(image) = before {
+        let side = height.min(width.saturating_sub(left));
+        canvas.draw_image((left.cast_signed(), 0, side, height), image);
+    }
+    let start = left + aside;
+    let rest = (
+        start.cast_signed(),
+        0,
+        width.saturating_sub(start + right),
+        height,
+    );
     text.draw(&mut canvas, title, rest, style.color, font);
     canvas
 }
@@ -1533,7 +1556,7 @@ mod tests {
     }
 
     #[test]
-    fn the_sign_of_what_is_on_is_pressed_in_and_that_of_what_is_off_is_not() {
+    fn the_sign_of_what_is_on_is_in_the_accent_and_that_of_what_is_off_is_not() {
         use omorfos_core::MenuMetrics;
 
         let theme = Theme::default();
@@ -1559,14 +1582,13 @@ mod tests {
 
         // Rows: 4..32 and 32..60, each with its sign at 9..25 across, after
         // the border and the row's padding, and 6 below the row's top; and
-        // round the sign the theme's 3 of padding, at 6..28.
+        // round the sign the theme's 3 of padding, at 6..28, where nothing
+        // is drawn behind it, on or off.
         let panel = menu_panel(&mut text, &theme, &menu);
         let background = argb(colors.surface);
-        assert_eq!(panel.at(7, 18), background, "off, it is not pressed in");
-        let tint = panel.at(7, 46);
-        assert_ne!(tint, background, "on, it is");
-        assert_eq!(panel.at(27, 46), tint, "all round the sign");
-        assert_eq!(panel.at(29, 46), background, "and no further");
+        assert_eq!(panel.at(7, 18), background, "off, nothing behind it");
+        assert_eq!(panel.at(7, 46), background, "nor on");
+        assert_eq!(panel.at(27, 46), background, "on either side");
         // The pin's lines are in the accent, cyan, while it is on, and in the
         // colour of the text, nearly white, while it is off: bright, and
         // with as much red as the rest or almost none.

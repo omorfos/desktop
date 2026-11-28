@@ -563,12 +563,19 @@ impl Compositor {
         R::TextureId: Clone + Texture + Send + 'static,
     {
         let mut elements = Vec::new();
+        // Inside the ground of the title, past its padding.
+        let inset = self
+            .config()
+            .theme
+            .style(Part::Offer, States::NONE)
+            .padding
+            .left;
         for title in &self.hover.lines.titles {
             // An icon a program gave, in the room left for it before the
             // title, as tall as the line.
             if let Some(Icon::Given(buffer)) = &title.icon {
                 let tall = title.pixels.height();
-                let beside = (title.at.x, title.at.y, tall, tall);
+                let beside = (title.at.x + inset.cast_signed(), title.at.y, tall, tall);
                 elements.extend(self.switch.icons.given(
                     renderer,
                     buffer,

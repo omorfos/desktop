@@ -597,10 +597,16 @@ fn signed(picture: &crate::common::Picture, which: i32) -> usize {
     place.filter(|&(x, y)| picture.at(x, y) != PANEL).count()
 }
 
-/// The colour just inside the square round the sign of the row `which`,
-/// which the theme reaches 3 out from the sign.
-fn pressed(picture: &crate::common::Picture, which: i32) -> u32 {
-    picture.at(307, 201 + which * 32 + 16)
+/// Whether the sign of the row `which` is in the accent, cyan, as one is
+/// that is on: green well over red, where the text's colour and the
+/// menu's glass have them nearly alike.
+fn pressed(picture: &crate::common::Picture, which: i32) -> bool {
+    let top = 201 + which * 32 + 8;
+    let place = (309..325).flat_map(|x| (top..top + 16).map(move |y| (x, y)));
+    place.map(|(x, y)| picture.at(x, y)).any(|pixel| {
+        let (red, green) = ((pixel >> 16) & 0xff, (pixel >> 8) & 0xff);
+        green > red + 0x40
+    })
 }
 
 #[test]
@@ -623,11 +629,7 @@ fn each_entry_has_a_sign_of_what_it_does_or_the_icon_of_the_program_it_starts() 
     assert_eq!(picture.at(317, 249), cyan, "the icon the menu names");
     assert!(signed(&picture, 2) > 10, "a sign for the launcher");
     assert!(signed(&picture, 3) > 10, "and for staying awake");
-    assert_eq!(
-        pressed(&picture, 3),
-        PANEL,
-        "not pressed in while it may sleep"
-    );
+    assert!(!pressed(&picture, 3), "not on while it may sleep");
     assert_eq!(signed(&picture, 4), 0, "and nothing where there is no sign");
     // Under the light along the menu's top.
     let gap = (325..333).flat_map(|x| (202..361).map(move |y| (x, y)));
@@ -637,11 +639,12 @@ fn each_entry_has_a_sign_of_what_it_does_or_the_icon_of_the_program_it_starts() 
         "room before labels"
     );
 
-    // Kept awake, the entry that lets it sleep again is pressed in.
+    // Kept awake, the entry that lets it sleep again is on: its sign in
+    // the accent.
     press(&mut session, &[key::ESCAPE]);
     session.compositor_mut().perform(&Action::StayAwake);
     open_menu(&mut session);
-    assert_ne!(pressed(&session.draw(), 3), PANEL, "pressed in");
+    assert!(pressed(&session.draw(), 3), "on");
 }
 
 #[test]

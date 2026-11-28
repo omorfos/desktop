@@ -1199,15 +1199,21 @@ fn signed(picture: &crate::common::Picture, at: (i32, i32), which: i32) -> usize
     place.filter(|&(x, y)| picture.at(x, y) != plain).count()
 }
 
-/// Whether the sign of a row of a menu opened at `at` is pressed in: just
-/// inside the square the theme draws 3 out round it, not the row's colour.
-fn pressed(picture: &crate::common::Picture, at: (i32, i32), which: i32) -> bool {
-    let edge = picture.at(at.0 + 7, row_top(at, which) + MENU_ROW / 2);
-    edge != row_colour(picture, at, which)
+/// Whether the sign of a row of a menu opened at `at` is on: in the
+/// accent, cyan, green well over red, where the text's colour and the
+/// menu's glass have them nearly alike.
+fn sign_on(picture: &crate::common::Picture, at: (i32, i32), which: i32) -> bool {
+    let top = row_top(at, which);
+    let left = at.0 + 9;
+    let place = (left..left + 16).flat_map(|x| (top..top + MENU_ROW).map(move |y| (x, y)));
+    place.map(|(x, y)| picture.at(x, y)).any(|pixel| {
+        let (red, green) = ((pixel >> 16) & 0xff, (pixel >> 8) & 0xff);
+        green > red + 0x40
+    })
 }
 
 #[test]
-fn the_menu_of_a_window_signs_what_each_row_does_and_presses_in_what_is_on() {
+fn the_menu_of_a_window_signs_what_each_row_does_and_lights_what_is_on() {
     let mut session = Session::new();
     let mut client = session.connect();
     session.open_decorated(&mut client, "first", (200, 100), RED);
@@ -1224,10 +1230,7 @@ fn the_menu_of_a_window_signs_what_each_row_does_and_presses_in_what_is_on() {
         (7, "on every"),
     ];
     for (which, what) in toggles {
-        assert!(
-            !pressed(&picture, TITLE, which),
-            "not {what}, so not pressed in"
-        );
+        assert!(!sign_on(&picture, TITLE, which), "not {what}, so not lit");
     }
     click(&mut session, (600, 400));
 
@@ -1235,12 +1238,9 @@ fn the_menu_of_a_window_signs_what_each_row_does_and_presses_in_what_is_on() {
     choose(&mut session, 7);
     open_window_menu(&mut session, TITLE);
     let picture = session.draw();
-    assert!(pressed(&picture, TITLE, 6), "kept above, and pressed in");
-    assert!(
-        pressed(&picture, TITLE, 7),
-        "on every workspace, and pressed in"
-    );
-    assert!(!pressed(&picture, TITLE, 5), "but not shaded");
+    assert!(sign_on(&picture, TITLE, 6), "kept above, and lit");
+    assert!(sign_on(&picture, TITLE, 7), "on every workspace, and lit");
+    assert!(!sign_on(&picture, TITLE, 5), "but not shaded");
 }
 
 #[test]

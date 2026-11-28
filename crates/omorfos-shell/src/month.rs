@@ -467,7 +467,16 @@ mod tests {
         for (across, down) in [(3, 2), (3, 7), (0, 5), (6, 5)] {
             assert_eq!(edge(across, down), in_line, "{across}, {down}");
         }
-        assert_eq!(edge(0, 2), plain);
+        // A day of November's own away from both has the plain box; one of
+        // October's away from both, none.
+        assert_eq!(edge(0, 3), plain);
+        let outside = theme
+            .style(Part::PopoverDayOutside, States::NONE)
+            .border
+            .left
+            .color;
+        assert_eq!(outside.alpha, 0, "a day of another month has no box");
+        assert_ne!(edge(0, 2), plain, "October's");
         assert_eq!(edge(5, 4), today, "today is in the accent wherever it is");
     }
 
