@@ -54,8 +54,14 @@ sharing ends.
 A window is shared by itself, whatever covers it, at its size
 as that changes, with the pointer drawn in or sent beside where it is
 over the window, as the application asks. While anything is
-shared the red mark stays on its screen. To stop sharing, stop it in the
-application.
+shared the red mark stays on its screen. A click on the mark opens a menu
+of what is taking pictures, a row for each program, "Stop Firefox", that
+stops it at once; the program is told, and may ask again. The root menu
+has the same, "Screen sharing", while anything is shared, and the
+`show_capturing` action opens it for a key of your own, so it is reached
+without a pointer (ADR 114). As a program begins, the notifications say
+so once, and `omorfosctl state` says, under `capturing`, which program
+takes what of which screen, and since when.
 
 How the desktop looks is read from the theme, so there is nothing to set. The desktop is
 dark if menus are written in something lighter than what they are
