@@ -329,6 +329,26 @@
           "type": "object"
         },
         {
+          "const": "show_capturing",
+          "description": "Show what programs are taking pictures of the screen, each with a\nrow that stops it, as a menu at the pointer (ADR 114).",
+          "type": "string"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Stop every picture the program of this process is taking of a\nscreen or a window: it is told they have stopped, and may ask again\n(ADR 114).",
+          "properties": {
+            "stop_capturing": {
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "stop_capturing"
+          ],
+          "type": "object"
+        },
+        {
           "const": "night_light",
           "description": "Make the screens warm now if they are not, as warm as `night_light`\nsays, or as they are if they are, until night light next turns them\nby the time of day.",
           "type": "string"

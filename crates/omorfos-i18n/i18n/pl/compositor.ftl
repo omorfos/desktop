@@ -81,6 +81,9 @@ refused = `{ $program }` chciał { $asked ->
     [panel] umieścić panel na ekranie
    *[lock] zablokować sesję
 } i nie otrzymał zgody; aby mu pozwolić, niech omorfos uruchamia go z `may: [{ $role }]`, z `autostart` w config.yaml albo z klawisza w keys.yaml
+screen-sharing = Udostępnianie ekranu
+stop-taking = Zatrzymaj { $program }
+begun-taking = { $program } zaczął robić zdjęcia twojego ekranu
 taking = { $program } robi zdjęcia { $window ->
     [yes] okna na tym ekranie
    *[no] tego ekranu

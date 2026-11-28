@@ -332,6 +332,18 @@ pub const TOLD: &[Told] = &[
     ),
     told!(
         "Session",
+        "show_capturing",
+        "",
+        "List what takes pictures, to stop it",
+    ),
+    told!(
+        "Session",
+        "stop_capturing",
+        "PID",
+        "Stop what a process is taking",
+    ),
+    told!(
+        "Session",
         "reload_config",
         "",
         "Read the configuration again",

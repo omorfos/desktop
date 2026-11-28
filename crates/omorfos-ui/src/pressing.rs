@@ -54,6 +54,13 @@ impl<K: PartialEq + Copy> Pressing<K> {
         self.down.filter(|(_, over)| *over).map(|(down, _)| down)
     }
 
+    /// What the button went down on, while it is held, wherever the
+    /// pointer is now: what its release belongs to.
+    #[must_use]
+    pub fn down(&self) -> Option<K> {
+        self.down.map(|(down, _)| down)
+    }
+
     /// What was pressed has gone, as a notification whose time ran out:
     /// letting go acts on nothing.
     pub fn forget(&mut self) {
@@ -110,6 +117,17 @@ mod tests {
         let mut pressing = Pressing::new();
         pressing.moved(Some(3));
         assert_eq!(pressing.release(Some(3)), None);
+    }
+
+    #[test]
+    fn what_went_down_is_known_wherever_the_pointer_is_until_let_go() {
+        let mut pressing = Pressing::new();
+        assert_eq!(pressing.down(), None);
+        pressing.press(Some(1));
+        pressing.moved(Some(2));
+        assert_eq!(pressing.down(), Some(1));
+        let _ = pressing.release(Some(2));
+        assert_eq!(pressing.down(), None);
     }
 
     #[test]

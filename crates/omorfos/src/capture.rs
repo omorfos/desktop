@@ -55,14 +55,15 @@ use crate::Scale;
 use omorfos_config::{Part, State, States};
 use omorfos_core::geometry::Rect;
 use omorfos_core::{Frame, WindowId};
+use omorfos_i18n::Value;
 use omorfos_ui::Area;
 use smithay::wayland::foreign_toplevel_list::ForeignToplevelHandle;
 
-use crate::compositor::{Compositor, Mapped, Painted, color};
+use crate::compositor::{Compositor, Mapped, Painted, color, program};
 use crate::outputs::Head;
 use crate::paint;
 use crate::paint::Signs;
-use crate::recording::{Recorded, Recording};
+use crate::recording::{Recorded, Recorder, Recording};
 use crate::roles::{Asked, Roles};
 use crate::surfaces;
 
@@ -303,10 +304,10 @@ struct Taking {
     pointer: bool,
     /// What has changed since the last picture.
     tracker: OutputDamageTracker,
-    /// Whether a picture has been taken. The first is taken at once, and
-    /// those after it when something has changed.
     /// When it began, which the IPC state says (ADR 114).
     since: SystemTime,
+    /// Whether a picture has been taken. The first is taken at once, and
+    /// those after it when something has changed.
     taken: bool,
     /// How many pictures have been asked for, up to two: one is a
     /// screenshot, and more is the screen being shared or recorded.
@@ -430,6 +431,10 @@ impl Due {
     }
 }
 
+/// A program taking pictures, by its process, of a screen, and whether of
+/// a window on it.
+type Taker = (Option<u32>, Output, bool);
+
 /// Everything to do with pictures of the screen being taken.
 #[derive(Debug, Default)]
 pub(crate) struct Capture {
@@ -442,6 +447,15 @@ pub(crate) struct Capture {
     /// Screens a program has stopped taking pictures of since the mark
     /// was last seen to.
     ended: Vec<Output>,
+    /// The processes whose pictures the user has asked to stop, done as
+    /// what is taken is next kept in step (ADR 114).
+    stopping: Vec<u32>,
+    /// The programs said to have begun sharing a screen or a window, while
+    /// they go on (ADR 114).
+    sharing: Vec<Option<u32>>,
+    /// What takes pictures and what records, as last kept in step: when it
+    /// differs, the state has changed.
+    seen: (Vec<Taker>, Vec<Recorder>),
     /// Screens the mark stays on for a while yet, and until when.
     fading: Vec<(Output, Instant)>,
     /// The mark, painted for each scale it is shown at.
@@ -976,6 +990,138 @@ impl Compositor {
         }
     }
 
+    /// Has every picture the program of process `pid` is taking stop, as
+    /// the user asked (ADR 114): it is told so as what is taken is next
+    /// kept in step. A program a screen is shared with through PipeWire
+    /// is stopped by stopping what shares it, the portal, and with it
+    /// every other program it shares with, as which of them a picture is
+    /// for is not known here.
+    pub(crate) fn stop_capturing(&mut self, pid: u32) {
+        let recorders = self.capture.recording.now.iter();
+        let sharers =
+            recorders.filter(|recorder| recorder.kind == Recorded::Screen && recorder.pid == pid);
+        let sharers: Vec<u32> = sharers.filter_map(|recorder| recorder.through).collect();
+        self.capture.stopping.push(pid);
+        self.capture.stopping.extend(sharers);
+    }
+
+    /// Whether the program of `client` has been asked to stop taking
+    /// pictures since what is taken was last kept in step.
+    fn stopping(&self, client: Option<Client>) -> bool {
+        let pid = client.and_then(|client| self.process(&client));
+        pid.is_some_and(|pid| self.capture.stopping.contains(&pid))
+    }
+
+    /// For each taking, whether its program was asked to stop: those it is,
+    /// and the asking is done with.
+    fn stopped_takings(&mut self) -> Vec<bool> {
+        let takings = self.capture.takings.iter();
+        let stopped = takings.map(|taking| self.stopping(taking.session.client()));
+        let stopped = stopped.collect();
+        self.capture.stopping.clear();
+        stopped
+    }
+
+    /// What the program of process `pid` shares what it takes with, through
+    /// PipeWire, as the portal shares a screen with a browser: those
+    /// programs, or, with none, the program itself.
+    pub(crate) fn seers(&self, pid: Option<u32>) -> Vec<Option<u32>> {
+        let recorders = self.capture.recording.now.iter();
+        let through = recorders.filter(|recorder| {
+            recorder.kind == Recorded::Screen
+                && recorder.through.is_some_and(|through| Some(through) == pid)
+        });
+        let seers: Vec<Option<u32>> = through.map(|recorder| Some(recorder.pid)).collect();
+        if seers.is_empty() { vec![pid] } else { seers }
+    }
+
+    /// What programs taking pictures may be stopped, each once: the
+    /// process, and what it is called, by the programs it shares with.
+    fn stoppable(&self) -> Vec<(u32, String)> {
+        let mut stoppable: Vec<(u32, String)> = Vec::new();
+        for head in &self.heads {
+            for (client, _) in self.capture.takers(&head.output) {
+                let pid = self.process(&client);
+                let new = pid.filter(|pid| stoppable.iter().all(|(known, _)| known != pid));
+                let named = new.map(|pid| {
+                    let seers = self.seers(Some(pid)).into_iter();
+                    let names: Vec<String> = seers.map(|seer| program(&self.words, seer)).collect();
+                    (pid, names.join(", "))
+                });
+                stoppable.extend(named);
+            }
+        }
+        stoppable
+    }
+
+    /// The rows of the menu of what is taking pictures: a row for each
+    /// program, which stops it (ADR 114).
+    pub(crate) fn capturing_items(&self) -> Vec<omorfos_core::Item<omorfos_config::Action>> {
+        let rows = self.stoppable().into_iter().map(|(pid, program)| {
+            let label = self
+                .words
+                .say("stop-taking", &[("program", Value::Words(&program))]);
+            omorfos_core::Item::Entry {
+                label,
+                action: omorfos_config::Action::StopCapturing(pid),
+                mark: omorfos_core::Mark::Blank,
+                keys: Vec::new(),
+            }
+        });
+        rows.collect()
+    }
+
+    /// Says once that a program has begun sharing a screen or a window,
+    /// named as what it shares with is: taking picture after picture of
+    /// it, not one as a screenshot does (ADR 114). And has the state told
+    /// anew when what takes pictures or what records has changed.
+    fn note_takers(&mut self, now: Instant) {
+        let takings = self
+            .capture
+            .takings
+            .iter()
+            .filter(|taking| taking.asked > 1);
+        let pids = takings.map(|taking| {
+            taking
+                .session
+                .client()
+                .and_then(|client| self.process(&client))
+        });
+        let mut sharing: Vec<Option<u32>> = Vec::new();
+        for seer in pids.flat_map(|pid| self.seers(pid)) {
+            if !sharing.contains(&seer) {
+                sharing.push(seer);
+            }
+        }
+        let begun: Vec<Option<u32>> = sharing
+            .iter()
+            .filter(|seer| !self.capture.sharing.contains(seer))
+            .copied()
+            .collect();
+        for seer in begun {
+            let program = program(&self.words, seer);
+            let said = self
+                .words
+                .say("begun-taking", &[("program", Value::Words(&program))]);
+            self.told(&said, now);
+        }
+        self.capture.sharing = sharing;
+        let takings = self.capture.takings.iter();
+        let takers = takings.map(|taking| {
+            let pid = taking
+                .session
+                .client()
+                .and_then(|client| self.process(&client));
+            let window = matches!(taking.subject, Subject::Window(_));
+            (pid, taking.output.clone(), window)
+        });
+        let seen = (takers.collect(), self.capture.recording.now.clone());
+        if seen != self.capture.seen {
+            self.capture.seen = seen;
+            self.changes += 1;
+        }
+    }
+
     /// Keeps pictures in step with everything else: a program taking
     /// pictures of what has gone is told it has stopped, one whose screen
     /// or window has changed size is told the new size, and nothing is
@@ -993,10 +1139,13 @@ impl Compositor {
                 .ground(),
         );
         let locked = self.is_locked();
+        // What the user has asked to stop is gone, as what it took would be.
+        let stopped = self.stopped_takings();
         let capture = &mut self.capture;
-        let mut standing = standing.into_iter();
+        let mut standing = standing.into_iter().zip(stopped);
         let gone = capture.takings.extract_if(.., |taking| {
-            let stands = standing.next().flatten();
+            let (stands, stopped) = standing.next().unwrap_or_default();
+            let stands = stands.filter(|_| !stopped);
             let gone = stands.is_none();
             // What has gone is left as it stood, to be told it has stopped.
             let stands = stands.unwrap_or((taking.output.clone(), taking.size, taking.scale));
@@ -1079,6 +1228,7 @@ impl Compositor {
                 edges.push((of, edge, sides(edge)));
             }
         }
+        self.note_takers(now);
     }
 
     /// What the mark on a screen shows a sign of: pictures taken of it, and
@@ -1099,7 +1249,11 @@ impl Compositor {
     pub(crate) fn settle_following(&mut self) {
         let following = self.capture.following.iter();
         let there: Vec<_> = following
-            .map(|following| self.stands(&following.over).is_some())
+            .map(|following| {
+                // As does one whose program the user has asked to stop.
+                let stopped = self.stopping(following.cursor.client());
+                self.stands(&following.over).is_some() && !stopped
+            })
             .collect();
         // One following the pointer over a screen or a window that has
         // gone is told there will be no more pictures of it.

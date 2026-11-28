@@ -211,6 +211,8 @@ it takes and what it does.
 | `lock` | Lock the session, with the program `locker` in `config.yaml` names. |
 | `stay_awake` | Keep the session from locking, the screens from going off and the machine from sleeping when you are away, until it is chosen again, the session is locked by hand, or you log out. The panel says so while it lasts, and a click there ends it. The root menu offers it. |
 | `stay_awake_for: N` | The same for N seconds at most, up to a day (86400). |
+| `show_capturing` | A menu, at the pointer, of the programs taking pictures of the screen, each with a row that stops it; nothing while none is. The red mark opens it too, and the root menu has it while one is (ADR 114). |
+| `stop_capturing: N` | Stop every picture the program of process N is taking of a screen or a window; it is told so, and may ask again. `omorfosctl state` says each program's process under `capturing`. |
 | `night_light` | Make the screens warm now if they are not, as warm as `night_light.temperature` says, or as they are if they are, until night light next turns them by the time of day: switched off one evening, it is on again the next. |
 | `next_layout` | Type with the next of the layouts `keyboard.layout` lists, and after the last with the first. |
 | `next_screens` | Have the screens stand the next way: as the configuration says, all showing what the first shows, and each alone; each kept only if Enter is pressed within 15 seconds. |

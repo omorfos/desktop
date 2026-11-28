@@ -223,6 +223,13 @@ pub enum Action {
     StayAwake,
     /// The same for at most this many seconds, up to a day.
     StayAwakeFor(Bounded<1, 86_400>),
+    /// Show what programs are taking pictures of the screen, each with a
+    /// row that stops it, as a menu at the pointer (ADR 114).
+    ShowCapturing,
+    /// Stop every picture the program of this process is taking of a
+    /// screen or a window: it is told they have stopped, and may ask again
+    /// (ADR 114).
+    StopCapturing(u32),
     /// Make the screens warm now if they are not, as warm as `night_light`
     /// says, or as they are if they are, until night light next turns them
     /// by the time of day.
@@ -517,6 +524,12 @@ mod tests {
         assert_eq!(parse("new_workspace"), Ok(Action::NewWorkspace));
         assert_eq!(parse("lock"), Ok(Action::Lock));
         assert_eq!(parse("stay_awake"), Ok(Action::StayAwake));
+        assert_eq!(parse("show_capturing"), Ok(Action::ShowCapturing));
+        assert_eq!(
+            parse("stop_capturing: 4242"),
+            Ok(Action::StopCapturing(4242))
+        );
+        assert!(parse("stop_capturing: -1").is_err());
         assert_eq!(parse("night_light"), Ok(Action::NightLight));
         let hour = Bounded::clamped(3600);
         assert_eq!(

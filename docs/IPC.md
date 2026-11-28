@@ -209,7 +209,9 @@ Unix epoch; and what PipeWire says is recorded, `"microphone"`,
 `"sound"` or `"camera"`, with neither. A program sharing through
 another, as a browser through the portal, is named as the program it
 shares with. Each is a `program` by the name of its file, and its `pid`
-where it is known. Empty while nothing is taken, or from an older
+where it is known; the action `stop_capturing` takes that `pid`, and
+stops, for one shown a screen through the portal, every share the portal
+makes. Empty while nothing is taken, or from an older
 compositor.
 
 `awake` is there while the user has asked for the session to stay awake,

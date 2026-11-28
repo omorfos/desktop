@@ -928,7 +928,7 @@ mod tests {
             // choices, a number, or a program and its arguments.
             let words: Vec<&str> = match told.takes {
                 "" => Vec::new(),
-                "N" | "ID" | "SECONDS" => vec!["2"],
+                "N" | "ID" | "PID" | "SECONDS" => vec!["2"],
                 "PROGRAM [ARG]..." => vec!["foot", "--title", "scratch"],
                 "KIND" => vec!["browser"],
                 choices => vec![choices.split('|').next().unwrap_or_default()],

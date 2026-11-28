@@ -113,6 +113,12 @@ refused = `{ $program }` asked to { $asked ->
     [panel] put a panel on the screen
    *[lock] lock the session
 } and was not let; to let it, have omorfos start it with `may: [{ $role }]`, from `autostart` in config.yaml or a key in keys.yaml
+# The root menu's row, while something takes pictures, that lists what.
+screen-sharing = Screen sharing
+# A row of the menu of what takes pictures, which stops $program.
+stop-taking = Stop { $program }
+# Said once as $program begins sharing a screen or a window.
+begun-taking = { $program } has begun taking pictures of your screen
 # What the mark of a screen being recorded says when the pointer rests on
 # it: $program takes pictures of it, or of a window on it if $window is
 # `yes`, or is shown them through $through.
