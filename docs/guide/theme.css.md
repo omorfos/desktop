@@ -164,8 +164,11 @@ window:focus-within { box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28); }
 desktop > separator { color: var(--border); }
 
 /* A window offered in a part with nothing in it: the box round its picture
- * and its title, and the title, brighter under the pointer. */
+ * and its title, and the title, brighter under the pointer, on a ground of
+ * its own, as the overview's title is, whatever the wallpaper is. */
 desktop > button.offer {
+  padding: 0 8px;
+  background: var(--surface);
   color: var(--text-dim);
   border: 1px solid var(--border);
   border-radius: 10px;
@@ -257,19 +260,25 @@ menu > item:hover { background: var(--surface-raised); }
  * (ADR 113). */
 menu > item:active { background: var(--accent-tint); }
 menu > separator { color: var(--border); }
-/* What stands before a row's label, in the accent on a faint square of it
- * while what the row turns on and off is on. */
+/* What stands before a row's label, in the accent while what the row
+ * turns on and off is on. */
 menu > item > icon {
   padding: 3px;
   border-radius: 6px;
   color: var(--text);
 }
-menu > item:checked > icon {
-  background: var(--accent-tint);
-  color: var(--accent);
-}
-/* The keys that do what a row does, at its end. */
+/* A sign that is on is in the accent, on nothing of its own: a square of
+ * the accent behind it left it under 3 to 1 over glass at its worst. */
+menu > item:checked > icon { color: var(--accent); }
+/* On the row being pressed, the sign is in the text's colour, on or off:
+ * the accent on its own tint is under 3 to 1, and it is only for as long
+ * as the button is held. */
+menu > item:active > icon { color: var(--text); }
+/* The keys that do what a row does, at its end; on the row being pressed,
+ * in the text's own colour, as dim on the tint of the accent is under 4.5
+ * to 1. */
 menu > item > kbd { color: var(--text-dim); }
+menu > item:active > kbd { color: var(--text); }
 /* The row the keyboard is on, in the accent: seen from across the room,
  * where the pointer's is only raised. */
 menu > item:focus {
@@ -367,7 +376,12 @@ popover > calendar > day, popover > calendar > day.outside {
   border: 1px solid var(--border-faint);
   border-radius: 6px;
 }
-popover > calendar > day.outside { color: var(--text-faint); }
+/* The days of the months beside the one shown are read too: dim, and with
+ * no box, as the month's own have. */
+popover > calendar > day.outside {
+  color: var(--text-dim);
+  border-color: transparent;
+}
 popover > calendar > day:state(in-line),
 popover > calendar > day.outside:state(in-line) { border-color: var(--border); }
 popover > calendar > day:hover, popover > calendar > day.outside:hover {
@@ -491,11 +505,12 @@ launcher > modes > button:focus {
   outline-offset: 2px;
 }
 /* The key that goes to a mode, after its name, in a faint chip of its
- * own: dim, and a size smaller, as a menu's keys are. `display: none`
+ * own: a size smaller, as a menu's keys are, and in the text's own colour,
+ * as dim on the chip is under 4.5 to 1. `display: none`
  * leaves it out. */
 launcher > modes > button > kbd {
   padding: 2px 5px;
-  color: var(--text-dim);
+  color: var(--text);
   font-size: 9pt;
   background: var(--glass-rim);
   border: var(--edge);

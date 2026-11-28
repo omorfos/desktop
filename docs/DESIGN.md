@@ -309,8 +309,9 @@ label and from the row's start as from its top and bottom, 8 in a row of
 32, so that the labels stand in a line: a sign for what the row does, or
 a program's picture for one that starts it. A row that turns something
 on and off has a sign of its own too, and its words are the same either
-way; while it is on, its sign is in the accent on a faint square of it,
-as a toggle is. A submenu lies 4 over the edge of the menu it opens from
+way; while it is on, its sign is in the accent, as a toggle is, with
+nothing behind it: a faint square of the accent left it under 3 to 1 over
+glass at its worst. A submenu lies 4 over the edge of the menu it opens from
 ([ADR 70](adr/0070-signs-and-pictures-in-menus.md)).
 
 What is not ours is credited. Everything drawn or designed by someone
@@ -361,8 +362,17 @@ reduced, through the settings portal, so that applications can match.
 2. Which sizes of type, from the five?
 3. Is everything on the 4 pixel grid, with radii from the four?
 4. Does every piece of text meet 4.5 to 1, with the tint at its least?
+   The theme's test walks every part, each saying what its text is
+   written on, so a new part cannot be added without saying.
 5. What does it look like with focus, under the pointer, under the
    keyboard, disabled, and urgent?
 6. What does it do under each of the settings above, and under high
    contrast once there is one?
 7. Can it be worked with the keyboard alone?
+8. Is any state of it said by colour alone, or by a mark under 3 to 1?
+9. Does anything in it go by itself, and can that be held or put off?
+10. Can all of it be done with one press, without dragging, resting the
+    pointer or a second finger?
+11. Does a press on it act as the button is let go?
+12. What does it do at twice the text, and on a screen 384 units tall?
+13. What is a screen reader told of it, and when?

@@ -35,8 +35,7 @@ the program's icon: the one its desktop entry names, found by the name of
 the program's file (`foot` finds `foot.desktop`), or else the icon theme's
 icon of that name. Most others have a sign, such as a magnifying glass
 for `show_launcher`; and one that turns something on and off, such as a
-cup for `stay_awake`, has its sign in the accent on a faint square of it
-while it is on, as `menu > item:checked > icon` in the theme has it. Give an item
+cup for `stay_awake`, has its sign in the accent while it is on, as `menu > item:checked > icon` in the theme has it. Give an item
 an `icon`, the name of one of the icon theme's icons or the path of a
 picture, to have that instead; a submenu has nothing unless it has one:
 

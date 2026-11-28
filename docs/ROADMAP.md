@@ -2006,10 +2006,16 @@ order to take them, before the bar and the dock wear it; the decision
 on assistive technology is at the head of stage 5, and the rest are in
 stage 8, under "Accessibility":
 
-- [ ] Medium: the contrast test a list kept by hand, and DESIGN.md's questions
+- [x] Medium: the contrast test a list kept by hand, and DESIGN.md's questions
       of a new part not asking
       ([finding 15](reviews/2026-11-26-accessibility-design-wcag.md#15-the-contrast-test-is-a-list-kept-by-hand-and-the-checklist-does-not-ask)): each part saying what it is written on, the
-      test walking `Part::ALL`, and six more questions.
+      test walking `Part::ALL`, and six more questions (#214). It walks
+      every combination of states, but `:closing`, in every scheme and
+      accent; a sign is held to 3 to 1 as a mark, text to 4.5. Besides
+      findings 16 and 17 it found a launcher mode's key, in its chip, at
+      4.45 to 1, now in the text's colour, and a menu's sign that is on
+      at 2.92 over glass at its worst in the light scheme, now with no
+      square behind it.
 - [ ] Medium: dim text on glass under 4.5 to 1 at its worst
       ([finding 1](reviews/2026-11-26-accessibility-design-wcag.md#1-dim-text-on-glass-is-under-45-to-1-at-its-worst)): 3.6 to 1 over a
       white window in the dark scheme, 3.8 over a black one in the light.
@@ -2019,9 +2025,9 @@ stage 8, under "Accessibility":
 - [ ] Medium: states said by marks under 3 to 1, and a window that wants
       attention not marked at all
       ([finding 11](reviews/2026-11-26-accessibility-design-wcag.md#11-states-said-by-marks-under-3-to-1-and-one-not-said-at-all)).
-- [ ] Low: the faint colour used for the days of other months
+- [x] Low: the faint colour used for the days of other months
       ([finding 16](reviews/2026-11-26-accessibility-design-wcag.md#16-the-faint-colour-is-used-for-text)).
-- [ ] Low: an offered window's title written straight onto the wallpaper
+- [x] Low: an offered window's title written straight onto the wallpaper
       ([finding 17](reviews/2026-11-26-accessibility-design-wcag.md#17-an-offered-windows-title-is-written-straight-onto-the-wallpaper)).
 - [ ] Low: no look for disabled, pressed, chosen as against where the
       keyboard is, more below, or a chain of keys waiting

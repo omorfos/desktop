@@ -247,7 +247,7 @@ pub struct Toggled {
 }
 
 /// What stands before the label of a row of a menu that does `action`: a
-/// sign for what it does, pressed in if it turns on what `on` has on, or
+/// sign for what it does, lit if it turns on what `on` has on, or
 /// the icon of the program it starts. A program is known by the name of
 /// its file, as its desktop entry is.
 #[must_use]

@@ -84,6 +84,12 @@ from, its first row level with the row that opens it, so that the two are
 seen to belong together; where both are, the pointer is on the submenu,
 which is over the other.
 
+Since 27 November 2026 the sign that is on has no square behind it: a
+contrast test that walks every part (finding 15 of the review of 26
+November 2026) found it at 2.92 to 1 over a menu's glass with a black
+window behind, in the light scheme, under the 3 a mark needs. It is the
+accent on what is behind, and still told by its shape and colour.
+
 ## Consequences
 
 - Each package carries `LICENSE-lucide`, Lucide's ISC licence and the

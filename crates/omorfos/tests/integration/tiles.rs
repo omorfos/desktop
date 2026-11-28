@@ -556,6 +556,8 @@ fn inked(
 /// Where the title of the window `waiting` offers is written, under its
 /// picture: across its box, inside its padding.
 const TITLE: (i32, i32, i32, i32) = (352, 328, 608, 348);
+/// What an offered title is written on in the dark scheme: the surface.
+const TITLE_GROUND: u32 = 0xff14_1c38;
 
 fn waiting(config: &[(&str, &str)]) -> (Session, Client, Toplevel) {
     let mut session = Session::with_config(config);
@@ -639,6 +641,13 @@ fn a_window_offered_keeps_drawing_and_a_private_one_is_blank() {
     let picture = session.draw();
     assert_eq!(picture.at(480, 240), GREEN);
     assert!(inked(&picture, TITLE), "told by its title");
+    // On a ground of its own, the surface, whatever is behind it.
+    let (left, top, right, bottom) = TITLE;
+    let ground = (top..bottom).flat_map(|y| (left..right).map(move |x| (x, y)));
+    let ground = ground
+        .filter(|&(x, y)| picture.at(x, y) == TITLE_GROUND)
+        .count();
+    assert!(ground > 100, "its ground: {ground}");
     // Washed over under the pointer as any other is.
     point(&mut session, 480, 240);
     assert_ne!(session.draw().at(480, 240), GREEN);
