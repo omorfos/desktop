@@ -3721,16 +3721,28 @@ impl Compositor {
     }
 
     /// Brings what the mark says up to date with where the pointer is:
-    /// shown while it rests on the mark of a screen being captured, and
-    /// painted again only when what it says differs.
+    /// shown while it rests on the mark of a screen being captured, or on
+    /// what the mark says or between them, unless it was put away at
+    /// Escape; and painted again only when what it says differs.
     fn note_mark(&mut self) {
         let point = self.pointer_location;
+        let had = self.hover.mark.take();
         let marked = self
             .heads
             .iter()
             .filter(|head| self.signs(&head.output).any());
-        let mut under = marked.filter(|head| self.mark_area(&head.output).to_f64().contains(point));
-        let wanted = under.next().map(|head| {
+        // On the mark, or on its tooltip or between them, it stays.
+        let kept = |head: &&Head| {
+            let held = had.as_ref().filter(|note| note.output == head.output);
+            let reach = held.map(|note| note.reach.to_f64());
+            self.mark_area(&head.output).to_f64().contains(point)
+                || reach.is_some_and(|reach| reach.contains(point))
+        };
+        let mut under = marked.filter(kept);
+        let found = under.next();
+        // Put away, it stays away until the pointer leaves.
+        self.hover.mark_away &= found.is_some();
+        let wanted = found.filter(|_| !self.hover.mark_away).map(|head| {
             let mark = self.mark_area(&head.output);
             (
                 head.output.clone(),
@@ -3740,7 +3752,6 @@ impl Compositor {
             )
         });
         let theme = &self.store.current().theme;
-        let had = self.hover.mark.take();
         self.hover.mark = wanted.map(|(output, says, scale, mark)| {
             let same =
                 |note: &MarkNote| note.says == says && note.scale == scale && note.theme == *theme;
@@ -3760,10 +3771,22 @@ impl Compositor {
                     scale,
                     theme: theme.clone(),
                     area: Rect::new(DomainPoint::new(left, top), DomainSize::new(width, height)),
+                    reach: mark.merge(Rectangle::new(
+                        (left, top).into(),
+                        (width.cast_signed(), height.cast_signed()).into(),
+                    )),
                     pixels: Painted::new(&canvas),
                 }
             })
         });
+    }
+
+    /// Puts the mark's tooltip away, at Escape, until the pointer leaves
+    /// the mark (ADR 115). Says whether it was shown.
+    pub(crate) fn put_mark_tooltip_away(&mut self) -> bool {
+        let shown = self.hover.mark.take().is_some();
+        self.hover.mark_away |= shown;
+        shown
     }
 
     /// What the mark that says the screen is captured says, while the
@@ -5935,6 +5958,9 @@ pub(crate) struct Hover {
     /// What the mark that says a screen is captured says, while it rests
     /// on it.
     mark: Option<MarkNote>,
+    /// Whether it was put away at Escape, until the pointer leaves the
+    /// mark (ADR 115).
+    mark_away: bool,
     /// The picture a program dragging something gave to show it by, while
     /// it drags.
     pub(crate) dragged: Option<DragIcon>,
@@ -5958,6 +5984,9 @@ struct MarkNote {
     theme: Theme,
     /// Where it is shown, under the mark.
     area: Rect,
+    /// The mark and it, and what is between them, where the pointer keeps
+    /// it (ADR 115).
+    reach: Rectangle<i32, Logical>,
     pixels: Painted,
     shadow: Option<Shadowing>,
 }

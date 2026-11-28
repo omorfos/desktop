@@ -1078,12 +1078,12 @@ impl Compositor {
         !tips.is_empty()
     }
 
-    /// Puts away a tooltip shown, a component's, at Escape,
+    /// Puts away a tooltip shown, a component's or the mark's, at Escape,
     /// while the keyboard is in a window: a tooltip shown while a layer
     /// has the keyboard is the layer's to put away (ADR 115). Says whether
     /// there was one.
     pub(crate) fn escape_tooltips(&mut self) -> bool {
-        self.layer_focus.is_none() && self.close_tooltips()
+        self.layer_focus.is_none() && (self.close_tooltips() | self.put_mark_tooltip_away())
     }
 
     /// Closes the menus that asked for it, if a press lands anywhere but on

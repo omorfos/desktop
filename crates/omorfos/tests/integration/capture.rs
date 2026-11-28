@@ -1931,3 +1931,98 @@ fn a_screen_turned_is_drawn_turned_and_taken_the_right_way_up() {
     assert_eq!((area.size.w, area.size.h), (WIDTH, HEIGHT));
     assert_eq!(session.draw().at(10, 10), RED);
 }
+
+/// What the mark's tooltip says with the pointer at `(x, y)`.
+fn mark_says_at(session: &mut Session, (x, y): (i32, i32)) -> Vec<String> {
+    let (x, y) = (f64::from(x), f64::from(y));
+    session.compositor_mut().input(Input::Motion { x, y }, 0);
+    session.step();
+    session.compositor().mark_tooltip().to_vec()
+}
+
+/// Below the mark, across the gap, and onto its tooltip.
+const ON_ITS_TOOLTIP: (i32, i32) = (MARK.0, MARK.1 + 8 + 4 + 6);
+
+#[test]
+fn the_marks_tooltip_stays_while_the_pointer_is_brought_onto_it() {
+    let mut session = Session::new();
+    let mut camera = camera(&mut session);
+    let _screen = camera.capture(0, false);
+    session.roundtrip(&mut camera);
+    session.step();
+    assert_ne!(mark_says_at(&mut session, MARK), Vec::<String>::new());
+    let gap = (MARK.0, MARK.1 + 8 + 2);
+    assert_ne!(
+        mark_says_at(&mut session, gap),
+        Vec::<String>::new(),
+        "across the gap"
+    );
+    assert_ne!(
+        mark_says_at(&mut session, ON_ITS_TOOLTIP),
+        Vec::<String>::new(),
+        "on it"
+    );
+    assert_eq!(
+        mark_says_at(&mut session, (100, 100)),
+        Vec::<String>::new(),
+        "gone"
+    );
+    // Not where it would be, with the pointer never on the mark.
+    assert_eq!(
+        mark_says_at(&mut session, ON_ITS_TOOLTIP),
+        Vec::<String>::new()
+    );
+}
+
+#[test]
+fn escape_puts_the_marks_tooltip_away_until_the_pointer_leaves() {
+    let mut session = Session::new();
+    let mut app = session.connect();
+    session.open(&mut app, "app", (200, 100), RED);
+    let mut camera = camera(&mut session);
+    let _screen = camera.capture(0, false);
+    session.roundtrip(&mut camera);
+    session.step();
+    assert_ne!(mark_says_at(&mut session, MARK), Vec::<String>::new());
+    session.roundtrip(&mut app);
+    app.take_events();
+    let escape = |session: &mut Session| {
+        for pressed in [true, false] {
+            let code = crate::common::key::ESCAPE;
+            session
+                .compositor_mut()
+                .input(Input::Key { code, pressed }, 0);
+        }
+        session.step();
+    };
+    let escaped = |events: &[Event]| {
+        let code = crate::common::key::ESCAPE.raw() - 8;
+        events.contains(&Event::Key {
+            code,
+            pressed: true,
+        })
+    };
+    escape(&mut session);
+    assert_eq!(
+        session.compositor().mark_tooltip(),
+        &[] as &[String],
+        "put away"
+    );
+    session.roundtrip(&mut app);
+    assert!(!escaped(&app.take_events()), "not the window's");
+    assert_eq!(
+        mark_says_at(&mut session, MARK),
+        Vec::<String>::new(),
+        "stays away"
+    );
+    escape(&mut session);
+    session.roundtrip(&mut app);
+    assert!(escaped(&app.take_events()), "the window's");
+    // Away and back, and it shows again.
+    assert_eq!(mark_says_at(&mut session, (100, 100)), Vec::<String>::new());
+    assert_ne!(
+        mark_says_at(&mut session, MARK),
+        Vec::<String>::new(),
+        "again"
+    );
+}
