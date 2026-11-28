@@ -1078,10 +1078,12 @@ impl Compositor {
         !tips.is_empty()
     }
 
-    /// Puts away a tooltip shown, a component's, at Escape (ADR 115). Says
-    /// whether there was one.
+    /// Puts away a tooltip shown, a component's, at Escape,
+    /// while the keyboard is in a window: a tooltip shown while a layer
+    /// has the keyboard is the layer's to put away (ADR 115). Says whether
+    /// there was one.
     pub(crate) fn escape_tooltips(&mut self) -> bool {
-        self.close_tooltips()
+        self.layer_focus.is_none() && self.close_tooltips()
     }
 
     /// Closes the menus that asked for it, if a press lands anywhere but on
@@ -1256,8 +1258,10 @@ impl Compositor {
             let surface = shown.then_some(surface)?;
             let origin = crate::compositor::layer_origin(&layers, surface) + corner;
             let within = self.pointer_location - origin.to_f64();
-            let takes_keyboard = surface
-                .can_receive_keyboard_focus()
+            // A bar is given the keyboard by `focus_panel`, not by a click,
+            // which is for what is on it (ADR 115).
+            let bar = surface.namespace() == "panel";
+            let takes_keyboard = (surface.can_receive_keyboard_focus() && !bar)
                 .then(|| surface.wl_surface().clone());
             let (surface, offset) = surface.surface_under(within, WindowSurfaceType::ALL)?;
             let wallpaper = layer == Layer::Background;

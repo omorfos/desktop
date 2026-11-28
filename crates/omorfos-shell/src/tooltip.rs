@@ -85,6 +85,20 @@ impl<K: PartialEq> Resting<K> {
         showing
     }
 
+    /// Takes in that the keyboard rings `ringed`, or nothing with a
+    /// tooltip: its tooltip is shown at once, with no wait (ADR 115). Says
+    /// whether what is shown changed.
+    pub fn ringed(&mut self, ringed: Option<K>) -> bool {
+        let on = std::mem::take(&mut self.on);
+        let (on, changed) = match (on, ringed) {
+            (On::Shown(was), Some(ringed)) if was == ringed => (On::Shown(was), false),
+            (_, Some(ringed)) => (On::Shown(ringed), true),
+            (on, None) => (On::Nothing, matches!(on, On::Shown(_))),
+        };
+        self.on = on;
+        changed
+    }
+
     /// When a tooltip waited for is to be shown, if one is.
     #[must_use]
     pub fn deadline(&self) -> Option<Duration> {
@@ -110,6 +124,19 @@ mod tests {
 
     const fn ms(millis: u64) -> Duration {
         Duration::from_millis(millis)
+    }
+
+    #[test]
+    fn what_the_keyboard_rings_shows_its_tooltip_at_once_and_none_once_it_rings_nothing() {
+        let mut resting = Resting::new();
+        assert!(resting.ringed(Some("clock")), "at once");
+        assert_eq!(resting.shown(), Some(&"clock"));
+        assert!(!resting.ringed(Some("clock")), "the same");
+        assert!(resting.ringed(Some("title")), "the next");
+        assert_eq!(resting.shown(), Some(&"title"));
+        assert!(resting.ringed(None));
+        assert_eq!(resting.shown(), None);
+        assert!(!resting.ringed(None));
     }
 
     #[test]

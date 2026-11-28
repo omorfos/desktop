@@ -1635,6 +1635,7 @@ impl Compositor {
             Action::ShowLauncher => self.open_launcher(&[]),
             Action::ShowPrograms => self.open_launcher(&["--programs".to_owned()]),
             Action::FocusNotifications => self.focus_notifications(),
+            Action::FocusPanel => self.focus_panel(),
             Action::ShowWelcome => self.open_welcome(false),
             Action::About => self.toggle_about(),
             Action::Lock => self.start_locker(),
@@ -1988,6 +1989,35 @@ impl Compositor {
     /// open.
     pub fn set_launcher(&mut self, program: impl Into<PathBuf>) {
         self.on_demand.launcher.0 = Some(program.into());
+    }
+
+    /// Whether the layer `surface` accepts the keyboard: one that has
+    /// said it no longer does loses it.
+    fn accepts_keyboard(&self, surface: &WlSurface) -> bool {
+        self.heads.iter().any(|head| {
+            let layers = layer_map_for_output(&head.output);
+            let layer =
+                layers.layer_for_surface(surface, smithay::desktop::WindowSurfaceType::TOPLEVEL);
+            layer.is_some_and(LayerSurface::can_receive_keyboard_focus)
+        })
+    }
+
+    /// Gives the keyboard to the panel's bar on the screen the pointer is
+    /// on, if it accepts the keyboard, until it says it no longer does or
+    /// a click elsewhere (ADR 115).
+    fn focus_panel(&mut self) {
+        let point = self.pointer_location;
+        let head = self.heads.iter().find(|head| head.contains(point));
+        let bar = head.and_then(|head| {
+            let layers = layer_map_for_output(&head.output);
+            let mut bars = layers
+                .layers()
+                .filter(|layer| layer.namespace() == "panel" && layer.can_receive_keyboard_focus());
+            bars.next().map(|bar| bar.wl_surface().clone())
+        });
+        if let Some(bar) = bar {
+            self.layer_focus = Some(bar);
+        }
     }
 
     /// Gives the keyboard to the notification nearest the top of a screen,
@@ -3381,7 +3411,9 @@ impl Compositor {
             .last()
             .map(|popup| popup.wl_surface().clone());
         // A panel that was clicked and accepts the keyboard comes next.
-        self.layer_focus = self.layer_focus.take().filter(Resource::is_alive);
+        // It keeps it while it accepts it (ADR 115).
+        let layer_focus = self.layer_focus.take().filter(Resource::is_alive);
+        self.layer_focus = layer_focus.filter(|surface| self.accepts_keyboard(surface));
         let menu = menu.or_else(|| self.layer_focus.clone());
         let demanding = self.demanding();
         let focus = demanding.or(menu).map(Focus::Surface).or_else(|| {
