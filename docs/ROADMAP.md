@@ -27,16 +27,6 @@ the maintainer. An agent starting work reminds them of what is here, and
 an item goes once it has been tried: what was wrong goes to its stage as
 a known gap.
 
-- **Tooltips stay, go at Escape, and the bar takes the keyboard (#180,
-  finding 6; ADR 115).** Rest the pointer on the time until the date
-  shows, then move it up onto the date: it stays. Press Escape: it goes,
-  and a second Escape reaches the window you were typing in. Bind
-  `focus_panel` to a key in `keys.yaml` and press it: the first
-  workspace is ringed; Left rings the time and shows the date at once;
-  Enter opens the month; Escape closes it, and Escape again gives the
-  keyboard back to the window. A click on a workspace leaves the keyboard
-  with the window. While a screen is shared, the mark's tooltip stays as
-  the pointer goes down onto it, and goes at Escape.
 - **A password box withdrawn keeps what is typed (#180, finding 26).**
   In a terminal, `pkexec true`, and once the box is up type a few
   letters; from another terminal end the `pkexec`. The box goes, and
