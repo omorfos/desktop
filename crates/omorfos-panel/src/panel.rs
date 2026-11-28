@@ -292,6 +292,9 @@ struct Shell {
     month: Option<(u32, Month)>,
     /// Where on the month the pointer is, while it is on it.
     on_month: Option<(i32, i32)>,
+    /// Whether the pointer is on the tooltip shown, which keeps it
+    /// (ADR 115).
+    on_tip: bool,
     /// What the pointer's button went down on, acted on as it is let go
     /// there (ADR 113).
     pressing: Pressing<Press>,
@@ -436,6 +439,7 @@ impl Shell {
             popovers: Popovers::default(),
             month: None,
             on_month: None,
+            on_tip: false,
             resting: Resting::new(),
             tipped: None,
             state: State::default(),
@@ -610,19 +614,29 @@ impl Shell {
     fn pointed(&mut self) {
         let on = self.pressed_on();
         self.pressing.moved(on);
+        self.point_month();
+        let hovered = self.hovered();
+        self.stale |= self.resting.over(hovered, self.now);
+    }
+
+    /// Lights what on the month the pointer is on, and nothing once it is
+    /// off it.
+    fn point_month(&mut self) {
         let theme = &self.store.current().theme;
         let (x, y) = self.on_month.unwrap_or((-1, -1));
         let months = self.month.iter_mut();
         self.stale |= months.fold(false, |changed, (_, month)| {
             changed | month.point(x, y, theme)
         });
-        let hovered = self.hovered();
-        self.stale |= self.resting.over(hovered, self.now);
     }
 
     /// The tooltip of what the pointer is over on a bar, if it has one.
     /// None while the month is open.
     fn hovered(&self) -> Option<Tipped> {
+        // On the tooltip, the pointer is on what it is of.
+        if self.on_tip {
+            return self.tipped.clone();
+        }
         let (global, along) = self.over.filter(|_| self.month.is_none())?;
         let screens = self.screens.iter();
         let screens = screens.filter(|screen| screen.global == global);
@@ -664,6 +678,11 @@ impl Shell {
         // Taken away by the compositor, at a click elsewhere.
         if !self.popovers.is_open() {
             self.month = None;
+        }
+        // A tooltip taken away by the compositor, at Escape, stays away
+        // until the pointer leaves what it was of, as after a click.
+        if self.tipped.is_some() && !self.popovers.tipped() {
+            self.resting.clicked();
         }
         let globals = self.compositor.as_ref().zip(self.shm.as_ref());
         let globals = globals.zip(self.layers.as_ref());
@@ -986,6 +1005,7 @@ impl Dispatch<wl_pointer::WlPointer, ()> for Shell {
                     face.is_some_and(|face| *face.sheet.surface() == surface)
                 });
                 shell.over = entered.map(|screen| (screen.global, surface_x));
+                shell.on_tip = shell.popovers.is_tip(&surface);
                 let on = shell.popovers.is(&surface);
                 shell.on_month = on.then(|| (whole(surface_x), whole(surface_y)));
                 shell.pointed();
@@ -1003,7 +1023,12 @@ impl Dispatch<wl_pointer::WlPointer, ()> for Shell {
             wl_pointer::Event::Leave { .. } => {
                 shell.over = None;
                 shell.on_month = None;
-                shell.pointed();
+                shell.on_tip = false;
+                // Whether the tooltip stays is seen to as the bar is next
+                // drawn, by which time the pointer may have come onto it.
+                shell.pressing.moved(None);
+                shell.point_month();
+                shell.stale = true;
             }
             wl_pointer::Event::Button {
                 serial,
@@ -1011,6 +1036,11 @@ impl Dispatch<wl_pointer::WlPointer, ()> for Shell {
                 state: WEnum::Value(state),
                 ..
             } => {
+                // A click on the tooltip takes it away, as one on what
+                // it is of does.
+                if shell.on_tip {
+                    shell.stale |= shell.resting.clicked();
+                }
                 // What it went down on acts as it is let go on it.
                 let on = shell.pressed_on();
                 if state == wl_pointer::ButtonState::Pressed {

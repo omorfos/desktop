@@ -349,3 +349,57 @@ fn a_program_in_the_background_cannot_take_the_keyboard_with_a_menu() {
     assert!(!behind.take_events().contains(&pressed));
     assert!(typed_in.take_events().contains(&pressed));
 }
+
+#[test]
+fn a_tooltip_that_will_not_go_takes_only_one_escape_and_only_a_panels_takes_any() {
+    let mut session = Session::new();
+    let mut app = session.connect();
+    session.open(&mut app, "app", (200, 100), RED);
+    let bar = LayerShape {
+        layer: Layer::Top,
+        anchor: Anchor::Top | Anchor::Left | Anchor::Right,
+        size: (0, 30),
+        exclusive_zone: 30,
+        keyboard: KeyboardInteractivity::None,
+    };
+    let escape = |session: &mut Session, app: &mut Client| {
+        app.take_events();
+        for pressed in [true, false] {
+            let code = key::ESCAPE;
+            session
+                .compositor_mut()
+                .input(Input::Key { code, pressed }, 0);
+        }
+        session.step();
+        session.roundtrip(app);
+        let code = key::ESCAPE.raw() - 8;
+        app.take_events().contains(&Event::Key {
+            code,
+            pressed: true,
+        })
+    };
+    // A program without the panel's role shows what it likes; Escape is
+    // still the window's.
+    let mut plain = session.connect_as(omorfos::Roles::NONE.with(omorfos::Roles::OVERLAY));
+    let (_surface, role) = session.open_layer(&mut plain, &bar, (WIDTH, 30), BLUE);
+    let (tip, _popup) = plain.layer_popup(&role, (100, 30), (80, 20));
+    session.roundtrip(&mut plain);
+    plain.fill(&tip, (80, 20), GREEN);
+    session.roundtrip(&mut plain);
+    assert!(escape(&mut session, &mut app), "the window's");
+    // A panel's tooltip, which stays though it is told to go, takes the
+    // first Escape and no more.
+    let mut panel = session.connect_as(omorfos::Roles::PANEL);
+    let (_surface, role) = session.open_layer(&mut panel, &bar, (WIDTH, 30), BLUE);
+    let (tip, _popup) = panel.layer_popup(&role, (100, 30), (80, 20));
+    session.roundtrip(&mut panel);
+    panel.fill(&tip, (80, 20), GREEN);
+    session.roundtrip(&mut panel);
+    assert!(!escape(&mut session, &mut app), "taken for the tooltip");
+    session.roundtrip(&mut panel);
+    assert!(
+        panel.take_events().contains(&Event::PopupDone),
+        "told to go"
+    );
+    assert!(escape(&mut session, &mut app), "the window's again");
+}

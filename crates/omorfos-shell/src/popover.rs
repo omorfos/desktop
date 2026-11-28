@@ -19,7 +19,7 @@ use std::io;
 
 use omorfos_ui::{Area, Canvas};
 use wayland_client::protocol::{
-    wl_buffer, wl_compositor, wl_region, wl_seat, wl_shm, wl_shm_pool, wl_surface,
+    wl_buffer, wl_compositor, wl_seat, wl_shm, wl_shm_pool, wl_surface,
 };
 use wayland_client::{Connection, Dispatch, QueueHandle};
 use wayland_protocols::wp::viewporter::client::{wp_viewport, wp_viewporter};
@@ -137,7 +137,6 @@ impl Popovers {
     ) -> bool
     where
         S: Dispatch<wl_surface::WlSurface, ()>
-            + Dispatch<wl_region::WlRegion, ()>
             + Dispatch<wp_viewport::WpViewport, ()>
             + Dispatch<xdg_surface::XdgSurface, ()>
             + Dispatch<xdg_popup::XdgPopup, ()>
@@ -146,12 +145,10 @@ impl Popovers {
     {
         self.untip();
         let shown = self.shell.as_ref().map(|shell| {
+            // It takes the pointer, which on it is on what it is of, so
+            // that it stays while the pointer is brought to its words
+            // (ADR 115).
             let popover = Popover::made(shell, (compositor, viewporter), tip, handle);
-            // Nowhere on it takes the pointer, which goes on to what is
-            // under it as if it were not there.
-            let nowhere = compositor.create_region(handle, ());
-            popover.sheet.surface().set_input_region(Some(&nowhere));
-            nowhere.destroy();
             popover.sheet.surface().commit();
             popover
         });
@@ -198,6 +195,21 @@ impl Popovers {
     #[must_use]
     pub const fn is_open(&self) -> bool {
         self.open.is_some()
+    }
+
+    /// Whether `surface` is the tooltip's.
+    #[must_use]
+    pub fn is_tip(&self, surface: &wl_surface::WlSurface) -> bool {
+        self.tip
+            .as_ref()
+            .is_some_and(|tip| tip.sheet.surface() == surface)
+    }
+
+    /// Whether a tooltip is shown: none once the compositor has taken it
+    /// away, as it does at Escape.
+    #[must_use]
+    pub const fn tipped(&self) -> bool {
+        self.tip.is_some()
     }
 
     /// Whether `surface` is the popover's.

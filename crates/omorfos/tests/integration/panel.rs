@@ -22,7 +22,7 @@ use omorfos_ui::Text;
 use serde_json::json;
 use smithay::reexports::wayland_server::ListeningSocket;
 
-use crate::common::{FOUR_WORKSPACES, HEIGHT, Picture, Session, WIDTH, between, half_way};
+use crate::common::{Event, FOUR_WORKSPACES, HEIGHT, Picture, Session, WIDTH, between, half_way};
 use crate::windows::{BACKGROUND, BLUE, RED};
 
 const LEFT: u32 = 0x110;
@@ -1004,6 +1004,12 @@ fn the_arrows_turn_the_month_and_it_stays_as_large_with_the_arrows_where_they_ar
     );
     move_to(&mut session, 100, 100);
     settle(&mut session, &mut panel);
+    assert!(above_the_bar(&mut session, x, tall - 4), "still open");
+    assert_eq!(
+        session.draw().at(arrow.0 - 12, arrow.1),
+        before,
+        "not lit once the pointer has left the month"
+    );
 }
 
 #[test]
@@ -1078,4 +1084,79 @@ fn a_press_on_a_workspace_shows_it_as_it_is_let_go_and_not_if_let_go_off_it() {
     click(&mut session, LEFT);
     settle(&mut session, &mut panel);
     assert_eq!(shown(&mut session), [2]);
+}
+
+#[test]
+fn a_tooltip_stays_while_the_pointer_is_on_it() {
+    let (mut session, mut panel) = dated();
+    let (x, y) = on_the_clock();
+    move_to(&mut session, x, y);
+    settle_at(&mut session, &mut panel, Duration::from_millis(100));
+    settle_at(&mut session, &mut panel, Duration::from_millis(700));
+    assert!(tooltip_over_the_clock(&mut session));
+    // Onto it, as someone reading through a magnifier brings the pointer
+    // to its words.
+    move_to(&mut session, WIDTH - 20, HEIGHT - BAR - 6);
+    settle_at(&mut session, &mut panel, Duration::from_millis(800));
+    settle_at(&mut session, &mut panel, Duration::from_secs(3));
+    assert!(tooltip_over_the_clock(&mut session), "it stays");
+    // And off it, onto the window under it, and it goes.
+    move_to(&mut session, 100, 100);
+    settle_at(&mut session, &mut panel, Duration::from_secs(4));
+    assert!(!tooltip_over_the_clock(&mut session), "gone");
+}
+
+#[test]
+fn escape_puts_a_tooltip_away_and_the_next_escape_is_the_windows() {
+    let (mut session, mut panel) = dated();
+    let mut client = session.connect();
+    session.open(&mut client, "app", (200, 100), RED);
+    settle(&mut session, &mut panel);
+    let (x, y) = on_the_clock();
+    move_to(&mut session, x, y);
+    settle_at(&mut session, &mut panel, Duration::from_millis(100));
+    settle_at(&mut session, &mut panel, Duration::from_millis(700));
+    assert!(tooltip_over_the_clock(&mut session));
+    session.roundtrip(&mut client);
+    client.take_events();
+    let escape = |events: &[Event]| {
+        let code = crate::common::key::ESCAPE.raw() - 8;
+        events.contains(&Event::Key {
+            code,
+            pressed: true,
+        })
+    };
+
+    press(&mut session, crate::common::key::ESCAPE);
+    settle_at(&mut session, &mut panel, Duration::from_millis(800));
+    assert!(!tooltip_over_the_clock(&mut session), "put away");
+    session.roundtrip(&mut client);
+    assert!(!escape(&client.take_events()), "and not the window's");
+    // It stays away while the pointer rests there.
+    settle_at(&mut session, &mut panel, Duration::from_secs(3));
+    assert!(!tooltip_over_the_clock(&mut session), "it stays away");
+
+    press(&mut session, crate::common::key::ESCAPE);
+    session.step();
+    session.roundtrip(&mut client);
+    assert!(escape(&client.take_events()), "the window's");
+}
+
+#[test]
+fn a_click_on_a_tooltip_puts_it_away() {
+    let (mut session, mut panel) = dated();
+    let (x, y) = on_the_clock();
+    move_to(&mut session, x, y);
+    settle_at(&mut session, &mut panel, Duration::from_millis(100));
+    settle_at(&mut session, &mut panel, Duration::from_millis(700));
+    move_to(&mut session, WIDTH - 20, HEIGHT - BAR - 6);
+    settle_at(&mut session, &mut panel, Duration::from_millis(800));
+    assert!(tooltip_over_the_clock(&mut session));
+    click(&mut session, LEFT);
+    settle_at(&mut session, &mut panel, Duration::from_secs(2));
+    assert!(!tooltip_over_the_clock(&mut session), "put away");
+    assert!(
+        !above_the_bar(&mut session, WIDTH - 100, 20),
+        "and no month"
+    );
 }

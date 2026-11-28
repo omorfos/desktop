@@ -388,6 +388,9 @@ pub struct Compositor {
     /// Popups, such as menus, that asked to be dismissed when the user
     /// clicks away from them, oldest first.
     pub(crate) grabbed_popups: Vec<PopupSurface>,
+    /// The popups of panels and other layers, among them the tooltips of
+    /// components: those that take no grab (ADR 115).
+    pub(crate) layer_popups: Vec<PopupSurface>,
     /// The notice of what is wrong, and "About".
     pub(crate) cards: Cards,
     /// How the screens stand for now, as the display key has them.
@@ -597,6 +600,7 @@ impl Compositor {
                     menu_chrome: None,
                     layer_focus: None,
                     grabbed_popups: Vec::new(),
+                    layer_popups: Vec::new(),
                     cards: Cards::default(),
                     interim: Interim::default(),
                     withholding: crate::sealed::Withholding::default(),
