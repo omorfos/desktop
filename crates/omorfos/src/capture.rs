@@ -8,7 +8,7 @@
 //! See `docs/adr/0037-who-may-do-what.md`.
 
 use std::any::Any;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 
 use smithay::backend::allocator::dmabuf::Dmabuf;
 use smithay::backend::allocator::{Buffer as _, Format as DrmFormat, Fourcc};
@@ -305,6 +305,8 @@ struct Taking {
     tracker: OutputDamageTracker,
     /// Whether a picture has been taken. The first is taken at once, and
     /// those after it when something has changed.
+    /// When it began, which the IPC state says (ADR 114).
+    since: SystemTime,
     taken: bool,
     /// How many pictures have been asked for, up to two: one is a
     /// screenshot, and more is the screen being shared or recorded.
@@ -330,6 +332,7 @@ impl Taking {
             size: Size::default(),
             scale,
             pointer,
+            since: SystemTime::now(),
             taken: false,
             asked: 0,
             blank: SolidColorBuffer::default(),
@@ -507,6 +510,21 @@ impl Capture {
         let taking = self.takings.iter().any(|taking| taking.output == *output);
         let fading = self.fading.iter().any(|(fading, _)| fading == output);
         taking || fading || self.ended.contains(output)
+    }
+
+    /// When `client` began taking pictures on a screen, of a window on it
+    /// if `window`, or of the screen: the first of its takings there.
+    pub(crate) fn since(
+        &self,
+        (client, window): (&Client, bool),
+        output: &Output,
+    ) -> Option<SystemTime> {
+        let of = self.takings.iter().filter(|taking| {
+            taking.output == *output
+                && matches!(taking.subject, Subject::Window(_)) == window
+                && taking.session.client().as_ref() == Some(client)
+        });
+        of.map(|taking| taking.since).min()
     }
 
     /// The programs taking pictures on a screen, each once for what it

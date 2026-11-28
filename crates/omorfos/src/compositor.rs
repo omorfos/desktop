@@ -3618,6 +3618,61 @@ impl Compositor {
         )
     }
 
+    /// What programs are taking of what the user shows or says, as the IPC
+    /// state says it (ADR 114): pictures of each screen, or of a window on
+    /// it, by the program, or the one a program shares them with, as the
+    /// portal does, and since when; and what PipeWire says is recorded.
+    pub(crate) fn capturing(&self) -> Vec<omorfos_ipc::Capturing> {
+        use omorfos_ipc::{Captured, Capturing};
+        let recorders = &self.capture.recording.now;
+        let epoch = |at: SystemTime| at.duration_since(SystemTime::UNIX_EPOCH).ok();
+        let mut capturing = Vec::new();
+        for head in &self.heads {
+            let output = &head.output;
+            for (client, window) in self.capture.takers(output) {
+                let pid = self.process(&client);
+                let what = if window {
+                    Captured::Window
+                } else {
+                    Captured::Screen
+                };
+                let since = self.capture.since((&client, window), output);
+                let since = since.and_then(epoch).map(|since| since.as_secs());
+                // Named as the mark names it: by what it shares with.
+                let through = recorders.iter().filter(|recorder| {
+                    recorder.kind == Recorded::Screen
+                        && recorder.through.is_some_and(|through| Some(through) == pid)
+                });
+                let seers: Vec<Option<u32>> = through.map(|recorder| Some(recorder.pid)).collect();
+                let seers = if seers.is_empty() { vec![pid] } else { seers };
+                capturing.extend(seers.into_iter().map(|seer| Capturing {
+                    program: program(&self.words, seer),
+                    pid: seer,
+                    what,
+                    screen: Some(output.name()),
+                    since,
+                }));
+            }
+        }
+        let recorded = recorders.iter().filter_map(|recorder| {
+            let what = match recorder.kind {
+                Recorded::Microphone => Captured::Microphone,
+                Recorded::Sound => Captured::Sound,
+                Recorded::Camera => Captured::Camera,
+                Recorded::Screen => return None,
+            };
+            Some(Capturing {
+                program: program(&self.words, Some(recorder.pid)),
+                pid: Some(recorder.pid),
+                what,
+                screen: None,
+                since: None,
+            })
+        });
+        capturing.extend(recorded);
+        capturing
+    }
+
     /// What the mark on `output` says when the pointer rests on it: which
     /// programs are taking pictures there, and of what.
     fn mark_says(&self, output: &Output) -> Vec<String> {

@@ -716,6 +716,7 @@ impl Compositor {
                     handle: self.handle_of(listed.window.id),
                 })
                 .collect(),
+            capturing: self.capturing(),
             problems: self.problems().to_vec(),
             events: self.events().map(str::to_owned).collect(),
             screens: self.ipc_screens(),

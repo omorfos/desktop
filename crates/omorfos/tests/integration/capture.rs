@@ -1931,3 +1931,41 @@ fn a_screen_turned_is_drawn_turned_and_taken_the_right_way_up() {
     assert_eq!((area.size.w, area.size.h), (WIDTH, HEIGHT));
     assert_eq!(session.draw().at(10, 10), RED);
 }
+
+#[test]
+fn the_state_says_which_program_is_capturing_what_of_which_screen_and_since_when() {
+    let mut session = Session::new();
+    let socket = session.listen();
+    let mut app = session.connect();
+    session.open(&mut app, "app", (200, 100), RED);
+    let before = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    let mut camera = window_camera(&mut session);
+    let _screen = camera.capture(0, false);
+    let _window = camera.capture_window("app");
+    session.roundtrip(&mut camera);
+    let mut peer = omorfos_ipc::Client::connect(&socket).unwrap();
+    let omorfos_ipc::Reply::State(state) = session.ask(&mut peer, &omorfos_ipc::Request::State)
+    else {
+        unreachable!("the compositor answers a question about the state with it");
+    };
+    let program = std::env::current_exe().unwrap();
+    let program = program.file_name().unwrap().to_string_lossy().into_owned();
+    let what: Vec<omorfos_ipc::Captured> = state.capturing.iter().map(|one| one.what).collect();
+    assert_eq!(
+        what,
+        [omorfos_ipc::Captured::Screen, omorfos_ipc::Captured::Window]
+    );
+    for one in &state.capturing {
+        assert_eq!(one.program, program);
+        assert_eq!(one.pid, Some(std::process::id()));
+        assert_eq!(
+            one.screen.as_deref(),
+            Some(session.output().name().as_str())
+        );
+        let since = one.since.unwrap();
+        assert!(since >= before && since <= before + 60, "{since}");
+    }
+}
