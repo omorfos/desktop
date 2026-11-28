@@ -29,6 +29,11 @@ code, so the full list is visible in one place.
 
 ## Excluded files
 
+The gate's `--ignore-filename-regex` in `.cargo/config.toml` leaves out
+these and no others: `omorfos-config`'s test `excluded` fails while a
+file is left out with no row here, or a row names a file that is gone or
+no longer left out.
+
 | File | Reason |
 |---|---|
 | `crates/omorfos/src/backend/winit.rs` | Opens a window on a host display and draws with OpenGL; CI runners have neither. It translates winit events into `Input` and draws with `Compositor::render` after each turn of the `Session`, all of which are covered through the software renderer. |

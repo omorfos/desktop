@@ -332,7 +332,7 @@ calls for them.
       with the `capture` role, with a mark on the screen while they are
       taken that is not in them. `omorfos-screenshot` saves one of every
       screen, and `Print` starts it. It is written through the file
-      behind the program's buffer, without `unsafe` (ADR 61).
+      behind the program's buffer, without `unsafe` (ADR 115).
 - [x] A picture put on the clipboard instead of, or as well as, saved:
       `screenshots.destination`, `--to`, and `Shift+Print`. With it the
       `clipboard` role and `ext-data-control-v1`, since a program

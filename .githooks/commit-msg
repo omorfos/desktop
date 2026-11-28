@@ -1,0 +1,9 @@
+#!/bin/sh
+# Refuses a commit whose message has no body, or a word misspelt in it,
+# as `tools/message.sh` checks: what `committed` in CI does not. A message
+# git edited or a tool wrote alike.
+#
+# Git runs it once told where it is: git config core.hooksPath .githooks
+set -eu
+PATH="$HOME/.cargo/bin:$PATH"
+exec tools/message.sh "$1"

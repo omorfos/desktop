@@ -82,8 +82,9 @@ the tests of every crate the change can reach (ADR 94). A commit the push finds 
 goes, as nothing of it has left the machine. The tiers are in
 [docs/TESTING.md](docs/TESTING.md), under "Tiers". Once per clone,
 `git config core.hooksPath .githooks` sets up the hooks: the commit hook
-refuses a line left in from debugging, and the push hook what the gates
-have not passed.
+refuses a line left in from debugging, the message hook a message with
+no body or a word misspelt (`tools/message.sh`, which CI runs too), and
+the push hook what the gates have not passed.
 
 To try a change by hand on real hardware, build with the `nightly` profile
 and install from `target/nightly/`. It is optimised like a release but skips

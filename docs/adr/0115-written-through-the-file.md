@@ -1,7 +1,8 @@
-# 61. A program's buffer written through its file
+# 115. A program's buffer written through its file
 
 - Status: accepted
-- Date: 2026-10-26
+- Date: 2026-10-26, numbered 61 until 28 November 2026, a number the
+  relay's was given the same day
 - Supersedes: [40. One unsafe block](0040-one-unsafe-block.md)
 
 ## Context

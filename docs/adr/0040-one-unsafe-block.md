@@ -1,6 +1,6 @@
 # 40. One unsafe block
 
-- Status: superseded by [61. A program's buffer written through its file](0061-written-through-the-file.md)
+- Status: superseded by [115. A program's buffer written through its file](0115-written-through-the-file.md)
 - Date: 2026-10-13
 
 ## Context

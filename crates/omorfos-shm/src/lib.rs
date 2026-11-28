@@ -6,7 +6,7 @@
 //! from, which is the same memory. The file is found by where Smithay has
 //! it mapped, and opened again through the descriptor Smithay keeps of it.
 //! Why, and what was given up for it, is in
-//! `docs/adr/0061-written-through-the-file.md`.
+//! `docs/adr/0115-written-through-the-file.md`.
 //!
 //! What is offered is safe to call with anything: every row is checked to
 //! lie inside the memory, and the file to be as long, before it is written.
