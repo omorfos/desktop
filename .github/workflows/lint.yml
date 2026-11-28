@@ -58,9 +58,9 @@ jobs:
           persist-credentials: false
       - name: Install shellcheck and shfmt, and each awk
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends shellcheck shfmt gawk mawk
-      - run: shellcheck tools/*.sh .githooks/pre-commit .githooks/pre-push packaging/package.sh packaging/aur/*.sh
+      - run: shellcheck tools/*.sh .githooks/pre-commit .githooks/commit-msg .githooks/pre-push packaging/package.sh packaging/aur/*.sh
       # As .editorconfig says, which shfmt reads.
-      - run: shfmt -d tools/*.sh .githooks/pre-commit .githooks/pre-push packaging/package.sh packaging/aur/*.sh
+      - run: shfmt -d tools/*.sh .githooks/pre-commit .githooks/commit-msg .githooks/pre-push packaging/package.sh packaging/aur/*.sh
       # The survey of what scale other systems choose and ADR 100, held to
       # the script that worked their tables out: by each awk a machine is
       # likely to have, where the gates try the one that is there.
@@ -68,6 +68,8 @@ jobs:
       - run: AWK=gawk tools/scale-survey.sh check
       # What a push checks commit by commit: not what main has already.
       - run: tools/unpushed.test.sh
+      # What is asked of a commit message beyond what committed checks.
+      - run: tools/message.test.sh
       - name: No line left in from debugging
         run: |
           if git grep -nE '\bD[B]G\b' -- '*.rs'; then
@@ -163,3 +165,21 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - uses: crate-ci/committed@v1.1.12
+      # A body and no word misspelt, as AGENTS.md asks of every message,
+      # which committed does not check: each commit of the pull request
+      # but the bots'.
+      - uses: taiki-e/install-action@v2.90.6
+        with:
+          tool: typos@1.52.2
+      - name: Each message has a body and is spelt right
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          failed=0
+          for commit in $(git rev-list --no-merges "$BASE..$HEAD"); do
+            git log -1 --format=%an "$commit" | grep -q -E 'dependabot|renovate|github-actions' && continue
+            git log -1 --format=%B "$commit" > "$RUNNER_TEMP/message"
+            tools/message.sh "$RUNNER_TEMP/message" || { echo "in $commit"; failed=1; }
+          done
+          exit "$failed"

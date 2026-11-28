@@ -418,7 +418,7 @@ scripts() {
     local found=() each
     # Those there are in the commit being checked: one made before a
     # script was moved or written has it elsewhere, or not at all.
-    for each in tools/*.sh .githooks/pre-commit .githooks/pre-push \
+    for each in tools/*.sh .githooks/pre-commit .githooks/commit-msg .githooks/pre-push \
         packaging/package.sh packaging/aur/*.sh; do
         [ -e "$each" ] && found+=("$each")
     done
@@ -435,6 +435,7 @@ scripts() {
     # A commit made before the script was written has none to be held to.
     [ ! -e tools/scale-survey.sh ] || step tools/scale-survey.sh check
     [ ! -e tools/unpushed.test.sh ] || step tools/unpushed.test.sh
+    [ ! -e tools/message.test.sh ] || step tools/message.test.sh
 }
 
 # The workflows, as CI checks them but for what needs the network: each

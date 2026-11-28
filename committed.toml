@@ -9,4 +9,6 @@ subject_not_punctuated = true
 imperative_subject = true
 no_fixup = true
 no_wip = true
+# `main` is fast-forward only, so a merge commit is never meant.
+merge_commit = false
 ignore_author_re = "(dependabot|renovate)"
