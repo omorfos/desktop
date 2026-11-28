@@ -180,3 +180,61 @@ fn a_link_that_leads_nowhere_is_found_and_one_that_leads_somewhere_is_not() {
         ]
     );
 }
+
+/// What is wrong with the numbers of the records of decisions in
+/// `directory`: each number given to more than one, and each whose title
+/// says another number than its file's name.
+fn misnumbered(directory: &Path) -> Vec<String> {
+    let mut wrong = Vec::new();
+    let mut seen: HashMap<u32, String> = HashMap::new();
+    let mut names: Vec<String> = fs::read_dir(directory)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .map(|entry| entry.file_name().to_string_lossy().into_owned())
+        .filter(|name| {
+            Path::new(name)
+                .extension()
+                .is_some_and(|extension| extension == "md")
+        })
+        .collect();
+    names.sort();
+    for name in names {
+        let Some(number) = name.split('-').next().and_then(|n| n.parse::<u32>().ok()) else {
+            continue;
+        };
+        if let Some(first) = seen.insert(number, name.clone()) {
+            wrong.push(format!("{number} is {first} and {name}"));
+        }
+        let text = fs::read_to_string(directory.join(&name)).unwrap_or_default();
+        let title = text.lines().next().unwrap_or_default();
+        if !title.starts_with(&format!("# {number}. ")) {
+            wrong.push(format!("{name} is titled {title:?}"));
+        }
+    }
+    wrong
+}
+
+#[test]
+fn each_record_of_a_decision_has_a_number_of_its_own_and_is_titled_by_it() {
+    let records = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../docs/adr");
+    assert_eq!(misnumbered(&records), [] as [String; 0]);
+}
+
+#[test]
+fn a_number_given_twice_or_a_title_that_says_another_is_found() {
+    let place = TempDir::new().unwrap();
+    let write = |name: &str, text: &str| fs::write(place.path().join(name), text).unwrap();
+    write("0001-first.md", "# 1. First\n");
+    write("0002-second.md", "# 2. Second\n");
+    write("0002-again.md", "# 2. Again\n");
+    write("0003-titled-wrong.md", "# 4. Titled wrong\n");
+    write("README.md", "# Not a record\n");
+    assert_eq!(
+        misnumbered(place.path()),
+        [
+            "2 is 0002-again.md and 0002-second.md",
+            "0003-titled-wrong.md is titled \"# 4. Titled wrong\"",
+        ]
+    );
+}
