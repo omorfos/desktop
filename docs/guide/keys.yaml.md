@@ -186,6 +186,9 @@ it takes and what it does.
 | `hide_others` | Minimize every window of every other program, as Cmd+Option+H. |
 | `show_desktop` | Set every window of the workspace shown aside, to show the desktop, as a Mac does: each slides straight out from the middle of the screen until a sliver is left at an edge, and none has the keyboard. They slide back where they were when it is chosen again, Escape is pressed, a window or its sliver is chosen, or one opens, and as their workspace is left for another. No key is bound to it yet; four fingers spread on a touchpad carry the windows aside, and pinched together carry them back. |
 | `maximize`, `minimize` | Toggle or apply that state. |
+| `move` | Move the focused window with the arrows, 10 units a press and 50 with Shift; Enter or a click keeps it there, Escape puts it back. Nothing else reaches a window meanwhile. Not a window that is maximized, full screen or tiled. No key is bound to it; a window's menu has it as Move (ADR 116). |
+| `resize` | The same, the arrows changing its size: Right and Down make it wider and taller, Left and Up narrower and shorter, its top left corner staying where it is. A window's menu has it as Resize. |
+| `window_menu` | Open the focused window's menu at its top left corner, to go through with the arrows. No key is bound to it. |
 | `fullscreen` | Put the focused window alone on a workspace made for it, filling the screen, or bring it back to the desktop it came from. |
 | `tile: left` | Have the focused window take the left half of where it is; also `right`, `top` and `bottom`. The next window to open there has the other half. From a desktop, where it is becomes a workspace made for it. |
 | `focus: left` | Among windows that share a workspace, give focus to the one beside the focused one; also `right`, `up` and `down`. |

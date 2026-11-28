@@ -2,6 +2,8 @@
 ### Translated by a machine, and not yet read by someone who speaks Polish.
 
 close = Zamknij
+move = Przenieś
+resize = Zmień rozmiar
 maximize = Maksymalizuj
 minimize = Minimalizuj
 fullscreen = Pełny ekran

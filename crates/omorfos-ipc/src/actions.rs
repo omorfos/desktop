@@ -51,6 +51,24 @@ pub const TOLD: &[Told] = &[
     ),
     told!(
         "Windows",
+        "move",
+        "",
+        "Move the focused window with the arrows",
+    ),
+    told!(
+        "Windows",
+        "resize",
+        "",
+        "Resize the focused window with the arrows",
+    ),
+    told!(
+        "Windows",
+        "window_menu",
+        "",
+        "Open the focused window's menu",
+    ),
+    told!(
+        "Windows",
         "fullscreen",
         "",
         "Make the focused window fullscreen, or not",

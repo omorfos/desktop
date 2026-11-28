@@ -86,6 +86,18 @@ pub enum Action {
     CloseProgram,
     /// Toggle the focused window between maximized and its normal size.
     Maximize,
+    /// Move the focused window by the keyboard: the arrows move it 10
+    /// units a press, 50 with Shift, Enter keeps where it is and Escape
+    /// puts it back (ADR 116). Not one that is maximized, full screen or
+    /// tiled.
+    Move,
+    /// Resize the focused window by the keyboard: Right and Down make it
+    /// wider and taller, Left and Up narrower and shorter, 10 units a
+    /// press and 50 with Shift, its top left corner staying; Enter keeps
+    /// the size and Escape puts it back (ADR 116).
+    Resize,
+    /// Open the focused window's menu at its top left corner (ADR 116).
+    WindowMenu,
     /// Toggle fullscreen for the focused window.
     Fullscreen,
     /// Hide the focused window.
@@ -495,6 +507,9 @@ mod tests {
     #[test]
     fn actions_without_a_parameter_are_plain_strings() {
         assert_eq!(parse("close"), Ok(Action::Close));
+        assert_eq!(parse("move"), Ok(Action::Move));
+        assert_eq!(parse("resize"), Ok(Action::Resize));
+        assert_eq!(parse("window_menu"), Ok(Action::WindowMenu));
         assert_eq!(parse("close_program"), Ok(Action::CloseProgram));
         assert_eq!(parse("hide_program"), Ok(Action::HideProgram));
         assert_eq!(parse("hide_others"), Ok(Action::HideOthers));

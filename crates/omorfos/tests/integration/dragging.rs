@@ -420,3 +420,272 @@ fn other_buttons_are_swallowed_while_a_drag_is_in_progress() {
     session.step();
     assert_eq!(frames(&session), [rect(100, 100, 202, 149)]);
 }
+
+/// Presses and lets go of `code`, as a key alone, or with Shift held.
+fn tap(session: &mut Session, code: smithay::input::keyboard::Keycode, shift: bool) {
+    let shift_key = smithay::input::keyboard::Keycode::new(50);
+    let mut keys = vec![(code, true), (code, false)];
+    if shift {
+        keys.insert(0, (shift_key, true));
+        keys.push((shift_key, false));
+    }
+    for (code, pressed) in keys {
+        session
+            .compositor_mut()
+            .input(Input::Key { code, pressed }, 0);
+    }
+    session.step();
+}
+
+fn perform(session: &mut Session, action: &omorfos_config::Action) {
+    session.compositor_mut().perform(action);
+    session.step();
+}
+
+#[test]
+fn a_window_is_moved_by_the_keyboard_with_no_pointer_event() {
+    let mut session = Session::new();
+    let mut client = session.connect();
+    decorated(&mut session, &mut client, "foot");
+    client.take_events();
+    perform(&mut session, &omorfos_config::Action::Move);
+    for _ in 0..4 {
+        tap(&mut session, key::RIGHT, false);
+    }
+    tap(&mut session, key::DOWN, true);
+    tap(&mut session, key::RETURN, false);
+    assert_eq!(frames(&session), [rect(40, 50, 202, 149)]);
+    // The window saw none of it, and the arrows are its own again.
+    session.roundtrip(&mut client);
+    let events = client.take_events();
+    assert_eq!(buttons(&events), 0);
+    // Shift, a modifier, is the window's still, so that it is not left
+    // held; the arrows and Enter are not.
+    let shift = 50 - 8;
+    let keys = |events: &[Event]| {
+        let pressed = events
+            .iter()
+            .filter(|event| matches!(event, Event::Key { pressed: true, code } if *code != shift));
+        pressed.count()
+    };
+    assert_eq!(keys(&events), 0, "{events:?}");
+    tap(&mut session, key::RIGHT, false);
+    session.roundtrip(&mut client);
+    assert_eq!(keys(&client.take_events()), 1, "the window's");
+    assert_eq!(frames(&session), [rect(40, 50, 202, 149)]);
+}
+
+#[test]
+fn escape_puts_a_window_moved_or_resized_by_the_keyboard_back() {
+    let mut session = Session::new();
+    let mut client = session.connect();
+    decorated(&mut session, &mut client, "foot");
+    perform(&mut session, &omorfos_config::Action::Move);
+    tap(&mut session, key::RIGHT, false);
+    tap(&mut session, key::DOWN, false);
+    assert_eq!(
+        frames(&session),
+        [rect(10, 10, 202, 149)],
+        "it moves as it goes"
+    );
+    tap(&mut session, key::ESCAPE, false);
+    assert_eq!(frames(&session), [rect(0, 0, 202, 149)], "put back");
+    perform(&mut session, &omorfos_config::Action::Resize);
+    tap(&mut session, key::RIGHT, false);
+    tap(&mut session, key::ESCAPE, false);
+    assert_eq!(
+        frames(&session),
+        [rect(0, 0, 202, 149)],
+        "its size put back"
+    );
+}
+
+#[test]
+fn a_window_is_resized_by_the_keyboard_from_its_corner_and_no_smaller_than_a_drag_lets_it() {
+    let mut session = Session::new();
+    let mut client = session.connect();
+    decorated(&mut session, &mut client, "foot");
+    perform(&mut session, &omorfos_config::Action::Resize);
+    for _ in 0..3 {
+        tap(&mut session, key::RIGHT, false);
+    }
+    tap(&mut session, key::DOWN, true);
+    tap(&mut session, key::RETURN, false);
+    assert_eq!(frames(&session), [rect(0, 0, 232, 199)]);
+    // Made smaller and smaller, it stops where a drag would.
+    perform(&mut session, &omorfos_config::Action::Resize);
+    for _ in 0..20 {
+        tap(&mut session, key::LEFT, true);
+        tap(&mut session, key::UP, true);
+    }
+    tap(&mut session, key::RETURN, false);
+    let smallest = frames(&session)[0];
+    assert_eq!(smallest.origin, Point::new(0, 0), "the corner stays");
+    assert!(
+        smallest.size.width > 0 && smallest.size.height > 0,
+        "{smallest:?}"
+    );
+    // By its right edge, just outside the frame, as far left as it goes.
+    let edge = i32::try_from(smallest.size.width).unwrap() + 2;
+    drag(&mut session, LEFT, (edge, 60), (0, 60));
+    assert_eq!(frames(&session)[0], smallest, "as small as a drag makes it");
+    // And it is small: far smaller than it was.
+    assert!(
+        smallest.size.width < 202 && smallest.size.height < 149,
+        "{smallest:?}"
+    );
+}
+
+#[test]
+fn while_a_window_is_moved_by_the_keyboard_other_keys_reach_nothing_and_a_click_keeps_it() {
+    let mut session = Session::new();
+    let mut client = session.connect();
+    decorated(&mut session, &mut client, "foot");
+    session.roundtrip(&mut client);
+    client.take_events();
+    perform(&mut session, &omorfos_config::Action::Move);
+    tap(&mut session, key::RIGHT, false);
+    tap(
+        &mut session,
+        smithay::input::keyboard::Keycode::new(38),
+        false,
+    );
+    session.roundtrip(&mut client);
+    let events = client.take_events();
+    assert!(
+        !events
+            .iter()
+            .any(|event| matches!(event, Event::Key { .. })),
+        "{events:?}"
+    );
+    move_to(&mut session, 500, 400);
+    press(&mut session, LEFT);
+    release(&mut session, LEFT);
+    session.step();
+    tap(&mut session, key::RIGHT, false);
+    assert_eq!(
+        frames(&session),
+        [rect(10, 0, 202, 149)],
+        "kept at the click"
+    );
+}
+
+#[test]
+fn a_maximized_window_is_not_moved_or_resized_by_the_keyboard() {
+    let mut session = Session::new();
+    let mut client = session.connect();
+    decorated(&mut session, &mut client, "foot");
+    perform(&mut session, &omorfos_config::Action::Maximize);
+    let maximized = frames(&session);
+    session.roundtrip(&mut client);
+    client.take_events();
+    for action in [omorfos_config::Action::Move, omorfos_config::Action::Resize] {
+        perform(&mut session, &action);
+        tap(&mut session, key::RIGHT, false);
+    }
+    assert_eq!(frames(&session), maximized);
+    session.roundtrip(&mut client);
+    let events = client.take_events();
+    let keys = events
+        .iter()
+        .filter(|event| matches!(event, Event::Key { pressed: true, .. }));
+    assert_eq!(keys.count(), 2, "the window's: {events:?}");
+}
+
+#[test]
+fn the_window_menu_opens_by_its_action_and_begins_a_move() {
+    let mut session = Session::new();
+    let mut client = session.connect();
+    decorated(&mut session, &mut client, "foot");
+    move_to(&mut session, 600, 400);
+    perform(&mut session, &omorfos_config::Action::WindowMenu);
+    assert!(session.compositor().menu_open());
+    // Its last row but one, Move.
+    tap(&mut session, key::UP, false);
+    tap(&mut session, key::UP, false);
+    tap(&mut session, key::RETURN, false);
+    assert!(!session.compositor().menu_open());
+    tap(&mut session, key::RIGHT, false);
+    tap(&mut session, key::RETURN, false);
+    assert_eq!(frames(&session), [rect(10, 0, 202, 149)]);
+}
+
+#[test]
+fn a_window_that_closes_while_moved_by_the_keyboard_leaves_the_keys_to_the_next() {
+    let mut session = Session::new();
+    let mut other = session.connect();
+    decorated(&mut session, &mut other, "other");
+    let mut client = session.connect();
+    let window = session.open_decorated(&mut client, "foot", (200, 100), RED);
+    perform(&mut session, &omorfos_config::Action::Move);
+    window.role.destroy();
+    window.xdg_surface.destroy();
+    window.surface.destroy();
+    session.roundtrip(&mut client);
+    session.step();
+    session.roundtrip(&mut other);
+    other.take_events();
+    tap(&mut session, key::RIGHT, false);
+    session.roundtrip(&mut other);
+    let events = other.take_events();
+    assert!(
+        events
+            .iter()
+            .any(|event| matches!(event, Event::Key { pressed: true, .. })),
+        "{events:?}"
+    );
+}
+
+#[test]
+fn a_window_that_loses_the_keyboard_while_moved_by_it_is_left_where_it_is() {
+    let mut session = Session::new();
+    let mut client = session.connect();
+    decorated(&mut session, &mut client, "foot");
+    perform(&mut session, &omorfos_config::Action::Move);
+    tap(&mut session, key::RIGHT, false);
+    // Another window comes and takes the keyboard: the arrows are its.
+    let mut other = session.connect();
+    session.open(&mut other, "other", (100, 100), BLUE);
+    session.step();
+    session.roundtrip(&mut other);
+    other.take_events();
+    tap(&mut session, key::RIGHT, false);
+    session.roundtrip(&mut other);
+    let events = other.take_events();
+    assert!(
+        events
+            .iter()
+            .any(|event| matches!(event, Event::Key { pressed: true, .. })),
+        "{events:?}"
+    );
+    assert_eq!(
+        frames(&session)[0],
+        rect(10, 0, 202, 149),
+        "left where it was moved to"
+    );
+}
+
+#[test]
+fn the_window_menu_opens_on_the_windows_screen_though_the_pointer_is_on_another() {
+    let mut session = Session::new();
+    let second = session.add_output((800, 600));
+    let mut client = session.connect();
+    decorated(&mut session, &mut client, "foot");
+    // Moved onto the second screen, by the keyboard.
+    perform(&mut session, &omorfos_config::Action::Move);
+    for _ in 0..14 {
+        tap(&mut session, key::RIGHT, true);
+    }
+    tap(&mut session, key::RETURN, false);
+    let corner = frames(&session)[0].origin;
+    let second_left = session.compositor().area_of(&second).loc.x;
+    assert!(corner.x >= second_left, "{corner:?}");
+    // The pointer is on the first screen still, the window's the current.
+    assert_eq!(session.compositor().menu_area(), None, "none yet");
+    perform(&mut session, &omorfos_config::Action::WindowMenu);
+    let menu = session.compositor().menu_area().unwrap();
+    assert!(
+        menu.origin.x >= second_left,
+        "on the window's screen: {menu:?}"
+    );
+}
