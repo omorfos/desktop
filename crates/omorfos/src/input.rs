@@ -681,6 +681,12 @@ impl Compositor {
             if let Some(taken) = compositor.every_key(held, keysym, code) {
                 return taken;
             }
+            // Then a tooltip shown goes at Escape, which the window does
+            // not see (ADR 115).
+            if keysym == Keysym::Escape && compositor.escape_tooltips() {
+                compositor.taken.suppressed.push(code);
+                return FilterResult::Intercept(None);
+            }
             if keysym.is_modifier_key() {
                 // Holding a modifier on the way to the next chord is not a
                 // step in a chain.
@@ -1054,6 +1060,32 @@ impl Compositor {
         }
     }
 
+    /// Closes the tooltips of components that are shown, the popups of a
+    /// panel's layers that took no grab, as Escape does with the pointer
+    /// resting on what they are of and the keyboard elsewhere (ADR 115).
+    /// Each is told once, and forgotten, so that one which stays takes no
+    /// more Escapes. Says whether there were any.
+    fn close_tooltips(&mut self) -> bool {
+        let grabbed = &self.grabbed_popups;
+        let tip = |popup: &mut PopupSurface| {
+            let panel = Self::roles(popup.wl_surface().client().as_ref()).has(Roles::PANEL);
+            popup.alive() && panel && !grabbed.contains(popup)
+        };
+        let tips: Vec<PopupSurface> = self.layer_popups.extract_if(.., tip).collect();
+        for tip in &tips {
+            tip.send_popup_done();
+        }
+        !tips.is_empty()
+    }
+
+    /// Puts away a tooltip shown, a component's or the mark's, at Escape,
+    /// while the keyboard is in a window: a tooltip shown while a layer
+    /// has the keyboard is the layer's to put away (ADR 115). Says whether
+    /// there was one.
+    pub(crate) fn escape_tooltips(&mut self) -> bool {
+        self.layer_focus.is_none() && (self.close_tooltips() | self.put_mark_tooltip_away())
+    }
+
     /// Closes the menus that asked for it, if a press lands anywhere but on
     /// a surface of the application they belong to. Innermost first, as the
     /// protocol requires.
@@ -1226,8 +1258,10 @@ impl Compositor {
             let surface = shown.then_some(surface)?;
             let origin = crate::compositor::layer_origin(&layers, surface) + corner;
             let within = self.pointer_location - origin.to_f64();
-            let takes_keyboard = surface
-                .can_receive_keyboard_focus()
+            // A bar is given the keyboard by `focus_panel`, not by a click,
+            // which is for what is on it (ADR 115).
+            let bar = surface.namespace() == "panel";
+            let takes_keyboard = (surface.can_receive_keyboard_focus() && !bar)
                 .then(|| surface.wl_surface().clone());
             let (surface, offset) = surface.surface_under(within, WindowSurfaceType::ALL)?;
             let wallpaper = layer == Layer::Background;

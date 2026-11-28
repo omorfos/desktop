@@ -261,6 +261,11 @@
           "type": "string"
         },
         {
+          "const": "focus_panel",
+          "description": "Give the panel's bar on the screen with the pointer the keyboard:\nTab and the arrow keys ring what is on it, which shows its tooltip,\nEnter or space press it, as a click does, and Escape gives the\nkeyboard back (ADR 115).",
+          "type": "string"
+        },
+        {
           "const": "show_welcome",
           "description": "Show the welcome card: a step at a time, what the keys that matter\ndo, light or dark, the wallpapers that come with omorfos, and the\napplications that open what. It is shown by itself at the first\nlogin.",
           "type": "string"

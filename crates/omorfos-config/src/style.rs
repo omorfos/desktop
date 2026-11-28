@@ -84,12 +84,13 @@ pub enum Part {
     /// left between it and the edges of the screen.
     Panel,
     /// A workspace on the panel. It is [`State::Active`] when it is the
-    /// one being shown.
+    /// one being shown, and [`State::Focused`] while the keyboard rings it.
     Workspace,
     /// A window on the panel. It is [`State::Active`] when it is the one
-    /// with focus.
+    /// with focus, and [`State::Focused`] while the keyboard rings it.
     Task,
-    /// The time on the panel.
+    /// The time on the panel, and what says the session is kept awake. It
+    /// is [`State::Focused`] while the keyboard rings it.
     Clock,
     /// What hangs from a bar, as the month from the clock: a box drawn as
     /// its program draws it, placed by the compositor, which draws its glass
@@ -646,16 +647,31 @@ impl Part {
                     ]
                 }
             }
-            Self::Workspace => &const { [own(State::Active, 1, ":checked")] },
+            Self::Workspace => {
+                &const {
+                    [
+                        own(State::Active, 1, ":checked"),
+                        own(State::Focused, 1, ":focus"),
+                    ]
+                }
+            }
             Self::Task => {
                 &const {
                     [
                         own(State::Active, 1, ":checked"),
+                        own(State::Focused, 1, ":focus"),
                         own(State::Closing, 1, ":state(closing)"),
                     ]
                 }
             }
-            Self::Clock => &const { [own(State::Closing, 1, ":state(closing)")] },
+            Self::Clock => {
+                &const {
+                    [
+                        own(State::Focused, 1, ":focus"),
+                        own(State::Closing, 1, ":state(closing)"),
+                    ]
+                }
+            }
             Self::Offer | Self::PopoverItem | Self::OverviewAdd => {
                 &const { [own(State::Hovered, 1, ":hover")] }
             }

@@ -246,6 +246,12 @@ pub const TOLD: &[Told] = &[
     ),
     told!(
         "Programs",
+        "focus_panel",
+        "",
+        "Give the panel's bar the keyboard",
+    ),
+    told!(
+        "Programs",
         "open",
         "KIND",
         "Open the default application of KIND",

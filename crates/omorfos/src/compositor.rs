@@ -388,6 +388,9 @@ pub struct Compositor {
     /// Popups, such as menus, that asked to be dismissed when the user
     /// clicks away from them, oldest first.
     pub(crate) grabbed_popups: Vec<PopupSurface>,
+    /// The popups of panels and other layers, among them the tooltips of
+    /// components: those that take no grab (ADR 115).
+    pub(crate) layer_popups: Vec<PopupSurface>,
     /// The notice of what is wrong, and "About".
     pub(crate) cards: Cards,
     /// How the screens stand for now, as the display key has them.
@@ -597,6 +600,7 @@ impl Compositor {
                     menu_chrome: None,
                     layer_focus: None,
                     grabbed_popups: Vec::new(),
+                    layer_popups: Vec::new(),
                     cards: Cards::default(),
                     interim: Interim::default(),
                     withholding: crate::sealed::Withholding::default(),
@@ -1631,6 +1635,7 @@ impl Compositor {
             Action::ShowLauncher => self.open_launcher(&[]),
             Action::ShowPrograms => self.open_launcher(&["--programs".to_owned()]),
             Action::FocusNotifications => self.focus_notifications(),
+            Action::FocusPanel => self.focus_panel(),
             Action::ShowWelcome => self.open_welcome(false),
             Action::About => self.toggle_about(),
             Action::Lock => self.start_locker(),
@@ -1984,6 +1989,35 @@ impl Compositor {
     /// open.
     pub fn set_launcher(&mut self, program: impl Into<PathBuf>) {
         self.on_demand.launcher.0 = Some(program.into());
+    }
+
+    /// Whether the layer `surface` accepts the keyboard: one that has
+    /// said it no longer does loses it.
+    fn accepts_keyboard(&self, surface: &WlSurface) -> bool {
+        self.heads.iter().any(|head| {
+            let layers = layer_map_for_output(&head.output);
+            let layer =
+                layers.layer_for_surface(surface, smithay::desktop::WindowSurfaceType::TOPLEVEL);
+            layer.is_some_and(LayerSurface::can_receive_keyboard_focus)
+        })
+    }
+
+    /// Gives the keyboard to the panel's bar on the screen the pointer is
+    /// on, if it accepts the keyboard, until it says it no longer does or
+    /// a click elsewhere (ADR 115).
+    fn focus_panel(&mut self) {
+        let point = self.pointer_location;
+        let head = self.heads.iter().find(|head| head.contains(point));
+        let bar = head.and_then(|head| {
+            let layers = layer_map_for_output(&head.output);
+            let mut bars = layers
+                .layers()
+                .filter(|layer| layer.namespace() == "panel" && layer.can_receive_keyboard_focus());
+            bars.next().map(|bar| bar.wl_surface().clone())
+        });
+        if let Some(bar) = bar {
+            self.layer_focus = Some(bar);
+        }
     }
 
     /// Gives the keyboard to the notification nearest the top of a screen,
@@ -3377,7 +3411,9 @@ impl Compositor {
             .last()
             .map(|popup| popup.wl_surface().clone());
         // A panel that was clicked and accepts the keyboard comes next.
-        self.layer_focus = self.layer_focus.take().filter(Resource::is_alive);
+        // It keeps it while it accepts it (ADR 115).
+        let layer_focus = self.layer_focus.take().filter(Resource::is_alive);
+        self.layer_focus = layer_focus.filter(|surface| self.accepts_keyboard(surface));
         let menu = menu.or_else(|| self.layer_focus.clone());
         let demanding = self.demanding();
         let focus = demanding.or(menu).map(Focus::Surface).or_else(|| {
@@ -3685,16 +3721,28 @@ impl Compositor {
     }
 
     /// Brings what the mark says up to date with where the pointer is:
-    /// shown while it rests on the mark of a screen being captured, and
-    /// painted again only when what it says differs.
+    /// shown while it rests on the mark of a screen being captured, or on
+    /// what the mark says or between them, unless it was put away at
+    /// Escape; and painted again only when what it says differs.
     fn note_mark(&mut self) {
         let point = self.pointer_location;
+        let had = self.hover.mark.take();
         let marked = self
             .heads
             .iter()
             .filter(|head| self.signs(&head.output).any());
-        let mut under = marked.filter(|head| self.mark_area(&head.output).to_f64().contains(point));
-        let wanted = under.next().map(|head| {
+        // On the mark, or on its tooltip or between them, it stays.
+        let kept = |head: &&Head| {
+            let held = had.as_ref().filter(|note| note.output == head.output);
+            let reach = held.map(|note| note.reach.to_f64());
+            self.mark_area(&head.output).to_f64().contains(point)
+                || reach.is_some_and(|reach| reach.contains(point))
+        };
+        let mut under = marked.filter(kept);
+        let found = under.next();
+        // Put away, it stays away until the pointer leaves.
+        self.hover.mark_away &= found.is_some();
+        let wanted = found.filter(|_| !self.hover.mark_away).map(|head| {
             let mark = self.mark_area(&head.output);
             (
                 head.output.clone(),
@@ -3704,7 +3752,6 @@ impl Compositor {
             )
         });
         let theme = &self.store.current().theme;
-        let had = self.hover.mark.take();
         self.hover.mark = wanted.map(|(output, says, scale, mark)| {
             let same =
                 |note: &MarkNote| note.says == says && note.scale == scale && note.theme == *theme;
@@ -3724,10 +3771,22 @@ impl Compositor {
                     scale,
                     theme: theme.clone(),
                     area: Rect::new(DomainPoint::new(left, top), DomainSize::new(width, height)),
+                    reach: mark.merge(Rectangle::new(
+                        (left, top).into(),
+                        (width.cast_signed(), height.cast_signed()).into(),
+                    )),
                     pixels: Painted::new(&canvas),
                 }
             })
         });
+    }
+
+    /// Puts the mark's tooltip away, at Escape, until the pointer leaves
+    /// the mark (ADR 115). Says whether it was shown.
+    pub(crate) fn put_mark_tooltip_away(&mut self) -> bool {
+        let shown = self.hover.mark.take().is_some();
+        self.hover.mark_away |= shown;
+        shown
     }
 
     /// What the mark that says the screen is captured says, while the
@@ -5899,6 +5958,9 @@ pub(crate) struct Hover {
     /// What the mark that says a screen is captured says, while it rests
     /// on it.
     mark: Option<MarkNote>,
+    /// Whether it was put away at Escape, until the pointer leaves the
+    /// mark (ADR 115).
+    mark_away: bool,
     /// The picture a program dragging something gave to show it by, while
     /// it drags.
     pub(crate) dragged: Option<DragIcon>,
@@ -5922,6 +5984,9 @@ struct MarkNote {
     theme: Theme,
     /// Where it is shown, under the mark.
     area: Rect,
+    /// The mark and it, and what is between them, where the pointer keeps
+    /// it (ADR 115).
+    reach: Rectangle<i32, Logical>,
     pixels: Painted,
     shadow: Option<Shadowing>,
 }

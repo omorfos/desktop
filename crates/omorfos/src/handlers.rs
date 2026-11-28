@@ -577,6 +577,8 @@ impl WlrLayerShellHandler for Compositor {
         let positioner = popup.with_pending_state(|state| state.positioner);
         let geometry = self.popup_placed(&popup, positioner);
         popup.with_pending_state(|state| state.geometry = geometry);
+        self.layer_popups.retain(PopupSurface::alive);
+        self.layer_popups.push(popup);
     }
 
     fn new_layer_surface(

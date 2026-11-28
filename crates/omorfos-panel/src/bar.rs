@@ -240,7 +240,53 @@ impl Bar {
     /// where there is no button, or one that is only read.
     #[must_use]
     pub fn click(&self, x: i32) -> Option<Click> {
-        let item = self.at(x)?;
+        self.at(x).and_then(Self::clicked)
+    }
+
+    /// What pressing `target` comes to, as a click on it does: Enter on it
+    /// with the keyboard on the bar (ADR 115).
+    #[must_use]
+    pub fn press(&self, target: Target) -> Option<Click> {
+        self.of(target).and_then(Self::clicked)
+    }
+
+    /// What is on the bar, from its left edge to its right, which the
+    /// keyboard goes through (ADR 115): what can be pressed, and what says
+    /// which radios are off, for its tooltip.
+    #[must_use]
+    pub fn targets(&self) -> Vec<Target> {
+        let mut items: Vec<&Item> = self.items.iter().collect();
+        items.sort_by_key(|item| item.area.0);
+        items.into_iter().map(|item| item.target).collect()
+    }
+
+    /// The bar with `ringed` drawn as the keyboard is on it, as `:focus`.
+    #[must_use]
+    pub fn ringed(mut self, ringed: Option<Target>) -> Self {
+        let rung = self
+            .items
+            .iter_mut()
+            .filter(|item| Some(item.target) == ringed);
+        for item in rung {
+            item.states = item.states.with(omorfos_config::State::Focused);
+        }
+        self
+    }
+
+    /// The tooltip of `target`, and where it is, as `hint` says of where
+    /// the pointer is.
+    #[must_use]
+    pub fn hint_of(&self, target: Target) -> Option<(Area, Hint)> {
+        self.of(target).and_then(Self::hinted)
+    }
+
+    /// What is `target` on the bar, if it is on it.
+    fn of(&self, target: Target) -> Option<&Item> {
+        self.items.iter().find(|item| item.target == target)
+    }
+
+    /// What a click on `item` comes to.
+    fn clicked(item: &Item) -> Option<Click> {
         match item.target {
             // The compositor switches workspace on the screen the pointer
             // is on, which for a click on this bar is this bar's screen.
@@ -263,7 +309,11 @@ impl Bar {
     /// label is cut short, all of it. Nothing over anything else.
     #[must_use]
     pub fn hint(&self, x: i32) -> Option<(Area, Hint)> {
-        let item = self.at(x)?;
+        self.at(x).and_then(Self::hinted)
+    }
+
+    /// The tooltip of `item`, and where it is.
+    fn hinted(item: &Item) -> Option<(Area, Hint)> {
         let hint = match item.target {
             Target::Clock => Some(Hint::Date),
             Target::Awake => Some(Hint::Awake),
@@ -517,6 +567,38 @@ mod tests {
         let all: Vec<Hint> = (0..800).filter_map(|x| hinted(&named, x)).collect();
         assert!(all.contains(&Hint::Whole("code".to_owned())));
         assert!(all.contains(&Hint::Whole("Wi-Fi off".to_owned())));
+    }
+
+    #[test]
+    fn the_keyboard_goes_through_what_can_be_pressed_left_to_right_and_rings_one() {
+        let long = "A title far too long for the room a window's button has on the bar";
+        let mut state = state();
+        state.windows[1].title = long.to_owned();
+        let theme = Theme::default();
+        let said = ("14:05", "Awake", "Wi-Fi off");
+        let bar = Bar::new(&state, "left", WIDTH, said, &theme, &mut Text::new());
+        let targets = bar.targets();
+        assert!(targets.contains(&Target::Radios), "read, for its tooltip");
+        let lefts: Vec<i32> = targets
+            .iter()
+            .map(|target| bar.of(*target).unwrap().area.0)
+            .collect();
+        assert!(lefts.is_sorted(), "{lefts:?}");
+        assert_eq!(targets.last(), Some(&Target::Clock));
+        // Pressed, each does as a click on it does.
+        for target in &targets {
+            let (left, ..) = bar.of(*target).unwrap().area;
+            assert_eq!(bar.press(*target), bar.click(left));
+        }
+        assert_eq!(bar.press(Target::Radios), None);
+        assert_eq!(
+            bar.hint_of(Target::Clock).map(|(_, hint)| hint),
+            Some(Hint::Date)
+        );
+        // Ringed, it is drawn otherwise, and only it.
+        let ringed = bar.clone().ringed(Some(Target::Clock));
+        assert_ne!(ringed, bar);
+        assert_eq!(bar.clone().ringed(None), bar);
     }
 
     #[test]

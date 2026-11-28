@@ -24,7 +24,17 @@ Rest the pointer on the time for half a second and a tooltip says the whole
 date; on a window whose title is cut short, the whole title; and on what
 says the session is kept awake, that a click lets the screen sleep again.
 Once one is showing, the next shows as soon as the pointer is on it. A
-click puts it away until the pointer leaves what was clicked.
+click puts it away until the pointer leaves what was clicked. A tooltip
+stays while the pointer is on it, so the pointer can be brought to its
+words, and Escape puts it away, the next Escape going to the window as
+before (ADR 115).
+
+The bar can be reached by the keyboard too, with the action `focus_panel`
+bound to a key of your own in `keys.yaml`: Tab and the arrows ring what is
+on it, which shows its tooltip at once, Enter or space press it as a click
+does, and Escape gives the keyboard back, as pressing a workspace or a
+window does. A click on the bar never takes the keyboard from the window
+that has it.
 
 It is a program of its own, started with the session, and started again if
 it crashes. How it looks is in `theme.css`, under `panel`, `workspace`,

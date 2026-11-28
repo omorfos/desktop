@@ -1,6 +1,7 @@
 # 87. A component's tooltips
 
-- Status: accepted
+- Status: accepted; amended by ADR 115, after which a tooltip takes the
+  pointer and stays while it is on it, and goes at Escape
 - Date: 2026-11-15
 
 ## Context

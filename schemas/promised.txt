@@ -213,6 +213,7 @@ keys.yaml bindings[].action = "close"
 keys.yaml bindings[].action = "close_program"
 keys.yaml bindings[].action = "focus_next"
 keys.yaml bindings[].action = "focus_notifications"
+keys.yaml bindings[].action = "focus_panel"
 keys.yaml bindings[].action = "focus_previous"
 keys.yaml bindings[].action = "fullscreen"
 keys.yaml bindings[].action = "guess_scales"
@@ -304,6 +305,7 @@ menu.yaml items[].action = "close"
 menu.yaml items[].action = "close_program"
 menu.yaml items[].action = "focus_next"
 menu.yaml items[].action = "focus_notifications"
+menu.yaml items[].action = "focus_panel"
 menu.yaml items[].action = "focus_previous"
 menu.yaml items[].action = "fullscreen"
 menu.yaml items[].action = "guess_scales"
@@ -486,12 +488,15 @@ theme.css overview::backdrop
 theme.css panel
 theme.css panel :state(closing)
 theme.css panel > clock
+theme.css panel > clock :focus
 theme.css panel > clock :state(closing)
 theme.css panel > task
 theme.css panel > task :checked
+theme.css panel > task :focus
 theme.css panel > task :state(closing)
 theme.css panel > workspace
 theme.css panel > workspace :checked
+theme.css panel > workspace :focus
 theme.css picker
 theme.css popover
 theme.css popover :state(closing)

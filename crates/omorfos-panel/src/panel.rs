@@ -50,6 +50,12 @@ const LEFT_BUTTON: u32 = 0x110;
 const ESCAPE: u32 = 1;
 const LEFT: u32 = 105;
 const RIGHT: u32 = 106;
+/// Tab, Enter, Enter on the keypad and space, which go through the bar
+/// and press what is ringed on it (ADR 115).
+const TAB: u32 = 15;
+const ENTER: u32 = 28;
+const KEYPAD_ENTER: u32 = 96;
+const SPACE: u32 = 57;
 
 /// The panel: a connection to the compositor as a Wayland client, two to
 /// its own socket, and a bar for each screen.
@@ -292,6 +298,14 @@ struct Shell {
     month: Option<(u32, Month)>,
     /// Where on the month the pointer is, while it is on it.
     on_month: Option<(i32, i32)>,
+    /// Whether the pointer is on the tooltip shown, which keeps it
+    /// (ADR 115).
+    on_tip: bool,
+    /// The screen whose bar has the keyboard, what on it is ringed, and
+    /// whether Shift is held (ADR 115).
+    keyboard_on: Option<u32>,
+    ring: Option<Target>,
+    shift: bool,
     /// What the pointer's button went down on, acted on as it is let go
     /// there (ADR 113).
     pressing: Pressing<Press>,
@@ -356,6 +370,9 @@ struct Face {
     shown: Option<(Bar, Scale, Theme)>,
     /// The buttons that are on their way from one look to another.
     motion: Motion,
+    /// Whether it has given the keyboard back, and accepts it again once
+    /// the compositor has taken it (ADR 115).
+    giving_back: bool,
 }
 
 /// What it takes to put a bar on a screen.
@@ -417,6 +434,8 @@ struct Tools<'a> {
     now: Duration,
     theme: &'a Theme,
     text: &'a mut Text,
+    /// What the keyboard rings, on the bar of which screen.
+    ring: Option<(u32, Target)>,
 }
 
 impl Shell {
@@ -436,6 +455,10 @@ impl Shell {
             popovers: Popovers::default(),
             month: None,
             on_month: None,
+            on_tip: false,
+            keyboard_on: None,
+            ring: None,
+            shift: false,
             resting: Resting::new(),
             tipped: None,
             state: State::default(),
@@ -610,19 +633,122 @@ impl Shell {
     fn pointed(&mut self) {
         let on = self.pressed_on();
         self.pressing.moved(on);
+        self.point_month();
+        self.stale |= self.rest();
+    }
+
+    /// Lights what on the month the pointer is on, and nothing once it is
+    /// off it.
+    fn point_month(&mut self) {
         let theme = &self.store.current().theme;
         let (x, y) = self.on_month.unwrap_or((-1, -1));
         let months = self.month.iter_mut();
         self.stale |= months.fold(false, |changed, (_, month)| {
             changed | month.point(x, y, theme)
         });
+    }
+
+    /// Has the tooltip shown be that of what the keyboard rings, at once,
+    /// while the bar has the keyboard, and otherwise of what the pointer
+    /// rests on. Says whether what is shown changed.
+    fn rest(&mut self) -> bool {
+        if let Some(global) = self.keyboard_on {
+            let ringed = self.ring.and_then(|ring| self.tip_of(global, ring));
+            return self.resting.ringed(ringed);
+        }
         let hovered = self.hovered();
-        self.stale |= self.resting.over(hovered, self.now);
+        self.resting.over(hovered, self.now)
+    }
+
+    /// The bar on the screen `global`, as it is shown.
+    fn bar_of(&self, global: u32) -> Option<&Bar> {
+        let mut screens = self.screens.iter().filter(|screen| screen.global == global);
+        let face = screens.find_map(|screen| screen.face.as_ref());
+        face.and_then(|face| face.shown.as_ref())
+            .map(|(bar, ..)| bar)
+    }
+
+    /// The tooltip of `target` on the bar of `global`, if it has one.
+    fn tip_of(&self, global: u32, target: Target) -> Option<Tipped> {
+        let hinted = self.bar_of(global).and_then(|bar| bar.hint_of(target));
+        let (under, hint) = hinted?;
+        let lines = vec![says(&self.words, self.today, hint)];
+        Some(Tipped {
+            global,
+            under,
+            lines,
+        })
+    }
+
+    /// Takes a key pressed, at `serial`, while the bar of `global` has the
+    /// keyboard: Tab and the arrows move the ring, Shift with Tab back,
+    /// Enter and space press what it is on, as a click does, and Escape
+    /// gives the keyboard back, as pressing a workspace or a window does
+    /// (ADR 115).
+    fn bar_key(&mut self, global: u32, key: u32, (serial, handle): (u32, &QueueHandle<Self>)) {
+        self.stale = true;
+        let targets = self.bar_of(global).map(Bar::targets).unwrap_or_default();
+        let at = self
+            .ring
+            .and_then(|ring| targets.iter().position(|target| *target == ring));
+        let back = key == LEFT || (key == TAB && self.shift);
+        let count = targets.len();
+        let next = at.map_or(if back { count.saturating_sub(1) } else { 0 }, |at| {
+            if back {
+                (at + count - 1) % count
+            } else {
+                (at + 1) % count
+            }
+        });
+        match key {
+            TAB | LEFT | RIGHT => self.ring = targets.get(next).copied(),
+            ENTER | KEYPAD_ENTER | SPACE => self.press_ring(global, (serial, handle)),
+            ESCAPE => self.give_back(global),
+            _ => {}
+        }
+    }
+
+    /// Presses what is ringed on the bar of `global`, as a click on it
+    /// does; a workspace or a window pressed is gone to, with the keyboard.
+    fn press_ring(&mut self, global: u32, (serial, handle): (u32, &QueueHandle<Self>)) {
+        let ring = self.ring;
+        let bar = self.bar_of(global);
+        let pressed = ring.zip(bar).and_then(|(ring, bar)| bar.press(ring));
+        let away = matches!(ring, Some(Target::Workspace(_) | Target::Window(_)));
+        #[expect(
+            clippy::needless_for_each,
+            reason = "an `if let` would have an arm for nothing pressed, as a key may be"
+        )]
+        pressed.into_iter().for_each(|pressed| match pressed {
+            Click::Ask(request) => {
+                let sent = self.commands.send(&request, self.now);
+                self.sent = mem::replace(&mut self.sent, Ok(())).and(sent);
+            }
+            Click::Month(under) => self.month_under(global, under, (serial, handle)),
+        });
+        if away {
+            self.give_back(global);
+        }
+    }
+
+    /// Gives the keyboard the bar of `global` has back.
+    fn give_back(&mut self, global: u32) {
+        let screens = self
+            .screens
+            .iter_mut()
+            .filter(|screen| screen.global == global);
+        screens
+            .filter_map(|screen| screen.face.as_mut())
+            .for_each(Face::give_back);
     }
 
     /// The tooltip of what the pointer is over on a bar, if it has one.
     /// None while the month is open.
     fn hovered(&self) -> Option<Tipped> {
+        // On the tooltip, the pointer is on what it is of.
+        if self.on_tip {
+            return self.tipped.clone();
+        }
         let (global, along) = self.over.filter(|_| self.month.is_none())?;
         let screens = self.screens.iter();
         let screens = screens.filter(|screen| screen.global == global);
@@ -635,6 +761,40 @@ impl Shell {
             under,
             lines,
         })
+    }
+
+    /// Takes a key that was pressed, by Linux's number for it, at `serial`:
+    /// the month's, while it is open, or the bar's that has the keyboard.
+    fn key(&mut self, key: u32, at: (u32, &QueueHandle<Self>)) {
+        match (self.month.is_some(), self.keyboard_on) {
+            (false, Some(global)) => self.bar_key(global, key, at),
+            _ => self.press(key),
+        }
+    }
+
+    /// Takes in that the keyboard has come onto `surface`, or left it: the
+    /// bar given it rings the first thing on it, and one that has given it
+    /// back accepts it again.
+    fn keyboard_onto(&mut self, surface: &wl_surface::WlSurface, entered: bool) {
+        let mut screens = self.screens.iter_mut();
+        let screen = screens.find(|screen| {
+            let face = screen.face.as_ref();
+            face.is_some_and(|face| face.sheet.surface() == surface)
+        });
+        let Some(screen) = screen else {
+            return;
+        };
+        let global = screen.global;
+        if !entered {
+            screen.face.iter_mut().for_each(Face::let_go);
+        }
+        self.keyboard_on = entered.then_some(global);
+        let first = self
+            .bar_of(global)
+            .and_then(|bar| bar.targets().first().copied());
+        self.ring = first.filter(|_| entered);
+        self.stale = true;
+        self.rest();
     }
 
     /// Takes a key that was pressed, by Linux's number for it, while the
@@ -665,6 +825,11 @@ impl Shell {
         if !self.popovers.is_open() {
             self.month = None;
         }
+        // A tooltip taken away by the compositor, at Escape, stays away
+        // until the pointer leaves what it was of, as after a click.
+        if self.tipped.is_some() && !self.popovers.tipped() {
+            self.resting.clicked();
+        }
         let globals = self.compositor.as_ref().zip(self.shm.as_ref());
         let globals = globals.zip(self.layers.as_ref());
         let globals = globals.zip(self.viewporter.as_ref().zip(self.scales.as_ref()));
@@ -689,6 +854,7 @@ impl Shell {
             now: self.now,
             theme: &self.store.current().theme,
             text: &mut self.text,
+            ring: self.keyboard_on.zip(self.ring),
         };
         let shm = shm.clone();
         let mut screens = self.screens.iter_mut();
@@ -696,7 +862,7 @@ impl Shell {
             let face = screen.face.take();
             let face = face.unwrap_or_else(|| Face::open(&tools, screen));
             let face = screen.face.insert(face);
-            face.draw(&mut tools, &screen.name)
+            face.draw(&mut tools, (&screen.name, screen.global))
         });
         drawn
             .and_then(|()| self.show_month(&shm, handle))
@@ -728,8 +894,7 @@ impl Shell {
     fn show_tip(&mut self, shm: &wl_shm::WlShm, handle: &QueueHandle<Self>) -> io::Result<()> {
         // What is under the pointer may have changed under it, as a bar
         // drawn anew does.
-        let hovered = self.hovered();
-        self.resting.over(hovered, self.now);
+        self.rest();
         let wanted = self.resting.shown().cloned();
         let anew = wanted != self.tipped;
         if anew {
@@ -781,6 +946,8 @@ impl Face {
         layer.set_anchor(edges);
         layer.set_size(0, height);
         layer.set_exclusive_zone(height.cast_signed());
+        // The keyboard, given by `focus_panel` and not by a click (ADR 115).
+        layer.set_keyboard_interactivity(zwlr_layer_surface_v1::KeyboardInteractivity::OnDemand);
         let viewport = tools.viewporter.get_viewport(&surface, handle, ());
         let scales = tools.scales;
         let fraction = scales.get_fractional_scale(&surface, handle, screen.global);
@@ -794,6 +961,26 @@ impl Face {
             scale: Scale::ONE,
             shown: None,
             motion: Motion::new(),
+            giving_back: false,
+        }
+    }
+
+    /// Gives the keyboard back: says it accepts none, until the compositor
+    /// has taken it.
+    fn give_back(&mut self) {
+        let none = zwlr_layer_surface_v1::KeyboardInteractivity::None;
+        self.layer.set_keyboard_interactivity(none);
+        self.sheet.surface().commit();
+        self.giving_back = true;
+    }
+
+    /// Takes in that the keyboard has left it: given back, it accepts the
+    /// keyboard again.
+    fn let_go(&mut self) {
+        if mem::take(&mut self.giving_back) {
+            let again = zwlr_layer_surface_v1::KeyboardInteractivity::OnDemand;
+            self.layer.set_keyboard_interactivity(again);
+            self.sheet.surface().commit();
         }
     }
 
@@ -806,12 +993,14 @@ impl Face {
 
     /// Draws the bar of the screen called `name`, unless it already shows
     /// just that.
-    fn draw(&mut self, tools: &mut Tools<'_>, name: &str) -> io::Result<()> {
+    fn draw(&mut self, tools: &mut Tools<'_>, (name, global): (&str, u32)) -> io::Result<()> {
         if self.width == 0 {
             return Ok(());
         }
         let (state, times) = (tools.state, (tools.time, tools.awake, tools.radios));
         let bar = Bar::new(state, name, self.width, times, tools.theme, tools.text);
+        let ringed = tools.ring.filter(|(on, _)| *on == global);
+        let bar = bar.ringed(ringed.map(|(_, target)| target));
         // In the colours it is drawn in, which may change alone.
         let wanted = (bar, self.scale, tools.theme.clone());
         // The same bar is drawn again while a button on it changes colour.
@@ -986,6 +1175,7 @@ impl Dispatch<wl_pointer::WlPointer, ()> for Shell {
                     face.is_some_and(|face| *face.sheet.surface() == surface)
                 });
                 shell.over = entered.map(|screen| (screen.global, surface_x));
+                shell.on_tip = shell.popovers.is_tip(&surface);
                 let on = shell.popovers.is(&surface);
                 shell.on_month = on.then(|| (whole(surface_x), whole(surface_y)));
                 shell.pointed();
@@ -1003,7 +1193,12 @@ impl Dispatch<wl_pointer::WlPointer, ()> for Shell {
             wl_pointer::Event::Leave { .. } => {
                 shell.over = None;
                 shell.on_month = None;
-                shell.pointed();
+                shell.on_tip = false;
+                // Whether the tooltip stays is seen to as the bar is next
+                // drawn, by which time the pointer may have come onto it.
+                shell.pressing.moved(None);
+                shell.point_month();
+                shell.stale = true;
             }
             wl_pointer::Event::Button {
                 serial,
@@ -1011,6 +1206,11 @@ impl Dispatch<wl_pointer::WlPointer, ()> for Shell {
                 state: WEnum::Value(state),
                 ..
             } => {
+                // A click on the tooltip takes it away, as one on what
+                // it is of does.
+                if shell.on_tip {
+                    shell.stale |= shell.resting.clicked();
+                }
                 // What it went down on acts as it is let go on it.
                 let on = shell.pressed_on();
                 if state == wl_pointer::ButtonState::Pressed {
@@ -1031,18 +1231,25 @@ impl Dispatch<wl_keyboard::WlKeyboard, ()> for Shell {
         event: wl_keyboard::Event,
         (): &(),
         _: &Connection,
-        _: &QueueHandle<Self>,
+        handle: &QueueHandle<Self>,
     ) {
         // Only what a key is matters, by its number: no layout is needed
-        // for Escape and the arrows, and the layout the compositor sends
-        // is let go of, closing it, with the event.
-        if let wl_keyboard::Event::Key {
-            key,
-            state: WEnum::Value(wl_keyboard::KeyState::Pressed),
-            ..
-        } = event
-        {
-            shell.press(key);
+        // for Escape, Tab, Enter and the arrows, and the layout the
+        // compositor sends is let go of, closing it, with the event. Shift
+        // is the first modifier of every layout.
+        match event {
+            wl_keyboard::Event::Enter { surface, .. } => shell.keyboard_onto(&surface, true),
+            wl_keyboard::Event::Leave { surface, .. } => shell.keyboard_onto(&surface, false),
+            wl_keyboard::Event::Modifiers { mods_depressed, .. } => {
+                shell.shift = mods_depressed & 1 != 0;
+            }
+            wl_keyboard::Event::Key {
+                key,
+                serial,
+                state: WEnum::Value(wl_keyboard::KeyState::Pressed),
+                ..
+            } => shell.key(key, (serial, handle)),
+            _ => {}
         }
     }
 }
