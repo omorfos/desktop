@@ -213,6 +213,7 @@ keys.yaml bindings[].action = "close"
 keys.yaml bindings[].action = "close_program"
 keys.yaml bindings[].action = "focus_next"
 keys.yaml bindings[].action = "focus_notifications"
+keys.yaml bindings[].action = "focus_panel"
 keys.yaml bindings[].action = "focus_previous"
 keys.yaml bindings[].action = "fullscreen"
 keys.yaml bindings[].action = "guess_scales"
@@ -223,6 +224,7 @@ keys.yaml bindings[].action = "lock"
 keys.yaml bindings[].action = "log_out"
 keys.yaml bindings[].action = "maximize"
 keys.yaml bindings[].action = "minimize"
+keys.yaml bindings[].action = "move"
 keys.yaml bindings[].action = "move_to_new_workspace"
 keys.yaml bindings[].action = "move_to_next_output"
 keys.yaml bindings[].action = "new_workspace"
@@ -238,6 +240,7 @@ keys.yaml bindings[].action = "previous_window"
 keys.yaml bindings[].action = "previous_workspace"
 keys.yaml bindings[].action = "quit"
 keys.yaml bindings[].action = "reload_config"
+keys.yaml bindings[].action = "resize"
 keys.yaml bindings[].action = "restart"
 keys.yaml bindings[].action = "restart_compositor"
 keys.yaml bindings[].action = "shade"
@@ -255,6 +258,7 @@ keys.yaml bindings[].action = "switch_programs"
 keys.yaml bindings[].action = "switch_programs_back"
 keys.yaml bindings[].action = "switch_windows"
 keys.yaml bindings[].action = "switch_windows_back"
+keys.yaml bindings[].action = "window_menu"
 keys.yaml bindings[].action.focus
 keys.yaml bindings[].action.focus = "bottom"
 keys.yaml bindings[].action.focus = "left"
@@ -304,6 +308,7 @@ menu.yaml items[].action = "close"
 menu.yaml items[].action = "close_program"
 menu.yaml items[].action = "focus_next"
 menu.yaml items[].action = "focus_notifications"
+menu.yaml items[].action = "focus_panel"
 menu.yaml items[].action = "focus_previous"
 menu.yaml items[].action = "fullscreen"
 menu.yaml items[].action = "guess_scales"
@@ -314,6 +319,7 @@ menu.yaml items[].action = "lock"
 menu.yaml items[].action = "log_out"
 menu.yaml items[].action = "maximize"
 menu.yaml items[].action = "minimize"
+menu.yaml items[].action = "move"
 menu.yaml items[].action = "move_to_new_workspace"
 menu.yaml items[].action = "move_to_next_output"
 menu.yaml items[].action = "new_workspace"
@@ -329,6 +335,7 @@ menu.yaml items[].action = "previous_window"
 menu.yaml items[].action = "previous_workspace"
 menu.yaml items[].action = "quit"
 menu.yaml items[].action = "reload_config"
+menu.yaml items[].action = "resize"
 menu.yaml items[].action = "restart"
 menu.yaml items[].action = "restart_compositor"
 menu.yaml items[].action = "shade"
@@ -346,6 +353,7 @@ menu.yaml items[].action = "switch_programs"
 menu.yaml items[].action = "switch_programs_back"
 menu.yaml items[].action = "switch_windows"
 menu.yaml items[].action = "switch_windows_back"
+menu.yaml items[].action = "window_menu"
 menu.yaml items[].action.focus
 menu.yaml items[].action.focus = "bottom"
 menu.yaml items[].action.focus = "left"
@@ -486,12 +494,15 @@ theme.css overview::backdrop
 theme.css panel
 theme.css panel :state(closing)
 theme.css panel > clock
+theme.css panel > clock :focus
 theme.css panel > clock :state(closing)
 theme.css panel > task
 theme.css panel > task :checked
+theme.css panel > task :focus
 theme.css panel > task :state(closing)
 theme.css panel > workspace
 theme.css panel > workspace :checked
+theme.css panel > workspace :focus
 theme.css picker
 theme.css popover
 theme.css popover :state(closing)

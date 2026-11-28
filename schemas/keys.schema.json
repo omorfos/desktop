@@ -32,6 +32,21 @@
           "type": "string"
         },
         {
+          "const": "move",
+          "description": "Move the focused window by the keyboard: the arrows move it 10\nunits a press, 50 with Shift, Enter keeps where it is and Escape\nputs it back (ADR 116). Not one that is maximized, full screen or\ntiled.",
+          "type": "string"
+        },
+        {
+          "const": "resize",
+          "description": "Resize the focused window by the keyboard: Right and Down make it\nwider and taller, Left and Up narrower and shorter, 10 units a\npress and 50 with Shift, its top left corner staying; Enter keeps\nthe size and Escape puts it back (ADR 116).",
+          "type": "string"
+        },
+        {
+          "const": "window_menu",
+          "description": "Open the focused window's menu at its top left corner (ADR 116).",
+          "type": "string"
+        },
+        {
           "const": "fullscreen",
           "description": "Toggle fullscreen for the focused window.",
           "type": "string"
@@ -258,6 +273,11 @@
         {
           "const": "focus_notifications",
           "description": "Give the notifications the keyboard, the newest first: Tab and the\narrow keys go through it and its buttons, Enter chooses, as a click\ndoes, and Escape dismisses it.",
+          "type": "string"
+        },
+        {
+          "const": "focus_panel",
+          "description": "Give the panel's bar on the screen with the pointer the keyboard:\nTab and the arrow keys ring what is on it, which shows its tooltip,\nEnter or space press it, as a click does, and Escape gives the\nkeyboard back (ADR 115).",
           "type": "string"
         },
         {

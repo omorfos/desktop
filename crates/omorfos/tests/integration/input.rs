@@ -876,3 +876,40 @@ fn in_the_ordinary_way_a_chord_with_super_reaches_the_program_as_it_is() {
     let chords = chord_with_super("app", false, &config);
     assert_eq!(chords, [(C_CODE, true, LOGO), (C_CODE, false, LOGO)]);
 }
+
+#[test]
+fn a_program_given_every_key_has_escape_though_a_tooltip_is_shown() {
+    use wayland_protocols_wlr::layer_shell::v1::client::{
+        zwlr_layer_shell_v1::Layer,
+        zwlr_layer_surface_v1::{Anchor, KeyboardInteractivity},
+    };
+    let mut session = Session::new();
+    let mut panel = session.connect_as(omorfos::Roles::PANEL);
+    let bar = crate::common::LayerShape {
+        layer: Layer::Top,
+        anchor: Anchor::Top | Anchor::Left | Anchor::Right,
+        size: (0, 30),
+        exclusive_zone: 30,
+        keyboard: KeyboardInteractivity::None,
+    };
+    let (_surface, role) = session.open_layer(&mut panel, &bar, (WIDTH, 30), BLUE);
+    let (tip, _popup) = panel.layer_popup(&role, (100, 30), (80, 20));
+    session.roundtrip(&mut panel);
+    panel.fill(&tip, (80, 20), RED);
+    session.roundtrip(&mut panel);
+    let mut client = session.connect();
+    every_key(&mut session, &mut client, "vm");
+    press(&mut session, key::ESCAPE);
+    release(&mut session, key::ESCAPE);
+    session.roundtrip(&mut client);
+    assert!(
+        client.state.chords.contains(&(ESCAPE_CODE, true, 0)),
+        "{:?}",
+        client.state.chords
+    );
+    session.roundtrip(&mut panel);
+    assert!(
+        !panel.take_events().contains(&Event::PopupDone),
+        "the tooltip stays"
+    );
+}

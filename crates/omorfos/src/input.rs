@@ -373,10 +373,31 @@ enum Hit {
     Surface(WlSurface, Point<f64, Logical>),
 }
 
+/// A window being moved or resized by the keyboard (ADR 116): which, its
+/// frame as it was, and how far the arrows have taken it from there.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct Keyed {
+    window: WindowId,
+    resize: bool,
+    from: Rect,
+    by: (i32, i32),
+}
+
+impl Keyed {
+    /// The window moved or resized.
+    pub(crate) const fn window(&self) -> WindowId {
+        self.window
+    }
+}
+
+/// How far an arrow moves or resizes a window, and with Shift held.
+const KEY_STEP: i32 = 10;
+const KEY_STEP_SHIFTED: i32 = 50;
+
 #[derive(Default)]
 pub(crate) struct FrameFacts {
-    outer: Rect,
-    movable: bool,
+    pub(crate) outer: Rect,
+    pub(crate) movable: bool,
     /// Whether it fills a part of a workspace it shares with others.
     shares: bool,
     tabs: Vec<WindowId>,
@@ -633,9 +654,12 @@ impl Compositor {
             compositor.hover.palette.dismiss();
             // Whether to leave is answered by Enter, space, Escape, Tab and
             // the arrows; the screens tried another way are kept by Enter
-            // and put back by Escape. Nothing else then sees them.
+            // and put back by Escape; and a window moved or resized by the
+            // keyboard has every key until Enter or Escape (ADR 116).
+            // Nothing else then sees them.
             if compositor.leaving_key(code.raw(), keysym, true)
                 || compositor.screens_key(code.raw(), keysym, true)
+                || compositor.keyed_key(keysym, held.shift)
             {
                 compositor.taken.suppressed.push(code);
                 return FilterResult::Intercept(None);
@@ -680,6 +704,12 @@ impl Compositor {
             // but for the one that takes them back.
             if let Some(taken) = compositor.every_key(held, keysym, code) {
                 return taken;
+            }
+            // Then a tooltip shown goes at Escape, which the window does
+            // not see (ADR 115).
+            if keysym == Keysym::Escape && compositor.escape_tooltips() {
+                compositor.taken.suppressed.push(code);
+                return FilterResult::Intercept(None);
             }
             if keysym.is_modifier_key() {
                 // Holding a modifier on the way to the next chord is not a
@@ -1054,6 +1084,32 @@ impl Compositor {
         }
     }
 
+    /// Closes the tooltips of components that are shown, the popups of a
+    /// panel's layers that took no grab, as Escape does with the pointer
+    /// resting on what they are of and the keyboard elsewhere (ADR 115).
+    /// Each is told once, and forgotten, so that one which stays takes no
+    /// more Escapes. Says whether there were any.
+    fn close_tooltips(&mut self) -> bool {
+        let grabbed = &self.grabbed_popups;
+        let tip = |popup: &mut PopupSurface| {
+            let panel = Self::roles(popup.wl_surface().client().as_ref()).has(Roles::PANEL);
+            popup.alive() && panel && !grabbed.contains(popup)
+        };
+        let tips: Vec<PopupSurface> = self.layer_popups.extract_if(.., tip).collect();
+        for tip in &tips {
+            tip.send_popup_done();
+        }
+        !tips.is_empty()
+    }
+
+    /// Puts away a tooltip shown, a component's or the mark's, at Escape,
+    /// while the keyboard is in a window: a tooltip shown while a layer
+    /// has the keyboard is the layer's to put away (ADR 115). Says whether
+    /// there was one.
+    pub(crate) fn escape_tooltips(&mut self) -> bool {
+        self.layer_focus.is_none() && (self.close_tooltips() | self.put_mark_tooltip_away())
+    }
+
     /// Closes the menus that asked for it, if a press lands anywhere but on
     /// a surface of the application they belong to. Innermost first, as the
     /// protocol requires.
@@ -1226,8 +1282,10 @@ impl Compositor {
             let surface = shown.then_some(surface)?;
             let origin = crate::compositor::layer_origin(&layers, surface) + corner;
             let within = self.pointer_location - origin.to_f64();
-            let takes_keyboard = surface
-                .can_receive_keyboard_focus()
+            // A bar is given the keyboard by `focus_panel`, not by a click,
+            // which is for what is on it (ADR 115).
+            let bar = surface.namespace() == "panel";
+            let takes_keyboard = (surface.can_receive_keyboard_focus() && !bar)
                 .then(|| surface.wl_surface().clone());
             let (surface, offset) = surface.surface_under(within, WindowSurfaceType::ALL)?;
             let wallpaper = layer == Layer::Background;
@@ -1531,6 +1589,9 @@ impl Compositor {
             // What came or went under a pointer that has not moved since,
             // as a launcher does when it opens, has been told already.
             self.dismiss_popups(under.as_ref());
+            // A click keeps a window moved or resized by the keyboard where
+            // it is (ADR 116).
+            self.keyed = None;
             // A panel that accepts the keyboard, such as one with a search
             // box, has it from a click on it until a click elsewhere.
             self.layer_focus = match &under {
@@ -1578,6 +1639,75 @@ impl Compositor {
         };
         pointer.button(self, &event);
         pointer.frame(self);
+    }
+
+    /// Begins moving the focused window by the keyboard, or resizing it,
+    /// if its frame could be dragged (ADR 116).
+    pub(crate) fn key_drag(&mut self, resize: bool) {
+        let window = self.desktop.focused();
+        let facts = window.map(|window| (window, self.frame_facts(window)));
+        let movable = facts.filter(|(_, facts)| facts.movable);
+        self.keyed = movable.map(|(window, facts)| Keyed {
+            window,
+            resize,
+            from: facts.outer,
+            by: (0, 0),
+        });
+    }
+
+    /// Takes a key while a window is moved or resized by the keyboard: the
+    /// arrows move it or change its size, by more with Shift, Enter keeps
+    /// it, Escape puts it back, and nothing else does anything. Says
+    /// whether it was taken.
+    fn keyed_key(&mut self, keysym: Keysym, shift: bool) -> bool {
+        // A modifier is the window's still, so that it is not left held.
+        // The mode ends as its window loses the keyboard, as focus is
+        // kept in step.
+        let Some(mut keyed) = self.keyed.filter(|_| !keysym.is_modifier_key()) else {
+            return false;
+        };
+        let step = if shift { KEY_STEP_SHIFTED } else { KEY_STEP };
+        let way = match keysym {
+            Keysym::Left | Keysym::KP_Left => Some((-step, 0)),
+            Keysym::Right | Keysym::KP_Right => Some((step, 0)),
+            Keysym::Up | Keysym::KP_Up => Some((0, -step)),
+            Keysym::Down | Keysym::KP_Down => Some((0, step)),
+            _ => None,
+        };
+        let done = matches!(keysym, Keysym::Return | Keysym::KP_Enter | Keysym::Escape);
+        if keysym == Keysym::Escape {
+            self.desktop.set_geometry(keyed.window, keyed.from);
+        }
+        if let Some((dx, dy)) = way {
+            let by = (keyed.by.0.saturating_add(dx), keyed.by.1.saturating_add(dy));
+            let from = keyed.from;
+            let to = if keyed.resize {
+                resize(
+                    from,
+                    Edges::RIGHT.with(Edges::BOTTOM),
+                    by.0,
+                    by.1,
+                    self.minimum_frame_size(),
+                )
+            } else {
+                Rect::new(from.origin.offset(by.0, by.1), from.size)
+            };
+            // Where it stops, as no smaller than it may be, is where the
+            // next arrow goes on from.
+            let grown =
+                |to: u32, from: u32| i32::try_from(i64::from(to) - i64::from(from)).unwrap_or(0);
+            keyed.by = if keyed.resize {
+                (
+                    grown(to.size.width, from.size.width),
+                    grown(to.size.height, from.size.height),
+                )
+            } else {
+                by
+            };
+            self.desktop.set_geometry(keyed.window, to);
+        }
+        self.keyed = (!done).then_some(keyed);
+        true
     }
 
     /// Starts a drag of `window`'s frame from where the pointer is now. A

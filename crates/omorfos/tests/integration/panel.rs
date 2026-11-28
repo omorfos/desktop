@@ -22,7 +22,7 @@ use omorfos_ui::Text;
 use serde_json::json;
 use smithay::reexports::wayland_server::ListeningSocket;
 
-use crate::common::{FOUR_WORKSPACES, HEIGHT, Picture, Session, WIDTH, between, half_way};
+use crate::common::{Event, FOUR_WORKSPACES, HEIGHT, Picture, Session, WIDTH, between, half_way};
 use crate::windows::{BACKGROUND, BLUE, RED};
 
 const LEFT: u32 = 0x110;
@@ -1004,6 +1004,12 @@ fn the_arrows_turn_the_month_and_it_stays_as_large_with_the_arrows_where_they_ar
     );
     move_to(&mut session, 100, 100);
     settle(&mut session, &mut panel);
+    assert!(above_the_bar(&mut session, x, tall - 4), "still open");
+    assert_eq!(
+        session.draw().at(arrow.0 - 12, arrow.1),
+        before,
+        "not lit once the pointer has left the month"
+    );
 }
 
 #[test]
@@ -1078,4 +1084,216 @@ fn a_press_on_a_workspace_shows_it_as_it_is_let_go_and_not_if_let_go_off_it() {
     click(&mut session, LEFT);
     settle(&mut session, &mut panel);
     assert_eq!(shown(&mut session), [2]);
+}
+
+#[test]
+fn a_tooltip_stays_while_the_pointer_is_on_it() {
+    let (mut session, mut panel) = dated();
+    let (x, y) = on_the_clock();
+    move_to(&mut session, x, y);
+    settle_at(&mut session, &mut panel, Duration::from_millis(100));
+    settle_at(&mut session, &mut panel, Duration::from_millis(700));
+    assert!(tooltip_over_the_clock(&mut session));
+    // Onto it, as someone reading through a magnifier brings the pointer
+    // to its words.
+    move_to(&mut session, WIDTH - 20, HEIGHT - BAR - 6);
+    settle_at(&mut session, &mut panel, Duration::from_millis(800));
+    settle_at(&mut session, &mut panel, Duration::from_secs(3));
+    assert!(tooltip_over_the_clock(&mut session), "it stays");
+    // And off it, onto the window under it, and it goes.
+    move_to(&mut session, 100, 100);
+    settle_at(&mut session, &mut panel, Duration::from_secs(4));
+    assert!(!tooltip_over_the_clock(&mut session), "gone");
+}
+
+#[test]
+fn escape_puts_a_tooltip_away_and_the_next_escape_is_the_windows() {
+    let (mut session, mut panel) = dated();
+    let mut client = session.connect();
+    session.open(&mut client, "app", (200, 100), RED);
+    settle(&mut session, &mut panel);
+    let (x, y) = on_the_clock();
+    move_to(&mut session, x, y);
+    settle_at(&mut session, &mut panel, Duration::from_millis(100));
+    settle_at(&mut session, &mut panel, Duration::from_millis(700));
+    assert!(tooltip_over_the_clock(&mut session));
+    session.roundtrip(&mut client);
+    client.take_events();
+    let escape = |events: &[Event]| {
+        let code = crate::common::key::ESCAPE.raw() - 8;
+        events.contains(&Event::Key {
+            code,
+            pressed: true,
+        })
+    };
+
+    press(&mut session, crate::common::key::ESCAPE);
+    settle_at(&mut session, &mut panel, Duration::from_millis(800));
+    assert!(!tooltip_over_the_clock(&mut session), "put away");
+    session.roundtrip(&mut client);
+    assert!(!escape(&client.take_events()), "and not the window's");
+    // It stays away while the pointer rests there.
+    settle_at(&mut session, &mut panel, Duration::from_secs(3));
+    assert!(!tooltip_over_the_clock(&mut session), "it stays away");
+
+    press(&mut session, crate::common::key::ESCAPE);
+    session.step();
+    session.roundtrip(&mut client);
+    assert!(escape(&client.take_events()), "the window's");
+}
+
+#[test]
+fn a_click_on_a_tooltip_puts_it_away() {
+    let (mut session, mut panel) = dated();
+    let (x, y) = on_the_clock();
+    move_to(&mut session, x, y);
+    settle_at(&mut session, &mut panel, Duration::from_millis(100));
+    settle_at(&mut session, &mut panel, Duration::from_millis(700));
+    move_to(&mut session, WIDTH - 20, HEIGHT - BAR - 6);
+    settle_at(&mut session, &mut panel, Duration::from_millis(800));
+    assert!(tooltip_over_the_clock(&mut session));
+    click(&mut session, LEFT);
+    settle_at(&mut session, &mut panel, Duration::from_secs(2));
+    assert!(!tooltip_over_the_clock(&mut session), "put away");
+    assert!(
+        !above_the_bar(&mut session, WIDTH - 100, 20),
+        "and no month"
+    );
+}
+
+/// A panel, as `dated`, and a window with the keyboard.
+fn with_a_window() -> (Session, Panel, crate::common::Client) {
+    let (mut session, mut panel) = dated();
+    let mut client = session.connect();
+    session.open(&mut client, "app", (200, 100), RED);
+    settle(&mut session, &mut panel);
+    session.roundtrip(&mut client);
+    client.take_events();
+    (session, panel, client)
+}
+
+/// Whether the window was given the keyboard, or had it taken away, since
+/// it was last asked.
+fn keyboard_moved(session: &mut Session, client: &mut crate::common::Client) -> (bool, bool) {
+    session.roundtrip(client);
+    let events = client.take_events();
+    (
+        events.contains(&Event::KeyboardEnter),
+        events.contains(&Event::KeyboardLeave),
+    )
+}
+
+#[test]
+fn a_click_on_the_bar_leaves_the_keyboard_with_the_window() {
+    let (mut session, mut panel, mut client) = with_a_window();
+    move_to(&mut session, WIDTH / 2, HEIGHT - BAR / 2);
+    click(&mut session, LEFT);
+    settle(&mut session, &mut panel);
+    assert_eq!(keyboard_moved(&mut session, &mut client), (false, false));
+}
+
+#[test]
+fn the_bar_given_the_keyboard_rings_what_can_be_pressed_and_shows_its_tooltip() {
+    let (mut session, mut panel, mut client) = with_a_window();
+    let before = session.draw();
+    session
+        .compositor_mut()
+        .perform(&omorfos_config::Action::FocusPanel);
+    settle(&mut session, &mut panel);
+    assert_eq!(
+        keyboard_moved(&mut session, &mut client),
+        (false, true),
+        "the bar's"
+    );
+    let ringed = session.draw();
+    assert_ne!(
+        ringed.at(4, HEIGHT - BAR + 1),
+        before.at(4, HEIGHT - BAR + 1),
+        "the first workspace ringed"
+    );
+    // Back from the first, the clock at the end, with its tooltip at once.
+    press(&mut session, crate::common::key::LEFT);
+    settle(&mut session, &mut panel);
+    assert!(tooltip_over_the_clock(&mut session), "the date");
+    // Shift and Tab go back, to the window, whose title fits: no tooltip.
+    let shift = smithay::input::keyboard::Keycode::new(50);
+    let key = |session: &mut Session, code, pressed| {
+        session
+            .compositor_mut()
+            .input(Input::Key { code, pressed }, 0);
+    };
+    key(&mut session, shift, true);
+    press(&mut session, crate::common::key::TAB);
+    key(&mut session, shift, false);
+    settle(&mut session, &mut panel);
+    assert!(!tooltip_over_the_clock(&mut session), "on the window");
+    // A key the bar has no use for does nothing; Tab goes on to the clock.
+    press(&mut session, smithay::input::keyboard::Keycode::new(38));
+    press(&mut session, crate::common::key::TAB);
+    settle(&mut session, &mut panel);
+    assert!(tooltip_over_the_clock(&mut session), "the clock again");
+    // Enter opens the month, which has the keyboard until Escape.
+    press(&mut session, crate::common::key::RETURN);
+    settle(&mut session, &mut panel);
+    assert!(above_the_bar(&mut session, WIDTH - 100, 20), "the month");
+    press(&mut session, crate::common::key::ESCAPE);
+    settle(&mut session, &mut panel);
+    assert!(!above_the_bar(&mut session, WIDTH - 100, 20), "closed");
+    assert_eq!(
+        keyboard_moved(&mut session, &mut client),
+        (false, false),
+        "the bar's still"
+    );
+    // Escape gives the keyboard back.
+    press(&mut session, crate::common::key::ESCAPE);
+    settle(&mut session, &mut panel);
+    settle(&mut session, &mut panel);
+    assert_eq!(
+        keyboard_moved(&mut session, &mut client),
+        (true, false),
+        "the window's"
+    );
+    assert!(!tooltip_over_the_clock(&mut session));
+}
+
+#[test]
+fn enter_on_a_window_of_the_bar_brings_it_up_with_the_keyboard() {
+    let (mut session, mut panel, mut client) = with_a_window();
+    let mut other = session.connect();
+    session.open(&mut other, "other", (200, 100), BLUE);
+    settle(&mut session, &mut panel);
+    session.roundtrip(&mut client);
+    client.take_events();
+    session
+        .compositor_mut()
+        .perform(&omorfos_config::Action::FocusPanel);
+    settle(&mut session, &mut panel);
+    // Past the four workspaces, to the first window, "app".
+    for _ in 0..4 {
+        press(&mut session, crate::common::key::TAB);
+    }
+    press(&mut session, crate::common::key::RETURN);
+    settle(&mut session, &mut panel);
+    settle(&mut session, &mut panel);
+    assert_eq!(keyboard_moved(&mut session, &mut client), (true, false));
+    let windows = state(&mut session).windows;
+    let app = windows
+        .iter()
+        .find(|window| window.app_id == "app")
+        .unwrap();
+    assert!(app.focused, "{windows:?}");
+}
+
+#[test]
+fn focus_panel_with_no_bar_leaves_the_keyboard_where_it_is() {
+    let mut session = Session::new();
+    let mut client = session.connect();
+    session.open(&mut client, "app", (200, 100), RED);
+    session.roundtrip(&mut client);
+    client.take_events();
+    session
+        .compositor_mut()
+        .perform(&omorfos_config::Action::FocusPanel);
+    session.step();
+    assert_eq!(keyboard_moved(&mut session, &mut client), (false, false));
 }

@@ -3,6 +3,8 @@
 
 ## The menu of a window's titlebar.
 close = Close
+move = Move
+resize = Resize
 maximize = Maximize
 minimize = Minimize
 fullscreen = Fullscreen

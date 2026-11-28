@@ -348,6 +348,12 @@ panel > clock {
   padding: 0 12px;
   color: var(--text);
 }
+/* What the keyboard rings on the bar, given it by `focus_panel`: a ring
+ * inside it, the padding narrowed by as much, so that its label stays. */
+panel > workspace:focus, panel > task:focus, panel > clock:focus {
+  border: 2px solid var(--accent);
+  padding: 0 10px;
+}
 
 /* What hangs from a bar, as the month from the clock: a box as a menu's,
  * and its rows and buttons. The days of a month are a faint grid, with

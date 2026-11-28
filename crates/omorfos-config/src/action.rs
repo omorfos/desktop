@@ -86,6 +86,18 @@ pub enum Action {
     CloseProgram,
     /// Toggle the focused window between maximized and its normal size.
     Maximize,
+    /// Move the focused window by the keyboard: the arrows move it 10
+    /// units a press, 50 with Shift, Enter keeps where it is and Escape
+    /// puts it back (ADR 116). Not one that is maximized, full screen or
+    /// tiled.
+    Move,
+    /// Resize the focused window by the keyboard: Right and Down make it
+    /// wider and taller, Left and Up narrower and shorter, 10 units a
+    /// press and 50 with Shift, its top left corner staying; Enter keeps
+    /// the size and Escape puts it back (ADR 116).
+    Resize,
+    /// Open the focused window's menu at its top left corner (ADR 116).
+    WindowMenu,
     /// Toggle fullscreen for the focused window.
     Fullscreen,
     /// Hide the focused window.
@@ -193,6 +205,11 @@ pub enum Action {
     /// arrow keys go through it and its buttons, Enter chooses, as a click
     /// does, and Escape dismisses it.
     FocusNotifications,
+    /// Give the panel's bar on the screen with the pointer the keyboard:
+    /// Tab and the arrow keys ring what is on it, which shows its tooltip,
+    /// Enter or space press it, as a click does, and Escape gives the
+    /// keyboard back (ADR 115).
+    FocusPanel,
     /// Show the welcome card: a step at a time, what the keys that matter
     /// do, light or dark, the wallpapers that come with omorfos, and the
     /// applications that open what. It is shown by itself at the first
@@ -490,6 +507,9 @@ mod tests {
     #[test]
     fn actions_without_a_parameter_are_plain_strings() {
         assert_eq!(parse("close"), Ok(Action::Close));
+        assert_eq!(parse("move"), Ok(Action::Move));
+        assert_eq!(parse("resize"), Ok(Action::Resize));
+        assert_eq!(parse("window_menu"), Ok(Action::WindowMenu));
         assert_eq!(parse("close_program"), Ok(Action::CloseProgram));
         assert_eq!(parse("hide_program"), Ok(Action::HideProgram));
         assert_eq!(parse("hide_others"), Ok(Action::HideOthers));
@@ -553,6 +573,7 @@ mod tests {
         assert_eq!(parse("show_launcher"), Ok(Action::ShowLauncher));
         assert_eq!(parse("show_programs"), Ok(Action::ShowPrograms));
         assert_eq!(parse("focus_notifications"), Ok(Action::FocusNotifications));
+        assert_eq!(parse("focus_panel"), Ok(Action::FocusPanel));
         assert_eq!(parse("show_welcome"), Ok(Action::ShowWelcome));
         assert_eq!(parse("about"), Ok(Action::About));
         assert_eq!(parse("tile: left"), Ok(Action::Tile(Half::Left)));
