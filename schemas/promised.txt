@@ -241,6 +241,7 @@ keys.yaml bindings[].action = "reload_config"
 keys.yaml bindings[].action = "restart"
 keys.yaml bindings[].action = "restart_compositor"
 keys.yaml bindings[].action = "shade"
+keys.yaml bindings[].action = "show_capturing"
 keys.yaml bindings[].action = "show_desktop"
 keys.yaml bindings[].action = "show_launcher"
 keys.yaml bindings[].action = "show_menu"
@@ -281,6 +282,7 @@ keys.yaml bindings[].action.spawn.may[] = "panel"
 keys.yaml bindings[].action.spawn.may[] = "screens"
 keys.yaml bindings[].action.spawn.run
 keys.yaml bindings[].action.stay_awake_for
+keys.yaml bindings[].action.stop_capturing
 keys.yaml bindings[].action.swap
 keys.yaml bindings[].action.swap = "bottom"
 keys.yaml bindings[].action.swap = "left"
@@ -332,6 +334,7 @@ menu.yaml items[].action = "reload_config"
 menu.yaml items[].action = "restart"
 menu.yaml items[].action = "restart_compositor"
 menu.yaml items[].action = "shade"
+menu.yaml items[].action = "show_capturing"
 menu.yaml items[].action = "show_desktop"
 menu.yaml items[].action = "show_launcher"
 menu.yaml items[].action = "show_menu"
@@ -372,6 +375,7 @@ menu.yaml items[].action.spawn.may[] = "panel"
 menu.yaml items[].action.spawn.may[] = "screens"
 menu.yaml items[].action.spawn.run
 menu.yaml items[].action.stay_awake_for
+menu.yaml items[].action.stop_capturing
 menu.yaml items[].action.swap
 menu.yaml items[].action.swap = "bottom"
 menu.yaml items[].action.swap = "left"

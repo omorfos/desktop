@@ -40,8 +40,8 @@ pub mod threads;
 
 pub use client::{Client, socket_path, socket_path_from_env};
 pub use message::{
-    Awake, Drawing, LONGEST_COPY, MAX_MESSAGE, PROTOCOL, Placed, Radio, Reply, Request, Says,
-    Screen, Standing, State, Window, Workspace, decode, encode,
+    Awake, Captured, Capturing, Drawing, LONGEST_COPY, MAX_MESSAGE, PROTOCOL, Placed, Radio, Reply,
+    Request, Says, Screen, Standing, State, Window, Workspace, decode, encode,
 };
 pub use steady::{AGAIN, Steady};
 

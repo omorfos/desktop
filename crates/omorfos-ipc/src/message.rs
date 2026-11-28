@@ -209,6 +209,46 @@ pub struct State {
     /// nothing has said, or from a compositor too old to say.
     #[serde(default)]
     pub radios: Vec<Radio>,
+    /// What programs are taking of what the user shows or says: pictures
+    /// of a screen or a window, or the microphone, the sound or the camera
+    /// (ADR 114). Empty while nothing is, or from a compositor too old to
+    /// say.
+    #[serde(default)]
+    pub capturing: Vec<Capturing>,
+}
+
+/// A program taking something of what the user shows or says.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Capturing {
+    /// The program, by the name of its file, or of the program it shares
+    /// what it takes with, as the portal shares a screen with a browser.
+    pub program: String,
+    /// Its process, where it is known.
+    pub pid: Option<u32>,
+    /// What it takes.
+    pub what: Captured,
+    /// The screen, by its name, for pictures of a screen or of a window
+    /// on it.
+    pub screen: Option<String>,
+    /// Since when, in seconds since the Unix epoch, where it is known: for
+    /// pictures, which omorfos takes.
+    pub since: Option<u64>,
+}
+
+/// What a program takes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Captured {
+    /// Pictures of a screen.
+    Screen,
+    /// Pictures of a window.
+    Window,
+    /// What the microphone hears.
+    Microphone,
+    /// What is played.
+    Sound,
+    /// What the camera sees.
+    Camera,
 }
 
 /// The session being kept awake, as the user asked.
@@ -560,6 +600,26 @@ mod tests {
         }
     }
 
+    /// What a state says is captured: a window, and the microphone.
+    fn capturing() -> Vec<Capturing> {
+        vec![
+            Capturing {
+                program: "firefox".to_owned(),
+                pid: Some(4242),
+                what: Captured::Window,
+                screen: Some("eDP-1".to_owned()),
+                since: Some(1_761_397_200),
+            },
+            Capturing {
+                program: "zoom".to_owned(),
+                pid: None,
+                what: Captured::Microphone,
+                screen: None,
+                since: None,
+            },
+        ]
+    }
+
     #[test]
     fn every_reply_survives_a_round_trip() {
         let state = State {
@@ -618,6 +678,7 @@ mod tests {
                 off: false,
                 switched: true,
             }],
+            capturing: capturing(),
         };
         for reply in [
             Reply::Version {

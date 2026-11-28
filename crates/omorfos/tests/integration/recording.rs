@@ -10,8 +10,9 @@ use std::path::Path;
 use std::time::Duration;
 
 use omorfos::{Input, Roles};
+use omorfos_ipc::Captured;
 
-use crate::common::{Session, WIDTH, runnable};
+use crate::common::{Event, Session, WIDTH, runnable};
 use crate::windows::BACKGROUND;
 
 /// The colour the signs of the mark are drawn in.
@@ -142,4 +143,98 @@ fn a_watcher_that_stops_leaves_what_it_said_on_the_mark_a_moment() {
     session.eventually(|session| says(session, (left + 10, top + 8)) == ago);
     session.advance(Duration::from_millis(1600));
     assert_eq!(session.draw().at(left + 4 + 7, top + 5), BACKGROUND);
+}
+
+/// A session whose watcher says, of the process the tests run in, that it
+/// shares a screen through PipeWire with another, the watcher itself, as
+/// the portal shares one with a browser; and which that is.
+fn shared_through(session: &mut Session) -> (u32, std::path::PathBuf) {
+    let socket = session.listen();
+    let folder = session.config.path().to_owned();
+    let script = format!(
+        "#!/bin/sh\n\
+         echo $$ > '{folder}/seer.new' && mv '{folder}/seer.new' '{folder}/seer'\n\
+         printf 'screen %s %s\\n.\\n' $$ $PPID\n\
+         while [ -d '{folder}' ] && [ ! -e '{folder}/stop' ]; do sleep 0.01; done\n",
+        folder = folder.display(),
+    );
+    let watcher = folder.join("watcher");
+    runnable(&watcher, &script);
+    session.compositor_mut().set_recorder(watcher);
+    session.compositor_mut().autostart();
+    let seer = folder.join("seer");
+    session.eventually(|_| seer.exists());
+    let seer = std::fs::read_to_string(&seer)
+        .unwrap()
+        .trim()
+        .parse()
+        .unwrap();
+    (seer, socket)
+}
+
+#[test]
+fn a_screen_shared_through_the_portal_is_said_listed_and_stopped_by_what_it_is_shared_with() {
+    let mut session = Session::new();
+    let (seer, socket) = shared_through(&mut session);
+    let mut peer = omorfos_ipc::Client::connect(&socket).unwrap();
+    let name = std::fs::read_link(format!("/proc/{seer}/exe")).unwrap();
+    let name = name.file_name().unwrap().to_string_lossy().into_owned();
+    let mut camera = crate::capture::camera(&mut session);
+    let taking = camera.capture(0, false);
+    session.roundtrip(&mut camera);
+    session.eventually(|session| {
+        let omorfos_ipc::Reply::State(state) = session.ask(&mut peer, &omorfos_ipc::Request::State)
+        else {
+            unreachable!("the compositor answers a question about the state with it");
+        };
+        state
+            .capturing
+            .iter()
+            .any(|capturing| capturing.pid == Some(seer))
+    });
+    let _ = crate::capture::snap(&mut session, &mut camera, &taking);
+    let _ = crate::capture::snap(&mut session, &mut camera, &taking);
+    session.step();
+    // Said of what it is shared with, not of what shares it.
+    let said: Vec<String> = session.compositor().events().map(str::to_owned).collect();
+    let begun: Vec<&String> = said
+        .iter()
+        .filter(|event| event.contains("begun"))
+        .collect();
+    assert_eq!(begun.len(), 1, "{said:?}");
+    assert!(begun[0].starts_with(&name), "{said:?}");
+    camera.take_events();
+    // Stopped by the number the state gives it.
+    session
+        .compositor_mut()
+        .perform(&omorfos_config::Action::StopCapturing(seer));
+    session.step();
+    session.roundtrip(&mut camera);
+    assert!(camera.take_events().contains(&Event::CaptureStopped));
+    told(session.config.path(), "stop");
+}
+
+#[test]
+fn the_state_says_what_records_the_microphone_the_sound_and_the_camera() {
+    let mut session = watched();
+    let socket = session.config.path().join("ipc.sock");
+    let mut peer = omorfos_ipc::Client::connect(&socket).unwrap();
+    let mut capturing = Vec::new();
+    session.eventually(|session| {
+        let omorfos_ipc::Reply::State(state) = session.ask(&mut peer, &omorfos_ipc::Request::State)
+        else {
+            unreachable!("the compositor answers a question about the state with it");
+        };
+        capturing = state.capturing;
+        !capturing.is_empty()
+    });
+    let pid = Some(std::process::id());
+    for kind in [Captured::Microphone, Captured::Sound, Captured::Camera] {
+        let said = capturing
+            .iter()
+            .find(|capturing| capturing.what == kind && capturing.pid == pid);
+        let said = said.unwrap_or_else(|| unreachable!("{kind:?} is said: {capturing:?}"));
+        assert_eq!((said.screen.as_deref(), said.since), (None, None));
+    }
+    told(session.config.path(), "stop");
 }

@@ -410,6 +410,10 @@ pub struct Compositor {
     /// What has happened lately that the user might want to know of and
     /// need do nothing about, and when.
     events: Vec<(String, Instant)>,
+    /// What has happened that is said only to the programs that show what
+    /// has, the notifications among them, and not on the notice: as a
+    /// program begins taking pictures, which the mark shows already.
+    told: Vec<(String, Instant)>,
     /// How warm night light has the screens.
     pub(crate) night: Night,
 
@@ -609,6 +613,7 @@ impl Compositor {
                     bindings: Bindings::new([]),
                     problems: Vec::new(),
                     events: Vec::new(),
+                    told: Vec::new(),
                     night: Night::default(),
                     taken: Taken::default(),
                     pointer_location: (0.0, 0.0).into(),
@@ -1194,7 +1199,8 @@ impl Compositor {
     /// What has happened in the last few moments that the user might want
     /// to know of and need do nothing about, described for the user.
     pub fn events(&self) -> impl Iterator<Item = &str> {
-        self.events.iter().map(|(what, _)| what.as_str())
+        let all = self.events.iter().chain(&self.told);
+        all.map(|(what, _)| what.as_str())
     }
 
     /// What there is to tell the user just now.
@@ -1206,6 +1212,15 @@ impl Compositor {
     /// want to know of. It is said for a short while.
     pub(crate) fn happened(&mut self, what: &str, now: Instant) {
         self.events.push((what.to_owned(), now));
+    }
+
+    /// Notes that something has happened, at `now`, that the programs which
+    /// show what has are to say, but not the notice. What is still being
+    /// said is said once, for longer, so that a program taking pictures
+    /// over and over cannot fill the state with it.
+    pub(crate) fn told(&mut self, what: &str, now: Instant) {
+        self.told.retain(|(said, _)| said != what);
+        self.told.push((what.to_owned(), now));
     }
 
     /// Has the event loop woken when the configuration changes, or a new
@@ -1283,7 +1298,8 @@ impl Compositor {
         let warming = self.animation.epoch.filter(|_| self.night_fading());
         let warming = warming.map(|epoch| epoch + self.animation.clock + Motion::FRAME);
         // What has happened is said for a while and then no longer.
-        let said = self.events.iter().map(|(_, at)| *at + EVENT_LASTS).min();
+        let all = self.events.iter().chain(&self.told);
+        let said = all.map(|(_, at)| *at + EVENT_LASTS).min();
         // And the switcher, once its keys have been held long enough.
         let showing = self.animation.epoch.zip(self.switcher_due());
         let showing = showing.map(|(epoch, due)| epoch + due);
@@ -1338,6 +1354,8 @@ impl Compositor {
     /// reload, and how far what is changing colour has got.
     pub fn refresh(&mut self, now: Instant) {
         self.events
+            .retain(|(_, at)| now.saturating_duration_since(*at) < EVENT_LASTS);
+        self.told
             .retain(|(_, at)| now.saturating_duration_since(*at) < EVENT_LASTS);
         for refused in self.refused.take() {
             self.happened(&refused, now);
@@ -1628,6 +1646,8 @@ impl Compositor {
                 self.on_focused(|desktop, window| desktop.join(window, workspace));
             }
             Action::ShowMenu => self.open_menu(),
+            Action::ShowCapturing => self.open_capturing(),
+            Action::StopCapturing(pid) => self.stop_capturing(*pid),
             Action::ShowLauncher => self.open_launcher(&[]),
             Action::ShowPrograms => self.open_launcher(&["--programs".to_owned()]),
             Action::FocusNotifications => self.focus_notifications(),
@@ -1659,7 +1679,17 @@ impl Compositor {
     pub(crate) fn open_menu(&mut self) {
         let config = Arc::clone(self.store.current());
         let on = (self.toggled(), &config.keys);
-        let items = bridge::menu_items(&config.menu.items, on, &self.words);
+        let mut items = bridge::menu_items(&config.menu.items, on, &self.words);
+        // And, while something is taking pictures, what (ADR 114).
+        let capturing = self.capturing_items();
+        if !capturing.is_empty() {
+            items.push(Item::Separator);
+            items.push(Item::Submenu {
+                label: self.words.say("screen-sharing", &[]),
+                items: capturing,
+                mark: Mark::Blank,
+            });
+        }
         self.open_menu_of(items);
     }
 
@@ -1770,6 +1800,23 @@ impl Compositor {
         let windows = windows.filter_map(|id| self.desktop.window(*id));
         let titles: Vec<&str> = windows.map(|window| window.title.as_str()).collect();
         titles.join(" | ")
+    }
+
+    /// Whether a menu is open: the root menu, a window's, or the list of
+    /// what is taking pictures.
+    #[must_use]
+    pub const fn menu_open(&self) -> bool {
+        self.menu.is_some()
+    }
+
+    /// Opens the menu of what is taking pictures of the screen, at the
+    /// pointer, a row for each program that stops it; nothing while
+    /// nothing is taking any (ADR 114).
+    pub(crate) fn open_capturing(&mut self) {
+        let items = self.capturing_items();
+        if !items.is_empty() {
+            self.open_menu_of(items);
+        }
     }
 
     /// Opens a menu of `items` at the pointer.
@@ -3618,6 +3665,55 @@ impl Compositor {
         )
     }
 
+    /// What programs are taking of what the user shows or says, as the IPC
+    /// state says it (ADR 114): pictures of each screen, or of a window on
+    /// it, by the program, or the one a program shares them with, as the
+    /// portal does, and since when; and what PipeWire says is recorded.
+    pub(crate) fn capturing(&self) -> Vec<omorfos_ipc::Capturing> {
+        use omorfos_ipc::{Captured, Capturing};
+        let recorders = &self.capture.recording.now;
+        let epoch = |at: SystemTime| at.duration_since(SystemTime::UNIX_EPOCH).ok();
+        let mut capturing = Vec::new();
+        for head in &self.heads {
+            let output = &head.output;
+            for (client, window) in self.capture.takers(output) {
+                let pid = self.process(&client);
+                let what = if window {
+                    Captured::Window
+                } else {
+                    Captured::Screen
+                };
+                let since = self.capture.since((&client, window), output);
+                let since = since.and_then(epoch).map(|since| since.as_secs());
+                // Named as the mark names it: by what it shares with.
+                capturing.extend(self.seers(pid).into_iter().map(|seer| Capturing {
+                    program: program(&self.words, seer),
+                    pid: seer,
+                    what,
+                    screen: Some(output.name()),
+                    since,
+                }));
+            }
+        }
+        let recorded = recorders.iter().filter_map(|recorder| {
+            let what = match recorder.kind {
+                Recorded::Microphone => Captured::Microphone,
+                Recorded::Sound => Captured::Sound,
+                Recorded::Camera => Captured::Camera,
+                Recorded::Screen => return None,
+            };
+            Some(Capturing {
+                program: program(&self.words, Some(recorder.pid)),
+                pid: Some(recorder.pid),
+                what,
+                screen: None,
+                since: None,
+            })
+        });
+        capturing.extend(recorded);
+        capturing
+    }
+
     /// What the mark on `output` says when the pointer rests on it: which
     /// programs are taking pictures there, and of what.
     fn mark_says(&self, output: &Output) -> Vec<String> {
@@ -3682,6 +3778,17 @@ impl Compositor {
         let ago = ago.into_iter().filter(|(stopped, _)| *stopped);
         said.extend(ago.map(|(_, line)| self.words.say(line, &[])));
         said
+    }
+
+    /// Whether the pointer is on the mark of a screen being captured.
+    pub(crate) fn over_mark(&self) -> bool {
+        let point = self.pointer_location;
+        let marked = self
+            .heads
+            .iter()
+            .filter(|head| self.signs(&head.output).any());
+        let mut under = marked.filter(|head| self.mark_area(&head.output).to_f64().contains(point));
+        under.next().is_some()
     }
 
     /// Brings what the mark says up to date with where the pointer is:
@@ -5347,6 +5454,8 @@ pub(crate) enum Ours {
     Picture(Option<(WindowId, (usize, usize))>),
     /// A window offered in a part with nothing in it.
     Offer(WindowId),
+    /// The mark of a screen being captured, which opens what is (ADR 114).
+    Mark,
 }
 
 /// What of a card a press can be on.
@@ -5579,7 +5688,7 @@ impl About {
 /// What the program running as the process numbered `pid` is called: the
 /// name of its file, which it cannot choose as it can a title; or, in
 /// `words`, a program.
-fn program(words: &Words, pid: Option<u32>) -> String {
+pub(crate) fn program(words: &Words, pid: Option<u32>) -> String {
     let file = pid.and_then(|pid| fs::read_link(format!("/proc/{pid}/exe")).ok());
     let name = file.as_deref().and_then(Path::file_name);
     let unnamed = words.say("a-program", &[]);

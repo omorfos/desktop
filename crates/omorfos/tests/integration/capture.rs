@@ -1931,3 +1931,347 @@ fn a_screen_turned_is_drawn_turned_and_taken_the_right_way_up() {
     assert_eq!((area.size.w, area.size.h), (WIDTH, HEIGHT));
     assert_eq!(session.draw().at(10, 10), RED);
 }
+
+#[test]
+fn the_state_says_which_program_is_capturing_what_of_which_screen_and_since_when() {
+    let mut session = Session::new();
+    let socket = session.listen();
+    let mut app = session.connect();
+    session.open(&mut app, "app", (200, 100), RED);
+    let before = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    let mut camera = window_camera(&mut session);
+    let _screen = camera.capture(0, false);
+    let _window = camera.capture_window("app");
+    session.roundtrip(&mut camera);
+    let mut peer = omorfos_ipc::Client::connect(&socket).unwrap();
+    let omorfos_ipc::Reply::State(state) = session.ask(&mut peer, &omorfos_ipc::Request::State)
+    else {
+        unreachable!("the compositor answers a question about the state with it");
+    };
+    let program = std::env::current_exe().unwrap();
+    let program = program.file_name().unwrap().to_string_lossy().into_owned();
+    let what: Vec<omorfos_ipc::Captured> = state.capturing.iter().map(|one| one.what).collect();
+    assert_eq!(
+        what,
+        [omorfos_ipc::Captured::Screen, omorfos_ipc::Captured::Window]
+    );
+    for one in &state.capturing {
+        assert_eq!(one.program, program);
+        assert_eq!(one.pid, Some(std::process::id()));
+        assert_eq!(
+            one.screen.as_deref(),
+            Some(session.output().name().as_str())
+        );
+        let since = one.since.unwrap();
+        assert!(since >= before && since <= before + 60, "{since}");
+    }
+}
+
+/// What the compositor has said of this program beginning to take pictures.
+fn begun(session: &Session) -> Vec<String> {
+    let program = std::env::current_exe().unwrap_or_default();
+    let program = program.file_name().unwrap_or_default().to_string_lossy();
+    assert!(!program.is_empty(), "the tests are a program with a name");
+    let said = session.compositor().events();
+    let begun = said.filter(|event| event.contains(program.as_ref()) && event.contains("begun"));
+    begun.map(str::to_owned).collect()
+}
+
+#[test]
+fn a_program_beginning_to_share_the_screen_is_said_once_and_a_screenshot_is_not() {
+    let mut session = Session::new();
+    let mut camera = camera(&mut session);
+    // One picture, as a screenshot takes, is not sharing, and not said.
+    let first = camera.capture(0, false);
+    session.roundtrip(&mut camera);
+    let _ = snap(&mut session, &mut camera, &first);
+    session.step();
+    assert_eq!(begun(&session), Vec::<String>::new());
+    // Another, and it is.
+    let _ = snap(&mut session, &mut camera, &first);
+    session.step();
+    assert_eq!(begun(&session).len(), 1, "{:?}", begun(&session));
+    // Stopping and sharing again, over and over, while what was said is
+    // still shown, is not said again.
+    first.destroy();
+    session.roundtrip(&mut camera);
+    session.step();
+    for _ in 0..3 {
+        let again = camera.capture(0, false);
+        session.roundtrip(&mut camera);
+        let _ = snap(&mut session, &mut camera, &again);
+        let _ = snap(&mut session, &mut camera, &again);
+        again.destroy();
+        session.roundtrip(&mut camera);
+        session.step();
+    }
+    assert_eq!(begun(&session).len(), 1, "{:?}", begun(&session));
+}
+
+/// What a subscriber is told by the turn after: something, as it has to be.
+fn told(session: &mut Session, peer: &mut omorfos_ipc::Client) -> omorfos_ipc::State {
+    session.step();
+    let Ok(Some(omorfos_ipc::Reply::State(state))) = peer.try_receive() else {
+        unreachable!("the subscriber is told");
+    };
+    state
+}
+
+#[test]
+fn a_subscriber_is_told_as_what_takes_pictures_changes() {
+    let mut session = Session::new();
+    let socket = session.listen();
+    let mut peer = omorfos_ipc::Client::connect(&socket).unwrap();
+    let omorfos_ipc::Reply::State(initial) =
+        session.ask(&mut peer, &omorfos_ipc::Request::Subscribe)
+    else {
+        unreachable!("a subscriber is given the state at once");
+    };
+    assert_eq!(initial.capturing, []);
+    peer.set_nonblocking(true).unwrap();
+    let mut camera = camera(&mut session);
+    let taking = camera.capture(0, false);
+    session.roundtrip(&mut camera);
+    session.step();
+    let updated = told(&mut session, &mut peer);
+    assert_eq!(updated.capturing.len(), 1, "{:?}", updated.capturing);
+    // And as it ends, though nothing else changes.
+    taking.destroy();
+    session.roundtrip(&mut camera);
+    session.step();
+    let updated = told(&mut session, &mut peer);
+    assert_eq!(updated.capturing, []);
+}
+
+#[test]
+fn a_program_stopped_no_longer_follows_the_pointer() {
+    let mut session = Session::new();
+    let mut camera = camera(&mut session);
+    let _screen = camera.capture(0, false);
+    let (_cursor, _following) = camera.capture_pointer(0);
+    session.roundtrip(&mut camera);
+    session.step();
+    session.roundtrip(&mut camera);
+    camera.take_events();
+    session
+        .compositor_mut()
+        .perform(&omorfos_config::Action::StopCapturing(std::process::id()));
+    session.step();
+    session.roundtrip(&mut camera);
+    let events = camera.take_events();
+    let stopped = events
+        .iter()
+        .filter(|event| **event == Event::CaptureStopped);
+    assert_eq!(stopped.count(), 2, "the screen and the pointer: {events:?}");
+}
+
+#[test]
+fn a_program_stopped_is_told_every_picture_it_was_taking_has_stopped() {
+    let mut session = Session::new();
+    let socket = session.listen();
+    let mut app = session.connect();
+    session.open(&mut app, "app", (200, 100), RED);
+    let mut camera = window_camera(&mut session);
+    let _screen = camera.capture(0, false);
+    let _window = camera.capture_window("app");
+    session.roundtrip(&mut camera);
+    camera.take_events();
+    session
+        .compositor_mut()
+        .perform(&omorfos_config::Action::StopCapturing(std::process::id()));
+    session.step();
+    session.roundtrip(&mut camera);
+    let events = camera.take_events();
+    let stopped = events
+        .iter()
+        .filter(|event| **event == Event::CaptureStopped);
+    assert_eq!(stopped.count(), 2, "{events:?}");
+    let mut peer = omorfos_ipc::Client::connect(&socket).unwrap();
+    let omorfos_ipc::Reply::State(state) = session.ask(&mut peer, &omorfos_ipc::Request::State)
+    else {
+        unreachable!("the compositor answers a question about the state with it");
+    };
+    assert_eq!(state.capturing, [], "nothing taken now");
+    // Another program's pictures are not stopped, nor any by a process
+    // that takes none.
+    session
+        .compositor_mut()
+        .perform(&omorfos_config::Action::StopCapturing(1));
+    session.step();
+}
+
+#[test]
+fn the_list_of_what_takes_pictures_opens_by_its_action_and_stops_by_the_keyboard() {
+    let mut session = Session::new();
+    let mut app = session.connect();
+    session.open(&mut app, "app", (200, 100), RED);
+    let mut camera = window_camera(&mut session);
+    // A screen and a window on it, by one program: one row, which stops
+    // both.
+    let _screen = camera.capture(0, false);
+    let _window = camera.capture_window("app");
+    session.roundtrip(&mut camera);
+    camera.take_events();
+    session
+        .compositor_mut()
+        .perform(&omorfos_config::Action::ShowCapturing);
+    session.step();
+    assert!(session.compositor().menu_open(), "the list is open");
+    for code in [crate::common::key::DOWN, crate::common::key::RETURN] {
+        for pressed in [true, false] {
+            session
+                .compositor_mut()
+                .input(Input::Key { code, pressed }, 0);
+        }
+    }
+    session.step();
+    session.roundtrip(&mut camera);
+    let events = camera.take_events();
+    let stopped = events
+        .iter()
+        .filter(|event| **event == Event::CaptureStopped);
+    assert_eq!(stopped.count(), 2, "both, with no pointer: {events:?}");
+    // With nothing taking pictures, there is nothing to list.
+    session
+        .compositor_mut()
+        .perform(&omorfos_config::Action::ShowCapturing);
+    session.step();
+    assert!(!session.compositor().menu_open());
+}
+
+#[test]
+fn the_root_menu_has_what_takes_pictures_while_something_does() {
+    let mut session = Session::new();
+    let mut app = session.connect();
+    session.open(&mut app, "app", (200, 100), RED);
+    let mut camera = window_camera(&mut session);
+    let _screen = camera.capture(0, false);
+    session.roundtrip(&mut camera);
+    camera.take_events();
+    session
+        .compositor_mut()
+        .perform(&omorfos_config::Action::ShowMenu);
+    session.step();
+    // Its last row, by the keyboard alone: into it, and its one row chosen.
+    let keys = [
+        crate::common::key::UP,
+        crate::common::key::RIGHT,
+        crate::common::key::RETURN,
+    ];
+    for code in keys {
+        for pressed in [true, false] {
+            session
+                .compositor_mut()
+                .input(Input::Key { code, pressed }, 0);
+        }
+    }
+    session.step();
+    session.roundtrip(&mut camera);
+    assert!(camera.take_events().contains(&Event::CaptureStopped));
+}
+
+#[test]
+fn a_click_on_the_mark_opens_the_list_of_what_takes_pictures() {
+    let mut session = Session::new();
+    let mut app = session.connect();
+    session.open(&mut app, "app", (200, 100), RED);
+    let mut camera = window_camera(&mut session);
+    let _screen = camera.capture(0, false);
+    session.roundtrip(&mut camera);
+    let (x, y) = (f64::from(MARK.0), f64::from(MARK.1));
+    session.compositor_mut().input(Input::Motion { x, y }, 0);
+    session.step();
+    let button = |pressed| Input::Button {
+        button: 0x110,
+        pressed,
+    };
+    session.compositor_mut().input(button(true), 0);
+    session.step();
+    assert!(!session.compositor().menu_open(), "not as it goes down");
+    session.compositor_mut().input(button(false), 0);
+    session.step();
+    assert!(session.compositor().menu_open(), "as it is let go");
+    // Let go elsewhere, it opens nothing.
+    for pressed in [true, false] {
+        let code = crate::common::key::ESCAPE;
+        session
+            .compositor_mut()
+            .input(Input::Key { code, pressed }, 0);
+    }
+    session.step();
+    assert!(!session.compositor().menu_open(), "gone at Escape");
+    session.compositor_mut().input(button(true), 0);
+    session
+        .compositor_mut()
+        .input(Input::Motion { x: 50.0, y: 50.0 }, 0);
+    session.compositor_mut().input(button(false), 0);
+    session.step();
+    assert!(!session.compositor().menu_open(), "let go elsewhere");
+}
+
+/// The window under the mark, and whether a menu opened, as the left
+/// button goes down at `from` and is let go at `to`.
+fn pressed_across(
+    session: &mut Session,
+    app: &mut Client,
+    from: (i32, i32),
+    to: (i32, i32),
+) -> (Vec<Event>, bool) {
+    app.take_events();
+    let button = |pressed| Input::Button {
+        button: 0x110,
+        pressed,
+    };
+    for ((x, y), pressed) in [(from, true), (to, false)] {
+        let (x, y) = (f64::from(x), f64::from(y));
+        session.compositor_mut().input(Input::Motion { x, y }, 0);
+        session.compositor_mut().input(button(pressed), 0);
+        session.step();
+    }
+    session.roundtrip(app);
+    (app.take_events(), session.compositor().menu_open())
+}
+
+#[test]
+fn a_press_in_a_window_let_go_over_the_mark_is_the_windows() {
+    let mut session = Session::new();
+    let mut app = session.connect();
+    session.open(&mut app, "app", (WIDTH, 100), RED);
+    let mut camera = camera(&mut session);
+    let _screen = camera.capture(0, false);
+    session.roundtrip(&mut camera);
+    session.step();
+    let (events, menu) = pressed_across(&mut session, &mut app, (50, 50), MARK);
+    let released = Event::PointerButton {
+        button: 0x110,
+        pressed: false,
+    };
+    assert!(events.contains(&released), "{events:?}");
+    assert!(!menu);
+}
+
+#[test]
+fn a_press_on_a_mark_with_nothing_to_list_is_the_windows() {
+    let mut session = Session::new();
+    let mut app = session.connect();
+    session.open(&mut app, "app", (WIDTH, 100), RED);
+    let mut camera = camera(&mut session);
+    let screen = camera.capture(0, false);
+    session.roundtrip(&mut camera);
+    session.step();
+    // It has stopped, and the mark stays a moment.
+    screen.destroy();
+    session.roundtrip(&mut camera);
+    session.step();
+    assert_eq!(session.draw().at(MARK.0, MARK.1), DOT, "the mark stays");
+    let (events, menu) = pressed_across(&mut session, &mut app, MARK, MARK);
+    let pressed = Event::PointerButton {
+        button: 0x110,
+        pressed: true,
+    };
+    assert!(events.contains(&pressed), "{events:?}");
+    assert!(!menu);
+}

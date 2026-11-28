@@ -447,6 +447,7 @@ mod tests {
             locked: false,
             awake: None,
             radios: Vec::new(),
+            capturing: Vec::new(),
         }
     }
 

@@ -1333,6 +1333,27 @@ impl Compositor {
     /// the windows, the pictures of arrangements or a line between two
     /// windows, and says whether it was: nothing under them sees it.
     fn press_ours(&mut self, button: u32, pressed: bool, time: u32) -> bool {
+        // The mark opens what is taking pictures as it is let go on it
+        // (ADR 113, 114): a press on it, while there is something to list,
+        // and its release, wherever that is, are ours; the rest are the
+        // window's under it.
+        let on_mark = button == BUTTON_LEFT && self.over_mark();
+        let mark_held = self.ours_pressing.down() == Some(Ours::Mark);
+        if pressed && on_mark && !self.capturing_items().is_empty() {
+            self.ours_pressing.press(Some(Ours::Mark));
+            return true;
+        }
+        if !pressed && mark_held && button == BUTTON_LEFT {
+            if self
+                .ours_pressing
+                .release(on_mark.then_some(Ours::Mark))
+                .is_some()
+            {
+                self.open_capturing();
+                self.move_pointer(None, time);
+            }
+            return true;
+        }
         if self.over_palette() {
             // A part of a picture is chosen as the button is let go on the
             // one it went down on (ADR 113); anywhere else on them it only

@@ -170,6 +170,9 @@ End the session, as \fBquit\fR does: once the user has said so, unless \fBpower.
 \fBstay_awake\fR
 Keep the session from locking, the screens from going off and the machine from sleeping when the user is away, until asked again; or, while it is kept so, let it go.
 .TP
+\fBshow_capturing\fR
+Show what programs are taking pictures of the screen, each with a row that stops it, as a menu at the pointer (ADR 114).
+.TP
 \fBnight_light\fR
 Make the screens warm now if they are not, as warm as \fBnight_light\fR says, or as they are if they are, until night light next turns them by the time of day.
 .TP
@@ -275,6 +278,9 @@ A program followed by its arguments, run without a shell.
 .TP
 \fBitems[].action.stay_awake_for\fR
 From 1 to 86400.
+.TP
+\fBitems[].action.stop_capturing\fR
+At least 0.
 .TP
 \fBitems[].action.swap\fR
 A half of the screen.

@@ -34,6 +34,14 @@ a known gap.
   half a second, or click; then the terminal has the keyboard, with
   nothing typed into it. Answered with Escape, the box gives the
   keyboard back at once.
+- **Who is taking pictures, and Stop (#180, finding 6; ADR 114).** Share
+  the screen from a browser: a notification says so once. Click the red
+  mark: a menu lists the browser, "Stop …"; choosing it ends the share in
+  the browser. The root menu has "Screen sharing" meanwhile; and
+  `omorfosctl state` names the browser under `capturing`. Watch that the
+  notification names the browser, not `xdg-desktop-portal-omorfos`: it
+  would if PipeWire's word of the browser came after the portal's second
+  picture.
 - **Acting as the button is let go (#180, finding 5; ADR 113).** Right
   press on the desktop, drag to a row of the menu and let go: it is
   chosen; right click and let go without moving: the menu stays open.
@@ -501,8 +509,8 @@ calls for them.
       given it at once, with no picker to draw a region in.
 - [ ] Known gaps in sharing the screen: the size the application is told
       is in pixels, not in units of layout; a choice cannot be remembered
-      for next time; and the user cannot stop sharing from the desktop,
-      only from the application. A reader that cannot take buffers of the
+      for next time. (The user stops sharing from the desktop since ADR
+      114: the mark's menu, the root menu and `stop_capturing`.) A reader that cannot take buffers of the
       GPU is still given pictures read back and turned on the CPU.
 - [x] The pointer sent beside the pictures when a call asks, as
       PipeWire's cursor metadata, so that moving it makes no new picture of
@@ -3134,6 +3142,11 @@ to be put right before a release of any kind, and the first release
 - [ ] Medium: which program is taking pictures told only to a pointer at
       rest
       ([finding 6](reviews/2026-11-26-accessibility-design-wcag.md#6-which-program-is-taking-pictures-is-told-only-to-a-pointer-at-rest)).
+      ADR 114: who takes pictures of what, and since when, in the IPC
+      state, said once as it begins, and listed in a menu from the mark,
+      the root menu and `show_capturing`, each with Stop. Left: tooltips,
+      which stay while pointed at, go at Escape and show while the
+      keyboard is on what they are of, a change of their own.
 - [ ] Medium: a window moved and resized only by dragging, and what else
       only a drag or a pointer does
       ([finding 4](reviews/2026-11-26-accessibility-design-wcag.md#4-a-window-is-moved-and-resized-only-by-dragging)): its table is "everything in the shell

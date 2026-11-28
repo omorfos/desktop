@@ -148,6 +148,16 @@ your own may too; one that only wants to know the state asks `"subscribe"`.
   "radios": [
     { "kind": "wlan", "off": false, "switched": false },
     { "kind": "bluetooth", "off": true, "switched": false }
+  ],
+  "capturing": [
+    {
+      "program": "firefox",
+      "pid": 4242,
+      "what": "screen",
+      "screen": "eDP-1",
+      "since": 1761397200
+    },
+    { "program": "zoom", "pid": 5151, "what": "microphone", "screen": null, "since": null }
   ]
 }
 ```
@@ -190,6 +200,18 @@ when every radio of the kind is, and `switched` when a switch or the
 firmware holds one off, which no program can undo. They are what
 `omorfos-session` says with `"radios"`, which holds for as long as its
 connection does; empty while nothing has said, or from an older
+compositor.
+
+`capturing` is what programs are taking of what the user shows or says
+(ADR 114): pictures of a screen (`"screen"`) or of a window on one
+(`"window"`), with the screen's name and since when in seconds since the
+Unix epoch; and what PipeWire says is recorded, `"microphone"`,
+`"sound"` or `"camera"`, with neither. A program sharing through
+another, as a browser through the portal, is named as the program it
+shares with. Each is a `program` by the name of its file, and its `pid`
+where it is known; the action `stop_capturing` takes that `pid`, and
+stops, for one shown a screen through the portal, every share the portal
+makes. Empty while nothing is taken, or from an older
 compositor.
 
 `awake` is there while the user has asked for the session to stay awake,
