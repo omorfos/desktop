@@ -14,9 +14,9 @@ rather, such as Visual Studio Code, are left alone; a rule with
 | Leave fullscreen | `Super+Ctrl+f`; or rest the pointer against the top of the screen and click the third button of the titlebar that comes back |
 | Reach the panel from a fullscreen window | Rest the pointer against the edge of the screen the panel is along |
 | Maximize a window, or put it back | Double-click its titlebar |
-| Roll a window up into its titlebar, keep it above the others, show it on every workspace, or send it to one | Right-click its titlebar and choose from the menu |
-| Move a window | Drag its titlebar, or hold Alt and drag anywhere on it |
-| Resize a window | Drag a border or corner, or hold Alt and drag with the right button |
+| Roll a window up into its titlebar, keep it above the others, show it on every workspace, or send it to one | Right-click its titlebar and choose from the menu; or open the menu with the action `window_menu`, bound to a key of your own, and go through it with the arrows |
+| Move a window | Drag its titlebar, or hold Alt and drag anywhere on it; or, without dragging, choose Move from its menu, or the action `move` on a key of your own, and use the arrows, 10 units a press and 50 with Shift, Enter or a click to keep it there and Escape to put it back |
+| Resize a window | Drag a border or corner, or hold Alt and drag with the right button; or choose Resize from its menu, or the action `resize`, and use the arrows: Right and Down make it wider and taller, Left and Up narrower and shorter |
 | Group windows as tabs | Drag a titlebar with the middle button onto another titlebar |
 | Switch tab | Click the tab |
 | Ungroup a tab | Drag it with the middle button and drop it off any titlebar |

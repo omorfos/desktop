@@ -27,6 +27,14 @@ the maintainer. An agent starting work reminds them of what is here, and
 an item goes once it has been tried: what was wrong goes to its stage as
 a known gap.
 
+- **A window moved and resized by the keyboard (#180, finding 4; ADR
+  116).** Bind `move`, `resize` and `window_menu` in `keys.yaml`. With a
+  terminal focused, press `move`'s key: the arrows move it 10 units a
+  press, 50 with Shift; Enter keeps it, Escape puts it back, and nothing
+  typed reaches the terminal meanwhile. `resize` grows and shrinks it
+  from its top left corner, no smaller than a drag makes it.
+  `window_menu`'s key opens its menu at its corner, with Move and Resize
+  at the bottom. A maximized window is not moved.
 - **A password box withdrawn keeps what is typed (#180, finding 26).**
   In a terminal, `pkexec true`, and once the box is up type a few
   letters; from another terminal end the `pkexec`. The box goes, and
@@ -3144,6 +3152,11 @@ to be put right before a release of any kind, and the first release
       only a drag or a pointer does
       ([finding 4](reviews/2026-11-26-accessibility-design-wcag.md#4-a-window-is-moved-and-resized-only-by-dragging)): its table is "everything in the shell
       reachable from the keyboard", above, a row at a time.
+      Moving and resizing a window and opening its menu are done by
+      `move`, `resize` and `window_menu`, and Move and Resize in a
+      window's menu (ADR 116). Left: the line between tiles (`grow`,
+      `shrink`), tabs (`attach`, `detach`), the arrows for the picker's
+      region, and a key for the notice, each a change of its own.
 - [ ] Low: chords of four and five keys, and things with no key or no place
       to press
       ([finding 21](reviews/2026-11-26-accessibility-design-wcag.md#21-chords-of-four-and-five-keys-and-things-with-no-key-or-no-place-to-press)).
